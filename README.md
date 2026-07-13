@@ -20,6 +20,8 @@
 | `clean` | Clean up comments across a branch's changes — lean and to the point, comments only, never code. |
 | `mc` | Merge the latest `main` into open PR branches (or one branch), resolve every conflict, and push. |
 | `task-bootstrap` | One-time per repo: interview the stack and generate that repo's own `scripts/bootstrap-worktree.sh` so `task` can bootstrap fresh worktrees. |
+| `sync` | Update this device's installed commands to the latest version from GitHub. |
+| `changelog` | Add a concise entry to the current repo's `CHANGELOG.md`, matching its existing format. |
 
 ## Install
 
@@ -88,6 +90,15 @@ cd my-command
 The symlinks point back into the clone, so `git pull` in this repo updates every
 command on that device. Run `install-personal.sh` once per machine (it's
 path-agnostic — clone the repo wherever you like).
+
+Once set up, pull updates from any session with **`/sync`** — it finds the clone,
+fast-forwards it, and re-links any newly added commands, without hardcoding where
+the repo lives.
+
+## Changelog
+
+See [CHANGELOG.md](./CHANGELOG.md). New entries are added with the bundle's own
+`changelog` command.
 
 ## License
 

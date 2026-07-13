@@ -33,7 +33,7 @@ Read the repo so you ask only about what you can't infer:
 - **Monorepo layout:** `workspaces` in `package.json`, `pnpm-workspace.yaml`, `turbo.json`, `nx.json`.
 - **Gitignored env files:** find `.env` / `.env.*`, then test each with `git check-ignore` — only the **gitignored** ones are symlink candidates (tracked env like `.env.example` stays put).
 - **Derived/generated code + its generator:** `schema.prisma`→`prisma generate`; `codegen.ts`/`codegen.yml`→`graphql-codegen`; TanStack route trees; `*.proto`; etc. Map each generator to the `package.json` script that runs it **and the package dir it runs in**.
-- **Repo conventions:** existing `scripts/` shebang style + `set -euo pipefail`; whether a `CHANGELOG.md` / `/changelog` exists; `shellcheck` availability.
+- **Repo conventions:** existing `scripts/` shebang style + `set -euo pipefail`; whether a `CHANGELOG.md` or changelog command exists; `shellcheck` availability.
 
 ## Step 3 — Interview to confirm + fill gaps
 

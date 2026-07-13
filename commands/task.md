@@ -51,7 +51,7 @@ Treat typecheck errors like "cannot find generated module" or a missing `*.gen.t
 - **Verify before claiming done** — run the repo's typecheck / tests / build for what you touched and confirm they pass. Report what you ran.
 - **Commits are explicitly allowed here.** Invoking `/my-command:task` is your standing permission to commit **on this branch** (never on `main`) — commit the work in logical commits with clear messages without asking again.
   - Only commit files **you** created or changed for this task. Do **not** commit pre-existing untracked files that carried over from the original workspace (e.g. via a worktree or a dirty checkout) — stage paths explicitly rather than `git add -A`/`git add .`, and leave anything unrelated to your task alone.
-- If the repo tracks a changelog (e.g. a `/changelog` command or `CHANGELOG.md`), add an entry.
+- If the repo tracks a changelog (e.g. a `changelog` command or `CHANGELOG.md`), add an entry.
 
 ## Step 3 — Clean, then PR
 
