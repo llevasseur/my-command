@@ -1,0 +1,12 @@
+{
+  "name": "my-command",
+  "description": "Your Wish is My Command — a bundle of workflow commands that carry a task from idea to merged PR: task, fb, pr, clean, mc, and task-bootstrap.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Leevon Levasseur",
+    "url": "https://github.com/llevasseur"
+  },
+  "homepage": "https://github.com/llevasseur/my-command",
+  "repository": "https://github.com/llevasseur/my-command",
+  "license": "MIT"
+}

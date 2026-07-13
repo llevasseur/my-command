@@ -1,0 +1,67 @@
+---
+description: Take a task from criteria to PR — set up an isolated branch/worktree, implement, then /my-command:clean and /my-command:pr
+argument-hint: "[--here|-h] [--base <branch>] [--draft|-d] <task criteria>"
+---
+
+Take a task from a plain-language description all the way to an open PR. The task can be a new feature, a bug fix, an update, a refactor — anything. The end goal is always a PR, and I always run `/my-command:clean` before `/my-command:pr`.
+
+$ARGUMENTS is the task. Parse leading flags off the front; everything else is the **task criteria**.
+
+## Flags
+
+- `--here` / `-h` — do NOT create a worktree. Work on the **current branch** as it is now.
+- `--base <branch>` — branch off `<branch>` instead of `main`. Ignored when `--here` is set.
+- `--draft` / `-d` — open the resulting PR as a draft. Passed straight through to `/my-command:pr` in step 3. Default is **not** draft.
+- Anything not a recognized flag is part of the task criteria.
+
+## Step 1 — Set up the workspace
+
+Decide where the work happens **before** touching any code. Base every workspace decision on **live** git state (`git rev-parse --abbrev-ref HEAD`, `git status`), never the session's startup snapshot — it can be stale.
+
+- **Default (no flags):** create a fresh worktree branched off `main`.
+  - Derive a branch name from the criteria: `<type>/<kebab-summary>`, where `<type>` is `feat` (new feature), `fix` (bug fix), `chore` (maintenance/refactor), or `docs` (docs only). Keep the summary short and specific (e.g. `fix/artifact-panel-scroll`).
+  - Use the `EnterWorktree` tool with that branch name. It branches from the remote default branch by default — correct for the `main` case.
+  - **This counts as an explicit worktree request.** ALWAYS create the worktree via `EnterWorktree`, even in a background/in-place session under `worktree.bgIsolation: "none"`. Do not work in place on the default path — that requires the explicit `--here` / `-h` flag.
+- **`--base <branch>` given:** branch off `<branch>` instead of `main`.
+  - `EnterWorktree` can't target an arbitrary base, so create it manually: `git fetch`, then `git worktree add .claude/worktrees/<branch-name> -b <branch-name> <base>`, then switch into it with `EnterWorktree` using `path: .claude/worktrees/<branch-name>`.
+- **`--here` / `-h` given:** stay on the current branch — no worktree.
+  - Check it first: `git rev-parse --abbrev-ref HEAD`. If it's `main` (or the repo's default branch), don't implement on `main` — create a feature branch in place (`git checkout -b <type>/<kebab-summary>`) and tell me you did.
+
+## Step 1.5 — Bootstrap the worktree
+
+**Skip this entirely for `--here`** (the current checkout is already bootstrapped). A fresh worktree has no `node_modules`, no `.env` files, and no generated code — without them `tsc`/`biome`/tests silently under-check or fail outright, so do this **before** implementing.
+
+**Prefer the repo's own bootstrap.** Check for a repo-provided worktree bootstrap first — a `scripts/bootstrap-worktree.sh` (or similar) or a "Worktree Setup" section in `AGENTS.md`/`CLAUDE.md` — and run/follow that. This command must not hardcode any one repo's paths.
+
+Only if the repo provides nothing, do the generic equivalent:
+
+- **Symlink the gitignored `.env` files** from the main checkout so env stays a single source of truth (never copy or edit — I manage the values). The main checkout is the repo root the worktree branched from; link each `.env` that exists there at the same relative path.
+- **Install dependencies:** run the repo's install (`pnpm install` / `npm ci` / etc.) at the worktree root.
+- **Generate lazily — only what the task touches.** Generated code (Prisma clients, GraphQL `__generated__` types, route trees) is derived from schema files in *this* worktree, so regenerate it here — **never symlink or copy it in** (a symlink reflects the wrong branch or corrupts the main checkout when written through; a copy goes stale and hides schema drift). Find the repo's generate commands in its `package.json` scripts. Docs-only tasks can skip generation.
+
+Treat typecheck errors like "cannot find generated module" or a missing `*.gen.ts` as environment setup, not code bugs — bootstrap, then re-typecheck.
+
+## Step 2 — Implement the task
+
+- Restate the criteria in one line so we agree on scope, then implement it.
+- For "create/initialize X" criteria, inspect the target path first — X may already exist, and the real work is extending it rather than scaffolding greenfield.
+- Once isolated in a worktree, the worktree directory is the only writable root — resolve every read/edit/commit path under it, never the original shared checkout.
+- Follow the repo's own conventions (read `CLAUDE.md`/`AGENTS.md` and match surrounding code — style, naming, tests).
+- For anything non-trivial or ambiguous, plan before coding; for a bug, reproduce before fixing. Use the relevant superpowers skills (brainstorming, systematic-debugging, TDD) rather than guessing.
+- **Verify before claiming done** — run the repo's typecheck / tests / build for what you touched and confirm they pass. Report what you ran.
+- **Commits are explicitly allowed here.** Invoking `/my-command:task` is your standing permission to commit **on this branch** (never on `main`) — commit the work in logical commits with clear messages without asking again.
+  - Only commit files **you** created or changed for this task. Do **not** commit pre-existing untracked files that carried over from the original workspace (e.g. via a worktree or a dirty checkout) — stage paths explicitly rather than `git add -A`/`git add .`, and leave anything unrelated to your task alone.
+- If the repo tracks a changelog (e.g. a `/changelog` command or `CHANGELOG.md`), add an entry.
+
+## Step 3 — Clean, then PR
+
+Always in this order, once implementation is committed and verified:
+
+1. Run **`/my-command:clean`** to tidy comments in the branch's changes. It's branch-aware — it cleans committed + staged + unstaged work on a feature branch — so it will pick up the commits from step 2. Commit any edits it makes.
+2. Run **`/my-command:pr`** to push and open (or update) the PR with a concise bulleted description. If `--draft`/`-d` was given, invoke it as `/my-command:pr --draft` so the PR opens as a draft. `/my-command:pr` also removes the worktree on its way out when applicable.
+
+## Notes
+
+- Never implement or commit directly on `main`.
+- If the criteria are too vague to act on, ask me one focused clarifying question before setting up the workspace — don't spin up a worktree for a guess.
+- Report the branch name up front and the PR number/URL at the end.

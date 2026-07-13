@@ -1,0 +1,19 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "my-command",
+  "description": "Your Wish is My Command — Leevon's Claude Code workflow command bundle.",
+  "owner": {
+    "name": "Leevon Levasseur",
+    "url": "https://github.com/llevasseur"
+  },
+  "plugins": [
+    {
+      "name": "my-command",
+      "displayName": "MyCommand",
+      "source": "./",
+      "description": "Your Wish is My Command — carry a task from idea to merged PR with /my-command:task, :fb, :pr, :clean, :mc, and :task-bootstrap.",
+      "category": "productivity",
+      "keywords": ["workflow", "worktree", "pull-request", "git", "productivity"]
+    }
+  ]
+}
