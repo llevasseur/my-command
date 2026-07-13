@@ -3,9 +3,9 @@
 <p align="center"><strong>Your Wish is My Command.</strong></p>
 
 <p align="center">
-  A Claude Code plugin bundling six workflow commands that carry a task all the
-  way from idea to a merged pull request — set up an isolated worktree, implement,
-  clean the comments, and open the PR.
+  A bundle of six Claude Code workflow commands that carry a task from idea to a
+  merged pull request — set up an isolated worktree, implement, clean the
+  comments, and open the PR.
 </p>
 
 ---
@@ -14,59 +14,80 @@
 
 | Command | What it does |
 | :------ | :----------- |
-| `/my-command:task` | Take a task from plain-language criteria to an open PR: sets up an isolated branch/worktree, bootstraps it, implements, verifies, then runs `/my-command:clean` and `/my-command:pr`. |
-| `/my-command:fb` | Implement a feedback request. Thin wrapper around `/my-command:task` — runs on the current branch by default, or in a worktree of an existing branch with `--target`. |
-| `/my-command:pr` | Create or update the PR for the current branch with a concise, bulleted description, written straight to GitHub. Removes the session worktree on the way out. |
-| `/my-command:clean` | Clean up comments across a branch's changes — lean and to the point, comments only, never code. |
-| `/my-command:mc` | Merge the latest `main` into open PR branches (or a single branch), resolve every conflict one by one, and push. |
-| `/my-command:task-bootstrap` | One-time per repo: interview the stack and generate that repo's own `scripts/bootstrap-worktree.sh` so `/my-command:task` can bootstrap fresh worktrees for it. |
-
-All commands are namespaced under `my-command:` — that prefix is how Claude Code
-keeps plugin commands from colliding with each other. The commands reference one
-another by their namespaced names, so the bundle is self-contained once installed.
+| `task` | Take a task from plain-language criteria to an open PR: isolated branch/worktree, bootstrap, implement, verify, then clean + PR. |
+| `fb` | Implement a feedback request. Thin wrapper around `task` — current branch by default, or a worktree of an existing branch with `--target`. |
+| `pr` | Create/update the PR for the current branch with a concise bulleted description, written straight to GitHub. |
+| `clean` | Clean up comments across a branch's changes — lean and to the point, comments only, never code. |
+| `mc` | Merge the latest `main` into open PR branches (or one branch), resolve every conflict, and push. |
+| `task-bootstrap` | One-time per repo: interview the stack and generate that repo's own `scripts/bootstrap-worktree.sh` so `task` can bootstrap fresh worktrees. |
 
 ## Install
 
-```bash
-# 1. Register the marketplace (points at this GitHub repo)
-claude plugin marketplace add llevasseur/my-command
+### Quickest — the wizard
 
-# 2. Install the plugin
+```bash
+npx github:llevasseur/my-command
+```
+
+It asks how you want them installed:
+
+1. **Claude Code plugin** — commands are namespaced (`/my-command:task`) and
+   **auto-update** whenever this repo is pushed.
+2. **Personal commands** — bare commands (`/task`) copied into
+   `~/.claude/commands`.
+
+### Manual — as a plugin
+
+```bash
+claude plugin marketplace add llevasseur/my-command
 claude plugin install my-command@my-command
 ```
 
-Or from inside a Claude Code session:
+Then run `/reload-plugins`. Claude Code always namespaces plugin commands, so
+they are invoked as `/my-command:task`, `/my-command:pr`, and so on.
+
+## Repository layout
 
 ```
-/plugin marketplace add llevasseur/my-command
-/plugin install my-command@my-command
+src/commands/       Canonical BARE commands — edit these (they call each other as /task, /clean, …)
+commands/           GENERATED namespaced commands the plugin ships (do not edit by hand)
+scripts/
+  build-plugin.sh      Regenerate commands/ from src/commands/ (bare → /my-command:)
+  install-personal.sh  Symlink src/commands/*.md into ~/.claude/commands (bare, git-synced)
+bin/my-command.mjs  The npx install wizard (zero dependencies)
+.claude-plugin/     plugin.json + marketplace.json
 ```
 
-After installing, run `/reload-plugins` (or restart the session) and the
-`/my-command:*` commands become available everywhere.
+Two forms exist because the commands reference each other: a bare `task` calls
+`/clean`, but the published plugin's `task` must call `/my-command:clean`. The
+**bare source is canonical**; the namespaced `commands/` is built from it.
 
-## Typical flow
+## Editing the commands (maintainer)
 
+```bash
+# 1. Edit the bare source
+$EDITOR src/commands/task.md
+
+# 2. Regenerate the namespaced plugin commands
+./scripts/build-plugin.sh
+
+# 3. Commit + push — installed plugins auto-update (version is SHA-based)
+git add -A && git commit -m "…" && git push
 ```
-/my-command:task fix the artifact panel scroll jump on resize
-# → branches, implements, verifies, cleans comments, opens the PR
 
-/my-command:fb -t feat/some-branch address the review comments on the export path
-# → applies feedback onto an existing branch, then opens/updates its PR
+## Use them yourself, synced across devices
 
-/my-command:mc
-# → merges latest main into every open PR branch and resolves conflicts
+Keep the short bare commands (`/task`) on every machine, controlled from this repo:
+
+```bash
+git clone git@github.com:llevasseur/my-command.git
+cd my-command
+./scripts/install-personal.sh      # symlinks the bare commands into ~/.claude/commands
 ```
 
-## Notes
-
-- These are **workflow** commands: they assume `git` and the GitHub CLI (`gh`)
-  are installed and authenticated, and they never commit to `main`.
-- `/my-command:task` looks for a repo-provided `scripts/bootstrap-worktree.sh`
-  (or a "Worktree Setup" section in `AGENTS.md`/`CLAUDE.md`) to prepare fresh
-  worktrees. Run `/my-command:task-bootstrap` once per repo to generate one.
-- The commands stay device- and project-agnostic — anything repo-specific comes
-  from detection and the repo's own bootstrap, never hardcoded here.
+The symlinks point back into the clone, so `git pull` in this repo updates every
+command on that device. Run `install-personal.sh` once per machine (it's
+path-agnostic — clone the repo wherever you like).
 
 ## License
 

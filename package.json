@@ -1,0 +1,22 @@
+{
+  "name": "@llevasseur/my-command",
+  "version": "1.0.0",
+  "description": "Your Wish is My Command — install wizard for the MyCommand Claude Code command bundle.",
+  "type": "module",
+  "bin": {
+    "my-command": "bin/my-command.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "commands",
+    ".claude-plugin"
+  ],
+  "license": "MIT",
+  "author": "Leevon Levasseur",
+  "homepage": "https://github.com/llevasseur/my-command",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/llevasseur/my-command.git"
+  }
+}
