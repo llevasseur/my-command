@@ -5,6 +5,13 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-07-14
+
+### Changed
+
+- `mc` now merges each branch's **own PR base branch** into it instead of always merging `main`. Bases are fixed bottom-up via a recursive `fix(branch)` step: a branch's base is brought up to date (and pushed) before it is merged upward, recursing down to `main`. This makes `/mc` correct for stacked PRs.
+- `mc` ALL mode no longer filters PRs by base — it processes every open PR (main-based and stacked). Memoization and recursion give correct bottom-up ordering, with a cycle guard for pathological base loops. Falls back to merging `main` when a branch's base branch has no open PR.
+
 ## 2026-07-13
 
 ### Added
