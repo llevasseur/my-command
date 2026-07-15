@@ -184,9 +184,8 @@ async function main() {
 }
 
 // Run the wizard only when invoked directly, so the helpers stay importable.
-// Resolve argv[1] through realpathSync first: npx runs the bin via a symlink
-// (node_modules/.bin/my-command), so the raw argv[1] is the symlink path while
-// import.meta.url is the resolved real path — they'd never match otherwise.
+// realpathSync on argv[1]: npx runs the bin via a symlink, so the raw path
+// would never match import.meta.url (the resolved real path).
 const entry = process.argv[1];
 const invokedDirectly =
   entry && import.meta.url === pathToFileURL(realpathSync(entry)).href;
