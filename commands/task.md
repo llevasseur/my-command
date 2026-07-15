@@ -1,6 +1,6 @@
 ---
 description: Take a task from criteria to PR — set up an isolated branch/worktree, implement, then /my-command:clean and /my-command:pr
-argument-hint: "[--here|-h] [--base <branch>] [--draft|-d] [--add <cmd> -w <when>[, <cmd> -w <when>]] <task criteria>"
+argument-hint: "[--here|-h] [--base <branch>] [--draft|-d] [--add <cmd>[, <cmd>]] <task criteria>"
 ---
 
 Take a task from a plain-language description all the way to an open PR. The task can be a new feature, a bug fix, an update, a refactor — anything. The end goal is always a PR, and I always run `/my-command:clean` before `/my-command:pr`.
@@ -12,28 +12,20 @@ $ARGUMENTS is the task. Parse leading flags off the front; everything else is th
 - `--here` / `-h` — do NOT create a worktree. Work on the **current branch** as it is now.
 - `--base <branch>` — branch off `<branch>` instead of `main`. Ignored when `--here` is set.
 - `--draft` / `-d` — open the resulting PR as a draft. Passed straight through to `/my-command:pr` in step 3. Default is **not** draft.
-- `--add <cmd> -w <when>[, <cmd> -w <when>]` — register one or more **extra commands** to weave into this `/my-command:task` run. See "Added commands" below.
+- `--add <cmd>[, <cmd>]` — register one or more **extra commands** to weave into this `/my-command:task` run. See "Added commands" below.
 - Anything not a recognized flag is part of the task criteria.
 
 ### Parsing `--add`
 
-`--add` takes a **comma-separated list** of entries. Each entry is:
-
-```
-<command> --when <prompt>
-```
-
-- `<command>` — a slash-command to invoke (e.g. `/review`, `/test`, `/my-command:changelog`). Leading `/` optional.
-- `--when` / `-w` — a plain-language **prompt** that tells you *at what point in the `/my-command:task` flow* to run that command, or under what condition (e.g. `-w after implementing, before /my-command:clean`, `-w only if I touched migrations`).
-- Entries are separated by commas; everything between a command's `-w` and the next `, <command>` is that entry's `when` prompt.
+`--add` takes a **comma-separated list** of slash-commands to invoke (e.g. `/review`, `/test`, `/my-command:changelog`; leading `/` optional). *Where* each one runs — and under what condition — is for you to infer from the task criteria and from what the command itself does. I don't spell out timing.
 
 Example:
 
 ```
-/my-command:task --add /review -w after implement before clean, /db-check -w if any schema file changed --base develop fix the pagination cursor
+/my-command:task --add /review, /db-check --base develop fix the pagination cursor
 ```
 
-parses to: base `develop`, criteria "fix the pagination cursor", plus two added commands — run `/review` after implementing (before `/my-command:clean`), and run `/db-check` when a schema file changed.
+parses to: base `develop`, criteria "fix the pagination cursor", plus two added commands — `/review` and `/db-check` — each woven into the run at the point that makes sense for it.
 
 ## Step 1 — Set up the workspace
 
@@ -83,13 +75,13 @@ Always in this order, once implementation is committed and verified:
 
 ## Added commands (`--add`)
 
-`--add` lets me extend a `/my-command:task` run with extra commands without changing this file. Each added command carries a `--when` prompt describing where it fits in the flow above.
+`--add` lets me extend a `/my-command:task` run with extra commands without changing this file. Where each added command fits in the flow above is for you to infer — from the task criteria and from what the command does — not something I spell out.
 
-- **Plan the placement up front.** Right after parsing flags, list the added commands and, for each, decide which step it hooks into based on its `when` prompt (e.g. "after implement, before clean" → run at the end of Step 2; "if migrations changed" → a conditional gate). Report this plan in the same up-front message where you report the branch name.
-- **Honor conditions.** A `when` prompt may be conditional ("only if …", "when X changed"). Evaluate the condition at the relevant point and skip the command if it doesn't hold — say you skipped it and why.
+- **Plan the placement up front.** Right after parsing flags, list the added commands and, for each, decide which step it hooks into (e.g. a review command → after implementing, before `/my-command:clean`; a migration check → a conditional gate when a schema file changed). Report this plan in the same up-front message where you report the branch name.
+- **Honor conditions you infer.** If a command only makes sense under some condition (e.g. a migration check when no schema file changed), evaluate that at the relevant point and skip the command if it doesn't hold — say you skipped it and why.
 - **Run each at its point**, invoking the named slash-command as if I'd typed it. If an added command fails, stop and surface it rather than silently continuing — same as any other step.
 - **Ordering with built-in steps.** Added commands never replace Steps 1–3; they interleave. If two added commands map to the same point, run them left-to-right as listed.
-- If a `when` prompt is too vague to place, ask me one focused question before running that command — don't guess a placement for something side-effectful.
+- If you can't confidently place a command from the criteria, ask me one focused question before running it — don't guess a placement for something side-effectful.
 
 ## Notes
 

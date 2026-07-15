@@ -9,7 +9,7 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 ### Added
 
-- `task` command gains an `--add <cmd> -w <when>[, <cmd> -w <when>]` flag — register extra slash-commands to weave into a `/task` run, each with a `--when`/`-w` prompt describing where in the flow (or under what condition) it runs.
+- `task` command gains an `--add <cmd>[, <cmd>]` flag — register extra slash-commands to weave into a `/task` run. Where each one runs (and under what condition) is inferred from the task criteria and the command itself, so no explicit timing prompt is needed.
 
 ## 2026-07-13
 
