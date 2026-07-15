@@ -83,7 +83,6 @@ function checkboxPrompt({ message, items, requireSelection = false, stream = inp
       } else if (key.name === 'return' || key.name === 'enter') {
         const picked = items.filter((_, i) => selected[i]);
         if (requireSelection && picked.length === 0) {
-          // Keep the user in the wizard rather than closing on an empty confirm.
           warning = 'Select at least one command to overwrite, or press Esc to cancel.';
           render();
           return;
@@ -151,8 +150,7 @@ async function installPersonal() {
     let chosen;
     if (input.isTTY) {
       console.log(`\n${conflicts.length} command(s) already exist in ${dest}.`);
-      // When nothing is fresh, an empty selection would be a no-op, so require a
-      // pick — the prompt stays open and warns instead of silently doing nothing.
+      // Require a pick only when nothing is fresh — an empty selection would be a no-op.
       chosen = await checkboxPrompt({
         message: 'Select which existing commands to overwrite:',
         items: conflicts,
@@ -173,8 +171,7 @@ async function installPersonal() {
     }
   }
 
-  // Nothing installed or overwritten (e.g. Esc-cancelled the overwrite prompt) —
-  // report the cancel plainly rather than a hollow "Copied 0, overwrote 0".
+  // Nothing installed or overwritten — report the cancel plainly rather than "Copied 0, overwrote 0".
   if (copied === 0 && overwritten === 0) {
     console.log(`\nNothing changed${skipped > 0 ? ` — left ${skipped} existing command(s) untouched` : ''}.`);
     return;
