@@ -75,13 +75,11 @@ Treat typecheck errors like "cannot find generated module" or a missing `*.gen.t
 
 ## Step 3 — Clean, then PR (in fresh subagents)
 
-Once implementation is committed and verified, run the clean and PR stages **in fresh subagents** via the `Agent` tool — not inline in this conversation. Both derive everything they need from git — `/clean` from the branch diff, `/pr` from `git log`/`git diff`/`gh` — so an isolated context loses nothing, while shedding the large, now-stale file reads and tool output this task has piled up by now. Run them in order; let each subagent finish before starting the next. Each inherits the session model by default — don't pin a model (a per-stage override can be added later if a cheaper model proves enough for a stage).
+Once implementation is committed and verified, run the clean and PR stages **in fresh subagents** via the `Agent` tool, not inline. Both derive their inputs from git (`/clean` from the branch diff, `/pr` from `git log`/`git diff`/`gh`), so a fresh context loses nothing while shedding this task's stale file reads. Run them in order, each finishing before the next. The subagents share this worktree but not this conversation — hand each the branch name and enough context to act alone.
 
-The subagents share this worktree checkout but start with **no memory of this conversation**, so hand each the branch name and enough context to act on its own.
-
-1. **Clean — subagent.** Dispatch a subagent told to run **`/clean`** on this branch and then commit any edits it makes. `/clean` is branch-aware — committed + staged + unstaged — so it picks up step 2's commits; if it changes nothing, there's nothing to commit.
-2. **PR — subagent.** After the clean subagent returns, dispatch a subagent told to run **`/pr`** to push and open (or update) the PR with a concise bulleted description, passing `--draft` when `--draft`/`-d` was given, plus any title/context I supplied. Tell it **not** to tear down the worktree — `ExitWorktree` only works in the session that created the worktree, so leave teardown to this task agent (step 3).
-3. **Teardown.** After the PR subagent returns, if this run used a worktree, remove it here with `ExitWorktree` (`action: "remove"`) — the branch is already pushed, so this only discards the local worktree copy. Skip entirely for `--here`.
+1. **Clean.** Dispatch a subagent to run **`/clean`** on this branch, then commit any edits it makes. `/clean` is branch-aware (committed + staged + unstaged), so it picks up step 2's commits; if nothing changes, there's nothing to commit.
+2. **PR.** After the clean subagent returns, dispatch a subagent to run **`/pr`** — push and open (or update) the PR with a concise bulleted description, passing `--draft` when `--draft`/`-d` was given, plus any title/context I supplied. Tell it **not** to tear down the worktree — leave that to step 3.
+3. **Teardown.** After the PR subagent returns, if this run used a worktree, remove it here with `ExitWorktree` (`action: "remove"`); the branch is already pushed, so this only discards the local copy. Skip for `--here`.
 
 ## Notes
 
