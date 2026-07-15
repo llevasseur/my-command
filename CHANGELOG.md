@@ -9,7 +9,7 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 ### Added
 
-- `task` command gains an `--add` / `-a` flag — register extra slash-commands to weave into a `/task` run. Each entry names a command and, in the same prompt, when to run it (or under what condition); there's no separate timing flag.
+- `task` command gains an `--add` / `-a` flag — register user-available commands with prompts that let the task agent decide whether and when to weave them into a `/task` run; commands the agent cannot find are skipped.
 
 ## 2026-07-13
 

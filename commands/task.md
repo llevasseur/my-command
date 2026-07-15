@@ -1,6 +1,6 @@
 ---
 description: Take a task from criteria to PR — set up an isolated branch/worktree, implement, then /my-command:clean and /my-command:pr
-argument-hint: "[--here|-h] [--base <branch>] [--draft|-d] [--add|-a <cmd + when>[, <cmd + when>]] <task criteria>"
+argument-hint: "[--here|-h] [--base <branch>] [--draft|-d] [--add|-a <command + prompt>[, <command + prompt>]] <task criteria>"
 ---
 
 Take a task from a plain-language description all the way to an open PR. The task can be a new feature, a bug fix, an update, a refactor — anything. The end goal is always a PR, and I always run `/my-command:clean` before `/my-command:pr`.
@@ -12,23 +12,15 @@ $ARGUMENTS is the task. Parse leading flags off the front; everything else is th
 - `--here` / `-h` — do NOT create a worktree. Work on the **current branch** as it is now.
 - `--base <branch>` — branch off `<branch>` instead of `main`. Ignored when `--here` is set.
 - `--draft` / `-d` — open the resulting PR as a draft. Passed straight through to `/my-command:pr` in step 3. Default is **not** draft.
-- `--add` / `-a` — register one or more **extra commands** to weave into this `/my-command:task` run, each entry naming a command and, in the same prompt, when to run it. See "Added commands" below.
+- `--add` / `-a` — register one or more commands available to the user for the agent to weave into this `/my-command:task` run, each paired with a prompt that guides its use. See "Added commands" below.
 - Anything not a recognized flag is part of the task criteria.
 
 ### Parsing `--add`
 
-`--add` takes a **comma-separated list** of entries. Each entry is a plain-language **prompt** that names a slash-command *and*, in the same breath, says when to run it (or under what condition) — there's no separate timing flag, the *when* lives inside the entry.
+`--add` takes a **comma-separated list** of entries. Each entry names a user-available command followed by a plain-language prompt describing how it relates to this run. There is no separate timing flag; the agent running `/my-command:task` interprets the prompt and decides whether and when to invoke the command.
 
-- The leading slash-command token is the command to invoke (e.g. `/review`, `/test`, `/my-command:changelog`; leading `/` optional). The rest of the entry is its **when-prompt** (e.g. `after implementing, before /my-command:clean`, `only if I touched migrations`).
-- Entries are separated by a comma that precedes the next command. A comma *inside* a when-prompt (not followed by a command) stays part of that prompt.
-
-Example:
-
-```
-/my-command:task -a /review after implement before clean, /db-check if any schema file changed --base develop fix the pagination cursor
-```
-
-parses to: base `develop`, criteria "fix the pagination cursor", plus two added commands — run `/review` after implementing (before `/my-command:clean`), and run `/db-check` when a schema file changed.
+- The leading command token identifies the command to invoke; a leading `/` is optional. The rest of the entry is the prompt associated with that command.
+- Entries are separated by a comma that precedes the next command. A comma inside an associated prompt (not followed by a command) stays part of that prompt.
 
 ## Step 1 — Set up the workspace
 
@@ -78,13 +70,14 @@ Always in this order, once implementation is committed and verified:
 
 ## Added commands (`--add`)
 
-`--add` lets me extend a `/my-command:task` run with extra commands without changing this file. Each added command carries a when-prompt — the free text after the command in its entry — describing where it fits in the flow above.
+`--add` lets me extend a `/my-command:task` run with commands available to the user without changing this file. Each added command carries an associated prompt — the free text after the command in its entry — that the agent uses to decide whether and where it fits in the flow above.
 
-- **Plan the placement up front.** Right after parsing flags, list the added commands and, for each, decide which step it hooks into based on its when-prompt (e.g. "after implement, before clean" → run at the end of Step 2; "if migrations changed" → a conditional gate). Report this plan in the same up-front message where you report the branch name.
-- **Honor conditions.** A when-prompt may be conditional ("only if …", "when X changed"). Evaluate the condition at the relevant point and skip the command if it doesn't hold — say you skipped it and why.
+- **Resolve user commands.** Check whether each named command is available to the user. If the command cannot be found, skip that entry and continue the task.
+- **Plan usage up front.** Right after parsing flags, interpret each available command's associated prompt and decide whether and where it hooks into the workflow. Report this plan in the same up-front message where you report the branch name.
+- **Honor conditions.** Evaluate any condition implied by the associated prompt at the relevant point and skip the command if it does not hold — say you skipped it and why.
 - **Run each at its point**, invoking the named slash-command as if I'd typed it. If an added command fails, stop and surface it rather than silently continuing — same as any other step.
 - **Ordering with built-in steps.** Added commands never replace Steps 1–3; they interleave. If two added commands map to the same point, run them left-to-right as listed.
-- If a when-prompt is too vague to place, ask me one focused question before running that command — don't guess a placement for something side-effectful.
+- If an associated prompt is too vague to determine safe usage, ask me one focused question before running that command — don't guess about something side-effectful.
 
 ## Notes
 
