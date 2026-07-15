@@ -5,7 +5,7 @@ import { createInterface } from 'node:readline/promises';
 import { emitKeypressEvents } from 'node:readline';
 import { stdin as input, stdout as output } from 'node:process';
 import { spawnSync } from 'node:child_process';
-import { readdirSync, copyFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readdirSync, copyFileSync, mkdirSync, existsSync, realpathSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
@@ -184,8 +184,11 @@ async function main() {
 }
 
 // Run the wizard only when invoked directly, so the helpers stay importable.
+// realpathSync on argv[1]: npx runs the bin via a symlink, so the raw path
+// would never match import.meta.url (the resolved real path).
+const entry = process.argv[1];
 const invokedDirectly =
-  process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+  entry && import.meta.url === pathToFileURL(realpathSync(entry)).href;
 
 if (invokedDirectly) {
   main().catch((err) => {
