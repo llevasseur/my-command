@@ -23,6 +23,25 @@
 | `sync` | Update this device's installed commands to the latest version from GitHub. |
 | `changelog` | Add a concise entry to the current repo's `CHANGELOG.md`, matching its existing format. |
 
+## Use cases
+
+Each command parses **leading flags off the front**; everything after them is the
+free-text criteria (task, feedback, etc.). The examples below focus on how the
+parameters change what happens.
+
+| Command | Example | What the parameters do |
+| :------ | :------ | :--------------------- |
+| `task` | `/task add a dark-mode toggle to settings` | Default — fresh worktree off `main`, implement, then `/clean` + `/pr`. |
+| `task` | `/task -h fix the typo in the footer` | `--here` / `-h` — work on the **current branch**, no worktree. |
+| `task` | `/task --base release/2.0 backport the auth fix` | `--base <branch>` — branch off `release/2.0` instead of `main`. |
+| `task` | `/task -d wire up the metrics endpoint` | `--draft` / `-d` — open the resulting PR as a **draft**. |
+| `task` | `/task -a changelog note this once it works add retry logic to the fetch client` | `--add` / `-a <command> <prompt>` — weave `/changelog` into the run per its prompt, then implement the task. Separate multiple added commands with a comma before each next command. |
+| `fb` | `/fb tighten the copy on the empty state` | Default — apply the feedback on the **current branch** (via `/task --here`). |
+| `fb` | `/fb -t feat/checkout-redesign use the brand blue for the CTA` | `--target` / `-t <branch>` — apply the feedback onto **existing** branch `feat/checkout-redesign` in a fresh worktree. |
+| `mc` | `/mc` | Default — merge latest `main` into **every** open PR branch, resolve conflicts, push. |
+| `mc` | `/mc -h` | `--here` / `-h` — only the **current branch**. |
+| `mc` | `/mc -t feat/search` | `--target` / `-t <branch>` — only the named branch `feat/search`. |
+
 ## Install
 
 ### Quickest — the wizard
