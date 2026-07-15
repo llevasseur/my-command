@@ -12,7 +12,7 @@ $ARGUMENTS is the task. Parse leading flags off the front; everything else is th
 - `--here` / `-h` — do NOT create a worktree. Work on the **current branch** as it is now.
 - `--base <branch>` — branch off `<branch>` instead of `main`. Ignored when `--here` is set.
 - `--draft` / `-d` — open the resulting PR as a draft. Passed straight through to `/my-command:pr` in step 3. Default is **not** draft.
-- `--add` / `-a` — register one or more commands available to the user for the agent to weave into this `/my-command:task` run, each paired with a prompt that guides its use. See "Added commands" below.
+- `--add` / `-a` — register one or more commands available to the user for the agent to weave into this `/my-command:task` run, each paired with a prompt that guides its use. See Step 0 below.
 - Anything not a recognized flag is part of the task criteria.
 
 ### Parsing `--add`
@@ -21,6 +21,18 @@ $ARGUMENTS is the task. Parse leading flags off the front; everything else is th
 
 - The leading command token identifies the command to invoke; a leading `/` is optional. The rest of the entry is the prompt associated with that command.
 - Entries are separated by a comma that precedes the next command. A comma inside an associated prompt (not followed by a command) stays part of that prompt.
+
+## Step 0 — Incorporate added commands
+
+Run this step only when `--add` / `-a` is present, before setting up the workspace or starting the task pipeline.
+
+1. Use the command discovery available in the current session and on the user's device to resolve every command named in the `--add` list, including user, project, and plugin commands. Base the result on what is actually installed and available; do not infer availability from a command's name.
+2. Skip any list entry whose command cannot be found. An unavailable added command does not block the task.
+3. Load each available command's instructions into the current context without invoking it. Combine those instructions with the prompt associated with that list entry so the agent running `/my-command:task` can determine whether, when, and how the command belongs in this run.
+4. Update the pipeline in context with the resulting command steps. Added commands interleave with the built-in steps and never replace them. Preserve list order when multiple added commands belong at the same point.
+5. Report the updated pipeline, including where each available added command fits. Then continue with Step 1 and follow the updated pipeline through completion.
+
+Honor any condition implied by an associated prompt at the relevant point. If it does not hold, skip that command and say why. If the prompt is too vague to determine safe usage, ask one focused question before invoking that command. If an available command is invoked and fails, stop and surface the failure rather than silently continuing.
 
 ## Step 1 — Set up the workspace
 
@@ -67,17 +79,6 @@ Always in this order, once implementation is committed and verified:
 
 1. Run **`/my-command:clean`** to tidy comments in the branch's changes. It's branch-aware — it cleans committed + staged + unstaged work on a feature branch — so it will pick up the commits from step 2. Commit any edits it makes.
 2. Run **`/my-command:pr`** to push and open (or update) the PR with a concise bulleted description. If `--draft`/`-d` was given, invoke it as `/my-command:pr --draft` so the PR opens as a draft. `/my-command:pr` also removes the worktree on its way out when applicable.
-
-## Added commands (`--add`)
-
-`--add` lets me extend a `/my-command:task` run with commands available to the user without changing this file. Each added command carries an associated prompt — the free text after the command in its entry — that the agent uses to decide whether and where it fits in the flow above.
-
-- **Resolve user commands.** Check whether each named command is available to the user. If the command cannot be found, skip that entry and continue the task.
-- **Plan usage up front.** Right after parsing flags, interpret each available command's associated prompt and decide whether and where it hooks into the workflow. Report this plan in the same up-front message where you report the branch name.
-- **Honor conditions.** Evaluate any condition implied by the associated prompt at the relevant point and skip the command if it does not hold — say you skipped it and why.
-- **Run each at its point**, invoking the named slash-command as if I'd typed it. If an added command fails, stop and surface it rather than silently continuing — same as any other step.
-- **Ordering with built-in steps.** Added commands never replace Steps 1–3; they interleave. If two added commands map to the same point, run them left-to-right as listed.
-- If an associated prompt is too vague to determine safe usage, ask me one focused question before running that command — don't guess about something side-effectful.
 
 ## Notes
 

@@ -9,7 +9,7 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 ### Added
 
-- `task` command gains an `--add` / `-a` flag — register user-available commands with prompts that let the task agent decide whether and when to weave them into a `/task` run; commands the agent cannot find are skipped.
+- `task` command gains an `--add` / `-a` flag — Step 0 discovers listed commands available on the user's device, loads their instructions and associated prompts into context, and updates the pipeline before the task begins; commands the agent cannot find are skipped.
 
 ## 2026-07-13
 
