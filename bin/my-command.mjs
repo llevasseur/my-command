@@ -22,12 +22,15 @@ const commands = existsSync(SRC_DIR)
 
 // Zero-dependency interactive checkbox with a "Select all" toggle pinned at
 // the top. Returns the chosen subset of `items`, or null if the user cancels.
-function checkboxPrompt({ message, items, stream = input, out = output }) {
+// With `requireSelection`, confirming an empty selection keeps the prompt open
+// and shows a warning instead of resolving — the user must pick or Esc-cancel.
+function checkboxPrompt({ message, items, requireSelection = false, stream = input, out = output }) {
   return new Promise((resolve) => {
     const selected = new Array(items.length).fill(false);
     const rowCount = items.length + 1; // row 0 is the select-all toggle
     let cursor = 0;
     let rendered = 0;
+    let warning = '';
 
     const allChecked = () => items.length > 0 && selected.every(Boolean);
     const box = (on) => (on ? '[x]' : '[ ]');
@@ -40,6 +43,7 @@ function checkboxPrompt({ message, items, stream = input, out = output }) {
         lines.push(`${point(i + 1)} ${box(selected[i])} ${it}`);
       });
       lines.push('  (Space toggle · a all · ↑↓ move · Enter confirm · Esc cancel)');
+      if (warning) lines.push(`\x1b[33m${warning}\x1b[0m`); // yellow
       const prefix = rendered > 0 ? `\x1b[${rendered}A` : '';
       out.write(`${prefix}\x1b[0J${lines.join('\n')}\n`);
       rendered = lines.length;
@@ -70,13 +74,21 @@ function checkboxPrompt({ message, items, stream = input, out = output }) {
       } else if (key.name === 'space') {
         if (cursor === 0) toggleAll();
         else selected[cursor - 1] = !selected[cursor - 1];
+        warning = '';
         render();
       } else if (str === 'a' || str === 'A') {
         toggleAll();
+        warning = '';
         render();
       } else if (key.name === 'return' || key.name === 'enter') {
+        const picked = items.filter((_, i) => selected[i]);
+        if (requireSelection && picked.length === 0) {
+          warning = 'Select at least one command to overwrite, or press Esc to cancel.';
+          render();
+          return;
+        }
         cleanup();
-        resolve(items.filter((_, i) => selected[i]));
+        resolve(picked);
       } else if (key.name === 'escape' || str === 'q') {
         cleanup();
         resolve(null);
@@ -138,9 +150,11 @@ async function installPersonal() {
     let chosen;
     if (input.isTTY) {
       console.log(`\n${conflicts.length} command(s) already exist in ${dest}.`);
+      // Require a pick only when nothing is fresh — an empty selection would be a no-op.
       chosen = await checkboxPrompt({
         message: 'Select which existing commands to overwrite:',
         items: conflicts,
+        requireSelection: fresh.length === 0,
       });
     } else {
       // No TTY to prompt on — keep the safe default of never clobbering.
@@ -155,6 +169,12 @@ async function installPersonal() {
         skipped++;
       }
     }
+  }
+
+  // Nothing installed or overwritten — report the cancel plainly rather than "Copied 0, overwrote 0".
+  if (copied === 0 && overwritten === 0) {
+    console.log(`\nNothing changed${skipped > 0 ? ` — left ${skipped} existing command(s) untouched` : ''}.`);
+    return;
   }
 
   console.log(`\nCopied ${copied} new, overwrote ${overwritten}, skipped ${skipped} in ${dest}.`);
