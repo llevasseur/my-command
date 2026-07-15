@@ -38,9 +38,11 @@ Honor any condition implied by an associated prompt at the relevant point. If it
 
 Decide where the work happens **before** touching any code. Base every workspace decision on **live** git state (`git rev-parse --abbrev-ref HEAD`, `git status`), never the session's startup snapshot — it can be stale.
 
-- **Default (no flags):** create a fresh worktree branched off `main`.
+- **Default (no flags):** create a fresh worktree branched off the latest `main`.
   - Derive a branch name from the criteria: `<type>/<kebab-summary>`, where `<type>` is `feat` (new feature), `fix` (bug fix), `chore` (maintenance/refactor), or `docs` (docs only). Keep the summary short and specific (e.g. `fix/artifact-panel-scroll`).
-  - Use the `EnterWorktree` tool with that branch name. It branches from the remote default branch by default — correct for the `main` case.
+  - **Fetch latest `main` first.** Run `git fetch origin` before creating the worktree — `EnterWorktree`'s base is only as fresh as the local remote-tracking ref, so a stale `origin/main` silently plants your work on old code.
+  - Use the `EnterWorktree` tool with that branch name; it branches from the remote default branch.
+  - **Then confirm the base really is the latest `main`.** Right after entering, compare `git rev-parse HEAD` with `git rev-parse origin/<default-branch>` — depending on the `worktree.baseRef` setting, `EnterWorktree` can branch off local HEAD rather than the freshest `origin/<default>`. If they differ and the new branch has no commits yet, plant it on the latest with `git reset --hard origin/<default-branch>`.
   - **This counts as an explicit worktree request.** ALWAYS create the worktree via `EnterWorktree`, even in a background/in-place session under `worktree.bgIsolation: "none"`. Do not work in place on the default path — that requires the explicit `--here` / `-h` flag.
 - **`--base <branch>` given:** branch off `<branch>` instead of `main`.
   - `EnterWorktree` can't target an arbitrary base, so create it manually: `git fetch`, then `git worktree add .claude/worktrees/<branch-name> -b <branch-name> <base>`, then switch into it with `EnterWorktree` using `path: .claude/worktrees/<branch-name>`.
