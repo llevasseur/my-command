@@ -20,10 +20,8 @@ const commands = existsSync(SRC_DIR)
   ? readdirSync(SRC_DIR).filter((f) => f.endsWith('.md')).map((f) => f.replace(/\.md$/, ''))
   : [];
 
-// Zero-dependency interactive checkbox. Renders `items` with a "Select all"
-// toggle pinned at the top; returns the chosen subset (an array of items), or
-// null if the user cancels with Esc/q. Keys: ↑↓/j/k move, Space toggles the
-// focused row, `a` toggles all, Enter confirms, Ctrl-C aborts the process.
+// Zero-dependency interactive checkbox with a "Select all" toggle pinned at
+// the top. Returns the chosen subset of `items`, or null if the user cancels.
 function checkboxPrompt({ message, items, stream = input, out = output }) {
   return new Promise((resolve) => {
     const selected = new Array(items.length).fill(false);
@@ -185,8 +183,7 @@ async function main() {
   }
 }
 
-// Only run the wizard when invoked directly (`npx …`), so tests can import the
-// helpers above without triggering the interactive flow.
+// Run the wizard only when invoked directly, so the helpers stay importable.
 const invokedDirectly =
   process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 
