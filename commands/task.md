@@ -73,12 +73,15 @@ Treat typecheck errors like "cannot find generated module" or a missing `*.gen.t
   - Only commit files **you** created or changed for this task. Do **not** commit pre-existing untracked files that carried over from the original workspace (e.g. via a worktree or a dirty checkout) — stage paths explicitly rather than `git add -A`/`git add .`, and leave anything unrelated to your task alone.
 - If the repo tracks a changelog (e.g. a `changelog` command or `CHANGELOG.md`), add an entry.
 
-## Step 3 — Clean, then PR
+## Step 3 — Clean, then PR (in fresh subagents)
 
-Always in this order, once implementation is committed and verified:
+Once implementation is committed and verified, run the clean and PR stages **in fresh subagents** via the `Agent` tool — not inline in this conversation. Both derive everything they need from git — `/my-command:clean` from the branch diff, `/my-command:pr` from `git log`/`git diff`/`gh` — so an isolated context loses nothing, while shedding the large, now-stale file reads and tool output this task has piled up by now. Run them in order; let each subagent finish before starting the next. Each inherits the session model by default — don't pin a model (a per-stage override can be added later if a cheaper model proves enough for a stage).
 
-1. Run **`/my-command:clean`** to tidy comments in the branch's changes. It's branch-aware — it cleans committed + staged + unstaged work on a feature branch — so it will pick up the commits from step 2. Commit any edits it makes.
-2. Run **`/my-command:pr`** to push and open (or update) the PR with a concise bulleted description. If `--draft`/`-d` was given, invoke it as `/my-command:pr --draft` so the PR opens as a draft. `/my-command:pr` also removes the worktree on its way out when applicable.
+The subagents share this worktree checkout but start with **no memory of this conversation**, so hand each the branch name and enough context to act on its own.
+
+1. **Clean — subagent.** Dispatch a subagent told to run **`/my-command:clean`** on this branch and then commit any edits it makes. `/my-command:clean` is branch-aware — committed + staged + unstaged — so it picks up step 2's commits; if it changes nothing, there's nothing to commit.
+2. **PR — subagent.** After the clean subagent returns, dispatch a subagent told to run **`/my-command:pr`** to push and open (or update) the PR with a concise bulleted description, passing `--draft` when `--draft`/`-d` was given, plus any title/context I supplied. Tell it **not** to tear down the worktree — `ExitWorktree` only works in the session that created the worktree, so leave teardown to this task agent (step 3).
+3. **Teardown.** After the PR subagent returns, if this run used a worktree, remove it here with `ExitWorktree` (`action: "remove"`) — the branch is already pushed, so this only discards the local worktree copy. Skip entirely for `--here`.
 
 ## Notes
 
