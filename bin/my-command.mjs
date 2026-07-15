@@ -142,10 +142,8 @@ async function installPersonal() {
         message: 'Select which existing commands to overwrite:',
         items: conflicts,
       });
-      // Enter with an empty selection while every command already exists is a
-      // pure no-op. Warn and bail instead of reporting a hollow "Copied 0" —
-      // the user must pick commands to overwrite (or Esc to cancel) to change
-      // anything. `chosen === null` means they cancelled with Esc; leave that be.
+      // No fresh commands plus an empty (non-null) selection is a no-op — warn
+      // and bail rather than report "Copied 0". null means Esc-cancelled.
       if (fresh.length === 0 && Array.isArray(chosen) && chosen.length === 0) {
         console.log('\nNothing to do: you already have all commands and selected none to overwrite.');
         console.log('Re-run and choose which commands to overwrite (or press Esc to cancel).');
