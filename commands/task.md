@@ -1,6 +1,6 @@
 ---
 description: Take a task from criteria to PR — set up an isolated branch/worktree, implement, then /my-command:clean and /my-command:pr
-argument-hint: "[--here|-h] [--base <branch>] [--draft|-d] <task criteria>"
+argument-hint: "[--here|-h] [--base <branch>] [--draft|-d] [--add|-a <command + prompt>[, <command + prompt>]] <task criteria>"
 ---
 
 Take a task from a plain-language description all the way to an open PR. The task can be a new feature, a bug fix, an update, a refactor — anything. The end goal is always a PR, and I always run `/my-command:clean` before `/my-command:pr`.
@@ -12,7 +12,27 @@ $ARGUMENTS is the task. Parse leading flags off the front; everything else is th
 - `--here` / `-h` — do NOT create a worktree. Work on the **current branch** as it is now.
 - `--base <branch>` — branch off `<branch>` instead of `main`. Ignored when `--here` is set.
 - `--draft` / `-d` — open the resulting PR as a draft. Passed straight through to `/my-command:pr` in step 3. Default is **not** draft.
+- `--add` / `-a` — register one or more commands available to the user for the agent to weave into this `/my-command:task` run, each paired with a prompt that guides its use. See Step 0 below.
 - Anything not a recognized flag is part of the task criteria.
+
+### Parsing `--add`
+
+`--add` takes a **comma-separated list** of entries. Each entry names a user-available command followed by a plain-language prompt describing how it relates to this run. There is no separate timing flag; the agent running `/my-command:task` interprets the prompt and decides whether and when to invoke the command.
+
+- The leading command token identifies the command to invoke; a leading `/` is optional. The rest of the entry is the prompt associated with that command.
+- Entries are separated by a comma that precedes the next command. A comma inside an associated prompt (not followed by a command) stays part of that prompt.
+
+## Step 0 — Incorporate added commands
+
+Run this step only when `--add` / `-a` is present, before setting up the workspace or starting the task pipeline.
+
+1. Use the command discovery available in the current session and on the user's device to resolve every command named in the `--add` list, including user, project, and plugin commands. Base the result on what is actually installed and available; do not infer availability from a command's name.
+2. Skip any list entry whose command cannot be found. An unavailable added command does not block the task.
+3. Load each available command's instructions into the current context without invoking it. Combine those instructions with the prompt associated with that list entry so the agent running `/my-command:task` can determine whether, when, and how the command belongs in this run.
+4. Update the pipeline in context with the resulting command steps. Added commands interleave with the built-in steps and never replace them. Preserve list order when multiple added commands belong at the same point.
+5. Report the updated pipeline, including where each available added command fits. Then continue with Step 1 and follow the updated pipeline through completion.
+
+Honor any condition implied by an associated prompt at the relevant point. If it does not hold, skip that command and say why. If the prompt is too vague to determine safe usage, ask one focused question before invoking that command. If an available command is invoked and fails, stop and surface the failure rather than silently continuing.
 
 ## Step 1 — Set up the workspace
 

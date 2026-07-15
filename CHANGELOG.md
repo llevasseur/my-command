@@ -5,6 +5,13 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-07-14
+
+### Added
+
+- `task` command gains an `--add` / `-a` flag — Step 0 discovers listed commands available on the user's device, loads their instructions and associated prompts into context, and updates the pipeline before the task begins; commands the agent cannot find are skipped.
+- `sync` can update real-file personal installs from the marketplace, converting published `/my-command:*` references back to bare commands during installation.
+
 ## 2026-07-13
 
 ### Added
