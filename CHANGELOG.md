@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-07-14
+
+### Added
+
+- `task` command gains an `--add <cmd> -w <when>[, <cmd> -w <when>]` flag — register extra slash-commands to weave into a `/task` run, each with a `--when`/`-w` prompt describing where in the flow (or under what condition) it runs.
+
 ## 2026-07-13
 
 ### Added
