@@ -10,6 +10,7 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 ### Added
 
 - `task` command gains an `--add` / `-a` flag — Step 0 discovers listed commands available on the user's device, loads their instructions and associated prompts into context, and updates the pipeline before the task begins; commands the agent cannot find are skipped.
+- `sync` can update real-file personal installs from the marketplace, converting published `/my-command:*` references back to bare commands during installation.
 
 ## 2026-07-13
 
