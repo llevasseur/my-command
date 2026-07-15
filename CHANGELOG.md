@@ -9,6 +9,7 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 ### Fixed
 
+- `task` now branches worktrees off the *latest* `main` instead of whatever `origin/main` the local checkout last saw. Step 1 fetches (`git fetch origin`) before creating the worktree and, after entering, verifies the base matches `origin/<default>` — resetting the fresh (commit-less) branch onto it when `EnterWorktree` planted it on a stale local HEAD. Previously a task could silently build on out-of-date code.
 - `npx github:llevasseur/my-command` ran but did nothing (exited silently). The wizard's "invoked directly" guard compared `import.meta.url` against `process.argv[1]`, but `npx` runs the bin through a `node_modules/.bin` symlink — so `argv[1]` was the symlink path while `import.meta.url` was the resolved real path, and they never matched, so `main()` never ran. The guard now resolves `argv[1]` with `realpathSync` before comparing, so both `node bin/my-command.mjs` and the `npx` symlink invocation start the wizard.
 
 ### Added
