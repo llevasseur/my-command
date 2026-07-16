@@ -3,9 +3,8 @@
 <p align="center"><strong>Your Wish is My Command.</strong></p>
 
 <p align="center">
-  A bundle of six Claude Code workflow commands that carry a task from idea to a
-  merged pull request — set up an isolated worktree, implement, clean the
-  comments, and open the PR.
+  A bundle of Claude Code workflow commands for carrying tasks from idea to a
+  merged pull request and keeping long sessions focused.
 </p>
 
 ---
@@ -22,6 +21,7 @@
 | `task-bootstrap` | One-time per repo: interview the stack and generate that repo's own `scripts/bootstrap-worktree.sh` so `task` can bootstrap fresh worktrees. |
 | `sync` | Update this device's installed commands to the latest version from GitHub. |
 | `changelog` | Add a concise entry to the current repo's `CHANGELOG.md`, matching its existing format. |
+| `trim` | Decide whether the current conversation is safe to compact, then provide focused instructions for Claude Code's built-in `/compact`. |
 
 ## Use cases
 
@@ -41,6 +41,12 @@ parameters change what happens.
 | `mc` | `/mc` | Default — merge latest `main` into **every** open PR branch, resolve conflicts, push. |
 | `mc` | `/mc -h` | `--here` / `-h` — only the **current branch**. |
 | `mc` | `/mc -t feat/search` | `--target` / `-t <branch>` — only the named branch `feat/search`. |
+| `trim` | `/trim` | Evaluate six evidence-backed safety gates; recommend continuing or emit a tailored `/compact` command. |
+
+The `trim` command adapts the context-compaction strategy introduced by Yujiang Li,
+Zhenyu Hou, Yi Jing, Jie Tang, and Yuxiao Dong in
+[*CompactionRL: Reinforcement Learning with Context Compaction for Long-Horizon Agents*](https://arxiv.org/abs/2607.05378)
+to an inference-time safety rubric for interactive coding sessions.
 
 ## Install
 

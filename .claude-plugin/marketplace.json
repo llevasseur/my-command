@@ -11,9 +11,9 @@
       "name": "my-command",
       "displayName": "MyCommand",
       "source": "./",
-      "description": "Your Wish is My Command — carry a task from idea to merged PR with /my-command:task, :fb, :pr, :clean, :mc, and :task-bootstrap.",
+      "description": "Your Wish is My Command — ship changes and keep long Claude Code sessions focused with reusable workflow commands.",
       "category": "productivity",
-      "keywords": ["workflow", "worktree", "pull-request", "git", "productivity"]
+      "keywords": ["workflow", "worktree", "pull-request", "git", "productivity", "context-management"]
     }
   ]
 }

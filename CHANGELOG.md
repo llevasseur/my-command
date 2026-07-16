@@ -14,6 +14,7 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 ### Added
 
+- `trim` command — apply an evidence-backed safety rubric to the current conversation and, when safe, provide focused instructions for Claude Code's built-in `/compact`.
 - README gains a **Use cases** section — a command/example table for `task`, `fb`, and `mc` that highlights how each parameter (`--here`, `--base`, `--draft`, `--add`, `--target`) changes what the command does.
 
 ### Changed
