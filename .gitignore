@@ -1,1 +1,6 @@
 .DS_Store
+
+# Local scratch space — research docs, throwaway logs, experiments.
+# Nothing under tmp/ is tracked except the .gitkeep that preserves the directory.
+tmp/*
+!tmp/.gitkeep
