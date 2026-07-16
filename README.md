@@ -43,6 +43,11 @@ parameters change what happens.
 | `mc` | `/mc -t feat/search` | `--target` / `-t <branch>` — only the named branch `feat/search`. |
 | `trim` | `/trim` | Evaluate six evidence-backed safety gates; recommend continuing or emit a tailored `/compact` command. |
 
+The `trim` command adapts the context-compaction strategy introduced by Yujiang Li,
+Zhenyu Hou, Yi Jing, Jie Tang, and Yuxiao Dong in
+[*CompactionRL: Reinforcement Learning with Context Compaction for Long-Horizon Agents*](https://arxiv.org/abs/2607.05378)
+to an inference-time safety rubric for interactive coding sessions.
+
 ## Install
 
 ### Quickest — the wizard

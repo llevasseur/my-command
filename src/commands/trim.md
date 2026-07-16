@@ -5,6 +5,8 @@ allowed-tools: Read, Grep, Glob, Bash(git:*)
 
 Assess whether the current conversation can be compacted without losing state needed to finish the user's task. This command is read-only: do not edit files, run mutating commands, or invoke other workflows.
 
+This command adapts the context-compaction strategy introduced by Yujiang Li, Zhenyu Hou, Yi Jing, Jie Tang, and Yuxiao Dong in [*CompactionRL: Reinforcement Learning with Context Compaction for Long-Horizon Agents*](https://arxiv.org/abs/2607.05378) to an inference-time safety rubric for interactive coding sessions.
+
 ## Rubric
 
 Evaluate every gate against concrete evidence in the conversation and, when relevant, the live repository state:
