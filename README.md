@@ -83,13 +83,34 @@ scripts/
   install-personal.sh  Symlink src/commands/*.md into ~/.claude/commands (bare, git-synced)
 bin/my-command.mjs  The npx install wizard (zero dependencies)
 .claude-plugin/     plugin.json + marketplace.json
+docs/               okq spec bundle — specs/ (process), features/ (one per command), adrs/
 ```
 
 Two forms exist because the commands reference each other: a bare `task` calls
 `/clean`, but the published plugin's `task` must call `/my-command:clean`. The
 **bare source is canonical**; the namespaced `commands/` is built from it.
 
+## Specs
+
+The suite is documented as a queryable [okq](https://github.com/mikevalstar/okq)
+bundle under [`docs/`](./docs) — process specs plus one feature doc per command:
+
+- **[Adding a command](./docs/specs/adding-a-command.md)** — the checklist for
+  adding a command as agent instructions (bare source → build → feature doc →
+  wizard → README/CHANGELOG). Read this before adding one.
+- **[Install wizard](./docs/specs/install-wizard.md)** — how `bin/my-command.mjs`
+  installs the suite and its per-command overwrite behavior.
+- **`docs/features/<cmd>.md`** — the flags, parameters, and behavior of each
+  command.
+
+Two invariants the specs enforce: **a new command needs a feature doc and wizard
+inclusion**, and **a flag/param change needs its feature doc updated in the same
+change**. Query them with `okq --bundle docs find --type feature`.
+
 ## Editing the commands (maintainer)
+
+To **add** a command, follow the [Adding a command](./docs/specs/adding-a-command.md)
+spec. To edit an existing one:
 
 ```bash
 # 1. Edit the bare source
@@ -98,7 +119,10 @@ $EDITOR src/commands/task.md
 # 2. Regenerate the namespaced plugin commands
 ./scripts/build-plugin.sh
 
-# 3. Commit + push — installed plugins auto-update (version is SHA-based)
+# 3. If flags or params changed, update that command's feature doc
+$EDITOR docs/features/task.md   # then: okq --bundle docs index
+
+# 4. Commit + push — installed plugins auto-update (version is SHA-based)
 git add -A && git commit -m "…" && git push
 ```
 
