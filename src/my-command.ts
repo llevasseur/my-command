@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 // MyCommand install wizard. Run with: npx github:llevasseur/my-command
-// Zero dependencies so it runs straight from GitHub with no install step.
-import { createInterface } from 'node:readline/promises';
-import { emitKeypressEvents } from 'node:readline';
-import { stdin as input, stdout as output } from 'node:process';
+// Authored in TypeScript and compiled to dist/ so the published bin stays
+// dependency-free and runs straight from GitHub with no install step.
 import { spawnSync } from 'node:child_process';
-import { readdirSync, copyFileSync, mkdirSync, existsSync, realpathSync } from 'node:fs';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { dirname, join } from 'node:path';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { stdin as input, stdout as output } from 'node:process';
+import { emitKeypressEvents, type Key } from 'node:readline';
+import { createInterface } from 'node:readline/promises';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const PKG_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const SRC_DIR = join(PKG_ROOT, 'src', 'commands');
@@ -16,25 +17,41 @@ const REPO = 'llevasseur/my-command';
 const MARKETPLACE = 'my-command';
 const PLUGIN = 'my-command';
 
-const commands = existsSync(SRC_DIR)
-  ? readdirSync(SRC_DIR).filter((f) => f.endsWith('.md')).map((f) => f.replace(/\.md$/, ''))
+const commands: string[] = existsSync(SRC_DIR)
+  ? readdirSync(SRC_DIR)
+      .filter((f) => f.endsWith('.md'))
+      .map((f) => f.replace(/\.md$/, ''))
   : [];
+
+interface CheckboxPromptOptions {
+  message: string;
+  items: string[];
+  requireSelection?: boolean;
+  stream?: NodeJS.ReadStream;
+  out?: NodeJS.WriteStream;
+}
 
 // Zero-dependency interactive checkbox with a "Select all" toggle pinned at
 // the top. Returns the chosen subset of `items`, or null if the user cancels.
 // With `requireSelection`, confirming an empty selection keeps the prompt open
 // and shows a warning instead of resolving — the user must pick or Esc-cancel.
-function checkboxPrompt({ message, items, requireSelection = false, stream = input, out = output }) {
+function checkboxPrompt({
+  message,
+  items,
+  requireSelection = false,
+  stream = input,
+  out = output,
+}: CheckboxPromptOptions): Promise<string[] | null> {
   return new Promise((resolve) => {
-    const selected = new Array(items.length).fill(false);
+    const selected = new Array<boolean>(items.length).fill(false);
     const rowCount = items.length + 1; // row 0 is the select-all toggle
     let cursor = 0;
     let rendered = 0;
     let warning = '';
 
     const allChecked = () => items.length > 0 && selected.every(Boolean);
-    const box = (on) => (on ? '[x]' : '[ ]');
-    const point = (row) => (cursor === row ? '❯' : ' ');
+    const box = (on: boolean) => (on ? '[x]' : '[ ]');
+    const point = (row: number) => (cursor === row ? '❯' : ' ');
 
     function render() {
       const lines = [message];
@@ -59,7 +76,7 @@ function checkboxPrompt({ message, items, requireSelection = false, stream = inp
       selected.fill(!allChecked());
     }
 
-    function onKey(str, key) {
+    function onKey(str: string | undefined, key: Key | undefined) {
       if (!key) return;
       if (key.ctrl && key.name === 'c') {
         cleanup();
@@ -103,9 +120,14 @@ function checkboxPrompt({ message, items, requireSelection = false, stream = inp
   });
 }
 
-function run(cmd, args) {
+interface RunResult {
+  ok: boolean;
+  missing: boolean;
+}
+
+function run(cmd: string, args: string[]): RunResult {
   const r = spawnSync(cmd, args, { stdio: 'inherit' });
-  if (r.error && r.error.code === 'ENOENT') {
+  if (r.error && (r.error as NodeJS.ErrnoException).code === 'ENOENT') {
     return { ok: false, missing: true };
   }
   return { ok: r.status === 0, missing: false };
@@ -130,13 +152,13 @@ async function installPersonal() {
   const dest = process.env.CLAUDE_COMMANDS_DIR || join(homedir(), '.claude', 'commands');
   mkdirSync(dest, { recursive: true });
 
-  const fresh = [];
-  const conflicts = [];
+  const fresh: string[] = [];
+  const conflicts: string[] = [];
   for (const c of commands) {
     (existsSync(join(dest, `${c}.md`)) ? conflicts : fresh).push(c);
   }
 
-  const install = (c) => copyFileSync(join(SRC_DIR, `${c}.md`), join(dest, `${c}.md`));
+  const install = (c: string) => copyFileSync(join(SRC_DIR, `${c}.md`), join(dest, `${c}.md`));
 
   let copied = 0;
   for (const c of fresh) {
@@ -147,7 +169,7 @@ async function installPersonal() {
   let overwritten = 0;
   let skipped = 0;
   if (conflicts.length > 0) {
-    let chosen;
+    let chosen: string[] | null = null;
     if (input.isTTY) {
       console.log(`\n${conflicts.length} command(s) already exist in ${dest}.`);
       // Require a pick only when nothing is fresh — an empty selection would be a no-op.
@@ -207,8 +229,7 @@ async function main() {
 // realpathSync on argv[1]: npx runs the bin via a symlink, so the raw path
 // would never match import.meta.url (the resolved real path).
 const entry = process.argv[1];
-const invokedDirectly =
-  entry && import.meta.url === pathToFileURL(realpathSync(entry)).href;
+const invokedDirectly = Boolean(entry && import.meta.url === pathToFileURL(realpathSync(entry)).href);
 
 if (invokedDirectly) {
   main().catch((err) => {
