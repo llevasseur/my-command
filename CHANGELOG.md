@@ -5,6 +5,18 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-07-17
+
+### Added
+
+- **Biome** lint + format (`biome.json`), with `lint`, `format`, and `check` package scripts.
+- **TypeScript** toolchain — the install wizard is now authored in `src/my-command.ts` and compiled to `dist/` by `tsc`. A `prepare` script builds on install so `npx github:llevasseur/my-command` still runs dependency-free with no manual build. Adds `typecheck` (`tsc --noEmit`) and `build` scripts, `tsconfig.json` (strict), and a `>=22` Node engines constraint.
+- **Pull-request CI** (`.github/workflows/ci-pr.yml`) modeled on the `wishing-well` workflow: a **merge-conflict** job that fails the PR when it cannot cleanly merge into its base, plus Biome, typecheck, and build jobs. Paired with branch protection on `main` (require branches up to date + required checks) so the origin blocks merging a conflicting or stale branch.
+
+### Changed
+
+- The install wizard moved from `bin/my-command.mjs` (hand-written JS) to `src/my-command.ts`; the published `bin` now points at the compiled `dist/my-command.js`. Runtime behavior is unchanged.
+
 ## 2026-07-15
 
 ### Fixed
