@@ -1,0 +1,139 @@
+# ================================================
+# CI Workflow for Pull Requests
+# ================================================
+# Runs on every pull request to enforce code quality before merge.
+#
+# Checks:
+# 1. Merge conflicts - fails if the branch conflicts with its base.
+# 2. Linting with Biome - enforces code style and quality standards.
+# 3. TypeScript type checking - validates types with tsc --noEmit.
+# 4. Build - compiles the TypeScript source to dist/ via tsc.
+# ================================================
+
+name: Pull Request CI
+
+# Run on all PR events (opened, synchronize, reopened).
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Only one run per PR at a time; cancel in-progress runs on new pushes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+# Least-privilege token: only needs to read the repository.
+permissions:
+  contents: read
+
+jobs:
+  # ================================================
+  # Merge conflict check
+  # ================================================
+  # Fails the PR when it cannot be cleanly merged into its base branch, so a
+  # conflicting branch is blocked before merge instead of surfacing only in the
+  # GitHub merge box.
+  merge-conflict:
+    name: No merge conflicts with base
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Check for merge conflicts against base
+        run: |
+          git config user.email "ci@github.actions"
+          git config user.name "CI"
+          git fetch origin "${{ github.base_ref }}"
+          if ! git merge --no-commit --no-ff "origin/${{ github.base_ref }}"; then
+            git merge --abort || true
+            echo "::error::This branch has merge conflicts with ${{ github.base_ref }}. Merge or rebase the base branch and resolve them."
+            exit 1
+          fi
+          git merge --abort || true
+          echo "No merge conflicts with ${{ github.base_ref }}."
+
+  # ================================================
+  # Lint
+  # ================================================
+  # Checks code style and quality using Biome (lint + format).
+  lint:
+    name: Lint code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Biome check
+        run: pnpm biome check --reporter=github .
+
+  # ================================================
+  # Type check
+  # ================================================
+  # Validates TypeScript types without emitting output.
+  typecheck:
+    name: Type check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run TypeScript type check
+        run: pnpm typecheck
+
+  # ================================================
+  # Build
+  # ================================================
+  # Compiles the TypeScript source to dist/ to validate the published bin.
+  build:
+    name: Build
+    needs: [lint, typecheck]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build

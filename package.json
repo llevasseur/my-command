@@ -3,20 +3,37 @@
   "version": "1.0.0",
   "description": "Your Wish is My Command — install wizard for the MyCommand Claude Code command bundle.",
   "type": "module",
+  "packageManager": "pnpm@11.5.2",
+  "engines": {
+    "node": ">=22"
+  },
   "bin": {
-    "my-command": "bin/my-command.mjs"
+    "my-command": "dist/my-command.js"
   },
   "files": [
-    "bin",
+    "dist",
     "src",
     "commands",
     ".claude-plugin"
   ],
+  "scripts": {
+    "build": "tsc",
+    "prepare": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome lint .",
+    "format": "biome check --write .",
+    "check": "biome check ."
+  },
   "license": "MIT",
   "author": "Leevon Levasseur",
   "homepage": "https://github.com/llevasseur/my-command",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/llevasseur/my-command.git"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.8",
+    "@types/node": "^22.13.0",
+    "typescript": "^5.7.3"
   }
 }

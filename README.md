@@ -77,11 +77,15 @@ they are invoked as `/my-command:task`, `/my-command:pr`, and so on.
 
 ```
 src/commands/       Canonical BARE commands — edit these (they call each other as /task, /clean, …)
+src/my-command.ts   The npx install wizard, in TypeScript (compiled to dist/, ships dependency-free)
+dist/               GENERATED wizard build (tsc output; gitignored, built on install via `prepare`)
 commands/           GENERATED namespaced commands the plugin ships (do not edit by hand)
 scripts/
   build-plugin.sh      Regenerate commands/ from src/commands/ (bare → /my-command:)
   install-personal.sh  Symlink src/commands/*.md into ~/.claude/commands (bare, git-synced)
-bin/my-command.mjs  The npx install wizard (zero dependencies)
+biome.json          Biome lint + format config
+tsconfig.json       TypeScript config (strict; compiles src/ → dist/)
+.github/workflows/  Pull-request CI (merge-conflict check, Biome, typecheck, build)
 .claude-plugin/     plugin.json + marketplace.json
 ```
 
