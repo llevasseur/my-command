@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // MyCommand install wizard. Run with: npx github:llevasseur/my-command
-// Authored in TypeScript and compiled to dist/ so the published bin stays
-// dependency-free and runs straight from GitHub with no install step.
+// Compiled from TypeScript to dist/ so the published bin ships dependency-free.
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
