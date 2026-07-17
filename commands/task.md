@@ -1,9 +1,9 @@
 ---
-description: Take a task from criteria to PR — set up an isolated branch/worktree, implement, then /my-command:clean and /my-command:pr
+description: Take a task from criteria to PR — set up an isolated branch/worktree, implement, then trim-check, /my-command:clean and /my-command:pr inline
 argument-hint: "[--here|-h] [--base <branch>] [--draft|-d] [--add|-a <command + prompt>[, <command + prompt>]] <task criteria>"
 ---
 
-Take a task from a plain-language description all the way to an open PR. The task can be a new feature, a bug fix, an update, a refactor — anything. The end goal is always a PR, and I always run `/my-command:clean` before `/my-command:pr`.
+Take a task from a plain-language description all the way to an open PR. The task can be a new feature, a bug fix, an update, a refactor — anything. The end goal is always a PR, and I always run a `/my-command:trim` checkpoint, then `/my-command:clean`, then `/my-command:pr` — all inline in this conversation, no subagents.
 
 $ARGUMENTS is the task. Parse leading flags off the front; everything else is the **task criteria**.
 
@@ -75,13 +75,18 @@ Treat typecheck errors like "cannot find generated module" or a missing `*.gen.t
   - Only commit files **you** created or changed for this task. Do **not** commit pre-existing untracked files that carried over from the original workspace (e.g. via a worktree or a dirty checkout) — stage paths explicitly rather than `git add -A`/`git add .`, and leave anything unrelated to your task alone.
 - If the repo tracks a changelog (e.g. a `changelog` command or `CHANGELOG.md`), add an entry.
 
-## Step 3 — Clean, then PR (in fresh subagents)
+## Step 3 — Trim, clean, then PR (inline)
 
-Once implementation is committed and verified, run the clean and PR stages **in fresh subagents** via the `Agent` tool, not inline. Both derive their inputs from git (`/my-command:clean` from the branch diff, `/my-command:pr` from `git log`/`git diff`/`gh`), so a fresh context loses nothing while shedding this task's stale file reads. Run them in order, each finishing before the next. The subagents share this worktree but not this conversation — hand each the branch name and enough context to act alone.
+Once implementation is committed and verified, run the clean and PR stages **inline in this conversation** — do **not** dispatch subagents before or for `/my-command:clean` and `/my-command:pr`. Both derive their inputs from git (`/my-command:clean` from the branch diff, `/my-command:pr` from `git log`/`git diff`/`gh`), so they need no fresh context; instead shed this task's stale reads with the trim checkpoint below. Run the stages in order, each finishing before the next.
 
-1. **Clean.** Dispatch a subagent to run **`/my-command:clean`** on this branch, then commit any edits it makes. `/my-command:clean` is branch-aware (committed + staged + unstaged), so it picks up step 2's commits; if nothing changes, there's nothing to commit.
-2. **PR.** After the clean subagent returns, dispatch a subagent to run **`/my-command:pr`** — push and open (or update) the PR with a concise bulleted description, passing `--draft` when `--draft`/`-d` was given, plus any title/context I supplied. Tell it **not** to tear down the worktree — leave that to step 3.
-3. **Teardown.** After the PR subagent returns, if this run used a worktree, remove it here with `ExitWorktree` (`action: "remove"`); the branch is already pushed, so this only discards the local copy. Skip for `--here`.
+1. **Trim checkpoint.** Before running `/my-command:clean`, evaluate the **`/my-command:trim`** rubric against this conversation — `/my-command:trim` already carries the full criteria for when compaction is safe. Report its six evidence lines and verdict.
+   - If it returns `TRIM`, surface the exact `/compact` command it produces so I can run it (only I can invoke `/compact` — never claim you compacted), then continue.
+   - **The `/compact` command must be resume-safe.** A compacted session drops these `/my-command:task` instructions along with the rest of the context, so the summary is the *only* thing that tells the post-compaction agent what to do next. When you hand the trim rubric its inputs, require the emitted `/compact` command to explicitly preserve the **remaining pipeline** — that the next actions are to run `/my-command:clean` inline, then `/my-command:pr` inline, then teardown — plus the **branch name** and the **draft flag** (`--draft` on/off). Without this an autonomous agent forgets it was mid-`/my-command:task` and stalls after compaction.
+   - If it returns `CONTINUE`, note the failing gate and proceed without compacting.
+   - This is a checkpoint, not a gate: a `CONTINUE` verdict never blocks the clean/PR stages.
+2. **Clean.** Run **`/my-command:clean`** inline on this branch, then commit any edits it makes. `/my-command:clean` is branch-aware (committed + staged + unstaged), so it picks up step 2's commits; if nothing changes, there's nothing to commit.
+3. **PR.** Run **`/my-command:pr`** inline — push and open (or update) the PR with a concise bulleted description, passing `--draft` when `--draft`/`-d` was given, plus any title/context I supplied.
+4. **Teardown.** If this run used a worktree, remove it here with `ExitWorktree` (`action: "remove"`); the branch is already pushed, so this only discards the local copy. Skip for `--here`.
 
 ## Notes
 
