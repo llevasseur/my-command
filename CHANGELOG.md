@@ -28,6 +28,7 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 - `trim` command — apply an evidence-backed safety rubric to the current conversation and, when safe, provide focused instructions for Claude Code's built-in `/compact`.
 - README gains a **Use cases** section — a command/example table for `task`, `fb`, and `mc` that highlights how each parameter (`--here`, `--base`, `--draft`, `--add`, `--target`) changes what the command does.
+- `docs/` [okq](https://github.com/mikevalstar/okq) spec bundle — process specs ([Adding a command](docs/specs/adding-a-command.md), [Install wizard](docs/specs/install-wizard.md)) plus one feature doc per command in `docs/features/`, indexed with `okq --bundle docs index`. The specs codify two invariants: a new command needs a feature doc and wizard inclusion (with overwrite), and a command's feature doc must be updated whenever its flags or params change. README now references the specs and documents `docs/` in the repository layout.
 
 ### Changed
 
