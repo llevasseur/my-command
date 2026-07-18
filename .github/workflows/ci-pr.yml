@@ -5,9 +5,10 @@
 #
 # Checks:
 # 1. Merge conflicts - fails if the branch conflicts with its base.
-# 2. Linting with Biome - enforces code style and quality standards.
-# 3. TypeScript type checking - validates types with tsc --noEmit.
-# 4. Build - compiles the TypeScript source to dist/ via tsc.
+# 2. Command invariants - commands/ in sync, feature docs present, wizard globs.
+# 3. Linting with Biome - enforces code style and quality standards.
+# 4. TypeScript type checking - validates types with tsc --noEmit.
+# 5. Build - compiles the TypeScript source to dist/ via tsc.
 # ================================================
 
 name: Pull Request CI
@@ -58,6 +59,22 @@ jobs:
           fi
           git merge --abort || true
           echo "No merge conflicts with ${{ github.base_ref }}."
+
+  # ================================================
+  # Command invariants
+  # ================================================
+  # Fails the PR when a command is half-wired: commands/ out of sync with
+  # src/commands/, a command missing its feature doc or generated copy, or the
+  # wizard no longer enumerating src/commands/ dynamically. Pure bash — no deps.
+  commands:
+    name: Command invariants in sync
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check command invariants
+        run: ./scripts/check-commands.sh
 
   # ================================================
   # Lint

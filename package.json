@@ -22,7 +22,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome lint .",
     "format": "biome check --write .",
-    "check": "biome check ."
+    "check": "biome check .",
+    "check:commands": "./scripts/check-commands.sh"
   },
   "license": "MIT",
   "author": "Leevon Levasseur",

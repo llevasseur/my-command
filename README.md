@@ -85,7 +85,9 @@ dist/               GENERATED wizard build (tsc output; gitignored, built on ins
 commands/           GENERATED namespaced commands the plugin ships (do not edit by hand)
 scripts/
   build-plugin.sh      Regenerate commands/ from src/commands/ (bare → /my-command:)
+  check-commands.sh    Enforce command invariants (commands/ in sync, feature docs, wizard glob) — runs in CI
   install-personal.sh  Symlink src/commands/*.md into ~/.claude/commands (bare, git-synced)
+AGENTS.md           Repo rules for agents (the adding-a-command checklist + the CI gate)
 biome.json          Biome lint + format config
 tsconfig.json       TypeScript config (strict; compiles src/ → dist/)
 .github/workflows/  Pull-request CI (merge-conflict check, Biome, typecheck, build)
