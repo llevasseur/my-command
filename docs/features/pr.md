@@ -25,7 +25,10 @@ worktree at the end when the session is running in one.
 
 Refuses to run on `main`. Reuses an existing PR (`gh pr edit`) or opens a new one
 (`gh pr create --base main`). Only pushes existing commits and writes PR metadata —
-never creates commits.
+never creates commits. When run in a worktree it force-removes it at the end
+(`ExitWorktree` with `discard_changes: true`), expecting the task's commits to live
+on the worktree — they were pushed to origin, so only the redundant local copy is
+discarded.
 
 ## Related
 
