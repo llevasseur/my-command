@@ -15,6 +15,7 @@ Add one with `okq new feature "<title>"`.
 | clean | [clean.md](clean.md) |
 | fb | [fb.md](fb.md) |
 | mc | [mc.md](mc.md) |
+| merge-deps | [merge-deps.md](merge-deps.md) |
 | pr | [pr.md](pr.md) |
 | sync | [sync.md](sync.md) |
 | task-bootstrap | [task-bootstrap.md](task-bootstrap.md) |

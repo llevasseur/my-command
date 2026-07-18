@@ -18,6 +18,7 @@
 | `pr` | Create/update the PR for the current branch with a concise bulleted description, written straight to GitHub. |
 | `clean` | Clean up comments across a branch's changes — lean and to the point, comments only, never code. |
 | `mc` | Merge the latest `main` into open PR branches (or one branch), resolve every conflict, and push. |
+| `merge-deps` | Batch-merge open non-draft Dependabot PRs into `main` — resolve each with `/mc`, verify in a worktree, merge, and clean up. |
 | `task-bootstrap` | One-time per repo: interview the stack and generate that repo's own `scripts/bootstrap-worktree.sh` so `task` can bootstrap fresh worktrees. |
 | `sync` | Update this device's installed commands to the latest version from GitHub. |
 | `changelog` | Add a concise entry to the current repo's `CHANGELOG.md`, matching its existing format. |
@@ -41,6 +42,8 @@ parameters change what happens.
 | `mc` | `/mc` | Default — merge latest `main` into **every** open PR branch, resolve conflicts, push. |
 | `mc` | `/mc -h` | `--here` / `-h` — only the **current branch**. |
 | `mc` | `/mc -t feat/search` | `--target` / `-t <branch>` — only the named branch `feat/search`. |
+| `merge-deps` | `/merge-deps` | Default — merge every open non-draft `dependencies`-labeled PR into `main`, one by one (`/mc` first, verify, `gh pr merge --squash`, clean the worktree). |
+| `merge-deps` | `/merge-deps --auto -n` | `--auto` enables GitHub auto-merge instead of waiting on CI; `--dry-run` / `-n` just lists the PRs. `--label <name>` narrows the filter, `--merge`/`--rebase` change the method. |
 | `trim` | `/trim` | Evaluate six evidence-backed safety gates; recommend continuing or emit a tailored `/compact` command. |
 
 The `trim` command adapts the context-compaction strategy introduced by Yujiang Li,
@@ -82,7 +85,9 @@ dist/               GENERATED wizard build (tsc output; gitignored, built on ins
 commands/           GENERATED namespaced commands the plugin ships (do not edit by hand)
 scripts/
   build-plugin.sh      Regenerate commands/ from src/commands/ (bare → /my-command:)
+  check-commands.sh    Enforce command invariants (commands/ in sync, feature docs, wizard glob) — runs in CI
   install-personal.sh  Symlink src/commands/*.md into ~/.claude/commands (bare, git-synced)
+AGENTS.md           Repo rules for agents (the adding-a-command checklist + the CI gate)
 biome.json          Biome lint + format config
 tsconfig.json       TypeScript config (strict; compiles src/ → dist/)
 .github/workflows/  Pull-request CI (merge-conflict check, Biome, typecheck, build)

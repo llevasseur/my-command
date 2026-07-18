@@ -37,14 +37,19 @@ build step namespaces them for the published plugin.
 3. **Write a feature doc** — add `docs/features/<name>.md`
    (`okq --bundle docs new feature "<name>"`). Fill Summary, Flags / Parameters,
    Behavior, Related. **A command without a feature doc is incomplete.**
-4. **Confirm wizard inclusion** — the wizard (`bin/my-command.mjs`) lists
-   `src/commands/*.md`, so a new bare source is picked up automatically for both
-   install modes and the overwrite prompt. Verify it appears. See the
-   [Install wizard](install-wizard.md) spec.
+4. **Confirm wizard inclusion** — the wizard (`src/my-command.ts`) enumerates
+   `src/commands/*.md` at runtime with `readdirSync(SRC_DIR)`, so a new bare source
+   is picked up automatically for both install modes and the overwrite prompt.
+   **There is nothing to hand-edit in the wizard** — only verify the command
+   appears (`scripts/check-commands.sh` asserts the wizard still globs the
+   directory). See the [Install wizard](install-wizard.md) spec.
 5. **README + CHANGELOG** — add the command to both README tables (What's inside,
    Use cases) and add a CHANGELOG `### Added` entry.
-6. **Verify** — `build-plugin.sh` runs clean, `okq --bundle docs validate` passes,
-   and the wizard listing includes the command.
+6. **Verify** — run `pnpm run check:commands` (or `./scripts/check-commands.sh`):
+   it fails unless `commands/` is in sync with `src/commands/`, every command has a
+   `docs/features/<name>.md`, and the wizard still globs `src/commands/`. Also
+   confirm `okq --bundle docs validate` passes. This check runs in PR CI, so a
+   missed step blocks the merge rather than shipping silently.
 
 ## Keeping docs in sync
 

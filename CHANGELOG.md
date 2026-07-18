@@ -5,6 +5,18 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-07-18
+
+### Added
+
+- **`merge-deps` command** — batch-merge open non-draft Dependabot PRs into `main`, one by one. For each in-scope PR (filtered by label, default `dependencies`; fork/cross-repo PRs skipped) it runs `/mc -t <branch>` to merge `main` in and resolve conflicts, checks the branch out in a throwaway worktree to verify the bump is green, merges into `main` via `gh pr merge` (branch protection respected; `--squash` default, `--merge`/`--rebase`/`--auto` available), then removes the worktree and refreshes local `main` before the next. `--dry-run` / `-n` lists the queue without touching anything. Ships with a feature doc (`docs/features/merge-deps.md`) and README entries.
+- **`scripts/check-commands.sh` + `commands` CI job** — a gate enforcing the [adding-a-command](docs/specs/adding-a-command.md) invariants: `commands/` byte-in-sync with `src/commands/`, every command has a `docs/features/<name>.md` and a generated copy, and the install wizard still enumerates `src/commands/` dynamically. A half-wired command now fails PR CI instead of shipping silently. Exposed as `pnpm run check:commands`.
+- **`AGENTS.md`** — repo rules for agents, foregrounding the command-authoring checklist and the CI gate. Makes explicit that the wizard needs **no** manual edit (it globs `src/commands/`), which is why a new command auto-appears.
+
+### Fixed
+
+- The [adding-a-command](docs/specs/adding-a-command.md) spec's "Confirm wizard inclusion" step pointed at the retired `bin/my-command.mjs`; the wizard has been `src/my-command.ts` since the TypeScript migration. Updated the path and clarified the wizard enumerates `src/commands/` with `readdirSync`, so there is nothing to hand-edit — only verify (now backed by `scripts/check-commands.sh`).
+
 ## 2026-07-17
 
 ### Added
