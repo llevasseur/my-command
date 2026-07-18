@@ -70,10 +70,16 @@ and move on — never leave a branch mid-merge or a worktree behind.
 
 For each PR (number `N`, branch `B`):
 
-1. **Resolve conflicts with `/my-command:mc`.** Invoke **`/my-command:mc -t B`** — it merges the latest `main`
-   into `B` one conflict at a time and pushes `B`. If `/my-command:mc` reports `B` in its 🔴
-   "needs human" list (a conflict it could not resolve), **do not merge**: record `B` as
-   blocked (unresolved conflict), skip to the next PR.
+1. **Refresh the branch, then resolve conflicts with `/my-command:mc`.** Dependabot force-pushes its
+   branches, so the ref you fetched in preconditions may already be stale by the time the
+   loop reaches this PR — first `git fetch origin B` so `/my-command:mc` branches off the current tip
+   rather than a stale one (branching off a stale base makes its push get rejected as a
+   non-fast-forward). If a stale local `B` already exists from an earlier iteration, delete
+   it (`git branch -D B`) so `/my-command:mc` recreates it from the fresh `origin/B`. Then invoke
+   **`/my-command:mc -t B`** — it merges the latest `main` into `B` one conflict at a time and pushes
+   `B`. If `/my-command:mc` reports `B` in its 🔴 "needs human" list (a conflict it could not
+   resolve), **do not merge**: record `B` as blocked (unresolved conflict), skip to the
+   next PR.
 
 2. **Verify in an isolated worktree.** After `/my-command:mc`, `B` is up to date with `main` and
    checked out nowhere (mc returns to `main`). Check it out in a throwaway worktree and
@@ -122,6 +128,9 @@ For each PR (number `N`, branch `B`):
 
 - **Dependency PRs only.** Scope is the label filter — never touch unlabeled or feature
   PRs. Non-draft only.
+- **Fetch each PR branch fresh right before you touch it.** Dependabot force-pushes
+  branches after your up-front `git fetch`, so a branch's remote-tracking ref goes stale
+  mid-run; branching `/my-command:mc` off the stale ref triggers a non-fast-forward push rejection.
 - Skip fork / cross-repo PRs: their conflict resolution can't be pushed.
 - Sequential by design: refresh `main` between PRs so each merges against the latest.
 - Delegate all conflict resolution to `/my-command:mc` — never hand-merge here. Never force-push;

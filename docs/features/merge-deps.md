@@ -33,9 +33,11 @@ between PRs so every merge lands on the latest tree.
 
 Selects open non-draft PRs based on `main` carrying the label (skipping
 cross-repo/fork PRs, whose resolution can't be pushed), then processes them
-sequentially in ascending PR number. Per PR: `/mc -t <branch>` to merge `main` in
-and resolve conflicts, verify the bump in an isolated worktree, `gh pr merge` into
-`main`, remove the worktree, and refresh local `main`. Anything left unresolved,
+sequentially in ascending PR number. Per PR: `git fetch origin <branch>` to refresh
+the branch first (Dependabot force-pushes after the up-front fetch, so a stale ref
+would make `/mc`'s push get rejected as non-fast-forward), `/mc -t <branch>` to merge
+`main` in and resolve conflicts, verify the bump in an isolated worktree, `gh pr merge`
+into `main`, remove the worktree, and refresh local `main`. Anything left unresolved,
 failing verification, or on a fork is reported for a human rather than merged.
 
 ## Related

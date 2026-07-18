@@ -16,6 +16,7 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 ### Fixed
 
 - The [adding-a-command](docs/specs/adding-a-command.md) spec's "Confirm wizard inclusion" step pointed at the retired `bin/my-command.mjs`; the wizard has been `src/my-command.ts` since the TypeScript migration. Updated the path and clarified the wizard enumerates `src/commands/` with `readdirSync`, so there is nothing to hand-edit — only verify (now backed by `scripts/check-commands.sh`).
+- `merge-deps` now fetches each PR branch fresh (`git fetch origin <branch>`) right before running `/mc` on it. Dependabot force-pushes its branches, so the ref cached by the up-front `git fetch` goes stale mid-run; branching `/mc` off the stale ref made its push get rejected as a non-fast-forward and stalled the loop. The per-PR loop and Notes now spell this out.
 
 ## 2026-07-17
 
