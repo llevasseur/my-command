@@ -5,6 +5,17 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-07-19
+
+### Added
+
+- **Codex Skills wizard mode** — the install wizard now writes each canonical
+  command as a Codex-compatible `<name>/SKILL.md` under `~/.agents/skills` (or a
+  `CODEX_SKILLS_DIR` / `CODEX_HOME` override), with the same safe per-skill
+  overwrite prompt used by personal Claude commands.
+- **Claude/Codex support research** — documents the shared Agent Skills pattern,
+  discovery locations, and the adapter's compatibility decisions.
+
 ## 2026-07-18
 
 ### Added

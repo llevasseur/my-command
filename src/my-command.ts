@@ -2,7 +2,7 @@
 // MyCommand install wizard. Run with: npx github:llevasseur/my-command
 // Compiled from TypeScript to dist/ so the published bin ships dependency-free.
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, realpathSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { stdin as input, stdout as output } from 'node:process';
@@ -124,6 +124,15 @@ interface RunResult {
   missing: boolean;
 }
 
+interface InstallFilesOptions {
+  dest: string;
+  itemLabel: string;
+  targetPath: (command: string) => string;
+  install: (command: string) => void;
+  summary: string;
+  display: (command: string) => string;
+}
+
 function run(cmd: string, args: string[]): RunResult {
   const r = spawnSync(cmd, args, { stdio: 'inherit' });
   if (r.error && (r.error as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -147,17 +156,14 @@ async function installPlugin() {
   console.log(commands.map((c) => `  /${MARKETPLACE}:${c}`).join('\n'));
 }
 
-async function installPersonal() {
-  const dest = process.env.CLAUDE_COMMANDS_DIR || join(homedir(), '.claude', 'commands');
+async function installFiles({ dest, itemLabel, targetPath, install, summary, display }: InstallFilesOptions) {
   mkdirSync(dest, { recursive: true });
 
   const fresh: string[] = [];
   const conflicts: string[] = [];
   for (const c of commands) {
-    (existsSync(join(dest, `${c}.md`)) ? conflicts : fresh).push(c);
+    (existsSync(targetPath(c)) ? conflicts : fresh).push(c);
   }
-
-  const install = (c: string) => copyFileSync(join(SRC_DIR, `${c}.md`), join(dest, `${c}.md`));
 
   let copied = 0;
   for (const c of fresh) {
@@ -170,16 +176,16 @@ async function installPersonal() {
   if (conflicts.length > 0) {
     let chosen: string[] | null = null;
     if (input.isTTY) {
-      console.log(`\n${conflicts.length} command(s) already exist in ${dest}.`);
+      console.log(`\n${conflicts.length} ${itemLabel}(s) already exist in ${dest}.`);
       // Require a pick only when nothing is fresh — an empty selection would be a no-op.
       chosen = await checkboxPrompt({
-        message: 'Select which existing commands to overwrite:',
+        message: `Select which existing ${itemLabel}s to overwrite:`,
         items: conflicts,
         requireSelection: fresh.length === 0,
       });
     } else {
       // No TTY to prompt on — keep the safe default of never clobbering.
-      console.log(`\n${conflicts.length} existing command(s) left untouched (non-interactive shell).`);
+      console.log(`\n${conflicts.length} existing ${itemLabel}(s) left untouched (non-interactive shell).`);
     }
     const overwrite = new Set(chosen || []);
     for (const c of conflicts) {
@@ -194,13 +200,71 @@ async function installPersonal() {
 
   // Nothing installed or overwritten — report the cancel plainly rather than "Copied 0, overwrote 0".
   if (copied === 0 && overwritten === 0) {
-    console.log(`\nNothing changed${skipped > 0 ? ` — left ${skipped} existing command(s) untouched` : ''}.`);
+    console.log(`\nNothing changed${skipped > 0 ? ` — left ${skipped} existing ${itemLabel}(s) untouched` : ''}.`);
     return;
   }
 
   console.log(`\nCopied ${copied} new, overwrote ${overwritten}, skipped ${skipped} in ${dest}.`);
-  console.log('They run as bare slash commands:');
-  console.log(commands.map((c) => `  /${c}`).join('\n'));
+  console.log(summary);
+  console.log(commands.map((c) => `  ${display(c)}`).join('\n'));
+}
+
+function codexSkillsDir() {
+  if (process.env.CODEX_SKILLS_DIR) return process.env.CODEX_SKILLS_DIR;
+  if (process.env.CODEX_HOME) return join(process.env.CODEX_HOME, 'skills');
+  return join(homedir(), '.agents', 'skills');
+}
+
+function codexSkillContent(command: string, source: string) {
+  const match = source.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  if (!match) {
+    return `---\nname: ${command}\ndescription: MyCommand ${command} workflow\n---\n\n${source}`;
+  }
+
+  const frontmatter = match[1].split(/\r?\n/);
+  const descriptionIndex = frontmatter.findIndex((line) => /^description:\s*/.test(line));
+  const description =
+    descriptionIndex >= 0 ? frontmatter[descriptionIndex] : `description: MyCommand ${command} workflow`;
+  const descriptionValue = description.slice('description:'.length).trimStart();
+  const descriptionLines = [description];
+
+  if (descriptionValue.startsWith('>') || descriptionValue.startsWith('|')) {
+    for (let i = descriptionIndex + 1; i < frontmatter.length; i++) {
+      if (/^[A-Za-z][\w-]*\s*:/.test(frontmatter[i])) break;
+      descriptionLines.push(frontmatter[i]);
+    }
+  }
+
+  return `---\nname: ${command}\n${descriptionLines.join('\n')}\n---\n\n${match[2]}`;
+}
+
+async function installPersonal() {
+  const dest = process.env.CLAUDE_COMMANDS_DIR || join(homedir(), '.claude', 'commands');
+  await installFiles({
+    dest,
+    itemLabel: 'command',
+    targetPath: (command) => join(dest, `${command}.md`),
+    install: (command) => copyFileSync(join(SRC_DIR, `${command}.md`), join(dest, `${command}.md`)),
+    summary: 'They run as bare slash commands:',
+    display: (command) => `/${command}`,
+  });
+}
+
+async function installCodexSkills() {
+  const dest = codexSkillsDir();
+  await installFiles({
+    dest,
+    itemLabel: 'skill',
+    targetPath: (command) => join(dest, command, 'SKILL.md'),
+    install: (command) => {
+      const skillDir = join(dest, command);
+      mkdirSync(skillDir, { recursive: true });
+      const source = readFileSync(join(SRC_DIR, `${command}.md`), 'utf8');
+      writeFileSync(join(skillDir, 'SKILL.md'), codexSkillContent(command, source));
+    },
+    summary: 'They run as Codex skills (type `$` to invoke them):',
+    display: (command) => `$${command}`,
+  });
 }
 
 async function main() {
@@ -209,7 +273,8 @@ async function main() {
   console.log('How would you like to install?');
   console.log('  1) Claude Code plugin   → namespaced commands, e.g. /my-command:task (auto-updates)');
   console.log('  2) Personal commands    → bare commands, e.g. /task (copied into ~/.claude/commands)');
-  console.log('  3) Cancel');
+  console.log('  3) Codex Skills         → skills such as $task (copied into ~/.agents/skills)');
+  console.log('  4) Cancel');
 
   const rl = createInterface({ input, output });
   const choice = (await rl.question('\nChoice [1]: ')).trim() || '1';
@@ -219,6 +284,8 @@ async function main() {
     await installPlugin();
   } else if (choice === '2') {
     await installPersonal();
+  } else if (choice === '3') {
+    await installCodexSkills();
   } else {
     console.log('Cancelled. Nothing changed.');
   }
@@ -237,4 +304,4 @@ if (invokedDirectly) {
   });
 }
 
-export { checkboxPrompt, installPersonal };
+export { checkboxPrompt, codexSkillContent, installCodexSkills, installPersonal };
