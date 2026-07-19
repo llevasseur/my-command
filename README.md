@@ -3,8 +3,8 @@
 <p align="center"><strong>Your Wish is My Command.</strong></p>
 
 <p align="center">
-  A bundle of Claude Code workflow commands for carrying tasks from idea to a
-  merged pull request and keeping long sessions focused.
+  A bundle of Claude Code commands and Codex Skills for carrying tasks from idea
+  to a merged pull request and keeping long sessions focused.
 </p>
 
 ---
@@ -65,6 +65,9 @@ It asks how you want them installed:
    **auto-update** whenever this repo is pushed.
 2. **Personal commands** — bare commands (`/task`) copied into
    `~/.claude/commands`.
+3. **Codex Skills** — skills such as `$task` copied into
+   `~/.agents/skills/<name>/SKILL.md`. Set `CODEX_SKILLS_DIR` to override the
+   destination, or set `CODEX_HOME` to use `<CODEX_HOME>/skills`.
 
 ### Manual — as a plugin
 
@@ -95,9 +98,11 @@ tsconfig.json       TypeScript config (strict; compiles src/ → dist/)
 docs/               okq spec bundle — specs/ (process), features/ (one per command), adrs/
 ```
 
-Two forms exist because the commands reference each other: a bare `task` calls
-`/clean`, but the published plugin's `task` must call `/my-command:clean`. The
-**bare source is canonical**; the namespaced `commands/` is built from it.
+The two Claude forms exist because the commands reference each other: a bare
+`task` calls `/clean`, but the published plugin's `task` must call
+`/my-command:clean`. The Codex mode adapts the same bare source into
+`<name>/SKILL.md` folders. The **bare source is canonical**; the namespaced
+`commands/` is built from it.
 
 ## Specs
 
@@ -107,10 +112,12 @@ bundle under [`docs/`](./docs) — process specs plus one feature doc per comman
 - **[Adding a command](./docs/specs/adding-a-command.md)** — the checklist for
   adding a command as agent instructions (bare source → build → feature doc →
   wizard → README/CHANGELOG). Read this before adding one.
-- **[Install wizard](./docs/specs/install-wizard.md)** — how `bin/my-command.mjs`
-  installs the suite and its per-command overwrite behavior.
+- **[Install wizard](./docs/specs/install-wizard.md)** — how the wizard installs
+  the suite for Claude Code and Codex, including per-item overwrite behavior.
 - **`docs/features/<cmd>.md`** — the flags, parameters, and behavior of each
   command.
+- **[Claude and Codex support patterns](./docs/research/2026-07-19-claude-codex-support-patterns.md)** —
+  research behind the Codex Skills adapter.
 
 Two invariants the specs enforce: **a new command needs a feature doc and wizard
 inclusion**, and **a flag/param change needs its feature doc updated in the same
