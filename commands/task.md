@@ -5,7 +5,7 @@ argument-hint: "[--here|-h] [--base <branch>] [--draft|-d] [--add|-a <command + 
 
 Take a task from a plain-language description all the way to an open PR. The task can be a new feature, a bug fix, an update, a refactor — anything. The end goal is always a PR, and I always run `/my-command:clean` before `/my-command:pr`.
 
-$ARGUMENTS is the task. Parse leading flags off the front; everything else is the **task criteria**.
+The task is the text in the `<command-args>` block above. Parse leading flags off the front; everything else is the **task criteria**.
 
 ## Flags
 

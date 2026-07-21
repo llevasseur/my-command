@@ -7,7 +7,7 @@ Set up a **repo-local worktree bootstrap** so a fresh `git worktree` behaves lik
 
 Run it **once per repo** — or to update an existing bootstrap when the stack changes.
 
-$ARGUMENTS: parse leading flags off the front; anything else is free-text **notes about the stack** that seed the interview.
+The `<command-args>` block above: parse leading flags off the front; anything else is free-text **notes about the stack** that seed the interview.
 
 ## Flags (where the work happens — mirrors /task)
 
@@ -37,7 +37,7 @@ Read the repo so you ask only about what you can't infer:
 
 ## Step 3 — Interview to confirm + fill gaps
 
-Present what you detected and ask only for the unknowns and confirmations — one tight round, using AskUserQuestion for structured choices. If the notes in $ARGUMENTS already answer something, don't re-ask.
+Present what you detected and ask only for the unknowns and confirmations — one tight round, using AskUserQuestion for structured choices. If the notes in the arguments already answer something, don't re-ask.
 
 - Confirm the **env files** to symlink.
 - Confirm the **install** command.
