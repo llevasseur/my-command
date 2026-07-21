@@ -5,7 +5,7 @@ argument-hint: "[--target|-t <branch>] <feedback request>"
 
 Implement a feedback request. This is a thin wrapper around `/my-command:task`: it decides **where** the work happens, then hands the feedback to `/my-command:task` to take it from criteria to a PR.
 
-$ARGUMENTS is the input. Parse leading flags off the front; everything else is the **feedback request** (the task criteria for `/my-command:task`).
+Your input is the text in the `<command-args>` block above. Parse leading flags off the front; everything else is the **feedback request** (the task criteria for `/my-command:task`).
 
 ## Flags
 

@@ -5,6 +5,16 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-07-21
+
+### Added
+
+- **`tmp/` is now gitignored** — `tmp/*` with a `!tmp/.gitkeep` exception ignores the scratch directory's contents (research docs, throwaway logs, experiments) while keeping the empty directory tracked.
+
+### Changed
+
+- **Prompt-accepting commands reference the injected `<command-args>` block instead of interpolating `$ARGUMENTS`.** `fb`, `task`, `pr`, `changelog`, and `task-bootstrap` embedded `$ARGUMENTS`, which Claude Code substitutes with a full copy of the user's arguments — so a large paste (a component, an error dump) landed in the request twice: once in the harness-injected `<command-args>` block and again in the substituted body. Referring to the block drops the redundant second copy. Flag-only commands (`clean`, `mc`, `sync`, `merge-deps`) are unchanged, since their args are short tokens where duplication is negligible.
+
 ## 2026-07-18
 
 ### Added
