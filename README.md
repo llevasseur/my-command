@@ -15,6 +15,7 @@
 | :------ | :----------- |
 | `task` | Take a task from plain-language criteria to an open PR: isolated branch/worktree, bootstrap, implement, verify, then clean + PR. |
 | `fb` | Implement a feedback request. Thin wrapper around `task` — current branch by default, or a worktree of an existing branch with `--target`. |
+| `review` | Spawn a fresh agent to review an open PR against the codebase, then apply its findings via `fb`. Worktree by default, or `--here`/`--target` like `fb`. |
 | `pr` | Create/update the PR for the current branch with a concise bulleted description, written straight to GitHub. |
 | `clean` | Clean up comments across a branch's changes — lean and to the point, comments only, never code. |
 | `mc` | Merge the latest `main` into open PR branches (or one branch), resolve every conflict, and push. |
@@ -39,6 +40,9 @@ parameters change what happens.
 | `task` | `/task -a changelog note this once it works add retry logic to the fetch client` | `--add` / `-a <command> <prompt>` — weave `/changelog` into the run per its prompt, then implement the task. Separate multiple added commands with a comma before each next command. |
 | `fb` | `/fb tighten the copy on the empty state` | Default — apply the feedback on the **current branch** (via `/task --here`). |
 | `fb` | `/fb -t feat/checkout-redesign use the brand blue for the CTA` | `--target` / `-t <branch>` — apply the feedback onto **existing** branch `feat/checkout-redesign` in a fresh worktree. |
+| `review` | `/review` | Default — review the current branch's open PR in a fresh worktree with a new agent, then apply its findings via `/fb`. |
+| `review` | `/review -h` | `--here` / `-h` — review the current branch's PR in place, no worktree. |
+| `review` | `/review -t 42` | `--target` / `-t <PR-number-or-branch>` — review PR #42 (or a named branch) instead of the current branch's PR. |
 | `mc` | `/mc` | Default — merge latest `main` into **every** open PR branch, resolve conflicts, push. |
 | `mc` | `/mc -h` | `--here` / `-h` — only the **current branch**. |
 | `mc` | `/mc -t feat/search` | `--target` / `-t <branch>` — only the named branch `feat/search`. |
