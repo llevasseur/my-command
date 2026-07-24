@@ -14,6 +14,8 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 ### Changed
 
 - **`task` now states outright that step 3's teardown removes the worktree even when the PR is a draft.** `--draft` / `-d` was documented only as a flag passed through to `/pr`, which left room to read a draft PR as unfinished work worth keeping a local worktree for. The teardown step and the flag description now say the opposite explicitly: `--draft` controls the PR's review state on GitHub, not the local workspace, and a draft's commits are on origin just the same — `--here` is the only thing that skips teardown.
+- **`docs` now runs inside a `/task` workflow and takes workspace flags.** Previously it edited docs in the current checkout and left committing to whatever invoked it, so a direct `/docs` run ended with uncommitted edits and no PR. A new Step 0 resolves *where* the work happens and hands the passes to `/task` as plain-language criteria, so `/task` owns worktree setup, commits, `/clean`, `/pr`, and teardown — exactly how `/fb` wraps `/task`, but defaulting the other way: `/docs` with no flags gets a fresh worktree off the latest `main` on a `docs/<summary>` branch, matching `/task`'s own default. `--here` / `-h` reconciles on the current branch and `--base <branch>` branches off something other than `main`, both passed straight through. `--dry-run` / `-n` short-circuits the handoff entirely — it stays in the current checkout and creates no worktree, commit, or PR. The command still creates no worktree itself (that would nest one inside another), and the pass flags stay local: `-a` is the missing-docs pass here but registers commands in `/task`, so they are never forwarded as flags.
+
 ## 2026-07-22
 
 ### Added

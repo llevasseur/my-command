@@ -1,15 +1,25 @@
 ---
-description: Reconcile an okq doc bundle with the code — refresh stale docs, add docs for undocumented features, prune docs for things that no longer exist
-argument-hint: "[--bundle|-b <dir>] [--refresh|-r] [--add|-a] [--prune|-p] [--dry-run|-n] [--yes|-y] [doc id / path / topic to scope to]"
+description: Reconcile an okq doc bundle with the code via /task — refresh stale docs, add docs for undocumented features, prune docs for things that no longer exist
+argument-hint: "[--here|-h] [--base <branch>] [--bundle|-b <dir>] [--refresh|-r] [--add|-a] [--prune|-p] [--dry-run|-n] [--yes|-y] [doc id / path / topic to scope to]"
 ---
 
 Bring this repo's doc bundle back in line with the code it describes. Docs rot in three directions, and this command handles all three: a doc that no longer matches the code (**stale**), a feature with no doc at all (**missing**), and a doc for something that was removed (**obsolete**).
+
+The reconciliation itself runs inside a `/task` workflow: `/docs` decides **where** the work happens and hands the passes to `/task`, which isolates the workspace, commits, then runs `/clean` and `/pr` (Step 0). Like `/task`, it defaults to a fresh worktree off the latest `main`.
 
 The bundle is an [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) collection of Markdown-with-frontmatter docs, queried with [okq](https://github.com/mikevalstar/okq). Use `okq` to explore, write, and check it — not `grep`. The `okq-reference`, `okq-explore`, `okq-write-okf`, and `okq-maintain` skills are the contract; load them via the `Skill` tool as each step needs them.
 
 Your input is the text in the `<command-args>` block above. Parse leading flags off the front; anything left over **scopes** the run (see Flags).
 
 ## Flags
+
+**Workspace** — where the reconciliation happens. Passed through to `/task` in Step 0; they mean exactly what they mean there.
+
+- `--here` / `-h` — do NOT create a worktree. Reconcile on the **current branch** as it is now.
+- `--base <branch>` — branch off `<branch>` instead of `main`. Ignored when `--here` is set.
+- With neither, the default is a fresh worktree off the latest `main`.
+
+**Passes and scope** — what gets reconciled. These stay here; they are not `/task` flags.
 
 - `--bundle <dir>` / `-b <dir>` — the bundle directory. Default: discover it (Step 1).
 - `--refresh` / `-r` — run only the staleness pass (Step 3).
@@ -19,6 +29,21 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 - `--dry-run` / `-n` — report the full plan and change nothing. Stop after Step 2.
 - `--yes` / `-y` — apply without pausing for confirmation, including deletions. Without it, every deletion and every doc-vs-code conflict is confirmed with me first.
 - Anything left after flags scopes the run to a concept id (`features/pr`), a path or glob (`docs/adrs/*`), or a topic (`worktree handling`) — resolve a topic with `okq --bundle <dir> search "<topic>"` and audit the hits. Unscoped means the whole bundle.
+
+**`-a` means different things in the two commands.** Here `--add` / `-a` is the missing-docs pass; in `/task` it registers extra commands to weave in. Never forward this command's `-a` (or `-r`, `-p`, `-n`, `-y`, `-b`) to `/task` as a flag — they belong in the criteria text, not the invocation.
+
+## Step 0 — Choose the workspace, then hand the passes to `/task`
+
+This command does no branching, committing, or PR work of its own. It resolves **where** the reconciliation happens, then delegates to `/task`, which owns workspace setup, commits, `/clean`, `/pr`, and worktree teardown. Do this **before** Step 1 — the bundle you audit must be the one inside the workspace `/task` set up, not the checkout you started in.
+
+1. Map the workspace flag to the `/task` invocation:
+   - **Default (neither flag):** `/task <criteria>` — a fresh worktree off the latest `main`, exactly like `/task`'s own default. The branch type is always `docs` (this command only ever changes docs), so: `docs/<kebab-summary>` — e.g. `docs/reconcile-bundle`, or scope-specific like `docs/refresh-pr-command`.
+   - **`--here` / `-h`:** `/task --here <criteria>` — reconcile on the current branch, no worktree. If that branch is `main`, `/task` creates a feature branch in place; let it.
+   - **`--base <branch>`:** `/task --base <branch> <criteria>` — worktree branched off `<branch>`.
+2. The `<criteria>` you hand `/task` is **this command's Steps 1–6 with the passes and scope already resolved** — state them in plain language rather than as flags (e.g. "reconcile the doc bundle per `/docs` Steps 1–6: refresh pass only, scoped to `features/pr`"). `/task`'s Step 2 *is* this pipeline.
+3. **Don't create the worktree yourself** — `/task` Step 1 does it. Doing both nests a worktree inside a worktree. Report the branch name once `/task` has it.
+4. `/task`'s Step 1.5 bootstrap can skip code generation (this is a docs-only change), but the workspace still needs `okq` on `PATH` — it's a device-level install, so a fresh worktree inherits it.
+5. **`--dry-run` / `-n` skips this step entirely.** A dry run writes nothing, so there is nothing to isolate, commit, or open a PR for: stay in the current checkout, run Steps 1–2 in place, report the plan, and stop. Never spin up a worktree or call `/task` for a dry run.
 
 ## Step 1 — Locate the bundle and learn its rules
 
@@ -98,14 +123,15 @@ After removing anything, fix what pointed at it: `okq --bundle <dir> deadlinks` 
 2. Re-run the health checks until clean: `okq --bundle <dir> validate`, `deadlinks --check`, `orphans` (exit code 3 means the gate tripped — branch on `$?`, not the text).
 3. Run the repo's own doc gate if it has one (e.g. `pnpm run check:commands`, the `docs` CI job's command). Report exactly what you ran.
 4. Report a table: doc | verdict (`fresh` / `updated` / `added` / `pruned` / `flagged`) | what changed. Then, separately, the **code-side findings** — places the code, not the doc, looked wrong — since those need my decision.
-5. Apply edits directly. Don't commit unless the repo's flow expects docs committed with the work (invoked from `/task`, it will commit for you).
+5. Apply edits directly, then let the surrounding `/task` run take it from here — its Step 2 commits the doc changes, and its Step 3 runs `/clean`, `/pr`, and worktree teardown. Report the table above as this pass's result rather than opening the PR yourself. Under `--dry-run` there is nothing to hand off.
 
 ## Notes
 
 - **Every claim you write traces to source you read.** Never fill a doc from the feature's name, and never soften a doc to match code you didn't verify.
 - **Docs are a contract, not a cache.** When doc and code disagree, that's a judgment call for me — this command surfaces it rather than silently picking the code.
 - `okq` over `grep` throughout: `search`/`find`/`get`/`neighbors` are ranked and structure-aware, and `get --section` keeps whole files out of context.
-- This command edits **docs only** — never source code, never tests. Code problems get reported, not fixed.
+- This command edits **docs only** — never source code, never tests. Code problems get reported, not fixed. That holds inside the `/task` run too: the PR it opens is a docs-only PR.
+- Delegating to `/task` means `/task`'s rules apply — it has standing permission to commit on the branch (never on `main`), and it ends at a PR. A doc-vs-code conflict still comes back to me before anything is blessed, and `--yes` / `-y` governs those confirmations, not whether a PR gets opened.
 - Hand-editing a generated `index.md` is always wrong; regenerate it.
-- `--dry-run` writes nothing at all, including no `okq new` scaffolds.
+- `--dry-run` writes nothing at all — no `okq new` scaffolds, and no worktree, commit, or PR either.
 - If the bundle turns out to be healthy, say so plainly and stop. A no-op run is a real result — don't manufacture churn to look busy.

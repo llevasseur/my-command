@@ -1,9 +1,10 @@
 ---
 type: feature
 title: docs
-description: Reconcile an okq doc bundle with the code — refresh stale docs, add docs for undocumented features, prune docs for things that no longer exist.
+description: Reconcile an okq doc bundle with the code via /task — refresh stale docs, add docs for undocumented features, prune docs for things that no longer exist.
 tags: [command, docs, process]
 timestamp: 2026-07-24
+updated: 2026-07-24
 ---
 
 # docs
@@ -17,7 +18,24 @@ no doc at all (**missing**), and a doc for something that was removed
 writes, and gates the bundle with `okq`, never `grep`. Edits docs only; code
 problems are reported, not changed.
 
+The reconciliation runs inside a **`/task` workflow**: `/docs` resolves where the
+work happens and delegates the passes to [task](task.md), which owns the
+worktree, the commits, `/clean`, `/pr`, and teardown. Like `/task`, it defaults
+to a fresh worktree off the latest `main`, so a `/docs` run normally ends at a
+docs-only PR.
+
 ## Flags / Parameters
+
+**Workspace** (passed through to `/task`, same meaning as there):
+
+- `--here` / `-h` — no worktree; reconcile on the **current branch**.
+- `--base <branch>` — branch off `<branch>` instead of `main`. Ignored with
+  `--here`.
+- Neither given: fresh worktree off the latest `main`, on a `docs/<summary>`
+  branch.
+
+**Passes and scope** (local to this command — never forwarded to `/task` as
+flags):
 
 - `--bundle` / `-b <dir>` — the bundle directory. Default: discovered (the path
   the repo's own docs use, then `docs/`, `.okf/`, `notes/`, then the repo root).
@@ -32,7 +50,18 @@ problems are reported, not changed.
 - Anything left after flags scopes the run to a concept id, a path/glob, or a
   topic (resolved with `okq search`).
 
+Note that `-a` is overloaded across the two commands: here it is the missing-docs
+pass, in `/task` it registers extra commands to weave in.
+
 ## Behavior
+
+First resolves the workspace and hands off: the pass flags and scope become plain
+language criteria for `/task`, which sets up the worktree (or stays put for
+`--here`), then runs the pipeline below as its implementation step and finishes
+with `/clean` and `/pr`. `/docs` never creates a worktree itself — doing both
+would nest one inside another. `--dry-run` short-circuits the handoff entirely:
+it stays in the current checkout, reports the plan, and creates no worktree,
+commit, or PR.
 
 Locates the bundle, then reads the bundle's **own** contract first — its
 frontmatter keys, generated `index.md` files, folder `_template.md`s, the 1:1
@@ -62,11 +91,14 @@ obsolete, confirms each deletion with evidence, and removes with `git rm`.
 Finishes by regenerating `okq index`, running `validate` / `deadlinks --check` /
 `orphans` until clean, running the repo's own doc gate, and reporting a
 doc-by-doc verdict table plus code-side findings separately. Applies edits
-directly and doesn't commit on its own.
+directly; the surrounding `/task` run commits them and opens the PR.
 
 ## Related
 
 - Command source: `src/commands/docs.md`
+- Wrapper target: [task](task.md) — owns the worktree, commits, `/clean`, `/pr`,
+  and teardown for every non-`--dry-run` `/docs` run; [fb](fb.md) wraps `/task`
+  the same way, defaulting to `--here` instead
 - Spec: [Adding a command](../specs/adding-a-command.md) — the invariants this
   command audits (a command needs a feature doc; a flag change needs a doc update)
 - ADR: [0002 Command docs as okq specs](../adrs/0002-command-docs-as-okq-specs.md)
