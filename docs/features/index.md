@@ -13,10 +13,12 @@ Add one with `okq new feature "<title>"`.
 |-------|------|
 | changelog | [changelog.md](changelog.md) |
 | clean | [clean.md](clean.md) |
+| docs | [docs.md](docs.md) |
 | fb | [fb.md](fb.md) |
 | mc | [mc.md](mc.md) |
 | merge-deps | [merge-deps.md](merge-deps.md) |
 | pr | [pr.md](pr.md) |
+| review | [review.md](review.md) |
 | sync | [sync.md](sync.md) |
 | task-bootstrap | [task-bootstrap.md](task-bootstrap.md) |
 | task | [task.md](task.md) |
