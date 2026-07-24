@@ -32,6 +32,12 @@ commit in logical commits, then clean + PR + teardown. Teardown removes the work
 whether or not the PR is a draft — the branch is on origin either way. Never implements
 or commits on `main`.
 
+Step 3 is gated on the run having produced something: before dispatching the subagents
+it checks this run's commits (`<base>..HEAD`) and uncommitted edits, and when both are
+empty it skips `/clean` and `/pr` entirely, tears the worktree down, and reports that the
+criteria were already satisfied — no push, no empty PR. Conditional criteria ("do X if it
+isn't already the case") therefore terminate without inventing edits.
+
 ## Related
 
 - Command source: `src/commands/task.md`

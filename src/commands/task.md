@@ -70,6 +70,7 @@ Treat typecheck errors like "cannot find generated module" or a missing `*.gen.t
 - Once isolated in a worktree, the worktree directory is the only writable root — resolve every read/edit/commit path under it, never the original shared checkout.
 - Follow the repo's own conventions (read `CLAUDE.md`/`AGENTS.md` and match surrounding code — style, naming, tests).
 - For anything non-trivial or ambiguous, plan before coding; for a bug, reproduce before fixing. Use the relevant superpowers skills (brainstorming, systematic-debugging, TDD) rather than guessing.
+- **If the criteria are already satisfied, change nothing.** Some criteria are conditional ("do X if it isn't already the case"). When inspection shows the repo already meets them, do not manufacture edits to justify the run — report what you inspected and what you found, and fall through to Step 3's no-change check.
 - **Verify before claiming done** — run the repo's typecheck / tests / build for what you touched and confirm they pass. Report what you ran.
 - **Commits are explicitly allowed here.** Invoking `/task` is your standing permission to commit **on this branch** (never on `main`) — commit the work in logical commits with clear messages without asking again.
   - Only commit files **you** created or changed for this task. Do **not** commit pre-existing untracked files that carried over from the original workspace (e.g. via a worktree or a dirty checkout) — stage paths explicitly rather than `git add -A`/`git add .`, and leave anything unrelated to your task alone.
@@ -77,14 +78,22 @@ Treat typecheck errors like "cannot find generated module" or a missing `*.gen.t
 
 ## Step 3 — Clean, then PR (in fresh subagents)
 
-Once implementation is committed and verified, run the clean and PR stages **in fresh subagents** via the `Agent` tool, not inline. Both derive their inputs from git (`/clean` from the branch diff, `/pr` from `git log`/`git diff`/`gh`), so a fresh context loses nothing while shedding this task's stale file reads. Run them in order, each finishing before the next. The subagents share this worktree but not this conversation — hand each the branch name and enough context to act alone.
+**First, confirm this run actually produced changes — if it did not, skip both stages.** `/clean` and `/pr` only make sense when there is something to ship; on an empty diff they cost a subagent each and `/pr` would push a branch and open a PR with no content. Check both halves of the state:
+
+- **Commits from this run:** `git log --oneline <base>..HEAD`, where `<base>` is `origin/<default-branch>` by default, the `--base <branch>` you branched from, or — for `--here` — the commit the branch was at when this run started.
+- **Uncommitted edits:** `git status --porcelain`, ignoring pre-existing untracked files that carried over from the original workspace (the same ones Step 2 forbids committing).
+
+If both come back empty, **do not dispatch the clean or PR subagents and do not push.** Go straight to teardown (3), then tell me the criteria were already satisfied, what you checked to establish that, and that no PR was opened. Under `--here`, if the branch carries unpushed commits from *before* this run, leave them alone and say they are there — they are not this run's work to ship.
+
+Otherwise, run the clean and PR stages **in fresh subagents** via the `Agent` tool, not inline. Both derive their inputs from git (`/clean` from the branch diff, `/pr` from `git log`/`git diff`/`gh`), so a fresh context loses nothing while shedding this task's stale file reads. Run them in order, each finishing before the next. The subagents share this worktree but not this conversation — hand each the branch name and enough context to act alone.
 
 1. **Clean.** Dispatch a subagent to run **`/clean`** on this branch, then commit any edits it makes. `/clean` is branch-aware (committed + staged + unstaged), so it picks up step 2's commits; if nothing changes, there's nothing to commit.
 2. **PR.** After the clean subagent returns, dispatch a subagent to run **`/pr`** — push and open (or update) the PR with a concise bulleted description, passing `--draft` when `--draft`/`-d` was given, plus any title/context I supplied. Tell it **not** to tear down the worktree — leave that to step 3.
-3. **Teardown.** After the PR subagent returns, if this run used a worktree, remove it here with `ExitWorktree` (`action: "remove"`); the branch is already pushed, so this only discards the local copy. **Remove it even when the PR is a draft** — `--draft`/`-d` controls the PR's review state on GitHub, not the local workspace, and a draft's commits are on origin just the same, so there is nothing left to preserve locally. Skip teardown only for `--here`.
+3. **Teardown.** After the PR subagent returns — or straight away on the no-change path above — if this run used a worktree, remove it here with `ExitWorktree` (`action: "remove"`); the branch is either already pushed or carries no work, so this only discards the local copy. **Remove it even when the PR is a draft** — `--draft`/`-d` controls the PR's review state on GitHub, not the local workspace, and a draft's commits are on origin just the same, so there is nothing left to preserve locally. Skip teardown only for `--here`.
 
 ## Notes
 
 - Never implement or commit directly on `main`.
 - If the criteria are too vague to act on, ask me one focused clarifying question before setting up the workspace — don't spin up a worktree for a guess.
-- Report the branch name up front and the PR number/URL at the end.
+- A PR is the goal, not a quota: if the criteria turn out to need no changes, the run ends with `/clean` and `/pr` skipped and the worktree removed, not with an empty PR.
+- Report the branch name up front and the PR number/URL at the end — or, on a no-change run, that no PR was opened and why.
