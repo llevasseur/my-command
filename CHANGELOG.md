@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-07-22
+
+### Added
+
+- **`review` command** — spawn a fresh, independent agent to review an open PR (worktree by default, `--here` in place, `--target`/`-t <PR-number-or-branch>` like `fb`). The reviewer checks the diff against the PR's own description, runs the repo's verification, compares against existing conventions, and returns findings plus a single ready-to-run `/fb` line. `/review` shows that copy-pasteable output, then applies it itself via the `fb` skill — chaining into `task`, `clean`, and `pr` to update the same PR. Ships with `docs/features/review.md` and README entries.
+
 ## 2026-07-21
 
 ### Added
