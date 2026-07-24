@@ -18,7 +18,8 @@ fresh subagents. The end goal is always an open PR.
 
 - `--here` / `-h` — no worktree; work on the **current branch** as it is.
 - `--base <branch>` — branch off `<branch>` instead of `main`. Ignored with `--here`.
-- `--draft` / `-d` — open the resulting PR as a draft (passed through to `/pr`).
+- `--draft` / `-d` — open the resulting PR as a draft (passed through to `/pr`). Does
+  not preserve the worktree; teardown still runs.
 - `--add` / `-a <list>` — comma-separated `command + prompt` entries to weave extra
   commands into the run; the leading token names the command, the rest is its prompt.
 - Everything after the flags is the **task criteria**.
@@ -27,8 +28,9 @@ fresh subagents. The end goal is always an open PR.
 
 Default: fetch `origin`, create a worktree off the latest `main`, bootstrap it,
 implement against the criteria, verify (typecheck/tests/build for what changed),
-commit in logical commits, then clean + PR + teardown. Never implements or commits
-on `main`.
+commit in logical commits, then clean + PR + teardown. Teardown removes the worktree
+whether or not the PR is a draft — the branch is on origin either way. Never implements
+or commits on `main`.
 
 ## Related
 

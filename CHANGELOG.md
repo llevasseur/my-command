@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-07-24
+
+### Changed
+
+- **`task` now states outright that step 3's teardown removes the worktree even when the PR is a draft.** `--draft` / `-d` was documented only as a flag passed through to `/pr`, which left room to read a draft PR as unfinished work worth keeping a local worktree for. The teardown step and the flag description now say the opposite explicitly: `--draft` controls the PR's review state on GitHub, not the local workspace, and a draft's commits are on origin just the same — `--here` is the only thing that skips teardown.
+
 ## 2026-07-21
 
 ### Added
