@@ -11,7 +11,7 @@ The task is the text in the `<command-args>` block above. Parse leading flags of
 
 - `--here` / `-h` — do NOT create a worktree. Work on the **current branch** as it is now.
 - `--base <branch>` — branch off `<branch>` instead of `main`. Ignored when `--here` is set.
-- `--draft` / `-d` — open the resulting PR as a draft. Passed straight through to `/my-command:pr` in step 3. Default is **not** draft.
+- `--draft` / `-d` — open the resulting PR as a draft. Passed straight through to `/my-command:pr` in step 3. Default is **not** draft. It does **not** keep the worktree around — step 3's teardown still removes it.
 - `--add` / `-a` — register one or more commands available to the user for the agent to weave into this `/my-command:task` run, each paired with a prompt that guides its use. See Step 0 below.
 - Anything not a recognized flag is part of the task criteria.
 
@@ -81,7 +81,7 @@ Once implementation is committed and verified, run the clean and PR stages **in 
 
 1. **Clean.** Dispatch a subagent to run **`/my-command:clean`** on this branch, then commit any edits it makes. `/my-command:clean` is branch-aware (committed + staged + unstaged), so it picks up step 2's commits; if nothing changes, there's nothing to commit.
 2. **PR.** After the clean subagent returns, dispatch a subagent to run **`/my-command:pr`** — push and open (or update) the PR with a concise bulleted description, passing `--draft` when `--draft`/`-d` was given, plus any title/context I supplied. Tell it **not** to tear down the worktree — leave that to step 3.
-3. **Teardown.** After the PR subagent returns, if this run used a worktree, remove it here with `ExitWorktree` (`action: "remove"`); the branch is already pushed, so this only discards the local copy. Skip for `--here`.
+3. **Teardown.** After the PR subagent returns, if this run used a worktree, remove it here with `ExitWorktree` (`action: "remove"`); the branch is already pushed, so this only discards the local copy. **Remove it even when the PR is a draft** — `--draft`/`-d` controls the PR's review state on GitHub, not the local workspace, and a draft's commits are on origin just the same, so there is nothing left to preserve locally. Skip teardown only for `--here`.
 
 ## Notes
 
