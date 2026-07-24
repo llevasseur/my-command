@@ -7,6 +7,10 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 ## 2026-07-24
 
+### Added
+
+- **`docs` command** — reconcile a repo's [okq](https://github.com/mikevalstar/okq) doc bundle with the code it describes, covering all three directions docs rot: **stale** (a doc that no longer matches the code), **missing** (a feature with no doc), and **obsolete** (a doc for something that was removed). It discovers the bundle, reads the bundle's *own* contract first (frontmatter keys, generated `index.md`s, folder templates, the 1:1 unit it documents, any docs gate script) and lets those rules win, then reconciles concepts against documentable units into CHECK / MISSING / OBSOLETE before editing anything. The staleness pass audits docs **one at a time** in fresh subagents, using git recency only to rank suspicion and claim-level comparison (flags, defaults, paths, exit codes, behavior — `old → current`) as the real verdict; drift found in one doc is re-checked across its `neighbors`/`backlinks`. Code that looks like the regression is flagged for the user rather than blessed by rewriting the doc, a wrong ADR is superseded rather than edited, a rename is repointed rather than deleted, and every deletion is confirmed with evidence and made with `git rm`. Pass flags `--refresh` / `-r`, `--add` / `-a`, `--prune` / `-p` combine (all three by default); `--dry-run` / `-n` plans without writing, `--bundle` / `-b <dir>` picks the bundle, `--yes` / `-y` skips confirmations, and trailing text scopes the run to a concept, path, or topic. Ships with `docs/features/docs.md` and README entries.
+
 ### Changed
 
 - **`task` now states outright that step 3's teardown removes the worktree even when the PR is a draft.** `--draft` / `-d` was documented only as a flag passed through to `/pr`, which left room to read a draft PR as unfinished work worth keeping a local worktree for. The teardown step and the flag description now say the opposite explicitly: `--draft` controls the PR's review state on GitHub, not the local workspace, and a draft's commits are on origin just the same — `--here` is the only thing that skips teardown.

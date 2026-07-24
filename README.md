@@ -23,6 +23,7 @@
 | `task-bootstrap` | One-time per repo: interview the stack and generate that repo's own `scripts/bootstrap-worktree.sh` so `task` can bootstrap fresh worktrees. |
 | `sync` | Update this device's installed commands to the latest version from GitHub. |
 | `changelog` | Add a concise entry to the current repo's `CHANGELOG.md`, matching its existing format. |
+| `docs` | Reconcile a repo's [okq](https://github.com/mikevalstar/okq) doc bundle with the code — refresh stale docs, add docs for undocumented features, prune docs for things that no longer exist. |
 | `trim` | Decide whether the current conversation is safe to compact, then provide focused instructions for Claude Code's built-in `/compact`. |
 
 ## Use cases
@@ -48,6 +49,9 @@ parameters change what happens.
 | `mc` | `/mc -t feat/search` | `--target` / `-t <branch>` — only the named branch `feat/search`. |
 | `merge-deps` | `/merge-deps` | Default — merge every open non-draft `dependencies`-labeled PR into `main`, one by one (`/mc` first, verify, `gh pr merge --squash`, clean the worktree). |
 | `merge-deps` | `/merge-deps --auto -n` | `--auto` enables GitHub auto-merge instead of waiting on CI; `--dry-run` / `-n` just lists the PRs. `--label <name>` narrows the filter, `--merge`/`--rebase` change the method. |
+| `docs` | `/docs` | Default — audit every doc in the bundle for staleness, add docs for undocumented features, and prune docs for things that no longer exist. |
+| `docs` | `/docs -n` | `--dry-run` / `-n` — report the plan (stale / missing / obsolete) and change nothing. |
+| `docs` | `/docs -r features/pr` | Pass flags (`--refresh` / `-r`, `--add` / `-a`, `--prune` / `-p`) run only those passes; trailing text scopes the run to a concept id, path/glob, or topic. `--bundle` / `-b <dir>` picks the bundle, `--yes` / `-y` skips confirmations. |
 | `trim` | `/trim` | Evaluate six evidence-backed safety gates; recommend continuing or emit a tailored `/compact` command. |
 
 The `trim` command adapts the context-compaction strategy introduced by Yujiang Li,

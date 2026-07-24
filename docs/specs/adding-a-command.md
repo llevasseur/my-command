@@ -58,6 +58,11 @@ same change.** The feature doc's Flags / Parameters section is the contract for
 that command; a drifted doc is worse than none. If a flag is added or renamed,
 also update the command's README Use cases row.
 
+When drift has already happened — a doc that no longer matches its command, a
+command that shipped without one, or a doc for a command that was removed — the
+[docs](../features/docs.md) command audits this bundle against the source and
+reconciles all three.
+
 ## Acceptance criteria
 
 - [ ] New command has a bare source, a generated namespaced copy, and a feature doc.
