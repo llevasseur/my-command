@@ -2,7 +2,7 @@
 // workflow run from shipping someone else's files or landing on the default branch.
 import { readFileSync } from 'node:fs';
 import { str } from '../lib/flags.mjs';
-import { run as exec, must, ToolkitError } from '../lib/proc.mjs';
+import { run as exec, must, ToolkitError, UsageError } from '../lib/proc.mjs';
 import { currentBranch, defaultBranch, porcelain, repoRoot } from '../lib/repo.mjs';
 
 export const usage = `commit --message <text|-> <path> [<path>...]
@@ -29,7 +29,7 @@ export function run(ctx) {
   }
 
   const paths = ctx.positionals;
-  if (paths.length === 0) throw new ToolkitError('no paths given — staging is always explicit', { usage });
+  if (paths.length === 0) throw new UsageError('no paths given — staging is always explicit', { usage });
 
   const offending = paths.filter((p) => WHOLE_TREE.has(p));
   if (offending.length > 0) {
@@ -41,15 +41,25 @@ export function run(ctx) {
 
   must('git', ['add', '--', ...paths], { cwd });
 
+  // Scoped to `paths`: the index may already hold someone else's staged carryover, and
+  // the whole point of this verb is that such files stay put.
+  const diffCached = exec('git', ['diff', '--cached', '--name-only', '--', ...paths], { cwd });
+  if (!diffCached.ok) {
+    throw new ToolkitError('could not read the staged file list', {
+      code: diffCached.code,
+      stderr: diffCached.stderr,
+    });
+  }
   // Nothing staged means the paths were already committed or unchanged; that is a
   // no-op worth reporting plainly rather than a failed commit.
-  const diffCached = exec('git', ['diff', '--cached', '--name-only'], { cwd });
   const stagedFiles = diffCached.stdout ? diffCached.stdout.split('\n') : [];
   if (stagedFiles.length === 0) {
     return { committed: false, reason: 'nothing staged from the given paths', branch, paths };
   }
 
-  const r = exec('git', ['commit', '-F', '-'], { cwd, input: message });
+  // The pathspec after `--` is what keeps the commit to these paths. Without it git
+  // commits the entire index, sweeping in anything staged before this run.
+  const r = exec('git', ['commit', '-F', '-', '--', ...paths], { cwd, input: message });
   if (!r.ok) throw new ToolkitError('git commit failed', { code: r.code, stderr: r.stderr, stdout: r.stdout });
 
   return {
@@ -66,7 +76,7 @@ export function run(ctx) {
 
 /** @param {string | undefined} flag @returns {string} */
 function readMessage(flag) {
-  if (!flag) throw new ToolkitError('--message is required', { usage });
+  if (!flag) throw new UsageError('--message is required', { usage });
   if (flag !== '-') return flag;
   try {
     return readFileSync(0, 'utf8');

@@ -34,3 +34,21 @@ test('a value that looks like a flag is not swallowed', () => {
   assert.equal(flags.force, true);
   assert.deepEqual(positionals, ['begin']);
 });
+
+test('a leading flag means no verb, not a verb named --help', () => {
+  for (const argv of [['--help'], ['-h']]) {
+    const { verb, flags } = parseArgs(argv);
+    assert.equal(verb, '', `${argv[0]} should not parse as a verb`);
+    assert.equal(flags.help, true);
+  }
+});
+
+test('-h is accepted after a verb too', () => {
+  const { verb, flags } = parseArgs(['commit', '-h']);
+  assert.equal(verb, 'commit');
+  assert.equal(flags.help, true);
+});
+
+test('a bare - stays a positional, since it means read from stdin', () => {
+  assert.equal(parseArgs(['commit', '--message', '-']).flags.message, '-');
+});

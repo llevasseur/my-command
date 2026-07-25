@@ -3,7 +3,7 @@
 // The whole point of installing to a fixed device path is that a command can rely on
 // it without knowing how it was installed. This verb is how that claim gets checked
 // rather than assumed.
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { candidateRoots, deviceRoot } from '../lib/paths.mjs';
@@ -22,14 +22,31 @@ function probe(bin, args) {
   return { available: !r.missing && r.ok, version: r.ok ? r.stdout.split('\n')[0] : null };
 }
 
+/**
+ * Resolve through symlinks so a dev-symlinked root still matches where we loaded from.
+ * @param {string} p @returns {string}
+ */
+function real(p) {
+  try {
+    return realpathSync(p);
+  } catch {
+    return p;
+  }
+}
+
 export function run() {
   const roots = candidateRoots().map((c) => ({ ...c, exists: existsSync(join(c.path, 'cli.mjs')) }));
   const device = deviceRoot();
   const stamp = join(device, 'VERSION');
 
+  // Match against where this process actually loaded from, not merely the first root
+  // that exists — otherwise doctor can name a root it did not run from and contradict
+  // its own `runningFrom`.
+  const here = real(HERE);
+
   return {
     runningFrom: HERE,
-    resolvedBy: roots.find((r) => r.exists)?.source ?? 'direct invocation',
+    resolvedBy: roots.find((r) => r.exists && real(r.path) === here)?.source ?? 'direct invocation',
     roots,
     deviceRoot: device,
     installed: existsSync(join(device, 'toolkit', 'cli.mjs')),

@@ -55,7 +55,10 @@ export function run(ctx) {
   const root = repoRoot(ctx.cwd);
   const scripts = scriptsOf(root);
   const pm = packageManager(root);
-  const tailLines = Number(str(ctx.flags.tail) ?? 40);
+  // A non-numeric --tail must not become NaN: `slice(-NaN)` silently returns the whole
+  // log, which is the one thing this flag exists to prevent.
+  const requestedTail = Number(str(ctx.flags.tail));
+  const tailLines = Number.isFinite(requestedTail) && requestedTail > 0 ? requestedTail : 40;
 
   const requested = list(ctx.flags.only)
     .flatMap((v) => v.split(','))
@@ -81,15 +84,19 @@ export function run(ctx) {
     ran.push(entry);
   }
 
+  // No package.json, or one with no recognizable gate. `ran.every` on an empty array is
+  // true, so without this the verb would answer "pass" for a run that executed nothing —
+  // and a caller branching on the exit code would read that as verified.
+  const verified = ran.length > 0;
+
   return {
     root,
     packageManager: pm,
     available: Object.keys(scripts),
     ran,
     missing,
-    pass: ran.every((r) => r.ok) && missing.length === 0,
-    // No package.json, or one with no recognizable gate — say so rather than
-    // reporting a vacuous pass the caller would read as "verified".
-    verified: ran.length > 0,
+    pass: verified && ran.every((r) => r.ok) && missing.length === 0,
+    verified,
+    ...(verified ? {} : { reason: 'no recognized verification gate to run' }),
   };
 }

@@ -44,9 +44,10 @@ export function run(ctx) {
   const byFile = new Map();
   for (const diff of [committed.stdout, working.stdout]) {
     for (const hit of parse(diff)) {
-      const list = byFile.get(hit.path) ?? [];
-      if (!list.some((c) => c.line === hit.line && c.text === hit.text)) list.push({ line: hit.line, text: hit.text });
-      byFile.set(hit.path, list);
+      const found = byFile.get(hit.path) ?? [];
+      if (!found.some((c) => c.line === hit.line && c.text === hit.text))
+        found.push({ line: hit.line, text: hit.text });
+      byFile.set(hit.path, found);
     }
   }
 

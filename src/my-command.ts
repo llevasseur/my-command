@@ -254,7 +254,13 @@ function installToolkit(): ToolkitResult {
   }
 }
 
+// What version of the toolkit landed on the device. The commit SHA, not package.json's
+// `version` — that field is pinned at 1.0.0 and this repo versions by commit, so
+// stamping it would make every install report the same string forever.
 function version(): string {
+  const sha = spawnSync('git', ['-C', PKG_ROOT, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' });
+  if (sha.status === 0 && sha.stdout.trim()) return sha.stdout.trim();
+  // Not a git checkout (a plain tarball install) — fall back to the package version.
   try {
     return JSON.parse(readFileSync(join(PKG_ROOT, 'package.json'), 'utf8')).version || 'unknown';
   } catch {

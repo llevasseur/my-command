@@ -71,6 +71,27 @@ export class ToolkitError extends Error {
     super(message);
     this.name = 'ToolkitError';
     this.detail = detail;
+    // The documented exit code for a failed verb or a refused guard. UsageError
+    // overrides it; nothing else should.
+    this.exitCode = 1;
+  }
+}
+
+/**
+ * The caller spelled the invocation wrong — a missing required flag, an unknown
+ * subcommand. Separated from ToolkitError only so it can carry exit code 2, which the
+ * CLI documents as "bad usage" and a caller uses to tell "I called it wrong" apart
+ * from "it ran and said no".
+ */
+export class UsageError extends ToolkitError {
+  /**
+   * @param {string} message
+   * @param {Record<string, unknown>} [detail]
+   */
+  constructor(message, detail = {}) {
+    super(message, detail);
+    this.name = 'UsageError';
+    this.exitCode = 2;
   }
 }
 

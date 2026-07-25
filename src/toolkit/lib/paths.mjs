@@ -7,7 +7,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 /** The Claude config directory, honoring CLAUDE_CONFIG_DIR when the user relocates it. */
-export function claudeDir() {
+function claudeDir() {
   return process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
 }
 

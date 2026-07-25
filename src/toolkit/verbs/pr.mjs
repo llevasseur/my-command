@@ -3,10 +3,10 @@
 // every time: push, detect an existing PR, pick create-vs-edit, report number and URL.
 import { readFileSync } from 'node:fs';
 import { bool, str } from '../lib/flags.mjs';
-import { run as exec, ToolkitError } from '../lib/proc.mjs';
+import { run as exec, ToolkitError, UsageError } from '../lib/proc.mjs';
 import { currentBranch, defaultBranch, repoRoot } from '../lib/repo.mjs';
 
-export const usage = `pr --title <text> --body <text|-> [--draft] [--base <branch>]
+export const usage = `pr --title <text> --body <text|-> [--draft] [--base <branch>] [--retitle]
 
 Push the current branch and create or update its PR.
 
@@ -25,7 +25,7 @@ export function run(ctx) {
   if (branch === def) throw new ToolkitError(`refusing to open a PR from the default branch (${def})`, { branch });
 
   const title = str(ctx.flags.title);
-  if (!title?.trim()) throw new ToolkitError('--title is required', { usage });
+  if (!title?.trim()) throw new UsageError('--title is required', { usage });
   const body = readBody(str(ctx.flags.body));
   const draft = bool(ctx.flags.draft);
   const base = str(ctx.flags.base) ?? def;
@@ -63,14 +63,18 @@ export function run(ctx) {
 }
 
 /**
+ * The branch's *open* PR, if it has one.
+ * `gh pr view` also resolves a closed or merged PR for the branch; editing one of those
+ * fails, and the caller wanted a new PR anyway — so anything but OPEN reads as none.
  * @param {string} cwd
  * @returns {{number: number, url: string, isDraft: boolean, title: string} | null}
  */
 function findExisting(cwd) {
-  const r = exec('gh', ['pr', 'view', '--json', 'number,url,isDraft,title'], { cwd });
+  const r = exec('gh', ['pr', 'view', '--json', 'number,url,isDraft,title,state'], { cwd });
   if (!r.ok) return null;
   try {
-    return JSON.parse(r.stdout);
+    const pr = JSON.parse(r.stdout);
+    return pr && pr.state === 'OPEN' ? pr : null;
   } catch {
     return null;
   }
@@ -78,7 +82,7 @@ function findExisting(cwd) {
 
 /** @param {string | undefined} flag @returns {string} */
 function readBody(flag) {
-  if (!flag) throw new ToolkitError('--body is required', { usage });
+  if (!flag) throw new UsageError('--body is required', { usage });
   if (flag !== '-') return flag;
   try {
     return readFileSync(0, 'utf8');

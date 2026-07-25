@@ -7,6 +7,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
+import { porcelain } from '../lib/repo.mjs';
 import { run as cleanScope } from './clean-scope.mjs';
 import { run as commit } from './commit.mjs';
 import { run as state } from './state.mjs';
@@ -80,6 +81,38 @@ test('commit stages only the listed paths', () => {
   assert.deepEqual(r.files, ['a.ts']);
   // The stray was never this run's work, so it is still sitting there untracked.
   assert.deepEqual(r.remaining, ['stray.log']);
+});
+
+test('commit leaves pre-staged carryover out of the commit', () => {
+  const { dir, git } = repo();
+  git(['checkout', '-qb', 'feat/x']);
+  writeFileSync(join(dir, 'mine.ts'), 'export const mine = 1;\n');
+  writeFileSync(join(dir, 'theirs.ts'), 'export const theirs = 1;\n');
+  // Someone else's work, already sitting in the index before this run starts.
+  git(['add', 'theirs.ts']);
+
+  const r = commit(ctx(dir, ['mine.ts'], { message: 'feat: mine' }));
+  assert.equal(r.committed, true);
+  assert.deepEqual(r.files, ['mine.ts']);
+
+  const committed = execFileSync('git', ['show', '--name-only', '--format=', 'HEAD'], { cwd: dir, encoding: 'utf8' });
+  assert.deepEqual(committed.split('\n').filter(Boolean), ['mine.ts']);
+  // Still staged, untouched — the whole point of the explicit path list.
+  const staged = execFileSync('git', ['diff', '--cached', '--name-only'], { cwd: dir, encoding: 'utf8' });
+  assert.deepEqual(staged.split('\n').filter(Boolean), ['theirs.ts']);
+});
+
+test('a rename is one entry, not a phantom second file', () => {
+  const { dir, git } = repo();
+  git(['checkout', '-qb', 'feat/x']);
+  git(['mv', 'a.ts', 'renamed.ts']);
+
+  const entries = porcelain(dir);
+  assert.deepEqual(
+    entries.map((e) => e.path),
+    ['renamed.ts'],
+  );
+  assert.equal(entries[0].status[0], 'R');
 });
 
 test('commit reports a no-op instead of failing when nothing is staged', () => {

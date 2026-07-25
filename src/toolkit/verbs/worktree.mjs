@@ -6,7 +6,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { bool, str } from '../lib/flags.mjs';
-import { run as exec, lines, must, ToolkitError } from '../lib/proc.mjs';
+import { run as exec, lines, must, ToolkitError, UsageError } from '../lib/proc.mjs';
 import { defaultBranch, repoRoot, resolveBase } from '../lib/repo.mjs';
 
 export const usage = `worktree begin --branch <name> [--base <ref>] [--bootstrap]
@@ -50,7 +50,7 @@ export function run(ctx) {
   if (sub === 'begin') return begin(ctx, cwd);
   if (sub === 'end') return end(ctx, cwd);
   if (sub === 'list') return { root: cwd, worktrees: listWorktrees(cwd) };
-  throw new ToolkitError(`unknown subcommand \`${sub ?? ''}\` — expected begin, end, or list`, { usage });
+  throw new UsageError(`unknown subcommand \`${sub ?? ''}\` — expected begin, end, or list`, { usage });
 }
 
 /** @param {import('../cli.mjs').Ctx} ctx @param {string} cwd */
@@ -71,7 +71,10 @@ function begin(ctx, cwd) {
   const added = exec('git', ['worktree', 'add', path, '-b', branch, base.sha], { cwd });
   if (!added.ok) throw new ToolkitError('git worktree add failed', { code: added.code, stderr: added.stderr });
 
-  const bootstrap = join(cwd, BOOTSTRAP);
+  // Check the script in the new worktree, which is where it runs. The main checkout can
+  // disagree — the branch may add or drop the script relative to whatever is checked out
+  // over there.
+  const bootstrap = join(path, BOOTSTRAP);
   let bootstrapped = null;
   if (bool(ctx.flags.bootstrap) && existsSync(bootstrap)) {
     const r = exec('bash', [BOOTSTRAP], { cwd: path });
@@ -123,7 +126,7 @@ function end(ctx, cwd) {
 /** @param {import('../cli.mjs').Ctx} ctx @param {string} cwd @returns {string} */
 function requireBranch(ctx, cwd) {
   const branch = str(ctx.flags.branch);
-  if (typeof branch !== 'string' || !branch.trim()) throw new ToolkitError('--branch is required', { usage });
+  if (typeof branch !== 'string' || !branch.trim()) throw new UsageError('--branch is required', { usage });
   if (branch === defaultBranch(cwd)) throw new ToolkitError('refusing to target the default branch', { branch });
   return branch;
 }

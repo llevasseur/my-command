@@ -39,7 +39,11 @@ const VERBS = {
  * @returns {{verb: string, positionals: string[], flags: Record<string, string | boolean | string[]>}}
  */
 export function parseArgs(argv) {
-  const [verb = '', ...rest] = argv;
+  // A leading flag means there is no verb — `my-command-tools --help` is help, not a
+  // verb named `--help`. A bare `-` stays a positional; it is the read-from-stdin value.
+  const leadsWithFlag = argv.length > 0 && argv[0].startsWith('-') && argv[0] !== '-';
+  const verb = leadsWithFlag ? '' : (argv[0] ?? '');
+  const rest = leadsWithFlag ? argv : argv.slice(1);
   /** @type {string[]} */
   const positionals = [];
   /** @type {Record<string, string | boolean | string[]>} */
@@ -47,6 +51,12 @@ export function parseArgs(argv) {
 
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i];
+    // `-h` is the only short flag; spelling it long here keeps the rest of the parser
+    // dealing with exactly one form.
+    if (arg === '-h') {
+      flags.help = true;
+      continue;
+    }
     if (!arg.startsWith('--')) {
       positionals.push(arg);
       continue;
@@ -81,7 +91,7 @@ function helpText() {
     'Global options:',
     '  --cwd <path>   Run against a different directory.',
     '  --compact      Print single-line JSON instead of indented.',
-    "  --help         Show this, or a verb's options with `<verb> --help`.",
+    "  --help, -h     Show this, or a verb's options with `<verb> --help`.",
     '',
     'Exit codes: 0 success · 1 the verb failed · 2 bad usage.',
   ].join('\n');
@@ -122,7 +132,7 @@ export function main(argv) {
     const detail = err instanceof ToolkitError ? err.detail : {};
     const message = err instanceof Error ? err.message : String(err);
     process.stdout.write(`${JSON.stringify({ error: message, ...detail }, null, indent)}\n`);
-    return 1;
+    return err instanceof ToolkitError ? err.exitCode : 1;
   }
 }
 

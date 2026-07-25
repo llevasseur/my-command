@@ -63,10 +63,16 @@ export function porcelain(cwd) {
   const out = must('git', ['status', '--porcelain=v1', '-z'], { cwd, raw: true });
   /** @type {PorcelainEntry[]} */
   const entries = [];
-  for (const record of out.split('\0')) {
+  const records = out.split('\0');
+  for (let i = 0; i < records.length; i++) {
+    const record = records[i];
     if (record.length < 4) continue;
     const status = record.slice(0, 2);
     entries.push({ status, path: record.slice(3), untracked: status === '??' });
+    // A rename or copy spends two NUL-terminated records: the new path, then the old
+    // one bare. Consume the second here or it is read back as an entry of its own,
+    // inventing a file that does not exist.
+    if (status[0] === 'R' || status[0] === 'C' || status[1] === 'R' || status[1] === 'C') i++;
   }
   return entries;
 }
