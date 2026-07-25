@@ -29,8 +29,9 @@ fresh subagents. The end goal is always an open PR.
 Default: fetch `origin`, create a worktree off the latest `main`, bootstrap it,
 implement against the criteria, verify (typecheck/tests/build for what changed),
 commit in logical commits, then clean + PR + teardown. Teardown removes the worktree
-whether or not the PR is a draft — the branch is on origin either way. Never implements
-or commits on `main`.
+whether or not the PR is a draft — the branch is on origin either way, so it confirms the
+push and passes `discard_changes` up front rather than tripping `ExitWorktree`'s commit
+guard. Never implements or commits on `main`.
 
 Step 3 is gated on the run having produced something: before dispatching the subagents
 it checks this run's commits (`<base>..HEAD`) and uncommitted edits, and when both are
