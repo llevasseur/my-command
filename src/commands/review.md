@@ -1,16 +1,16 @@
 ---
-description: Spawn a fresh agent to review an open PR, produce /fb-ready structured feedback, and apply it
+description: Independently review an open PR, produce /fb-ready structured feedback, and apply it
 argument-hint: "[--here|-h] [--target|-t <PR-number-or-branch>]"
 ---
 
-Review an open PR with a fresh, independent agent, then apply what it finds. The point of a **fresh** agent is that it has no prior investment in this PR's approach — it reviews the diff cold, the way an outside reviewer would.
+Review an open PR independently, then apply what the review finds. By default, spawn a **fresh** agent so it has no prior investment in the PR's approach and reviews the diff cold, the way an outside reviewer would. With `--here`, do the review yourself; the caller is asserting that you are already the fresh, independent agent.
 
 Your input is the text in the `<command-args>` block above. Parse leading flags off the front; anything left over is extra context for the reviewer (e.g. "focus on the auth changes").
 
 ## Flags
 
 - `--target <PR-number-or-branch>` / `-t <PR-number-or-branch>` — review this PR/branch instead of the one associated with the current branch. Anything accepted by `gh pr view <target>` works (PR number, branch name, or PR URL).
-- `--here` / `-h` — review in the **current checkout**, no worktree. Only valid for the current branch's own PR (no `--target`) — reviewing another branch in place would mean checking it out over whatever's already here. If both `--target` and `--here` are given, `--target` wins: still use a fresh worktree, and say why `--here` was ignored.
+- `--here` / `-h` — review the current branch's own PR **yourself**, in the current checkout. Do not create a worktree and do not spawn a review agent; this mode expects that you are already running as a fresh, independent agent. It is only valid without `--target`, because reviewing another branch in place would mean checking it out over whatever is already here. If both `--target` and `--here` are given, `--target` wins: ignore `--here`, use the default fresh-worktree/fresh-agent flow, and say why.
 - Anything else left over after flags is extra context for the reviewer, not a separate step.
 
 ## Step 1 — Resolve the target PR
@@ -24,12 +24,14 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
   1. `git fetch origin`
   2. `git worktree add .claude/worktrees/<branch> <branch>` (use the branch's last path segment for the worktree dir if the name contains slashes)
   3. `EnterWorktree` with `path: .claude/worktrees/<branch>`
-- **`--here` / `-h`:** confirm the current branch (`git rev-parse --abbrev-ref HEAD`) is the PR's `headRefName`. If it isn't, stop and tell me rather than switching branches for you.
+- **`--here` / `-h`:** stay in the current checkout and confirm its branch (`git rev-parse --abbrev-ref HEAD`) is the PR's `headRefName`. If it isn't, stop and tell me rather than switching branches for you.
 
-## Step 3 — Spawn the review agent
+## Step 3 — Perform the review
 
-Dispatch a **fresh** agent (not a fork — it must not inherit this conversation's framing of the PR) via the `Agent` tool, working in the worktree/checkout from Step 2. Brief it with:
+- **Default:** dispatch a **fresh** agent (not a fork — it must not inherit this conversation's framing of the PR) via the `Agent` tool, working in the worktree from Step 2. Brief it with the material and rubric below.
+- **`--here` / `-h`:** do **not** use the `Agent` tool. Apply the material, rubric, and required output shape below directly yourself in the current checkout. The caller chose this mode because this command is already running inside the fresh agent that should perform the independent review.
 
+Review material:
 - PR number, title, body, base branch, head branch, and URL from Step 1.
 - Task: verify the PR does what it claims, and compare it against the existing codebase for discrepancies.
   - Read the actual diff: `gh pr diff <number>` or `git diff <base>...<head>`.
@@ -37,7 +39,7 @@ Dispatch a **fresh** agent (not a fork — it must not inherit this conversation
   - Run whatever the repo's own verification is for the touched area (typecheck/lint/tests/build) and report failures.
   - Compare against surrounding code and this repo's own conventions (`AGENTS.md`/`CLAUDE.md`, existing patterns in touched files) for things that clash: inconsistent style, skipped repo-specific steps (e.g. a missing feature doc, an out-of-sync generated file), missed edge cases, dead code, anything the PR description doesn't mention but the diff does.
   - Fold in the extra context from `<command-args>` (if any) as additional review focus.
-- Required output shape — the agent's final report MUST end with:
+- Required output shape — the review report MUST end with:
   1. A short bullet list of concrete findings (or a single line stating none were found).
   2. If there are findings: a fenced code block containing **exactly one** ready-to-run `/fb` line that folds every finding into a single imperative feedback request, e.g.:
      ```
@@ -48,9 +50,9 @@ Dispatch a **fresh** agent (not a fork — it must not inherit this conversation
 
 ## Step 4 — Report and apply
 
-1. Show me the reviewer's findings and the `/fb` block verbatim — this is the copy-pasteable output the wish asked for, so it must be visible even though the next step also applies it.
-2. If the reviewer found nothing to fix: stop here. Don't invoke `/fb` for a clean PR.
-3. If the reviewer produced an `/fb` line: run it via the `Skill` tool (`skill: "fb"`, `args:` the feedback text after `/fb`). This runs inside the same worktree/checkout from Step 2, so `/fb`'s default (current branch, no `--target`) is correct — do not add `--target` yourself.
+1. Show me the review findings and the `/fb` block verbatim — this is the copy-pasteable output the wish asked for, so it must be visible even though the next step also applies it. In `--here` mode, emit your own report in exactly the same shape.
+2. If the review found nothing to fix: stop here. Don't invoke `/fb` for a clean PR.
+3. If the review produced an `/fb` line: run it via the `Skill` tool (`skill: "fb"`, `args:` the feedback text after `/fb`). This runs inside the same worktree/checkout from Step 2, so `/fb`'s default (current branch, no `--target`) is correct — do not add `--target` yourself.
    - `/fb` wraps `/task --here`, which implements the fix, commits, then runs `/clean` and `/pr` — `/pr` updates the **same** PR (same branch, already pushed) and removes the worktree it's running in once the branch is confirmed pushed. Don't tear down the worktree yourself in this command — `/pr` at the end of that chain already does it.
 
 ## Notes

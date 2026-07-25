@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-07-25
+
+### Changed
+
+- **`review --here` / `review -h` now performs the independent review in the current agent.** Here mode assumes it is already running inside the fresh review agent, so it creates no worktree and spawns no nested reviewer; the default and `--target` flows still use a fresh worktree and fresh agent. The inline review follows the same diff, verification, convention, output, and `/fb` application contract as the default flow.
+
 ## 2026-07-24
 
 ### Added
