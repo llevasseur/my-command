@@ -87,6 +87,11 @@ the only payload that reaches all four install paths:
 | `npx github:llevasseur/my-command` | `installToolkit()` copies it to the device root |
 | `scripts/install-personal.sh` | symlinks the checkout, so `git pull` updates it |
 | `scripts/install-marketplace-personal.sh` | same wizard path |
+| `npm i -g @llevasseur/my-command` | the `my-command-tools` bin runs `src/toolkit/cli.mjs` from the installed package |
+
+The npm bin points at `cli.mjs` directly rather than at the shim: an npm-installed
+package is self-contained, so it should run *its own* toolkit, where the shim would
+hand off to whichever copy the device roots resolve to.
 
 Type safety is not given up for this: `tsconfig.toolkit.json` typechecks the `.mjs`
 with `allowJs` + `checkJs` + `noEmit`, run as `pnpm run check:toolkit`.
@@ -103,12 +108,15 @@ with `allowJs` + `checkJs` + `noEmit`, run as `pnpm run check:toolkit`.
 - **Zero dependencies, Node 22+.** Stdlib only — the toolkit runs from a bare clone
   with nothing installed. Tests use the built-in `node --test` runner.
 - **JSON out, exit code carries the verdict.** 0 success, 1 a failed gate or refused
-  guard, 2 a usage error. A `pass: false` result exits 1.
+  guard, 2 a usage error. A `pass: false` result exits 1. Usage errors are a distinct
+  `UsageError` class precisely so that 2 is reachable — a missing required flag is the
+  caller's mistake, not a verdict about the repo.
 
 ## Acceptance criteria
 
 - [ ] `my-command-tools doctor` resolves from all three roots, reporting which won.
-- [ ] Every verb returns parseable JSON on stdout and nothing else.
+- [ ] Every verb returns parseable JSON on stdout and nothing else, on both its success
+      and its failure path. (`--help` output is prose, by design.)
 - [ ] `commit` refuses the default branch and refuses whole-tree staging.
 - [ ] `worktree end` refuses a worktree with unpushed commits absent `--force`.
 - [ ] `pnpm run check:toolkit` and `pnpm test` pass in CI.

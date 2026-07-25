@@ -34,6 +34,12 @@ const VERBS = {
   doctor,
 };
 
+// Flags that never take a value. Without this list the "next token is my value" rule
+// below eats the token after a switch — `commit --compact a.md b.md` silently drops
+// a.md from the commit, which is precisely the class of mistake this CLI exists to stop.
+// A switch that wants an explicit value can still be spelled `--compact=false`.
+const SWITCHES = new Set(['help', 'compact', 'draft', 'retitle', 'force', 'bootstrap']);
+
 /**
  * @param {string[]} argv
  * @returns {{verb: string, positionals: string[], flags: Record<string, string | boolean | string[]>}}
@@ -65,6 +71,7 @@ export function parseArgs(argv) {
     const key = eq === -1 ? arg.slice(2) : arg.slice(2, eq);
     let value;
     if (eq !== -1) value = arg.slice(eq + 1);
+    else if (SWITCHES.has(key)) value = true;
     // A following token is this flag's value unless it is itself a flag.
     else if (rest[i + 1] !== undefined && !rest[i + 1].startsWith('--')) value = rest[++i];
     else value = true;

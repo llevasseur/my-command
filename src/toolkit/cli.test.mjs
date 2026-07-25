@@ -52,3 +52,18 @@ test('-h is accepted after a verb too', () => {
 test('a bare - stays a positional, since it means read from stdin', () => {
   assert.equal(parseArgs(['commit', '--message', '-']).flags.message, '-');
 });
+
+test('a switch never swallows the path that follows it', () => {
+  const { flags, positionals } = parseArgs(['commit', '--message', 'm', '--compact', 'a.md', 'b.mjs']);
+  assert.equal(flags.compact, true);
+  assert.equal(flags.message, 'm');
+  assert.deepEqual(positionals, ['a.md', 'b.mjs']);
+});
+
+test('every switch stays boolean in front of a positional', () => {
+  for (const sw of ['--draft', '--retitle', '--force', '--bootstrap']) {
+    const { flags, positionals } = parseArgs(['pr', sw, 'kept.md']);
+    assert.equal(flags[sw.slice(2)], true, `${sw} should not take a value`);
+    assert.deepEqual(positionals, ['kept.md'], `${sw} should not eat the positional`);
+  }
+});
