@@ -22,8 +22,10 @@ pushes. Handles machine-generated index/listing conflicts (e.g. okq-generated
 
 ## Behavior
 
-For each in-scope branch: merge latest `main`, resolve conflicts (regenerating
-generated indexes where a resolver script exists), and push the result.
+Preconditions come from the toolkit's `state` verb — repo check, starting branch,
+default branch, and the clean-tree check in one call. Then for each in-scope branch:
+merge latest `main`, resolve conflicts (regenerating generated indexes where a resolver
+script exists), sanity-check with `verify`, and push the result.
 
 ## Related
 

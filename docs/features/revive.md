@@ -74,13 +74,12 @@ the interruption signal.
 
 **Workspace recovery.** The CLI transcript's `cwd`/`gitBranch` identify the
 directory and branch the run was in. An existing directory is resumed in place; a
-missing one is recreated as a worktree checking out that **existing** branch,
-never a fresh branch off `main`, which would abandon the work. A vanished branch
-is reported rather than reconstructed.
+missing one is recreated with `worktree begin --existing`, which checks that branch
+out rather than starting a fresh one off `main` — starting fresh would abandon the
+work. A vanished branch is reported rather than reconstructed.
 
-**Reconciliation before work.** `git status`/`diff`/`log` plus the repo's own gate
-scripts establish what actually landed — steps can complete after the last
-transcript line is written. The outstanding list is what the workflow requires
+**Reconciliation before work.** The toolkit's `state` and `verify` verbs establish
+what actually landed — steps can complete after the last transcript line is written. The outstanding list is what the workflow requires
 minus what's already done, each item carrying the evidence that says it's
 outstanding. Typical leftovers: a generated artifact never regenerated, an edit
 series applied partway, a verification never run, or the wrapping workflow's

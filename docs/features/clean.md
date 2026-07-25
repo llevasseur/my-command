@@ -22,10 +22,12 @@ the point. Only touches comments — never code, logic, formatting, or behavior.
 
 ## Behavior
 
-Computes the branch diff against its merge-base (plus uncommitted changes when
-targeting the current branch) and only considers comments on added/modified lines.
-Deletes restating/narration/ceremony comments, tightens verbose ones, keeps
-load-bearing and structural ones. Never adds comments; does not commit.
+Scope comes from the toolkit's `clean-scope` verb, which reports every comment on a
+line the branch added or modified — across its commits and any uncommitted edits on
+top — with generated/vendored paths and lint directives already excluded. The command
+then does the half a tool can't: deletes restating/narration/ceremony comments, tightens
+verbose ones, keeps load-bearing and structural ones. Never adds comments; does not
+commit.
 
 ## Related
 

@@ -7,6 +7,8 @@ Take a task from a plain-language description all the way to an open PR. The tas
 
 The task is the text in the `<command-args>` block above. Parse leading flags off the front; everything else is the **task criteria**.
 
+**The git plumbing runs through `my-command-tools`.** Every verb prints JSON on stdout — read the fields rather than re-deriving them with your own `git` calls. If the CLI isn't on PATH, run `my-command-tools doctor` and report what it says instead of falling back to hand-rolled shell.
+
 ## Flags
 
 - `--here` / `-h` — do NOT create a worktree. Work on the **current branch** as it is now.
@@ -36,26 +38,28 @@ Honor any condition implied by an associated prompt at the relevant point. If it
 
 ## Step 1 — Set up the workspace
 
-Decide where the work happens **before** touching any code. Base every workspace decision on **live** git state (`git rev-parse --abbrev-ref HEAD`, `git status`), never the session's startup snapshot — it can be stale.
+Decide where the work happens **before** touching any code. Base every workspace decision on **live** git state — `my-command-tools state` — never the session's startup snapshot, which can be stale. It reports `branch`, `defaultBranch`, `onDefaultBranch`, `worktree`, and the `base` it resolved.
 
 - **Default (no flags):** create a fresh worktree branched off the latest `main`.
   - Derive a branch name from the criteria: `<type>/<kebab-summary>`, where `<type>` is `feat` (new feature), `fix` (bug fix), `chore` (maintenance/refactor), or `docs` (docs only). Keep the summary short and specific (e.g. `fix/artifact-panel-scroll`).
-  - **Fetch latest `main` first.** Run `git fetch origin` before creating the worktree — `EnterWorktree`'s base is only as fresh as the local remote-tracking ref, so a stale `origin/main` silently plants your work on old code.
-  - Use the `EnterWorktree` tool with that branch name; it branches from the remote default branch.
-  - **Then confirm the base really is the latest `main`.** Right after entering, compare `git rev-parse HEAD` with `git rev-parse origin/<default-branch>` — depending on the `worktree.baseRef` setting, `EnterWorktree` can branch off local HEAD rather than the freshest `origin/<default>`. If they differ and the new branch has no commits yet, plant it on the latest with `git reset --hard origin/<default-branch>`.
-  - **This counts as an explicit worktree request.** ALWAYS create the worktree via `EnterWorktree`, even in a background/in-place session under `worktree.bgIsolation: "none"`. Do not work in place on the default path — that requires the explicit `--here` / `-h` flag.
-- **`--base <branch>` given:** branch off `<branch>` instead of `main`.
-  - `EnterWorktree` can't target an arbitrary base, so create it manually: `git fetch`, then `git worktree add .claude/worktrees/<branch-name> -b <branch-name> <base>`, then switch into it with `EnterWorktree` using `path: .claude/worktrees/<branch-name>`.
+  - `my-command-tools worktree begin --branch <name> --bootstrap`. It fetches first, so the branch lands on the freshest `origin/<default-branch>` rather than a stale local ref, and it reports the `path` it created and the `base` it used.
+  - Switch into that `path` with the `EnterWorktree` tool. The verb prepares the checkout; moving this session into it is `EnterWorktree`'s job.
+  - **This counts as an explicit worktree request.** ALWAYS create the worktree, even in a background/in-place session under `worktree.bgIsolation: "none"`. Do not work in place on the default path — that requires the explicit `--here` / `-h` flag.
+- **`--base <branch>` given:** add `--base <branch>` to the same `worktree begin` call, then `EnterWorktree` by `path` as above.
 - **`--here` / `-h` given:** stay on the current branch — no worktree.
-  - Check it first: `git rev-parse --abbrev-ref HEAD`. If it's `main` (or the repo's default branch), don't implement on `main` — create a feature branch in place (`git checkout -b <type>/<kebab-summary>`) and tell me you did.
+  - Check `state` first. If `onDefaultBranch` is true, don't implement on `main` — create a feature branch in place (`git checkout -b <type>/<kebab-summary>`) and tell me you did.
 
 ## Step 1.5 — Bootstrap the worktree
 
 **Skip this entirely for `--here`** (the current checkout is already bootstrapped). A fresh worktree has no `node_modules`, no `.env` files, and no generated code — without them `tsc`/`biome`/tests silently under-check or fail outright, so do this **before** implementing.
 
-**Prefer the repo's own bootstrap.** Check for a repo-provided worktree bootstrap first — a `scripts/bootstrap-worktree.sh` (or similar) or a "Worktree Setup" section in `AGENTS.md`/`CLAUDE.md` — and run/follow that. This command must not hardcode any one repo's paths.
+`--bootstrap` in Step 1 already ran the repo's own `scripts/bootstrap-worktree.sh` if it has one. Read the result off that same JSON:
 
-Only if the repo provides nothing, do the generic equivalent:
+- `bootstrapScript` is a path and `bootstrapped.ok` is true → the repo bootstrapped itself. Nothing more to do.
+- `bootstrapped.ok` is false → the repo's own bootstrap failed. Report `bootstrapped.output` and fix that; don't paper over it with the generic fallback.
+- `bootstrapScript` is `null` → the repo has no bootstrap of its own. Check for a "Worktree Setup" section in `AGENTS.md`/`CLAUDE.md` and follow it; if there's nothing there either, do the generic equivalent below. This command must not hardcode any one repo's paths.
+
+The generic fallback:
 
 - **Symlink the gitignored `.env` files** from the main checkout so env stays a single source of truth (never copy or edit — I manage the values). The main checkout is the repo root the worktree branched from; link each `.env` that exists there at the same relative path.
 - **Install dependencies:** run the repo's install (`pnpm install` / `npm ci` / etc.) at the worktree root.
@@ -71,25 +75,28 @@ Treat typecheck errors like "cannot find generated module" or a missing `*.gen.t
 - Follow the repo's own conventions (read `CLAUDE.md`/`AGENTS.md` and match surrounding code — style, naming, tests).
 - For anything non-trivial or ambiguous, plan before coding; for a bug, reproduce before fixing. Use the relevant superpowers skills (brainstorming, systematic-debugging, TDD) rather than guessing.
 - **If the criteria are already satisfied, change nothing.** Some criteria are conditional ("do X if it isn't already the case"). When inspection shows the repo already meets them, do not manufacture edits to justify the run — report what you inspected and what you found, and fall through to Step 3's no-change check.
-- **Verify before claiming done** — run the repo's typecheck / tests / build for what you touched and confirm they pass. Report what you ran.
+- **Verify before claiming done** — `my-command-tools verify`. It discovers the repo's own gates and runs them fastest-failing first, returning no log for a gate that passed and a bounded tail for one that failed. Narrow it with `--only <script,...>` when only part of the repo was touched. Report which gates ran; `pass: false` means you are not done.
 - **Commits are explicitly allowed here.** Invoking `/my-command:task` is your standing permission to commit **on this branch** (never on `main`) — commit the work in logical commits with clear messages without asking again.
-  - Only commit files **you** created or changed for this task. Do **not** commit pre-existing untracked files that carried over from the original workspace (e.g. via a worktree or a dirty checkout) — stage paths explicitly rather than `git add -A`/`git add .`, and leave anything unrelated to your task alone.
+  - `my-command-tools commit --message <text> <path> [<path>...]`, one call per logical commit. Use `--message -` to pipe a multi-line message on stdin.
+  - Paths are always explicit, and the verb refuses `.`/`-A`-style whole-tree staging for exactly this reason: only commit files **you** created or changed for this task. Pre-existing untracked files that carried over from the original workspace (e.g. via a worktree or a dirty checkout) are not yours to ship — the verb reports them under `remaining` so you can confirm they stayed put.
 - If the repo tracks a changelog (e.g. a `changelog` command or `CHANGELOG.md`), add an entry.
 
 ## Step 3 — Clean, then PR (in one fresh subagent)
 
-**First, confirm this run actually produced changes — if it did not, skip this stage.** `/my-command:clean` and `/my-command:pr` only make sense when there is something to ship; on an empty diff they're wasted work and `/my-command:pr` would push a branch and open a PR with no content. Check both halves of the state:
+**First, confirm this run actually produced changes — if it did not, skip this stage.** `/my-command:clean` and `/my-command:pr` only make sense when there is something to ship; on an empty diff they're wasted work and `/my-command:pr` would push a branch and open a PR with no content.
 
-- **Commits from this run:** `git log --oneline <base>..HEAD`, where `<base>` is `origin/<default-branch>` by default, the `--base <branch>` you branched from, or — for `--here` — the commit the branch was at when this run started.
-- **Uncommitted edits:** `git status --porcelain`, ignoring pre-existing untracked files that carried over from the original workspace (the same ones Step 2 forbids committing).
+`my-command-tools state` settles this in one call. Pass `--base <ref>` when this run didn't branch off the default — the `--base <branch>` you used, or for `--here` the commit the branch was at when this run started. Then read:
 
-If both come back empty, **do not dispatch the subagent and do not push.** Go straight to teardown (3), then tell me the criteria were already satisfied, what you checked to establish that, and that no PR was opened. Under `--here`, if the branch carries unpushed commits from *before* this run, leave them alone and say they are there — they are not this run's work to ship.
+- **`hasWork: false`** — nothing to ship. It already accounts for both halves: `commits` since the base, and `changes.tracked`. Untracked strays are reported separately under `changes.untracked` and deliberately don't count, since they're the carryover files Step 2 forbids committing.
+- **`hasWork: true`** — carry on below.
+
+On `false`, **do not dispatch the subagent and do not push.** Go straight to teardown (3), then tell me the criteria were already satisfied, what you checked to establish that, and that no PR was opened. Under `--here`, if the branch carries unpushed commits from *before* this run, leave them alone and say they are there — they are not this run's work to ship.
 
 Otherwise, dispatch **one fresh subagent** via the `Agent` tool, not inline, to run `/my-command:clean` then `/my-command:pr` in sequence on this branch. Both derive their inputs from git (`/my-command:clean` from the branch diff, `/my-command:pr` from `git log`/`git diff`/`gh`), so a fresh context loses nothing while shedding this task's stale file reads, and running them in the same subagent lets `/my-command:pr`'s description pick up whatever `/my-command:clean` touched without a second handoff. The subagent shares this worktree but not this conversation — hand it the branch name and enough context to act alone.
 
 1. **Clean, then PR.** Dispatch the subagent to run **`/my-command:clean`** on this branch first, commit any edits it makes (`/my-command:clean` is branch-aware — committed + staged + unstaged — so it picks up step 2's commits; if nothing changes, there's nothing to commit), then, in the same subagent and same run, run **`/my-command:pr`** — push and open (or update) the PR with a concise bulleted description, passing `--draft` when `--draft`/`-d` was given, plus any title/context I supplied. Tell it **not** to tear down the worktree — leave that to step 3.
-2. **Teardown.** After the subagent returns — or straight away on the no-change path above — if this run used a worktree, remove it here with `ExitWorktree` (`action: "remove"`); the branch is either already pushed or carries no work, so this only discards the local copy. **Remove it even when the PR is a draft** — `--draft`/`-d` controls the PR's review state on GitHub, not the local workspace, and a draft's commits are on origin just the same, so there is nothing left to preserve locally. Skip teardown only for `--here`.
-   - **Expect the commit guard on the shipped path.** With commits on the branch, `action: "remove"` alone refuses (`Worktree has N commits on <branch>`). So once `/my-command:pr` has pushed, confirm `git rev-parse HEAD` equals `git rev-parse origin/<branch>`, then call `ExitWorktree` with `action: "remove"` **and** `discard_changes: true` on the first attempt. If HEAD is ahead of origin, push before tearing down instead of discarding. On the no-change path there are no commits and plain `action: "remove"` is correct.
+2. **Teardown.** After the subagent returns — or straight away on the no-change path above — if this run used a worktree, remove it here with `ExitWorktree` (`action: "remove"`); the branch is either already pushed or carries no work, so this only discards the local copy. Use `ExitWorktree`, not `worktree end`: this session is *inside* the worktree, and only `ExitWorktree` moves the session back out. **Remove it even when the PR is a draft** — `--draft`/`-d` controls the PR's review state on GitHub, not the local workspace, and a draft's commits are on origin just the same, so there is nothing left to preserve locally. Skip teardown only for `--here`.
+   - **Expect the commit guard on the shipped path.** With commits on the branch, `action: "remove"` alone refuses (`Worktree has N commits on <branch>`). So once `/my-command:pr` has pushed, confirm the work is on origin — `my-command-tools state` reports `head`, and it must match `origin/<branch>` — then call `ExitWorktree` with `action: "remove"` **and** `discard_changes: true` on the first attempt. If HEAD is ahead of origin, push before tearing down instead of discarding. On the no-change path there are no commits and plain `action: "remove"` is correct.
 
 ## Notes
 

@@ -104,6 +104,13 @@ tooling however it was invoked:
 ~/.claude/my-command/bin/my-command-tools doctor
 ```
 
+Every workflow command routes its git/gh plumbing through it — `/task` sets up its
+worktree with `worktree begin`, gates on `state`'s `hasWork`, runs the repo's gates
+with `verify`, and commits an explicit path list with `commit`; `/clean` scopes
+itself with `clean-scope`; `/pr` pushes and opens or updates the PR in one `pr`
+call. Judgment stays in the prompts; the toolkit owns only what's identical on
+every run.
+
 See [Command toolkit](./docs/specs/command-toolkit.md).
 
 ### Manual — as a plugin

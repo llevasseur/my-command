@@ -20,11 +20,10 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 
 ## Step 2 — Set up the workspace
 
-- **Default (no `--here`):** put the review in a fresh worktree on the PR's **existing** branch (no `-b`, don't create a new branch):
-  1. `git fetch origin`
-  2. `git worktree add .claude/worktrees/<branch> <branch>` (use the branch's last path segment for the worktree dir if the name contains slashes)
-  3. `EnterWorktree` with `path: .claude/worktrees/<branch>`
-- **`--here` / `-h`:** confirm the current branch (`git rev-parse --abbrev-ref HEAD`) is the PR's `headRefName`. If it isn't, stop and tell me rather than switching branches for you.
+- **Default (no `--here`):** put the review in a fresh worktree on the PR's **existing** branch — `--existing` so the verb checks the branch out rather than creating one over the PR's work:
+  1. `my-command-tools worktree begin --branch <headRefName> --existing --bootstrap` (it fetches first, and reports the `path` it created)
+  2. `EnterWorktree` with that `path`
+- **`--here` / `-h`:** confirm `my-command-tools state` reports `branch` equal to the PR's `headRefName`. If it isn't, stop and tell me rather than switching branches for you.
 
 ## Step 3 — Spawn the review agent
 
@@ -34,7 +33,7 @@ Dispatch a **fresh** agent (not a fork — it must not inherit this conversation
 - Task: verify the PR does what it claims, and compare it against the existing codebase for discrepancies.
   - Read the actual diff: `gh pr diff <number>` or `git diff <base>...<head>`.
   - Check the diff against the PR's own title/description — does the code match what's claimed?
-  - Run whatever the repo's own verification is for the touched area (typecheck/lint/tests/build) and report failures.
+  - Run the repo's own verification with `my-command-tools verify` and report failures — it discovers the repo's gates itself and returns a bounded log for each one that failed.
   - Compare against surrounding code and this repo's own conventions (`AGENTS.md`/`CLAUDE.md`, existing patterns in touched files) for things that clash: inconsistent style, skipped repo-specific steps (e.g. a missing feature doc, an out-of-sync generated file), missed edge cases, dead code, anything the PR description doesn't mention but the diff does.
   - Fold in the extra context from `<command-args>` (if any) as additional review focus.
 - Required output shape — the agent's final report MUST end with:

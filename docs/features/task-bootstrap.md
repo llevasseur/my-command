@@ -21,7 +21,10 @@ A one-time-per-repo setup command: it interviews the repo's stack and generates 
 ## Behavior
 
 Inspects the project (package manager, env files, generated code) and writes a
-repo-specific bootstrap script that `task` prefers over its generic fallback.
+repo-specific bootstrap script that `task` prefers over its generic fallback — the
+same script the toolkit's `worktree begin --bootstrap` runs. Its own workspace comes
+from `worktree begin` *without* `--bootstrap`, since the script it is about to write
+doesn't exist yet.
 
 ## Related
 

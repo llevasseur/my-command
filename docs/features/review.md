@@ -29,11 +29,11 @@ and `/pr` — updating the same PR.
 
 ## Behavior
 
-Resolves the target PR via `gh pr view`, checks it out in a fresh worktree (or
-the current checkout with `--here`), and dispatches a **fresh** (non-fork) agent
-to review it: reads the diff, checks it against the PR's own description, runs
-the repo's verification for touched areas, and compares against existing
-conventions. The agent's report ends with findings plus a fenced `/fb` line (or
+Resolves the target PR via `gh pr view`, checks it out in a fresh worktree with
+`worktree begin --existing` (or the current checkout with `--here`), and dispatches a
+**fresh** (non-fork) agent to review it: reads the diff, checks it against the PR's own
+description, runs the repo's verification with the toolkit's `verify` verb, and compares
+against existing conventions. The agent's report ends with findings plus a fenced `/fb` line (or
 a statement that none is needed). `/review` shows that block, then — if there
 were findings — runs it via the `fb` skill in the same worktree/checkout, so
 `fb`'s default (current branch, no `--target`) applies the fix directly onto
