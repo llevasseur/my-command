@@ -152,8 +152,7 @@ test('worktree begin --existing checks out a branch instead of creating one', ()
   );
   assert.equal(r.existing, true);
   assert.equal(r.branch, 'feat/existing');
-  // The checkout is the branch's own tip, not main's — creating the branch instead
-  // would have silently rebased the work onto whatever main had moved to.
+  // The checkout is the branch's own tip, not main's.
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: r.path, encoding: 'utf8' }).trim();
   assert.equal(head, execFileSync('git', ['rev-parse', 'feat/existing'], { cwd: dir, encoding: 'utf8' }).trim());
 });

@@ -73,18 +73,13 @@ function begin(ctx, cwd) {
 
   const hasLocal = exec('git', ['rev-parse', '--verify', `refs/heads/${branch}`], { cwd }).ok;
 
-  // Applying work onto a branch that already exists is a different operation from
-  // starting one, and confusing them is destructive either way: `-b` on an existing
-  // branch fails outright, while creating one that was meant to be checked out
-  // silently abandons the work already on it.
   if (existing) {
     const hasRemote = exec('git', ['rev-parse', '--verify', `refs/remotes/origin/${branch}`], { cwd }).ok;
     if (!hasLocal && !hasRemote) {
       throw new ToolkitError(`branch does not exist locally or on origin: ${branch}`, { branch });
     }
     // With no local ref, `git worktree add <path> <branch>` creates it from the
-    // remote-tracking ref and sets up tracking — which is what checking out someone
-    // else's pushed branch should do.
+    // remote-tracking ref and sets up tracking.
     const added = exec('git', ['worktree', 'add', path, branch], { cwd });
     if (!added.ok) throw new ToolkitError('git worktree add failed', { code: added.code, stderr: added.stderr });
     return report(ctx, { path, branch, base: null, fetched: fetched.ok, existing: true });
