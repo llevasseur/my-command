@@ -11,7 +11,7 @@ timestamp: 2026-07-25
 ## Summary
 
 A command is agent instructions, not code — but every workflow command (`/task`,
-`/clean`, `/pr`, `/fb`, `/god`, `/revive`) opens by re-deriving the same git state
+`/pr`, `/fb`, `/god`, `/revive`) opens by re-deriving the same git state
 with a volley of one-off shell calls, and re-derives it slightly differently each
 run. `my-command-tools` is a zero-dependency Node CLI that owns that deterministic
 half: it answers "where am I and what did this run produce", runs the repo's own
@@ -35,9 +35,13 @@ noise, what a PR description should say, or whether a failure is worth fixing.
 | `doctor` | where the toolkit resolved from, and what's on PATH |
 
 `state` collapses the rev-parse / status / log / diff opening volley into one call
-and settles `/task`'s no-change gate with a single `hasWork` boolean. `clean-scope`
-is deliberately half a command: extracting *which* comments are in scope is
-mechanical, judging them is not.
+and settles `/task`'s no-change gate with a single `hasWork` boolean.
+
+`clean-scope` ships as a standalone verb, but **no command calls it**. `/clean`
+reads the branch diff itself, on purpose: which comments are worth touching is a
+judgment about the surrounding code, and a pre-filtered list of comment lines
+narrows what the agent looks at right where the wider context is what the call
+depends on. The verb stays for direct use; `/clean`'s scope stays in its prompt.
 
 `worktree begin` covers both ways a run acquires a workspace, and they are not
 interchangeable. Without `--existing` it creates a branch — the `/task` default.

@@ -104,12 +104,12 @@ tooling however it was invoked:
 ~/.claude/my-command/bin/my-command-tools doctor
 ```
 
-Every workflow command routes its git/gh plumbing through it — `/task` sets up its
+The workflow commands route their git/gh plumbing through it — `/task` sets up its
 worktree with `worktree begin`, gates on `state`'s `hasWork`, runs the repo's gates
-with `verify`, and commits an explicit path list with `commit`; `/clean` scopes
-itself with `clean-scope`; `/pr` pushes and opens or updates the PR in one `pr`
-call. Judgment stays in the prompts; the toolkit owns only what's identical on
-every run.
+with `verify`, and commits an explicit path list with `commit`; `/pr` pushes and
+opens or updates the PR in one `pr` call. Judgment stays in the prompts; the
+toolkit owns only what's identical on every run. `/clean` is the deliberate
+exception — its scope call is a judgment call too, so it reads the diff itself.
 
 See [Command toolkit](./docs/specs/command-toolkit.md).
 
