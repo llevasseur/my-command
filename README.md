@@ -24,6 +24,7 @@
 | `sync` | Update this device's installed commands to the latest version from GitHub. |
 | `changelog` | Add a concise entry to the current repo's `CHANGELOG.md`, matching its existing format. |
 | `docs` | Reconcile a repo's [okq](https://github.com/mikevalstar/okq) doc bundle with the code via `/task` — refresh stale docs, add docs for undocumented features, prune docs for things that no longer exist. |
+| `revive` | Resume an interrupted session from its recorded transcript — reconstruct what it was doing, recover its branch/worktree, finish only what's outstanding, and complete the original workflow. |
 | `trim` | Decide whether the current conversation is safe to compact, then provide focused instructions for Claude Code's built-in `/compact`. |
 
 ## Use cases
@@ -54,6 +55,9 @@ parameters change what happens.
 | `docs` | `/docs --base release/2.0` | `--base <branch>` — worktree branched off `release/2.0` instead of `main` (passed through to `/task`). |
 | `docs` | `/docs -n` | `--dry-run` / `-n` — report the plan (stale / missing / obsolete) and change nothing. No worktree, no commit, no PR. |
 | `docs` | `/docs -r features/pr` | Pass flags (`--refresh` / `-r`, `--add` / `-a`, `--prune` / `-p`) run only those passes; trailing text scopes the run to a concept id, path/glob, or topic. `--bundle` / `-b <dir>` picks the bundle, `--yes` / `-y` skips confirmations. |
+| `revive` | `/revive 59da5fc97e6b9465` | Default — resolve the id in claude-proxy's transcript store, recover the branch/worktree the session was in, finish what's outstanding, then complete its workflow (usually `/clean` + `/pr`). |
+| `revive` | `/revive -n 59da5fc97e6b9465` | `--dry-run` / `-n` — report where the session stopped and what remains; change nothing. |
+| `revive` | `/revive --source cli 70c65b5b-ceda-4764-89f0-d68f1db6fff6` | `--source proxy` (default), `cli`, or a `<path>` — pick the transcript store; a 36-char UUID is a CLI session id, a 16-hex id a proxy thread id. |
 | `trim` | `/trim` | Evaluate six evidence-backed safety gates; recommend continuing or emit a tailored `/compact` command. |
 
 The `trim` command adapts the context-compaction strategy introduced by Yujiang Li,

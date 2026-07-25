@@ -42,4 +42,5 @@ isn't already the case") therefore terminate without inventing edits.
 
 - Command source: `src/commands/task.md`
 - Chains: [clean](clean.md), [pr](pr.md); wraps into [fb](fb.md)
+- Resumed by: [revive](revive.md), when a run is interrupted before reaching its PR
 - Spec: [Adding a command](../specs/adding-a-command.md)
