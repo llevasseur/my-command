@@ -1,0 +1,111 @@
+---
+description: Resume an interrupted Claude Code session from its recorded transcript — find where it stopped, finish only what's outstanding, and carry the original workflow to its documented end
+argument-hint: "[--dry-run|-n] [--source proxy|cli|<path>] <session-id> [extra context]"
+---
+
+Pick up a session that stopped mid-flight. A run gets interrupted — cleared, compacted away, killed, or simply abandoned — and its work is left half-applied on a branch somewhere. This command reads that session's recorded transcript, works out what it was doing and where it stopped, finishes what's actually left, and carries the original workflow through to its end.
+
+Your input is the text in the `<command-args>` block above. Parse leading flags off the front; the first bare token is the **session id**, and anything after it is optional extra context that steers the resumption (it never overrides what the transcript and repo state show).
+
+**The transcript tells you intent; the repo tells you state.** Every claim about what is left to do gets re-derived from the working tree, never taken from the transcript on faith.
+
+## Flags
+
+- `--dry-run` / `-n` — report where the session stopped and what remains, and change nothing: no edits, no worktree created, no commit, no PR. Stop after Step 4.
+- `--source proxy` — force the claude-proxy transcript store (the default; see Step 1).
+- `--source cli` — force the Claude Code CLI transcript (`~/.claude/projects/<slug>/<uuid>.jsonl`).
+- `--source <path>` — read that file directly as the transcript, whatever it is.
+- Anything not a recognized flag is the session id, then extra context.
+
+## Step 1 — Resolve the id to a transcript
+
+**Default to the claude-proxy store.** It is a purpose-built per-session digest and the source this command is designed around; the CLI's own JSONL is the fallback.
+
+1. **Read the id's shape** — it tells you which store to look in:
+   - **16 hex characters** (e.g. `59da5fc97e6b9465`) — a proxy **thread id**. The proxy derives it as `sha256(sessionId + "\n" + first-user-text).slice(0, 16)` (`proxy/session.mjs`, `threadIdFor`), so it identifies one *conversation root*, not one CLI session.
+   - **A 36-character UUID** — a Claude Code **session id**. Look for the CLI transcript, and also map it into the proxy store (step 3 below).
+2. **Search the proxy store, live first, then the archive:**
+   - Live: `~/Documents/ghub/personal/claude-proxy/logs/sessions/<id>.md`
+   - Archive: `~/Documents/logs/claude/<date>/sessions/<id>.md` — an external launchd job relocates older days out of the live `logs/` dir, so a session more than a day old will only be there. Glob across dates rather than guessing one.
+   - A `<id>.state.json` sits beside each transcript; it is the writer's append bookkeeping (`count`, `started`), not content. Ignore it.
+3. **Cross-walk the two stores when needed.** A proxy transcript's header carries `- session: <uuid>` — the CLI session id. So:
+   - id → CLI transcript: read that header, then find `~/.claude/projects/*/<uuid>.jsonl`.
+   - UUID → proxy transcript: grep the sessions dir for that uuid (`grep -l "session: <uuid>" …/logs/sessions/*.md`).
+   - **One session can have several thread ids.** Subagents run under the parent's session id with their own conversation root, so the proxy writes each as its own transcript. If the id resolves to a subagent's transcript, the sibling transcripts sharing that `- session:` uuid are the rest of the run — find them before concluding what the session was doing.
+4. **Report the file you resolved and which store it came from**, before reading further.
+5. **If nothing resolves**, say so plainly: the id, the exact paths and globs you searched, and that no transcript exists for it. Do not substitute a different session that looks similar, and do not proceed on the id alone. Stop.
+6. **If the id is the session you are running in right now**, say so — a live session's transcript is still being appended and there is nothing interrupted to revive. Stop unless the extra context makes clear I meant something else.
+
+## Step 2 — Read the transcript and reconstruct what it was doing
+
+A proxy transcript is a **lossy digest, not a replay log**. Its shape (`packages/core/src/sessions.ts` documents it):
+
+```
+# Session <threadId>
+- model: … / - session: <uuid> / - started: <ISO> / - title: … / - subtitle: <first prompt>
+
+## Task: <a user prompt>
+- decided: <assistant reasoning before a tool call, truncated>
+- Bash(command=…)            ← tool calls, arguments truncated
+- ✗ <errored tool result>
+- done: <outcome>
+```
+
+Reasoning lines and tool arguments are cut off mid-string, so you can reconstruct *intent and sequence* but never replay the run verbatim. Extract:
+
+1. **The subtitle and the `## Task:` headings** — the original ask, in the human's words.
+2. **The workflow that was running.** These sessions are usually inside a slash-command pipeline, often nested (`/docs` handing off to `/task`). A `Skill(skill=…)` line names it. **Open that command's own file** (`~/.claude/commands/<name>.md`, or this repo's `src/commands/`) and read its steps — that document, not your guess, defines what "finished" means for this run.
+3. **Where it stopped.** The transcript simply *ending* is the interruption signal — no `done:` on the final task, a `- decided:` line describing an action with no tool calls after it, a series of edits that stops partway. Name the last thing it did and the step it was inside.
+4. **Decisions the human already made.** An `AskUserQuestion()` line followed by a `- decided:` line summarizing the answers means those choices are settled. Honor them; never re-litigate them or quietly pick differently.
+5. **`- ✗` lines** — errors it hit. Some were handled in the next step; some are the reason it stopped.
+
+Report a short reconstruction: the ask, the workflow, the human's decisions, and the last completed step.
+
+## Step 3 — Recover the workspace
+
+Resume **where the work already lives**. Starting a fresh branch off `main` would abandon it.
+
+1. Take the `- session: <uuid>` from the transcript header and read the CLI transcript for that session (`~/.claude/projects/*/<uuid>.jsonl`). Every line carries `cwd` and `gitBranch` — that is the directory and branch the run was in. The project directory name is a slugified path, so it independently confirms the location.
+2. **If that directory still exists**, work there. It is usually a worktree under `.claude/worktrees/`; treat it as the only writable root for this run.
+3. **If it's gone but the branch survives** (locally or on `origin`), recreate a worktree checking out that **existing** branch — `git worktree add .claude/worktrees/<name> <branch>` with no `-b` — and enter it. Never branch fresh off `main`: the interrupted work is on that branch, committed or not.
+4. **If the branch is gone too**, check whether the work landed (`git log --oneline --all --grep`, an open or merged PR via `gh pr list --state all`). Report what you find and stop rather than reconstructing the changes from the transcript.
+5. If the transcript's run was never in a worktree at all (`--here`-style, on a normal branch), just confirm that branch is still checked out and work there.
+
+## Step 4 — Reconcile the transcript against reality
+
+Do this **before** any new work, and trust the repo over the transcript every time.
+
+1. `git status --short`, `git diff --stat`, and `git log --oneline <base>..HEAD` in the recovered workspace. Steps can have landed after the last transcript line was written, and the tree may have moved on since.
+2. Run the repo's **own** gates — the check script, validator, or test command its `AGENTS.md`/`CLAUDE.md` names. They report the current truth in executable form and often name the exact leftover.
+3. Build the outstanding list by **subtracting what's already done** from what the workflow requires. The leftovers that actually show up here:
+   - a **generated artifact** never regenerated after its source changed (an index, a build copy, a lockfile);
+   - a **series of edits applied partway** — the first three files done, the rest untouched;
+   - a **verification step never run**, so nothing confirmed the work;
+   - the **wrapping workflow's tail** — the commit, the cleanup, the PR — never reached.
+4. Report the outstanding list, each item with the evidence that says it's outstanding.
+5. **`--dry-run` / `-n` stops here**, having reported where the session stopped and what remains.
+
+## Step 5 — Finish only what's outstanding
+
+1. Work the outstanding list. **Do not re-run completed work** — no re-auditing files the run already verified, no rewriting edits that already landed.
+2. **Verify every claim against source you read in this session.** The transcript's `- decided:` lines are truncated summaries of someone else's reading; a claim that mattered enough to record is worth re-checking before you build on it. Where the transcript and the code disagree, the code wins and you say so.
+3. Follow the repo's conventions and the interrupted workflow's own rules (a docs-only run stays docs-only; a command with a checklist gets the whole checklist).
+4. If a genuinely ambiguous fork appears — the transcript shows a decision pending and neither the repo nor my extra context settles it — ask me **one** focused question. Don't invent the answer, and don't stall on everything else while you wait: do the independent work first.
+
+## Step 6 — Carry the original workflow to its end
+
+Finishing the edits is not finishing the run. Go back to the workflow you identified in Step 2 and complete **its** documented ending — read that command's file again rather than assuming.
+
+- A run wrapped in `/task` (which is most of them, including everything `/docs`, `/fb`, and `/review` delegate) ends at a **PR**: commit the work on the branch, run `/clean`, then `/pr`, then tear the worktree down. `/task`'s standing permission to commit on that branch carries over — you are completing its run, not starting a new one.
+- A run that was never inside `/task` ends wherever its own instructions say. If that is just "report", report.
+- Do **not** wrap the resumption in a new `/task` invocation: the branch and workspace already exist, and a nested run would create a second worktree for work that is already checked out.
+
+Report at the end: which transcript and store you used, where the session stopped, what you finished, what you deliberately left alone, and the PR number/URL if the workflow ended at one.
+
+## Notes
+
+- **Never fabricate intent.** What the session "meant to do next" is bounded by the transcript plus the current repo state. If they don't support a step, say the transcript doesn't reach that far instead of inventing it.
+- **The human's mid-run decisions stand.** Answers recorded in the transcript are settled input, not a starting point for renegotiation.
+- **Report a miss plainly.** No transcript, a dead branch, a session still running, work already merged — each is a real answer. Say which, with what you checked, and stop.
+- The proxy store is device-local and gitignored; nothing in it is guaranteed to survive, and the archive keeps raw logs on a retention window. An id that resolved yesterday may not resolve today — that's the store's lifecycle, not a bug to work around.
+- A transcript can be long. Read the header and task headings first, then the tail where it stopped; pull the middle only when you need a specific decision.
