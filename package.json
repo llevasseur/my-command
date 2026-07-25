@@ -8,7 +8,8 @@
     "node": ">=22"
   },
   "bin": {
-    "my-command": "dist/my-command.js"
+    "my-command": "dist/my-command.js",
+    "my-command-tools": "src/toolkit/cli.mjs"
   },
   "files": [
     "dist",
@@ -23,7 +24,9 @@
     "lint": "biome lint .",
     "format": "biome check --write .",
     "check": "biome check .",
-    "check:commands": "./scripts/check-commands.sh"
+    "check:commands": "./scripts/check-commands.sh",
+    "check:toolkit": "tsc -p tsconfig.toolkit.json",
+    "test": "node --test \"src/toolkit/**/*.test.mjs\""
   },
   "license": "MIT",
   "author": "Leevon Levasseur",

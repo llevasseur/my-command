@@ -1,18 +1,20 @@
 ---
 type: spec
 title: Install wizard
-description: The npx wizard that installs the command suite as a Claude Code plugin or as bare personal commands, with per-command overwrite.
+description: The npx wizard that installs the command suite as a Claude Code plugin or as bare personal commands, with per-command overwrite and the device-wide toolkit.
 tags: [process, wizard, install]
-timestamp: 2026-07-15
+timestamp: 2026-07-25
 ---
 
 # Install wizard
 
 ## Summary
 
-`npx github:llevasseur/my-command` runs `bin/my-command.mjs`, a zero-dependency
-wizard that installs the command suite one of two ways: a Claude Code plugin or
-bare personal commands copied into `~/.claude/commands`.
+`npx github:llevasseur/my-command` runs `dist/my-command.js` (compiled from
+`src/my-command.ts` by the `prepare` script), a zero-dependency wizard that
+installs the command suite one of two ways: a Claude Code plugin or bare personal
+commands copied into `~/.claude/commands`. Either way it also installs the shared
+[command toolkit](command-toolkit.md).
 
 ## Behavior
 
@@ -24,6 +26,12 @@ bare personal commands copied into `~/.claude/commands`.
   commands run namespaced (`/my-command:<cmd>`) and auto-update on push.
 - **Mode 2 — personal.** Copies each `src/commands/*.md` into `~/.claude/commands`
   as a bare `/<cmd>`.
+- **Both modes install the toolkit.** `installToolkit()` copies `src/toolkit/` to
+  `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/my-command/toolkit`, places the executable
+  shim at `<root>/bin/my-command-tools`, and writes a `VERSION` stamp. Plugin mode
+  gets it too: a plugin command normally resolves via `$CLAUDE_PLUGIN_ROOT`, but the
+  device copy keeps the tooling reachable from anywhere, including bare `/<cmd>`
+  invocations and manual shell use.
 
 ## Overwrite behavior
 
@@ -47,8 +55,12 @@ overwrite prompt.
   `src/commands/<name>.md` includes the command; verify the listing and that the
   overwrite prompt covers it.
 - **New command ⇒ feature doc.** See [Adding a command](adding-a-command.md).
-- The module stays importable: `checkboxPrompt` and `installPersonal` are
-  exported, and `main()` runs only when the file is invoked directly.
+- The module stays importable: `checkboxPrompt`, `installPersonal`, and
+  `installToolkit` are exported, and `main()` runs only when the file is invoked
+  directly.
+- **No install without tooling.** Both modes call `installToolkit()`; dropping the
+  call from either would ship commands whose toolkit calls fail at run time.
+  Enforced by `check-commands.sh`.
 
 ## Acceptance criteria
 
@@ -56,10 +68,12 @@ overwrite prompt.
 - [ ] Personal install offers an overwrite choice for every pre-existing command.
 - [ ] Plugin and personal modes both enumerate the full suite.
 - [ ] Non-interactive install leaves existing commands untouched.
+- [ ] Both modes leave a runnable `my-command-tools` at the device root.
 
 ## Related
 
 - Spec: [Adding a command](adding-a-command.md)
+- Spec: [Command toolkit](command-toolkit.md)
 - ADR: [0002 Command docs as okq specs](../adrs/0002-command-docs-as-okq-specs.md)
 - Command specs live in `features/` — list them with
   `okq --bundle docs find --type feature`.

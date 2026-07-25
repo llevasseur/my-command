@@ -31,3 +31,14 @@ done
 
 echo "Linked $linked command(s) into $DEST_DIR (skipped $skipped)."
 echo "They run as bare slash commands (e.g. /task). Run 'git pull' in $REPO_ROOT to update."
+
+# Point the device-wide toolkit at this clone too, so the shared CLI tracks `git pull`
+# the same way the commands do. Symlinked rather than copied for exactly that reason.
+TOOLKIT_SRC="$REPO_ROOT/src/toolkit"
+if [ -d "$TOOLKIT_SRC" ]; then
+  TOOLKIT_ROOT="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/my-command"
+  mkdir -p "$TOOLKIT_ROOT/bin"
+  ln -sfn "$TOOLKIT_SRC" "$TOOLKIT_ROOT/toolkit"
+  ln -sf "$TOOLKIT_SRC/bin/my-command-tools" "$TOOLKIT_ROOT/bin/my-command-tools"
+  echo "Linked the shared CLI into $TOOLKIT_ROOT/bin/my-command-tools (tracks this clone)."
+fi

@@ -2,7 +2,18 @@
 // MyCommand install wizard. Run with: npx github:llevasseur/my-command
 // Compiled from TypeScript to dist/ so the published bin ships dependency-free.
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, realpathSync } from 'node:fs';
+import {
+  chmodSync,
+  copyFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { stdin as input, stdout as output } from 'node:process';
@@ -12,9 +23,15 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const PKG_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const SRC_DIR = join(PKG_ROOT, 'src', 'commands');
+const TOOLKIT_SRC = join(PKG_ROOT, 'src', 'toolkit');
+const TOOLKIT_BIN = 'my-command-tools';
 const REPO = 'llevasseur/my-command';
 const MARKETPLACE = 'my-command';
 const PLUGIN = 'my-command';
+
+// The device-wide root every command resolves the toolkit from.
+// Keep in step with src/toolkit/lib/paths.mjs and src/toolkit/bin/my-command-tools.
+const deviceRoot = () => join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'my-command');
 
 const commands: string[] = existsSync(SRC_DIR)
   ? readdirSync(SRC_DIR)
@@ -203,6 +220,58 @@ async function installPersonal() {
   console.log(commands.map((c) => `  /${c}`).join('\n'));
 }
 
+interface ToolkitResult {
+  installed: boolean;
+  bin: string;
+  reason?: string;
+}
+
+// Install the shared CLI to a fixed device path. Runs for BOTH install modes on
+// purpose: a command must be able to spell the call one way without knowing whether it
+// was installed as a plugin or copied in bare.
+function installToolkit(): ToolkitResult {
+  const shim = join(TOOLKIT_SRC, 'bin', TOOLKIT_BIN);
+  if (!existsSync(shim)) return { installed: false, bin: '', reason: `no ${TOOLKIT_BIN} in ${TOOLKIT_SRC}` };
+
+  const root = deviceRoot();
+  const dest = join(root, 'toolkit');
+  try {
+    // Replace wholesale rather than merging, so a verb deleted upstream doesn't linger.
+    rmSync(dest, { recursive: true, force: true });
+    // Tests belong to CI, not the device — installing them is dead weight in ~/.claude.
+    cpSync(TOOLKIT_SRC, dest, { recursive: true, filter: (src) => !src.endsWith('.test.mjs') });
+
+    const binDir = join(root, 'bin');
+    mkdirSync(binDir, { recursive: true });
+    const bin = join(binDir, TOOLKIT_BIN);
+    copyFileSync(shim, bin);
+    chmodSync(bin, 0o755);
+    chmodSync(join(dest, 'bin', TOOLKIT_BIN), 0o755);
+    writeFileSync(join(root, 'VERSION'), `${version()} ${new Date().toISOString()}\n`);
+    return { installed: true, bin };
+  } catch (err) {
+    return { installed: false, bin: '', reason: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+function version(): string {
+  try {
+    return JSON.parse(readFileSync(join(PKG_ROOT, 'package.json'), 'utf8')).version || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+function reportToolkit(result: ToolkitResult) {
+  if (result.installed) {
+    console.log(`\nShared CLI installed: ${result.bin}`);
+    console.log(`Check it any time with: ${result.bin} doctor`);
+  } else {
+    console.log(`\nShared CLI not installed (${result.reason}).`);
+    console.log('Commands that shell out to it will report the missing toolkit when run.');
+  }
+}
+
 async function main() {
   console.log('MyCommand — Your Wish is My Command');
   console.log(`Bundles: ${commands.join(', ')}\n`);
@@ -217,8 +286,10 @@ async function main() {
 
   if (choice === '1') {
     await installPlugin();
+    reportToolkit(installToolkit());
   } else if (choice === '2') {
     await installPersonal();
+    reportToolkit(installToolkit());
   } else {
     console.log('Cancelled. Nothing changed.');
   }
@@ -237,4 +308,4 @@ if (invokedDirectly) {
   });
 }
 
-export { checkboxPrompt, installPersonal };
+export { checkboxPrompt, installPersonal, installToolkit };
