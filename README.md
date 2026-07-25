@@ -14,6 +14,7 @@
 | Command | What it does |
 | :------ | :----------- |
 | `task` | Take a task from plain-language criteria to an open PR: isolated branch/worktree, bootstrap, implement, verify, then clean + PR. |
+| `god` | Take a task all the way to **merged**: `task` with `review` woven in, `mc` on conflict, wait for CI, merge the PR into `main`, pull `main`. No human in the loop. |
 | `fb` | Implement a feedback request. Thin wrapper around `task` — current branch by default, or a worktree of an existing branch with `--target`. |
 | `review` | Spawn a fresh agent to review an open PR against the codebase, then apply its findings via `fb`. Worktree by default, or `--here`/`--target` like `fb`. |
 | `pr` | Create/update the PR for the current branch with a concise bulleted description, written straight to GitHub. |
@@ -40,6 +41,9 @@ parameters change what happens.
 | `task` | `/task --base release/2.0 backport the auth fix` | `--base <branch>` — branch off `release/2.0` instead of `main`. |
 | `task` | `/task -d wire up the metrics endpoint` | `--draft` / `-d` — open the resulting PR as a **draft**. |
 | `task` | `/task -a changelog note this once it works add retry logic to the fetch client` | `--add` / `-a <command> <prompt>` — weave `/changelog` into the run per its prompt, then implement the task. Separate multiple added commands with a comma before each next command. |
+| `god` | `/god add a dark-mode toggle to settings` | Default — the whole `/task` pipeline with `/review` woven in, then `/mc` if `main` moved, wait for CI, `gh pr merge --squash`, and pull the new `main`. Merges without asking. |
+| `god` | `/god --auto ship the retry backoff` | `--auto` — don't wait on CI; enable GitHub auto-merge and finish. `--merge`/`--rebase` change the method, `--fix <n>` sets the red-CI repair budget (default 1), `--no-review` skips the woven-in `/review`. |
+| `god` | `/god -h fix the typo in the footer` | `--here` / `-h`, `--base <branch>`, and `--add` / `-a` pass straight through to `/task`. `--draft` / `-d` is rejected — a draft can't merge. |
 | `fb` | `/fb tighten the copy on the empty state` | Default — apply the feedback on the **current branch** (via `/task --here`). |
 | `fb` | `/fb -t feat/checkout-redesign use the brand blue for the CTA` | `--target` / `-t <branch>` — apply the feedback onto **existing** branch `feat/checkout-redesign` in a fresh worktree. |
 | `review` | `/review` | Default — review the current branch's open PR in a fresh worktree with a new agent, then apply its findings via `/fb`. |

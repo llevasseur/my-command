@@ -28,4 +28,6 @@ generated indexes where a resolver script exists), and push the result.
 ## Related
 
 - Command source: `src/commands/mc.md`
+- Called by: [merge-deps](merge-deps.md) per dependency PR, and [god](god.md) when
+  `main` moved under the PR before its merge
 - Spec: [Adding a command](../specs/adding-a-command.md)

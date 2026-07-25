@@ -45,4 +45,6 @@ review/comment — its only output is the `/fb`-ready feedback, shown and applie
 - Command source: `src/commands/review.md`
 - Applies findings via: [fb](fb.md), which wraps [task](task.md) and chains into
   [pr](pr.md) for the actual PR update
+- Woven into: [god](god.md), which adds this as a `task --add` entry so the review
+  runs after `pr` inside that same subagent
 - Spec: [Adding a command](../specs/adding-a-command.md)
