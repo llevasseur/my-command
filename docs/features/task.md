@@ -12,7 +12,7 @@ timestamp: 2026-07-15
 
 Takes free-text criteria and drives the whole pipeline: set up an isolated
 branch/worktree, bootstrap it, implement, verify, then run `/clean` and `/pr` in
-fresh subagents. The end goal is always an open PR.
+one fresh subagent. The end goal is always an open PR.
 
 ## Flags / Parameters
 
@@ -33,7 +33,7 @@ whether or not the PR is a draft — the branch is on origin either way, so it c
 push and passes `discard_changes` up front rather than tripping `ExitWorktree`'s commit
 guard. Never implements or commits on `main`.
 
-Step 3 is gated on the run having produced something: before dispatching the subagents
+Step 3 is gated on the run having produced something: before dispatching the subagent
 it checks this run's commits (`<base>..HEAD`) and uncommitted edits, and when both are
 empty it skips `/clean` and `/pr` entirely, tears the worktree down, and reports that the
 criteria were already satisfied — no push, no empty PR. Conditional criteria ("do X if it

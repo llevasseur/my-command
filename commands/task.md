@@ -1,5 +1,5 @@
 ---
-description: Take a task from criteria to PR — set up an isolated branch/worktree, implement, then /my-command:clean and /my-command:pr
+description: Take a task from criteria to PR — set up an isolated branch/worktree, implement, then /my-command:clean and /my-command:pr in one subagent
 argument-hint: "[--here|-h] [--base <branch>] [--draft|-d] [--add|-a <command + prompt>[, <command + prompt>]] <task criteria>"
 ---
 
@@ -76,20 +76,19 @@ Treat typecheck errors like "cannot find generated module" or a missing `*.gen.t
   - Only commit files **you** created or changed for this task. Do **not** commit pre-existing untracked files that carried over from the original workspace (e.g. via a worktree or a dirty checkout) — stage paths explicitly rather than `git add -A`/`git add .`, and leave anything unrelated to your task alone.
 - If the repo tracks a changelog (e.g. a `changelog` command or `CHANGELOG.md`), add an entry.
 
-## Step 3 — Clean, then PR (in fresh subagents)
+## Step 3 — Clean, then PR (in one fresh subagent)
 
-**First, confirm this run actually produced changes — if it did not, skip both stages.** `/my-command:clean` and `/my-command:pr` only make sense when there is something to ship; on an empty diff they cost a subagent each and `/my-command:pr` would push a branch and open a PR with no content. Check both halves of the state:
+**First, confirm this run actually produced changes — if it did not, skip this stage.** `/my-command:clean` and `/my-command:pr` only make sense when there is something to ship; on an empty diff they're wasted work and `/my-command:pr` would push a branch and open a PR with no content. Check both halves of the state:
 
 - **Commits from this run:** `git log --oneline <base>..HEAD`, where `<base>` is `origin/<default-branch>` by default, the `--base <branch>` you branched from, or — for `--here` — the commit the branch was at when this run started.
 - **Uncommitted edits:** `git status --porcelain`, ignoring pre-existing untracked files that carried over from the original workspace (the same ones Step 2 forbids committing).
 
-If both come back empty, **do not dispatch the clean or PR subagents and do not push.** Go straight to teardown (3), then tell me the criteria were already satisfied, what you checked to establish that, and that no PR was opened. Under `--here`, if the branch carries unpushed commits from *before* this run, leave them alone and say they are there — they are not this run's work to ship.
+If both come back empty, **do not dispatch the subagent and do not push.** Go straight to teardown (3), then tell me the criteria were already satisfied, what you checked to establish that, and that no PR was opened. Under `--here`, if the branch carries unpushed commits from *before* this run, leave them alone and say they are there — they are not this run's work to ship.
 
-Otherwise, run the clean and PR stages **in fresh subagents** via the `Agent` tool, not inline. Both derive their inputs from git (`/my-command:clean` from the branch diff, `/my-command:pr` from `git log`/`git diff`/`gh`), so a fresh context loses nothing while shedding this task's stale file reads. Run them in order, each finishing before the next. The subagents share this worktree but not this conversation — hand each the branch name and enough context to act alone.
+Otherwise, dispatch **one fresh subagent** via the `Agent` tool, not inline, to run `/my-command:clean` then `/my-command:pr` in sequence on this branch. Both derive their inputs from git (`/my-command:clean` from the branch diff, `/my-command:pr` from `git log`/`git diff`/`gh`), so a fresh context loses nothing while shedding this task's stale file reads, and running them in the same subagent lets `/my-command:pr`'s description pick up whatever `/my-command:clean` touched without a second handoff. The subagent shares this worktree but not this conversation — hand it the branch name and enough context to act alone.
 
-1. **Clean.** Dispatch a subagent to run **`/my-command:clean`** on this branch, then commit any edits it makes. `/my-command:clean` is branch-aware (committed + staged + unstaged), so it picks up step 2's commits; if nothing changes, there's nothing to commit.
-2. **PR.** After the clean subagent returns, dispatch a subagent to run **`/my-command:pr`** — push and open (or update) the PR with a concise bulleted description, passing `--draft` when `--draft`/`-d` was given, plus any title/context I supplied. Tell it **not** to tear down the worktree — leave that to step 3.
-3. **Teardown.** After the PR subagent returns — or straight away on the no-change path above — if this run used a worktree, remove it here with `ExitWorktree` (`action: "remove"`); the branch is either already pushed or carries no work, so this only discards the local copy. **Remove it even when the PR is a draft** — `--draft`/`-d` controls the PR's review state on GitHub, not the local workspace, and a draft's commits are on origin just the same, so there is nothing left to preserve locally. Skip teardown only for `--here`.
+1. **Clean, then PR.** Dispatch the subagent to run **`/my-command:clean`** on this branch first, commit any edits it makes (`/my-command:clean` is branch-aware — committed + staged + unstaged — so it picks up step 2's commits; if nothing changes, there's nothing to commit), then, in the same subagent and same run, run **`/my-command:pr`** — push and open (or update) the PR with a concise bulleted description, passing `--draft` when `--draft`/`-d` was given, plus any title/context I supplied. Tell it **not** to tear down the worktree — leave that to step 3.
+2. **Teardown.** After the subagent returns — or straight away on the no-change path above — if this run used a worktree, remove it here with `ExitWorktree` (`action: "remove"`); the branch is either already pushed or carries no work, so this only discards the local copy. **Remove it even when the PR is a draft** — `--draft`/`-d` controls the PR's review state on GitHub, not the local workspace, and a draft's commits are on origin just the same, so there is nothing left to preserve locally. Skip teardown only for `--here`.
    - **Expect the commit guard on the shipped path.** With commits on the branch, `action: "remove"` alone refuses (`Worktree has N commits on <branch>`). So once `/my-command:pr` has pushed, confirm `git rev-parse HEAD` equals `git rev-parse origin/<branch>`, then call `ExitWorktree` with `action: "remove"` **and** `discard_changes: true` on the first attempt. If HEAD is ahead of origin, push before tearing down instead of discarding. On the no-change path there are no commits and plain `action: "remove"` is correct.
 
 ## Notes
