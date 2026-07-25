@@ -28,19 +28,39 @@ faith.
 - `--dry-run` / `-n` — report where the session stopped and what remains; change
   nothing (no edits, no worktree, no commit, no PR). Stops after reconciliation.
 - `--source proxy` — force the claude-proxy transcript store. **This is the default.**
+  Requires `CLAUDE_PROXY_STORE` (see Environment below).
 - `--source cli` — force the Claude Code CLI transcript
   (`~/.claude/projects/<slug>/<uuid>.jsonl`).
 - `--source <path>` — read that file directly as the transcript.
 - Anything after the session id is extra context that steers the resumption; it
   never overrides transcript or repo evidence.
 
+## Environment
+
+The proxy store's location is **never hardcoded** — it is read from the shell
+environment, so the command works regardless of where claude-proxy lives:
+
+| Variable | Required | Meaning |
+| --- | --- | --- |
+| `CLAUDE_PROXY_STORE` | yes, for `--source proxy` | Directory holding the proxy's `<id>.md` session transcripts. |
+| `CLAUDE_PROXY_ARCHIVE` | no | Root that relocated older transcripts live under; searched recursively for `<id>.md`. Unset means the archive is skipped and the command says so. |
+
+```sh
+export CLAUDE_PROXY_STORE="$HOME/path/to/claude-proxy/logs/sessions"
+export CLAUDE_PROXY_ARCHIVE="$HOME/path/to/archived/claude/logs"   # optional
+```
+
+If `CLAUDE_PROXY_STORE` is unset or its path is missing, the command **stops** and
+says so rather than guessing a path or silently falling back — `--source cli` and
+`--source <path>` remain available.
+
 ## Behavior
 
 **Transcript sources.** The default store is claude-proxy's per-session digest at
-`logs/sessions/<threadId>.md`, where the thread id is
+`$CLAUDE_PROXY_STORE/<threadId>.md`, where the thread id is
 `sha256(sessionId + "\n" + first-user-text).slice(0, 16)`. Older days are
-relocated by an external launchd job to `~/Documents/logs/claude/<date>/`, so the
-command searches live logs first and then globs the archive. A transcript's
+relocated out of the live store by the proxy's retention, so the command searches
+the live store first and then globs `$CLAUDE_PROXY_ARCHIVE`. A transcript's
 `- session: <uuid>` header links it back to the CLI session, which lets the
 command walk between the two stores in either direction — and one session id can
 own several thread ids, because each subagent gets its own conversation root and

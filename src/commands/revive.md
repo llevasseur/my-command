@@ -12,7 +12,7 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 ## Flags
 
 - `--dry-run` / `-n` — report where the session stopped and what remains, and change nothing: no edits, no worktree created, no commit, no PR. Stop after Step 4.
-- `--source proxy` — force the claude-proxy transcript store (the default; see Step 1).
+- `--source proxy` — force the claude-proxy transcript store (the default; requires `CLAUDE_PROXY_STORE`, see Step 1).
 - `--source cli` — force the Claude Code CLI transcript (`~/.claude/projects/<slug>/<uuid>.jsonl`).
 - `--source <path>` — read that file directly as the transcript, whatever it is.
 - Anything not a recognized flag is the session id, then extra context.
@@ -21,16 +21,29 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 
 **Default to the claude-proxy store.** It is a purpose-built per-session digest and the source this command is designed around; the CLI's own JSONL is the fallback.
 
+**The store's location is not hardcoded — it comes from the environment.**
+
+- **`CLAUDE_PROXY_STORE` (required)** — the directory the proxy writes session transcripts into, holding `<id>.md` files directly. Read it from the environment (`printenv CLAUDE_PROXY_STORE`); never guess a path, never derive one from a repo checkout or a clone location.
+- **`CLAUDE_PROXY_ARCHIVE` (optional)** — the root that relocated older transcripts live under, typically one subdirectory per day. Search it recursively for `<id>.md`. When it is unset, skip the archive and say so; an id older than the live store's retention simply will not resolve.
+- **If `CLAUDE_PROXY_STORE` is unset or does not point at an existing directory, stop.** Say the variable is unset (or its path is missing), that `--source proxy` cannot run without it, and that it must be exported in the shell environment — e.g. in `~/.zshrc`:
+
+  ```sh
+  export CLAUDE_PROXY_STORE="$HOME/path/to/claude-proxy/logs/sessions"
+  export CLAUDE_PROXY_ARCHIVE="$HOME/path/to/archived/claude/logs"   # optional
+  ```
+
+  Do not search for the store yourself, and do not fall back to the CLI store silently. `--source cli` and `--source <path>` still work without the variable — offer them.
+
 1. **Read the id's shape** — it tells you which store to look in:
-   - **16 hex characters** (e.g. `59da5fc97e6b9465`) — a proxy **thread id**. The proxy derives it as `sha256(sessionId + "\n" + first-user-text).slice(0, 16)` (`proxy/session.mjs`, `threadIdFor`), so it identifies one *conversation root*, not one CLI session.
+   - **16 hex characters** (e.g. `59da5fc97e6b9465`) — a proxy **thread id**. The proxy derives it as `sha256(sessionId + "\n" + first-user-text).slice(0, 16)`, so it identifies one *conversation root*, not one CLI session.
    - **A 36-character UUID** — a Claude Code **session id**. Look for the CLI transcript, and also map it into the proxy store (step 3 below).
 2. **Search the proxy store, live first, then the archive:**
-   - Live: `~/Documents/ghub/personal/claude-proxy/logs/sessions/<id>.md`
-   - Archive: `~/Documents/logs/claude/<date>/sessions/<id>.md` — an external launchd job relocates older days out of the live `logs/` dir, so a session more than a day old will only be there. Glob across dates rather than guessing one.
+   - Live: `$CLAUDE_PROXY_STORE/<id>.md`
+   - Archive: `$CLAUDE_PROXY_ARCHIVE/**/<id>.md` — the proxy's retention moves older days out of the live store, so a session more than a day old will only be there. Glob across the archive rather than guessing a day.
    - A `<id>.state.json` sits beside each transcript; it is the writer's append bookkeeping (`count`, `started`), not content. Ignore it.
 3. **Cross-walk the two stores when needed.** A proxy transcript's header carries `- session: <uuid>` — the CLI session id. So:
    - id → CLI transcript: read that header, then find `~/.claude/projects/*/<uuid>.jsonl`.
-   - UUID → proxy transcript: grep the sessions dir for that uuid (`grep -l "session: <uuid>" …/logs/sessions/*.md`).
+   - UUID → proxy transcript: grep the store for that uuid (`grep -l "session: <uuid>" "$CLAUDE_PROXY_STORE"/*.md`, then the archive).
    - **One session can have several thread ids.** Subagents run under the parent's session id with their own conversation root, so the proxy writes each as its own transcript. If the id resolves to a subagent's transcript, the sibling transcripts sharing that `- session:` uuid are the rest of the run — find them before concluding what the session was doing.
 4. **Report the file you resolved and which store it came from**, before reading further.
 5. **If nothing resolves**, say so plainly: the id, the exact paths and globs you searched, and that no transcript exists for it. Do not substitute a different session that looks similar, and do not proceed on the id alone. Stop.
@@ -38,7 +51,7 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 
 ## Step 2 — Read the transcript and reconstruct what it was doing
 
-A proxy transcript is a **lossy digest, not a replay log**. Its shape (`packages/core/src/sessions.ts` documents it):
+A proxy transcript is a **lossy digest, not a replay log**. Its shape:
 
 ```
 # Session <threadId>
@@ -107,5 +120,5 @@ Report at the end: which transcript and store you used, where the session stoppe
 - **Never fabricate intent.** What the session "meant to do next" is bounded by the transcript plus the current repo state. If they don't support a step, say the transcript doesn't reach that far instead of inventing it.
 - **The human's mid-run decisions stand.** Answers recorded in the transcript are settled input, not a starting point for renegotiation.
 - **Report a miss plainly.** No transcript, a dead branch, a session still running, work already merged — each is a real answer. Say which, with what you checked, and stop.
-- The proxy store is device-local and gitignored; nothing in it is guaranteed to survive, and the archive keeps raw logs on a retention window. An id that resolved yesterday may not resolve today — that's the store's lifecycle, not a bug to work around.
+- The proxy store is device-local and wherever `CLAUDE_PROXY_STORE` points; nothing in it is guaranteed to survive, and the archive keeps transcripts on a retention window. An id that resolved yesterday may not resolve today — that's the store's lifecycle, not a bug to work around.
 - A transcript can be long. Read the header and task headings first, then the tail where it stopped; pull the middle only when you need a specific decision.
