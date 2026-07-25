@@ -3,121 +3,107 @@ description: Take a task all the way to merged — run /my-command:task (with /m
 argument-hint: "[--here|-h] [--base <branch>] [--add|-a <list>] [--squash|--merge|--rebase] [--auto] [--fix <n>] [--no-review] <task criteria>"
 ---
 
-Take a task from a plain-language description all the way to **merged into `main`** — no human in the loop. This is `/my-command:task` plus the last mile: `/my-command:task` opens and reviews the PR, then this command gets that PR green, merges it, and pulls the new `main` down locally.
+`/my-command:task` plus the last mile: `/my-command:task` takes the criteria to a reviewed, open PR; this command gets that PR mergeable and green, merges it into `main`, and pulls the new `main` down. No human in the loop.
 
-The task is the text in the `<command-args>` block above. Parse leading flags off the front; everything else is the **task criteria**, handed to `/my-command:task` verbatim.
+Input is the text in the `<command-args>` block above. Parse leading flags off the front; everything else is the **task criteria**, handed to `/my-command:task` verbatim.
 
-**Announce at start**: the criteria, the merge method, whether review is woven in, and that this run will merge to `main` without asking again. Invoking `/my-command:god` is standing permission to merge this run's own PR — do not stop to confirm the merge.
+**Announce at start**: the criteria, the merge method, whether review is woven in, and that this run will merge to `main` without asking again. Invoking `/my-command:god` is standing permission to merge this run's own PR.
 
 ## Flags
 
-Forwarded to `/my-command:task` untouched:
+Forwarded to `/my-command:task` untouched: `--here` / `-h`, `--base <branch>`, `--add` / `-a <list>` (this command appends its own `review` entry after any entries you pass).
 
-- `--here` / `-h` — no worktree; work on the current branch.
-- `--base <branch>` — branch off `<branch>` instead of `main`.
-- `--add` / `-a <list>` — extra commands to weave into the `/my-command:task` run. This command appends its own `review` entry to whatever list you pass (see Step 2).
+Owned here:
 
-Owned by this command:
-
-- `--squash` / `--merge` / `--rebase` — the method handed to `gh pr merge`. Mutually exclusive; if more than one is given, stop and ask which. Default: `--squash`.
-- `--auto` — don't wait on CI. Enable GitHub auto-merge (`gh pr merge --auto`) so the PR lands whenever its required checks pass, and finish without waiting. The final `main` pull is skipped, and the report says the merge is queued rather than landed.
-- `--fix <n>` — how many auto-repair rounds to spend on red CI before giving up. Default: `1`. `--fix 0` disables repair — a red PR ends the run.
+- `--squash` (default) / `--merge` / `--rebase` — method handed to `gh pr merge`. Mutually exclusive.
+- `--auto` — don't wait on CI. Enable auto-merge and finish; the `main` pull is skipped and the PR is reported as queued.
+- `--fix <n>` — auto-repair rounds spent on red CI. Default `1`; `0` disables repair.
 - `--no-review` — don't weave `/my-command:review` into the `/my-command:task` run.
-- `--draft` / `-d` is **rejected**: a draft PR can't be merged, so it contradicts this command. Stop and tell me to use `/my-command:task -d` instead.
-- Anything not a recognized flag is part of the task criteria.
+- `--draft` / `-d` — **rejected**: a draft can't merge. Stop and say to use `/my-command:task -d` instead.
+- Anything not a recognized flag is task criteria.
 
 ## Step 1 — Preconditions
 
-1. Confirm you are inside a git repo (`git rev-parse --is-inside-work-tree`) and `gh` is authenticated (`gh auth status`). If not, stop.
-2. Record the starting branch (`START_BRANCH=$(git rev-parse --abbrev-ref HEAD)`) and the **main checkout path** (`git rev-parse --path-format=absolute --git-common-dir`, minus `/.git`) — Step 7 pulls `main` there, and by then `/my-command:task` may have torn down the worktree this started in.
-3. Identify the default branch: `git remote show origin | sed -n 's/.*HEAD branch: //p'`. Call it `MAIN`; `main` below is shorthand for it.
-4. If the criteria are too vague to act on, ask one focused clarifying question now — before `/my-command:task` spins up a worktree. This is the **only** point in the run where a question is allowed.
+**Never ask a question — this command runs unattended.** If any precondition below is unmet or unresolvable, error out and explain what is missing and why the run cannot proceed.
+
+1. Inside a git repo (`git rev-parse --is-inside-work-tree`) and `gh` is authenticated (`gh auth status`).
+2. Record the starting branch and the **main checkout path** (`git rev-parse --path-format=absolute --git-common-dir`, minus `/.git`) — Step 7 pulls `main` there, and by then `/my-command:task` may have torn down the worktree this started in.
+3. Resolve the default branch (`git remote show origin | sed -n 's/.*HEAD branch: //p'`); `main` below is shorthand for it.
+4. The criteria are specific enough to act on and no mutually exclusive flags conflict.
 
 ## Step 2 — Run `/my-command:task`, with `/my-command:review` woven in
 
-Invoke `/my-command:task` with the forwarded flags and the criteria, and let it own the whole branch → implement → verify → `/my-command:clean` → `/my-command:pr` → teardown pipeline. Do not re-implement any of it here.
+Invoke `/my-command:task` with the forwarded flags and the criteria; it owns the whole branch → implement → verify → `/my-command:clean` → `/my-command:pr` → teardown pipeline. Don't re-implement any of it here.
 
 Unless `--no-review` was given, append this entry to `/my-command:task`'s `--add` list (after any entries I passed, so mine keep their order):
 
 ```
-review after /my-command:pr has opened or updated the PR, run /my-command:review --here in that same subagent before any teardown, and resolve its outcome there too — show the findings and the /my-command:fb block verbatim, then, if it emitted an /my-command:fb line, run that line yourself in this same subagent so the PR is review-clean before it is merged; if the reviewer signed off with no findings, that is the finished state — run no /my-command:fb and return. Either way, do not hand the /my-command:fb line back to the parent to run.
+review after /my-command:pr has opened or updated the PR, run /my-command:review --here in that same subagent before any teardown, and carry /my-command:review through to its own end there — including running the /my-command:fb it emits, if it emits one. Show the reviewer's output verbatim. Never hand remaining review work back to the parent.
 ```
 
-Why `--here` and why "same subagent": `/my-command:task`'s step 3 runs `/my-command:clean` then `/my-command:pr` in one subagent and tells it **not** to tear down the worktree, so that subagent is still sitting on the PR's branch with the PR already pushed — exactly what `/my-command:review --here` needs. A `--target` there would nest a second worktree for the branch it is already in. `/my-command:review`'s own `/my-command:fb` chain re-enters `/my-command:task --here` and updates the same PR.
-
-**Both review outcomes terminate inside that subagent** — this is `/my-command:review`'s own step 4, not something this command adds. Findings → it runs the `/my-command:fb` line itself via the `Skill` tool and the PR is updated in place; a clean review ("LGTM", no findings) → it stops without invoking `/my-command:fb`, which is a complete result, not a missing step. Nothing about the review comes back to this command as pending work: by the time `/my-command:task` returns, the PR is either already review-clean or was never dirty. Step 3 picks up from there.
+`--here` because that subagent is already sitting on the PR's branch with the PR pushed. `/my-command:review` resolves both of its outcomes in place, so by the time `/my-command:task` returns the PR is either review-clean or was never dirty — nothing comes back here as pending work.
 
 Then:
 
-- **If `/my-command:task` reports no changes and no PR** (its criteria were already satisfied), there is nothing to merge. Skip to Step 8 and report that — do not open a PR, do not touch `main`.
-- **Otherwise** capture the branch name and PR number/URL from `/my-command:task`'s report.
+- **`/my-command:task` reports no changes and no PR** (criteria already satisfied) → skip to Step 8. No PR, no merge, don't touch `main`.
+- **Otherwise** capture the branch name and PR number/URL from its report.
 
 ## Step 3 — Resolve the PR
 
-Re-resolve the PR from git rather than trusting the hand-off text: `gh pr view <branch> --json number,url,headRefName,baseRefName,state,isDraft,mergeable`.
+Re-resolve from git rather than trusting the hand-off text: `gh pr view <branch> --json number,url,headRefName,baseRefName,state,isDraft,mergeable`.
 
-- Only ever act on the PR whose `headRefName` is **this run's branch**. Never merge a PR this run did not create or update.
-- If it is a draft (a `--draft` slipped through some inner command), `gh pr ready <number>` before merging.
-- If `state` is already `MERGED`, skip to Step 7.
+- Only act on the PR whose `headRefName` is **this run's branch**. Never merge a PR this run did not create or update.
+- Draft (a `--draft` slipped through an inner command) → `gh pr ready <number>` first.
+- Already `MERGED` → skip to Step 7.
 
 ## Step 4 — Make it mergeable (`/my-command:mc` on conflict)
 
-`main` may have moved while `/my-command:task` was working. Test for conflicts **locally** — `git fetch origin` then `git merge-tree --write-tree main <branch>` — and do not trust GitHub's `mergeable` field, which is computed lazily and reports `UNKNOWN` for a freshly pushed branch.
+`main` may have moved while `/my-command:task` worked. Test **locally** — `git fetch origin`, then `git merge-tree --write-tree main <branch>`; GitHub's `mergeable` is lazy and reports `UNKNOWN` for a fresh branch.
 
-- **No conflict** → go to Step 5.
-- **Conflict** → run **`/my-command:mc -t <branch>`**. It merges the latest `main` into the branch one conflict at a time and pushes. If `/my-command:mc` puts the branch in its 🔴 "needs human" list, **stop**: report the branch, the files, and why, and leave the PR open and unmerged. That is the one failure this command cannot drive through.
-- After a successful `/my-command:mc`, the branch has new commits, so CI restarts — Step 5's wait covers the new run, not the stale one.
+- **No conflict** → Step 5.
+- **Conflict** → run **`/my-command:mc -t <branch>`**. If it puts the branch in its 🔴 "needs human" list, **stop**: report the branch, the files, and why, and leave the PR open. That is the one failure this command cannot drive through.
+- After a successful `/my-command:mc` the branch has new commits, so Step 5 waits on the new CI run, not the stale one.
 
 ## Step 5 — Get it green
 
-- **`--auto` given:** skip the wait entirely; Step 6 hands the merge to GitHub's auto-merge.
-- **Otherwise:** wait on the checks — `gh pr checks <number> --watch --fail-fast`. A PR with no required checks returns immediately; that's a pass, not an error.
+- **`--auto`** → skip the wait; Step 6 hands the merge to GitHub.
+- **Otherwise** → `gh pr checks <number> --watch --fail-fast`. A PR with no required checks returns immediately; that's a pass.
 
-If checks come back red and the repair budget (`--fix <n>`, default `1`) is not exhausted:
+Red, with repair budget (`--fix <n>`, default `1`) left:
 
-1. Collect the failure: `gh pr checks <number>` for which check, and the failing job's log (`gh run view <run-id> --log-failed`) for why.
-2. Spend one round: **`/my-command:fb -t <branch> <the failing check, the error, and what needs to change>`** — that wraps `/my-command:task --here` in a worktree of the existing branch, fixes, commits, `/my-command:clean`s, and updates the same PR.
-3. Re-run the wait. Decrement the budget.
+1. Collect the failure: `gh pr checks <number>` for which check, `gh run view <run-id> --log-failed` for why.
+2. Spend a round: **`/my-command:fb -t <branch> <the failing check, the error, and what needs to change>`**.
+3. Re-run the wait; decrement the budget.
 
-When the budget runs out with CI still red, **stop**: report the failing checks and the rounds spent, and leave the PR open. Never merge a red PR, and never reach for `--admin` to get around one.
+Budget exhausted with CI still red → **stop**: report the failing checks and rounds spent, leave the PR open. Never merge a red PR; never reach for `--admin`.
 
 ## Step 6 — Merge into `main`
 
 Merge through GitHub so branch protection is honored — never push to `main` directly:
 
-- `--auto` given → `gh pr merge <number> --<method> --delete-branch --auto`; record the PR as **queued**.
-- Otherwise → `gh pr merge <number> --<method> --delete-branch`; record it as **merged**.
-  - If GitHub rejects it because required checks are still pending, re-run the same command **with `--auto`** and record it as queued.
-  - If GitHub rejects it as **not mergeable** (`main` moved between Step 4 and here), go back to Step 4 once and retry. Twice in a row means a human is needed — stop and report.
+- `--auto` → `gh pr merge <number> --<method> --delete-branch --auto`; record as **queued**.
+- Otherwise → `gh pr merge <number> --<method> --delete-branch`; record as **merged**.
+  - Rejected for pending required checks → re-run the same command **with `--auto`** and record as queued.
+  - Rejected as **not mergeable** (`main` moved) → back to Step 4 once, then retry. Twice in a row means a human is needed — stop and report.
 
 ## Step 7 — Pull `main`
 
-Skip this for a **queued** PR — nothing has landed yet; say so in the report instead.
+Skip for a **queued** PR — nothing has landed; say so in the report instead.
 
 In the **main checkout** recorded in Step 1 (not a worktree — `/my-command:task` removed the one it made):
 
 1. `git checkout main`
 2. `git pull --ff-only origin main` — if the fast-forward fails, stop and report; local `main` has diverged and needs a human.
-3. `git fetch --prune` and delete the merged local branch if `--delete-branch` left one behind (`git branch -d <branch>`; never `-D`).
+3. `git fetch --prune`, and delete the merged local branch if one is left behind (`git branch -d <branch>`; never `-D`).
 
-Under `--here` this leaves you on `main` rather than the branch you started on — that branch is merged and deleted, so `main` is the right landing spot. Say so in the report.
+Under `--here` this leaves you on `main` rather than the branch you started on — that branch is merged and deleted. Say so in the report.
 
 ## Step 8 — Report
 
-One concise summary:
-
-- Branch and PR number/URL.
-- What `/my-command:review` found and what was applied (or that it was clean / skipped).
-- Whether `/my-command:mc` ran, and on which files.
-- CI: green first try, or the repair rounds spent.
-- ✅ merged into `main` and pulled — or ⏳ queued for auto-merge — or 🔴 stopped, with the reason and the PR left open.
-- On a no-change run: no PR was opened, and what established that.
+One concise summary: branch and PR number/URL; what `/my-command:review` found and what was applied (or clean / skipped); whether `/my-command:mc` ran and on which files; CI green first try or the repair rounds spent; and the outcome — ✅ merged into `main` and pulled, ⏳ queued for auto-merge, or 🔴 stopped with the reason and the PR left open. On a no-change run: no PR was opened, and what established that.
 
 ## Notes
 
-- **No human in the loop is the point.** Between Step 1's optional clarifying question and Step 8, don't stop to confirm anything you have a defined path for — that includes the merge itself. Do stop for the four things with no safe automatic answer: an unresolvable `/my-command:mc` conflict, CI still red after the repair budget, a diverged local `main`, and a PR that isn't this run's.
-- **`/my-command:task` owns the branch, the commits, the PR, and the teardown.** This command adds only the last mile. Never implement, commit, or clean up here.
-- Never commit or push to `main` directly; the merge always goes through `gh pr merge`.
-- Never use `--admin` to bypass branch protection or a failing required check, and never force-push.
-- `--draft` is incompatible by construction — a draft can't merge.
-- Report the branch up front and the PR number/URL plus its merge state at the end.
+- **No human in the loop is the point.** Never stop to confirm anything you have a defined path for — including the merge. Do stop for the four things with no safe automatic answer: an unresolvable `/my-command:mc` conflict, CI still red after the repair budget, a diverged local `main`, and a PR that isn't this run's.
+- **`/my-command:task` owns the branch, the commits, the PR, and the teardown.** This command adds only the last mile — never implement, commit, or clean up here.
+- Never commit or push to `main` directly, never use `--admin`, never force-push.
