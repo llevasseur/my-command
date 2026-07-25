@@ -55,10 +55,21 @@ parameters change what happens.
 | `docs` | `/docs --base release/2.0` | `--base <branch>` — worktree branched off `release/2.0` instead of `main` (passed through to `/task`). |
 | `docs` | `/docs -n` | `--dry-run` / `-n` — report the plan (stale / missing / obsolete) and change nothing. No worktree, no commit, no PR. |
 | `docs` | `/docs -r features/pr` | Pass flags (`--refresh` / `-r`, `--add` / `-a`, `--prune` / `-p`) run only those passes; trailing text scopes the run to a concept id, path/glob, or topic. `--bundle` / `-b <dir>` picks the bundle, `--yes` / `-y` skips confirmations. |
-| `revive` | `/revive 59da5fc97e6b9465` | Default — resolve the id in claude-proxy's transcript store, recover the branch/worktree the session was in, finish what's outstanding, then complete its workflow (usually `/clean` + `/pr`). |
+| `revive` | `/revive 59da5fc97e6b9465` | Default — resolve the id in claude-proxy's transcript store (`$CLAUDE_PROXY_STORE`), recover the branch/worktree the session was in, finish what's outstanding, then complete its workflow (usually `/clean` + `/pr`). |
 | `revive` | `/revive -n 59da5fc97e6b9465` | `--dry-run` / `-n` — report where the session stopped and what remains; change nothing. |
 | `revive` | `/revive --source cli 70c65b5b-ceda-4764-89f0-d68f1db6fff6` | `--source proxy` (default), `cli`, or a `<path>` — pick the transcript store; a 36-char UUID is a CLI session id, a 16-hex id a proxy thread id. |
 | `trim` | `/trim` | Evaluate six evidence-backed safety gates; recommend continuing or emit a tailored `/compact` command. |
+
+`revive`'s default proxy source is location-agnostic: export **`CLAUDE_PROXY_STORE`**
+(the directory holding `<id>.md` transcripts) and optionally **`CLAUDE_PROXY_ARCHIVE`**
+(where older days are relocated) in your shell. Without `CLAUDE_PROXY_STORE`,
+`/revive` fails fast instead of guessing a path — `--source cli` and
+`--source <path>` still work.
+
+```sh
+export CLAUDE_PROXY_STORE="$HOME/path/to/claude-proxy/logs/sessions"
+export CLAUDE_PROXY_ARCHIVE="$HOME/path/to/archived/claude/logs"   # optional
+```
 
 The `trim` command adapts the context-compaction strategy introduced by Yujiang Li,
 Zhenyu Hou, Yi Jing, Jie Tang, and Yuxiao Dong in
