@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-07-26
+
+### Added
+
+- **`improve` command** — turn claude-proxy's session suggestions into an implemented change, so the advice about how this agent works stops being something a human reads and starts being something that ships. claude-proxy scores every ten recorded sessions for ways to reach the same outcome in fewer steps — independent reads issued one at a time, an error rediscovered session after session, a guardrail refusing a call the agent had already decided to make, a file read three times in one run — and `/improve` reads those findings, keeps only the ones still **pending**, composes them into criteria, and hands them to `/task` in one fresh subagent. `--range` / `-r` picks the buckets (one `9`, a list `2,3,9`, a span `2-9`, or a mix `2-4,9`; every bucket by default), `--dry-run` / `-n` reports the pending set and the criteria without running anything, and `--here` / `-h`, `--base <branch>`, `--draft` / `-d`, `--add` / `-a` pass straight through to `/task` rather than being reinterpreted here. The claude-proxy dependency follows `/revive`'s pattern exactly: **`CLAUDE_PROXY_STORE`** is read from the environment and its parent/grandparent give the log directory and the checkout — an unset variable is a stop with an explanation, never a filesystem search or a hardcoded fallback. Suggestions are read via `LOG_DIR=… pnpm --filter server suggestions list -s pending -d --json`, which reads the log directory directly and so needs **no running proxy server**. The loop closes at the end: only the criteria the subagent reports as *implemented* are marked `done` with the PR as the note (`suggestions mark -r <bucket> -i <ids> -s done -n <url>`), so a dropped or deferred suggestion stays `pending` and returns on the next run instead of being quietly lost — and a later `/improve` over the same range never re-proposes what already shipped. Grouping happens before dispatch (the same rule tripping in several buckets is one improvement with more evidence, not several), the command creates no worktree and makes no edits of its own, and it never pads the run with improvements the suggestions don't support — every change traces back to a finding with its own evidence and source sessions. Ships with `docs/features/improve.md` and README entries.
+
 ## 2026-07-25
 
 ### Added

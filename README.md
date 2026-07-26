@@ -26,6 +26,7 @@
 | `changelog` | Add a concise entry to the current repo's `CHANGELOG.md`, matching its existing format. |
 | `docs` | Reconcile a repo's [okq](https://github.com/mikevalstar/okq) doc bundle with the code via `/task` — refresh stale docs, add docs for undocumented features, prune docs for things that no longer exist. |
 | `revive` | Resume an interrupted session from its recorded transcript — reconstruct what it was doing, recover its branch/worktree, finish only what's outstanding, and complete the original workflow. |
+| `improve` | Turn claude-proxy's session suggestions into an implemented improvement — read the pending findings for a range of session buckets, hand them to `task` as criteria, and flag what shipped as done. |
 | `trim` | Decide whether the current conversation is safe to compact, then provide focused instructions for Claude Code's built-in `/compact`. |
 
 ## Use cases
@@ -62,13 +63,20 @@ parameters change what happens.
 | `revive` | `/revive 59da5fc97e6b9465` | Default — resolve the id in claude-proxy's transcript store (`$CLAUDE_PROXY_STORE`), recover the branch/worktree the session was in, finish what's outstanding, then complete its workflow (usually `/clean` + `/pr`). |
 | `revive` | `/revive -n 59da5fc97e6b9465` | `--dry-run` / `-n` — report where the session stopped and what remains; change nothing. |
 | `revive` | `/revive --source cli 70c65b5b-ceda-4764-89f0-d68f1db6fff6` | `--source proxy` (default), `cli`, or a `<path>` — pick the transcript store; a 36-char UUID is a CLI session id, a 16-hex id a proxy thread id. |
+| `improve` | `/improve` | Default — read **every** session bucket's pending suggestions from claude-proxy (`$CLAUDE_PROXY_STORE`), compose them into criteria, run `/task` on them in a subagent, then mark what shipped as `done`. |
+| `improve` | `/improve -r 2-9` | `--range` / `-r <spec>` — only those buckets. One (`9`), a list (`2,3,9`), a span (`2-9`), or a mix (`2-4,9`). |
+| `improve` | `/improve -n -r 9` | `--dry-run` / `-n` — report the pending suggestions and the criteria they compose into; no subagent, no PR, nothing marked. |
+| `improve` | `/improve -d -r 9 only the serial-discovery findings` | `--here` / `-h`, `--base <branch>`, `--draft` / `-d`, `--add` / `-a` pass straight through to `/task`; trailing text narrows which pending suggestions to act on. |
 | `trim` | `/trim` | Evaluate six evidence-backed safety gates; recommend continuing or emit a tailored `/compact` command. |
 
 `revive`'s default proxy source is location-agnostic: export **`CLAUDE_PROXY_STORE`**
 (the directory holding `<id>.md` transcripts) and optionally **`CLAUDE_PROXY_ARCHIVE`**
 (where older days are relocated) in your shell. Without `CLAUDE_PROXY_STORE`,
 `/revive` fails fast instead of guessing a path — `--source cli` and
-`--source <path>` still work.
+`--source <path>` still work. `improve` reads the same variable: its parent is the
+log directory the suggestion flags live in, and the directory above that is the
+claude-proxy checkout whose `suggestions` CLI it calls. Without it, `/improve`
+stops rather than searching for a checkout.
 
 ```sh
 export CLAUDE_PROXY_STORE="$HOME/path/to/claude-proxy/logs/sessions"
