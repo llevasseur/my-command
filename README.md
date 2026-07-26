@@ -105,12 +105,19 @@ It asks how you want them installed:
 
 Either choice also installs the **command toolkit** — a zero-dependency Node CLI
 the commands call for the deterministic git/gh plumbing of a workflow run. It
-lands device-wide at `~/.claude/my-command/`, so every command reaches the same
-tooling however it was invoked:
+lands device-wide at `~/.claude/my-command/` **and gets linked onto your PATH**,
+because commands spell the call as a bare `my-command-tools` — landing on the
+device alone would leave it installed and invisible at the same time. In a new
+shell:
 
 ```bash
-~/.claude/my-command/bin/my-command-tools doctor
+my-command-tools doctor
 ```
+
+`doctor`'s `onPath` block reports whether that bare call resolves and whether it
+resolves to this install's shim. If the installer found neither `~/.local/bin` nor
+`~/bin` on your PATH it links nothing and prints the `ln -s` line to run — it never
+edits a shell profile.
 
 The workflow commands route their git/gh plumbing through it — `/task` sets up its
 worktree with `worktree begin`, gates on `state`'s `hasWork`, runs the repo's gates

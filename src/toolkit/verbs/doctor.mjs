@@ -6,13 +6,14 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { candidateRoots, deviceRoot } from '../lib/paths.mjs';
+import { candidateRoots, deviceRoot, deviceShim, findOnPath, linkDirs, TOOLKIT_BIN } from '../lib/paths.mjs';
 import { run as exec } from '../lib/proc.mjs';
 
 export const usage = `doctor
 
-Report where the toolkit resolved from, which install roots exist, and whether the
-external tools the verbs shell out to are available.`;
+Report where the toolkit resolved from, which install roots exist, whether a bare
+${TOOLKIT_BIN} call resolves on PATH, and whether the external tools the verbs shell
+out to are available.`;
 
 const HERE = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -34,6 +35,22 @@ function real(p) {
   }
 }
 
+/**
+ * Whether a bare `my-command-tools` call resolves, and to the shim this install placed.
+ * A caller reporting "not installed" while `installed` is true is really reporting this.
+ */
+function pathReachability() {
+  const shim = deviceShim();
+  const resolved = findOnPath(TOOLKIT_BIN);
+  return {
+    reachable: resolved !== null,
+    resolved,
+    // A different my-command-tools means commands run a copy this install does not control.
+    isDeviceShim: resolved !== null && real(resolved) === real(shim),
+    hint: resolved !== null ? null : `ln -s ${shim} ${join(linkDirs()[0], TOOLKIT_BIN)} (or re-run the installer)`,
+  };
+}
+
 export function run() {
   const roots = candidateRoots().map((c) => ({ ...c, exists: existsSync(join(c.path, 'cli.mjs')) }));
   const device = deviceRoot();
@@ -50,6 +67,7 @@ export function run() {
     roots,
     deviceRoot: device,
     installed: existsSync(join(device, 'toolkit', 'cli.mjs')),
+    onPath: pathReachability(),
     version: existsSync(stamp) ? readFileSync(stamp, 'utf8').trim() : null,
     node: process.version,
     git: probe('git', ['--version']),

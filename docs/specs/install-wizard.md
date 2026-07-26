@@ -32,6 +32,12 @@ commands copied into `~/.claude/commands`. Either way it also installs the share
   gets it too: a plugin command normally resolves via `$CLAUDE_PLUGIN_ROOT`, but the
   device copy keeps the tooling reachable from anywhere, including bare `/<cmd>`
   invocations and manual shell use.
+- **And put it on PATH.** `linkOnPath()` links that shim into the first of
+  `~/.local/bin`, `~/bin` already on PATH, because commands call it by bare name —
+  see [command toolkit](command-toolkit.md#reachable-by-name). It never edits a shell
+  profile: with neither candidate on PATH it prints the `ln -s` and `export PATH=…`
+  lines and says plainly that commands cannot reach the CLI yet. Re-running is
+  idempotent, and a non-symlink already under that name is left untouched.
 
 ## Overwrite behavior
 
@@ -55,12 +61,15 @@ overwrite prompt.
   `src/commands/<name>.md` includes the command; verify the listing and that the
   overwrite prompt covers it.
 - **New command ⇒ feature doc.** See [Adding a command](adding-a-command.md).
-- The module stays importable: `checkboxPrompt`, `installPersonal`, and
-  `installToolkit` are exported, and `main()` runs only when the file is invoked
-  directly.
+- The module stays importable: `checkboxPrompt`, `installPersonal`,
+  `installToolkit`, and `linkOnPath` are exported, and `main()` runs only when the
+  file is invoked directly.
 - **No install without tooling.** Both modes call `installToolkit()`; dropping the
   call from either would ship commands whose toolkit calls fail at run time.
   Enforced by `check-commands.sh`.
+- **No tooling without PATH.** `installToolkit()` calls `linkOnPath()`; a shim that is
+  installed but unlinked reads to a command as "not installed". Enforced by
+  `check-commands.sh`.
 
 ## Acceptance criteria
 
@@ -69,6 +78,9 @@ overwrite prompt.
 - [ ] Plugin and personal modes both enumerate the full suite.
 - [ ] Non-interactive install leaves existing commands untouched.
 - [ ] Both modes leave a runnable `my-command-tools` at the device root.
+- [ ] Both modes leave it callable as a bare `my-command-tools` in a new shell, or say
+      why not and how to fix it.
+- [ ] A second run reports the existing PATH link rather than duplicating or breaking it.
 
 ## Related
 
