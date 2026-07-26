@@ -237,12 +237,11 @@ interface PathLink {
   reason?: string;
 }
 
-// Directories a PATH link may go in, most preferred first. Both are user-owned by
-// convention, so this needs no elevation and no shell profile edit.
+// Directories a PATH link may go in, most preferred first. User-owned, so no elevation.
 // Keep in step with linkDirs() in src/toolkit/lib/paths.mjs and install-personal.sh.
 const linkDirs = () => [join(homedir(), '.local', 'bin'), join(homedir(), 'bin')];
 
-/** Fully resolved path, or null when it doesn't resolve (a dangling link, a missing file). */
+/** Fully resolved path, or null when it doesn't resolve. */
 function realOrNull(p: string): string | null {
   try {
     return realpathSync(p);
@@ -251,14 +250,10 @@ function realOrNull(p: string): string | null {
   }
 }
 
-// Put the shim where a bare `my-command-tools` resolves. Installing to a fixed device
-// path is only half the job: every command spells the call bare (and declares it as
-// `Bash(my-command-tools:*)`), so an unlinked shim reads to a command as "not
-// installed" — and an absolute-path call would not match that permission rule anyway.
-//
-// Deliberately never edits a shell profile. Linking into a directory the user already
-// has on PATH takes effect in the next shell with nothing to undo, where rewriting
-// dotfiles guesses at the shell and leaves a mess behind.
+// Put the shim where a bare `my-command-tools` resolves. Commands spell the call bare and
+// declare it as `Bash(my-command-tools:*)`, so an unlinked shim reads as "not installed"
+// and an absolute-path call would not match that permission rule either.
+// Never edits a shell profile — links into a directory already on PATH instead.
 function linkOnPath(shim: string): PathLink {
   const onPath = new Set(
     process.env.PATH?.split(delimiter)
@@ -274,13 +269,10 @@ function linkOnPath(shim: string): PathLink {
 
   const link = join(target, TOOLKIT_BIN);
   try {
-    // lstat, not existsSync: a link pointing at a since-removed shim is broken, not absent,
-    // and has to be replaced rather than reported as already present.
+    // lstat, not existsSync: a dangling link is broken, not absent, and must be replaced.
     const existing = lstatSync(link, { throwIfNoEntry: false });
     if (existing?.isSymbolicLink()) {
-      // Resolve the link itself rather than joining its target onto the dir: the target
-      // may be absolute, and a link left dangling by a removed shim must be replaced,
-      // not reported as already correct.
+      // Resolve the link itself: its target may be absolute, and a dangling one is not correct.
       if (realOrNull(link) !== null && realOrNull(link) === realOrNull(shim)) return { linked: link };
       unlinkSync(link); // Ours by name — repoint it at this install.
     } else if (existing) {
@@ -317,8 +309,7 @@ function installToolkit(): ToolkitResult {
     chmodSync(bin, 0o755);
     chmodSync(join(dest, 'bin', TOOLKIT_BIN), 0o755);
     writeFileSync(join(root, 'VERSION'), `${version()} ${new Date().toISOString()}\n`);
-    // The link points at the fixed shim path, not at this payload, so it keeps working
-    // when a later install replaces the toolkit underneath it.
+    // Links the fixed shim path, not this payload, so it survives a later install.
     return { installed: true, bin, link: linkOnPath(bin) };
   } catch (err) {
     return { installed: false, bin: '', reason: err instanceof Error ? err.message : String(err) };
@@ -346,7 +337,6 @@ function reportToolkit(result: ToolkitResult) {
       console.log(`On PATH as \`${TOOLKIT_BIN}\` via: ${result.link.linked}`);
       console.log(`Check it any time with: ${TOOLKIT_BIN} doctor   (new shells only)`);
     } else {
-      // Commands call it bare, so say plainly that they can't reach it yet — and how.
       console.log(`Not on PATH (${result.link?.reason ?? 'unknown'}).`);
       console.log(`Commands call it as a bare \`${TOOLKIT_BIN}\`, so add it to PATH with either:`);
       console.log(`  ln -s ${result.bin} ${join(linkDirs()[0], TOOLKIT_BIN)}   # if that dir is on your PATH`);

@@ -36,10 +36,8 @@ function real(p) {
 }
 
 /**
- * Whether a command's bare `my-command-tools` call actually resolves, and to the shim
- * this install placed. Installing to a fixed path is only half the claim — a command
- * spells the call bare, so an unlinked shim is invisible to it. A caller that reports
- * "not installed" when `installed` is true is really reporting this.
+ * Whether a bare `my-command-tools` call resolves, and to the shim this install placed.
+ * A caller reporting "not installed" while `installed` is true is really reporting this.
  */
 function pathReachability() {
   const shim = deviceShim();
@@ -47,8 +45,7 @@ function pathReachability() {
   return {
     reachable: resolved !== null,
     resolved,
-    // A resolved binary that is some *other* my-command-tools is worth naming, since it
-    // means commands run a copy this install does not control.
+    // A different my-command-tools means commands run a copy this install does not control.
     isDeviceShim: resolved !== null && real(resolved) === real(shim),
     hint: resolved !== null ? null : `ln -s ${shim} ${join(linkDirs()[0], TOOLKIT_BIN)} (or re-run the installer)`,
   };

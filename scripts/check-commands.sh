@@ -84,10 +84,9 @@ if ! grep -q 'installToolkit()' src/my-command.ts; then
   fail=1
 fi
 
-# Placing the shim is only half of it: commands spell the call bare, so the install has
-# to put it on PATH or every toolkit call reads as "not installed".
-# Grep the call site, not the bare name: the function's own definition contains
-# `linkOnPath(` too, so a looser pattern would pass with the call deleted.
+# Commands spell the call bare, so the install has to put the shim on PATH or every toolkit
+# call reads as "not installed". Grep the call site, not the bare name — the function's own
+# definition contains `linkOnPath(` too, so a looser pattern would pass with the call gone.
 if ! grep -q 'linkOnPath(bin)' src/my-command.ts; then
   echo "::error::src/my-command.ts no longer calls linkOnPath(); the installed shim would not be callable as a bare my-command-tools."
   fail=1

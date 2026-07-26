@@ -1,6 +1,5 @@
-// Path resolution is what makes a bare `my-command-tools` call work, so the lookup is
-// tested against a real directory rather than trusted: the failure it guards against
-// (an installed-but-unreachable shim) is silent everywhere else.
+// Path resolution is what makes a bare `my-command-tools` call work, so the lookup is tested
+// against real directories — the failure it guards, an unreachable shim, is silent elsewhere.
 import assert from 'node:assert/strict';
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -11,7 +10,7 @@ import { deviceShim, findOnPath, linkDirs, pathDirs, TOOLKIT_BIN } from './paths
 /** @type {string[]} */
 const made = [];
 
-/** A throwaway dir holding one executable named `bin`, plus one that isn't. */
+/** A throwaway dir, removed after the run. */
 function binDir() {
   const dir = mkdtempSync(join(tmpdir(), 'mct-path-'));
   made.push(dir);

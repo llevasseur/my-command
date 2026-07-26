@@ -56,9 +56,9 @@ if [ -d "$TOOLKIT_SRC" ]; then
     exit 1
   fi
 
-  # The fixed path above is not enough on its own: commands spell the call as a bare
-  # `my-command-tools` (and declare it as `Bash(my-command-tools:*)`), so it has to be on
-  # PATH. Link it into a user bin dir the PATH already has — never edit a shell profile.
+  # Commands spell the call as a bare `my-command-tools` (declared as
+  # `Bash(my-command-tools:*)`), so the fixed path above is not enough — link it into a user
+  # bin dir already on PATH, never by editing a shell profile.
   # Keep the candidate list in step with linkDirs() in src/toolkit/lib/paths.mjs and
   # linkOnPath() in src/my-command.ts.
   SHIM="$TOOLKIT_ROOT/bin/my-command-tools"

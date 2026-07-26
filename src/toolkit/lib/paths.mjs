@@ -21,16 +21,15 @@ export function deviceRoot() {
 }
 
 /**
- * The fixed shim path every install writes. A PATH link points here rather than at any
- * one install's payload, so the indirection survives the toolkit being replaced.
+ * The fixed shim path every install writes. A PATH link points here, not at one install's
+ * payload, so it survives the toolkit being replaced.
  */
 export function deviceShim() {
   return join(deviceRoot(), 'bin', TOOLKIT_BIN);
 }
 
 /**
- * Where a PATH link may go, most preferred first. Both are user-owned by convention,
- * so linking needs no elevation and no shell profile edit.
+ * Where a PATH link may go, most preferred first. User-owned, so linking needs no elevation.
  * Keep in step with `linkOnPath()` in src/my-command.ts and scripts/install-personal.sh.
  * @returns {string[]}
  */
@@ -39,8 +38,8 @@ export function linkDirs() {
 }
 
 /**
- * PATH split into directories, with empty entries dropped and trailing slashes
- * normalized so a dir compares equal however the user spelled it.
+ * PATH split into directories, empty entries dropped and trailing slashes normalized so a
+ * dir compares equal however the user spelled it.
  * @param {NodeJS.ProcessEnv} [env]
  * @returns {string[]}
  */
@@ -52,8 +51,8 @@ export function pathDirs(env = process.env) {
 }
 
 /**
- * Resolve a bare command the way a shell would, without spawning one — `command -v` in
- * a subshell would answer for the shell's PATH, not the one the caller cares about.
+ * Resolve a bare command the way a shell would, without spawning one: `command -v` in a
+ * subshell would answer for the shell's PATH, not the caller's.
  * @param {string} cmd @param {NodeJS.ProcessEnv} [env]
  * @returns {string|null} the first executable match, or null when PATH has none
  */
@@ -63,7 +62,7 @@ export function findOnPath(cmd, env = process.env) {
     try {
       accessSync(candidate, constants.X_OK);
       // A directory carries the execute bit as "searchable", so X_OK alone would match one.
-      // statSync follows symlinks, which is what we want: a link to the shim is a file.
+      // statSync follows symlinks, so a link to the shim still counts as a file.
       if (!statSync(candidate).isFile()) continue;
       return candidate;
     } catch {
