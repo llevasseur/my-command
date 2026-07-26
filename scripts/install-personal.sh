@@ -59,7 +59,8 @@ if [ -d "$TOOLKIT_SRC" ]; then
   # The fixed path above is not enough on its own: commands spell the call as a bare
   # `my-command-tools` (and declare it as `Bash(my-command-tools:*)`), so it has to be on
   # PATH. Link it into a user bin dir the PATH already has — never edit a shell profile.
-  # Keep the candidate list in step with linkDirs() in src/toolkit/lib/paths.mjs.
+  # Keep the candidate list in step with linkDirs() in src/toolkit/lib/paths.mjs and
+  # linkOnPath() in src/my-command.ts.
   SHIM="$TOOLKIT_ROOT/bin/my-command-tools"
   LINK_DIR=""
   for candidate in "$HOME/.local/bin" "$HOME/bin"; do
