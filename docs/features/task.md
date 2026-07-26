@@ -26,18 +26,25 @@ one fresh subagent. The end goal is always an open PR.
 
 ## Behavior
 
-Default: fetch `origin`, create a worktree off the latest `main`, bootstrap it,
-implement against the criteria, verify (typecheck/tests/build for what changed),
-commit in logical commits, then clean + PR + teardown. Teardown removes the worktree
-whether or not the PR is a draft — the branch is on origin either way, so it confirms the
-push and passes `discard_changes` up front rather than tripping `ExitWorktree`'s commit
-guard. Never implements or commits on `main`.
+Default: `worktree begin --bootstrap` (which fetches first, so the branch lands on the
+freshest `origin/main` rather than a stale local ref) then `EnterWorktree` at the path it
+reports, implement against the criteria, `verify` the repo's own gates, `commit` in
+logical commits, then clean + PR + teardown. Teardown removes the worktree whether or not
+the PR is a draft — the branch is on origin either way, so it confirms the push and passes
+`discard_changes` up front rather than tripping `ExitWorktree`'s commit guard. Never
+implements or commits on `main`; `commit` refuses the default branch outright.
 
-Step 3 is gated on the run having produced something: before dispatching the subagent
-it checks this run's commits (`<base>..HEAD`) and uncommitted edits, and when both are
-empty it skips `/clean` and `/pr` entirely, tears the worktree down, and reports that the
-criteria were already satisfied — no push, no empty PR. Conditional criteria ("do X if it
-isn't already the case") therefore terminate without inventing edits.
+The deterministic plumbing runs through the [command toolkit](../specs/command-toolkit.md)
+rather than ad-hoc `git` calls, which is also where the guards live: staging is always an
+explicit path list, so carryover files from a shared worktree or dirty checkout stay put
+instead of riding along.
+
+Step 3 is gated on the run having produced something: `state`'s `hasWork` answers it in
+one call, counting this run's commits and tracked edits while deliberately excluding
+untracked strays. When it comes back false the command skips `/clean` and `/pr` entirely,
+tears the worktree down, and reports that the criteria were already satisfied — no push,
+no empty PR. Conditional criteria ("do X if it isn't already the case") therefore
+terminate without inventing edits.
 
 ## Related
 

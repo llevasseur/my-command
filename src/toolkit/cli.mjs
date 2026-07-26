@@ -38,7 +38,7 @@ const VERBS = {
 // below eats the token after a switch — `commit --compact a.md b.md` silently drops
 // a.md from the commit, which is precisely the class of mistake this CLI exists to stop.
 // A switch that wants an explicit value can still be spelled `--compact=false`.
-const SWITCHES = new Set(['help', 'compact', 'draft', 'retitle', 'force', 'bootstrap']);
+const SWITCHES = new Set(['help', 'compact', 'draft', 'retitle', 'force', 'bootstrap', 'existing']);
 
 /**
  * @param {string[]} argv

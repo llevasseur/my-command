@@ -36,8 +36,11 @@ cross-repo/fork PRs, whose resolution can't be pushed), then processes them
 sequentially in ascending PR number. Per PR: `git fetch origin <branch>` to refresh
 the branch first (Dependabot force-pushes after the up-front fetch, so a stale ref
 would make `/mc`'s push get rejected as non-fast-forward), `/mc -t <branch>` to merge
-`main` in and resolve conflicts, verify the bump in an isolated worktree, `gh pr merge`
-into `main`, remove the worktree, and refresh local `main`. Anything left unresolved,
+`main` in and resolve conflicts, then `worktree begin --existing --bootstrap` plus
+`verify` to confirm the bump is green in an isolated worktree, `gh pr merge`
+into `main`, `worktree end --force` to drop the throwaway worktree (the one place
+forcing is right — these hold install artifacts, never authored work), and refresh
+local `main`. Anything left unresolved,
 failing verification, or on a fork is reported for a human rather than merged.
 
 ## Related

@@ -23,12 +23,18 @@ worktree at the end when the session is running in one.
 
 ## Behavior
 
-Refuses to run on `main`. Reuses an existing PR (`gh pr edit`) or opens a new one
-(`gh pr create --base main`). Only pushes existing commits and writes PR metadata —
-never creates commits. When run in a worktree it force-removes it at the end
-(`ExitWorktree` with `discard_changes: true`), expecting the task's commits to live
-on the worktree — they were pushed to origin, so only the redundant local copy is
-discarded.
+Refuses to run on `main`. The push and the create-vs-update decision are one
+`my-command-tools pr` call: it pushes, finds the branch's open PR if there is one, and
+either edits it or opens a new one against the default branch. Only pushes existing
+commits and writes PR metadata — never creates commits. An existing PR keeps its title
+unless `--retitle` is passed, and `--draft` only ever moves a PR *toward* draft, so an
+existing draft is never flipped in front of reviewers early.
+
+When run in a worktree it force-removes it at the end (`ExitWorktree` with
+`discard_changes: true`), expecting the task's commits to live on the worktree — they
+were pushed to origin, so only the redundant local copy is discarded. If `ExitWorktree`
+refuses because this session doesn't own the worktree, `worktree end` removes it instead,
+re-checking the work is on origin first.
 
 ## Related
 

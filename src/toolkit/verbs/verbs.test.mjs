@@ -11,6 +11,7 @@ import { porcelain } from '../lib/repo.mjs';
 import { run as cleanScope } from './clean-scope.mjs';
 import { run as commit } from './commit.mjs';
 import { run as state } from './state.mjs';
+import { run as worktree } from './worktree.mjs';
 
 /** @type {string[]} */
 const made = [];
@@ -136,4 +137,42 @@ test('clean-scope finds added comments and skips lint directives', () => {
   const texts = s.files.flatMap((f) => f.comments.map((c) => c.text.trim()));
   assert.ok(texts.includes('// a real comment'));
   assert.ok(!texts.some((t) => t.includes('biome-ignore')));
+});
+
+test('worktree begin --existing checks out a branch instead of creating one', () => {
+  const { dir, git } = repo();
+  git(['branch', 'feat/existing']);
+  writeFileSync(join(dir, 'a.ts'), 'export const a = 9;\n');
+  git(['add', 'a.ts']);
+  git(['commit', '-qm', 'main moves on']);
+
+  // `run` returns the union of every subverb's shape; the positional picks the branch one.
+  const r = /** @type {{ existing: boolean; branch: string; path: string }} */ (
+    worktree(ctx(dir, ['begin'], { branch: 'feat/existing', existing: true }))
+  );
+  assert.equal(r.existing, true);
+  assert.equal(r.branch, 'feat/existing');
+  // The checkout is the branch's own tip, not main's.
+  const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: r.path, encoding: 'utf8' }).trim();
+  assert.equal(head, execFileSync('git', ['rev-parse', 'feat/existing'], { cwd: dir, encoding: 'utf8' }).trim());
+});
+
+test('worktree begin --existing refuses a branch that does not exist', () => {
+  const { dir } = repo();
+  assert.throws(() => worktree(ctx(dir, ['begin'], { branch: 'feat/nope', existing: true })), /does not exist/);
+});
+
+test('worktree begin points at --existing when the branch is already there', () => {
+  const { dir, git } = repo();
+  git(['branch', 'feat/existing']);
+  assert.throws(() => worktree(ctx(dir, ['begin'], { branch: 'feat/existing' })), /pass --existing/);
+});
+
+test('worktree begin rejects --base together with --existing', () => {
+  const { dir, git } = repo();
+  git(['branch', 'feat/existing']);
+  assert.throws(
+    () => worktree(ctx(dir, ['begin'], { branch: 'feat/existing', existing: true, base: 'main' })),
+    /--base cannot apply/,
+  );
 });

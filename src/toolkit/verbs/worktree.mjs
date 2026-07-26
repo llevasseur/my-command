@@ -9,12 +9,14 @@ import { bool, str } from '../lib/flags.mjs';
 import { run as exec, lines, must, ToolkitError, UsageError } from '../lib/proc.mjs';
 import { defaultBranch, repoRoot, resolveBase } from '../lib/repo.mjs';
 
-export const usage = `worktree begin --branch <name> [--base <ref>] [--bootstrap]
+export const usage = `worktree begin --branch <name> [--base <ref>] [--existing] [--bootstrap]
 worktree end --branch <name> [--force]
 worktree list
 
   begin   Fetch, then create a worktree for <name> under .claude/worktrees/.
           --base <ref>   Branch off <ref> instead of origin/<default-branch>.
+          --existing     Check out an existing branch instead of creating one.
+                         Mutually exclusive with --base.
           --bootstrap    Run the repo's scripts/bootstrap-worktree.sh if it has one.
   end     Remove the worktree for <name>, refusing unless HEAD is on origin.
           --force        Remove even with unpushed commits or a dirty tree.
@@ -56,20 +58,48 @@ export function run(ctx) {
 /** @param {import('../cli.mjs').Ctx} ctx @param {string} cwd */
 function begin(ctx, cwd) {
   const branch = requireBranch(ctx, cwd);
+  const existing = bool(ctx.flags.existing);
+
+  if (existing && str(ctx.flags.base) !== undefined) {
+    throw new UsageError('--existing checks out a branch that already has a base; --base cannot apply', { usage });
+  }
 
   // Fetch first: the worktree's base is only as fresh as the remote-tracking ref,
   // and a stale origin/<default> silently plants the branch on old code.
   const fetched = exec('git', ['fetch', 'origin'], { cwd });
-  const base = resolveBase(cwd, str(ctx.flags.base));
   const path = join(cwd, '.claude', 'worktrees', dirFor(branch));
 
   if (existsSync(path)) throw new ToolkitError(`worktree path already exists: ${path}`, { path, branch });
-  if (exec('git', ['rev-parse', '--verify', `refs/heads/${branch}`], { cwd }).ok) {
-    throw new ToolkitError(`branch already exists: ${branch}`, { branch });
+
+  const hasLocal = exec('git', ['rev-parse', '--verify', `refs/heads/${branch}`], { cwd }).ok;
+
+  if (existing) {
+    const hasRemote = exec('git', ['rev-parse', '--verify', `refs/remotes/origin/${branch}`], { cwd }).ok;
+    if (!hasLocal && !hasRemote) {
+      throw new ToolkitError(`branch does not exist locally or on origin: ${branch}`, { branch });
+    }
+    // With no local ref, `git worktree add <path> <branch>` creates it from the
+    // remote-tracking ref and sets up tracking.
+    const added = exec('git', ['worktree', 'add', path, branch], { cwd });
+    if (!added.ok) throw new ToolkitError('git worktree add failed', { code: added.code, stderr: added.stderr });
+    return report(ctx, { path, branch, base: null, fetched: fetched.ok, existing: true });
   }
+
+  const base = resolveBase(cwd, str(ctx.flags.base));
+  if (hasLocal)
+    throw new ToolkitError(`branch already exists: ${branch} — pass --existing to check it out`, { branch });
 
   const added = exec('git', ['worktree', 'add', path, '-b', branch, base.sha], { cwd });
   if (!added.ok) throw new ToolkitError('git worktree add failed', { code: added.code, stderr: added.stderr });
+  return report(ctx, { path, branch, base, fetched: fetched.ok, existing: false });
+}
+
+/**
+ * @param {import('../cli.mjs').Ctx} ctx
+ * @param {{path: string, branch: string, base: {ref: string, sha: string} | null, fetched: boolean, existing: boolean}} made
+ */
+function report(ctx, made) {
+  const { path } = made;
 
   // Check the script in the new worktree, which is where it runs. The main checkout can
   // disagree — the branch may add or drop the script relative to whatever is checked out
@@ -82,10 +112,7 @@ function begin(ctx, cwd) {
   }
 
   return {
-    path,
-    branch,
-    base,
-    fetched: fetched.ok,
+    ...made,
     // Reported either way so the caller knows whether the repo has its own bootstrap
     // or needs the generic install/env-symlink fallback.
     bootstrapScript: existsSync(bootstrap) ? BOOTSTRAP : null,

@@ -80,7 +80,7 @@ Resume **where the work already lives**. Starting a fresh branch off `main` woul
 
 1. Take the `- session: <uuid>` from the transcript header and read the CLI transcript for that session (`~/.claude/projects/*/<uuid>.jsonl`). Every line carries `cwd` and `gitBranch` — that is the directory and branch the run was in. The project directory name is a slugified path, so it independently confirms the location.
 2. **If that directory still exists**, work there. It is usually a worktree under `.claude/worktrees/`; treat it as the only writable root for this run.
-3. **If it's gone but the branch survives** (locally or on `origin`), recreate a worktree checking out that **existing** branch — `git worktree add .claude/worktrees/<name> <branch>` with no `-b` — and enter it. Never branch fresh off `main`: the interrupted work is on that branch, committed or not.
+3. **If it's gone but the branch survives** (locally or on `origin`), recreate a worktree checking out that **existing** branch — `my-command-tools worktree begin --branch <branch> --existing --bootstrap` — and `EnterWorktree` at the `path` it reports. `--existing` is load-bearing: without it the verb creates a new branch, which is exactly the "branch fresh off `main`" mistake that abandons the interrupted work.
 4. **If the branch is gone too**, check whether the work landed (`git log --oneline --all --grep`, an open or merged PR via `gh pr list --state all`). Report what you find and stop rather than reconstructing the changes from the transcript.
 5. If the transcript's run was never in a worktree at all (`--here`-style, on a normal branch), just confirm that branch is still checked out and work there.
 
@@ -88,8 +88,8 @@ Resume **where the work already lives**. Starting a fresh branch off `main` woul
 
 Do this **before** any new work, and trust the repo over the transcript every time.
 
-1. `git status --short`, `git diff --stat`, and `git log --oneline <base>..HEAD` in the recovered workspace. Steps can have landed after the last transcript line was written, and the tree may have moved on since.
-2. Run the repo's **own** gates — the check script, validator, or test command its `AGENTS.md`/`CLAUDE.md` names. They report the current truth in executable form and often name the exact leftover.
+1. `my-command-tools state` in the recovered workspace — `changes`, `diffStat`, and `commits` in one call. Steps can have landed after the last transcript line was written, and the tree may have moved on since.
+2. Run the repo's **own** gates — `my-command-tools verify` discovers and runs them, including any bespoke `check:*` invariants. They report the current truth in executable form and often name the exact leftover; a failing gate comes back with a bounded log. Also read whatever `AGENTS.md`/`CLAUDE.md` names, in case the repo has a gate that isn't a package script.
 3. Build the outstanding list by **subtracting what's already done** from what the workflow requires. The leftovers that actually show up here:
    - a **generated artifact** never regenerated after its source changed (an index, a build copy, a lockfile);
    - a **series of edits applied partway** — the first three files done, the rest untouched;

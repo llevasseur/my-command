@@ -1,7 +1,7 @@
 ---
 description: Update the locally-installed MyCommand commands to the latest version on GitHub
 argument-hint: "[--check]"
-allowed-tools: Bash(git:*), Bash(readlink:*), Bash(ls:*), Bash(bash:*), Bash(claude:*)
+allowed-tools: Bash(git:*), Bash(readlink:*), Bash(ls:*), Bash(bash:*), Bash(claude:*), Bash(my-command-tools:*)
 ---
 
 Update this device's MyCommand commands to the latest version from the GitHub repo. Run this whenever a change has been pushed and you want it locally.
@@ -24,10 +24,11 @@ These commands are installed one of three ways; detect which and act accordingly
 2. `git -C "$REPO" fetch origin` and compare local `HEAD` to `origin/<default-branch>`.
    - If already up to date, say so and stop.
    - For `--check`, report how many commits behind (with `git -C "$REPO" log HEAD..origin/<branch> --oneline`) and stop without pulling.
-3. Before pulling, check the clone is clean: `git -C "$REPO" status --porcelain`. If there are local edits (you may be the author mid-change), report them and stop — never discard local work.
+3. Before pulling, check the clone is clean: `my-command-tools state --cwd "$REPO"` — both `changes.tracked` and `changes.untracked` must be empty. If there are local edits (you may be the author mid-change), report them and stop — never discard local work.
 4. `git -C "$REPO" pull --ff-only`. If it can't fast-forward (diverged), report and stop rather than merging.
 5. Re-link so any newly added commands get picked up: `bash "$REPO/scripts/install-personal.sh"`. Existing commands are symlinks, so they already reflect the pulled files.
-6. Report: the commits pulled (`git log <old>..<new> --oneline`) and which commands were added, changed, or removed. Note that a command you already invoked this session may be cached — restart the session if it still looks stale.
+6. Confirm the shared toolkit came along: `my-command-tools doctor`. The commands call it for their git plumbing, so a sync that updated the Markdown but left the toolkit stale or unresolvable is a half-sync. Report `resolvedBy` and `version`.
+7. Report: the commits pulled (`git log <old>..<new> --oneline`) and which commands were added, changed, or removed. Note that a command you already invoked this session may be cached — restart the session if it still looks stale.
 
 ## Steps (real file / marketplace-synced personal install)
 
@@ -36,7 +37,8 @@ These commands are installed one of three ways; detect which and act accordingly
    - For `--check`, run the marketplace update check supported by the installed Claude CLI if available. If the CLI cannot check without updating, report that limitation and stop without changing the personal commands.
 3. Verify `~/.claude/plugins/marketplaces/my-command/scripts/install-marketplace-personal.sh` exists. If it does not, report that this marketplace version does not support personal sync and stop.
 4. Run `bash ~/.claude/plugins/marketplaces/my-command/scripts/install-marketplace-personal.sh`. It copies the marketplace's generated `commands/*.md` into `~/.claude/commands/` and converts references from `/my-command:*` to bare `/*` commands while preserving filenames.
-5. Report which personal command files were updated. Note that a command already invoked in this session may be cached — restart the session if it still looks stale.
+5. Confirm the shared toolkit is reachable afterwards: `my-command-tools doctor`; report `resolvedBy` and `version`.
+6. Report which personal command files were updated. Note that a command already invoked in this session may be cached — restart the session if it still looks stale.
 
 ## Notes
 

@@ -11,7 +11,7 @@ timestamp: 2026-07-25
 ## Summary
 
 A command is agent instructions, not code — but every workflow command (`/task`,
-`/clean`, `/pr`, `/fb`, `/god`, `/revive`) opens by re-deriving the same git state
+`/pr`, `/fb`, `/god`, `/revive`) opens by re-deriving the same git state
 with a volley of one-off shell calls, and re-derives it slightly differently each
 run. `my-command-tools` is a zero-dependency Node CLI that owns that deterministic
 half: it answers "where am I and what did this run produce", runs the repo's own
@@ -35,9 +35,21 @@ noise, what a PR description should say, or whether a failure is worth fixing.
 | `doctor` | where the toolkit resolved from, and what's on PATH |
 
 `state` collapses the rev-parse / status / log / diff opening volley into one call
-and settles `/task`'s no-change gate with a single `hasWork` boolean. `clean-scope`
-is deliberately half a command: extracting *which* comments are in scope is
-mechanical, judging them is not.
+and settles `/task`'s no-change gate with a single `hasWork` boolean.
+
+`clean-scope` ships as a standalone verb, but **no command calls it**. `/clean`
+reads the branch diff itself, on purpose: which comments are worth touching is a
+judgment about the surrounding code, and a pre-filtered list of comment lines
+narrows what the agent looks at right where the wider context is what the call
+depends on. The verb stays for direct use; `/clean`'s scope stays in its prompt.
+
+`worktree begin` covers both ways a run acquires a workspace, and they are not
+interchangeable. Without `--existing` it creates a branch — the `/task` default.
+With `--existing` it checks an existing branch out, which is what `/fb --target`,
+`/review`, `/revive`, and `/merge-deps` need: they apply work *onto* a branch that
+already has commits on it. Creating where you meant to check out silently abandons
+that work, so the verb refuses an existing branch unless `--existing` says so, and
+refuses `--base` alongside it (a branch that exists already has a base).
 
 ## Guards
 
@@ -49,6 +61,9 @@ failure a workflow run has actually hit:
   checkout or a shared worktree stay put.
 - `worktree end` refuses to remove a worktree whose HEAD isn't on `origin`, unless
   `--force`. Unpushed work is not discarded by accident.
+- `worktree begin` refuses an existing branch unless `--existing` is given, so a run
+  that meant to check out someone's pushed work can never start a fresh branch over
+  the top of it.
 - `pr` only ever moves a PR *toward* draft — it never silently flips an existing
   draft to ready and puts it in front of reviewers early.
 - `clean-scope` skips generated and vendored paths, and never offers a lint
@@ -118,6 +133,8 @@ with `allowJs` + `checkJs` + `noEmit`, run as `pnpm run check:toolkit`.
 - [ ] Every verb returns parseable JSON on stdout and nothing else, on both its success
       and its failure path. (`--help` output is prose, by design.)
 - [ ] `commit` refuses the default branch and refuses whole-tree staging.
+- [ ] `worktree begin --existing` checks a branch out at its own tip; without the flag an
+      existing branch is refused.
 - [ ] `worktree end` refuses a worktree with unpushed commits absent `--force`.
 - [ ] `pnpm run check:toolkit` and `pnpm test` pass in CI.
 - [ ] A fresh `npx` install lands a runnable shim on the device root.

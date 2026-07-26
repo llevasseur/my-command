@@ -20,7 +20,8 @@ existing CHANGELOG conventions (dated vs. versioned, bullet style, area tags).
 
 ## Behavior
 
-Reads `git status`/`diff`/log to base the entry on real changes, finds or creates
+Reads the toolkit's `state` verb — branch commits, per-file diffstat, and uncommitted
+changes in one call — to base the entry on real changes, finds or creates
 `CHANGELOG.md`, and inserts one grouped entry most-recent-first. Applies the edit
 directly; does not commit unless the repo's flow expects it.
 

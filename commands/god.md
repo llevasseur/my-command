@@ -26,10 +26,10 @@ Owned here:
 
 **Never ask a question — this command runs unattended.** If any precondition below is unmet or unresolvable, error out and explain what is missing and why the run cannot proceed.
 
-1. Inside a git repo (`git rev-parse --is-inside-work-tree`) and `gh` is authenticated (`gh auth status`).
-2. Record the starting branch and the **main checkout path** (`git rev-parse --path-format=absolute --git-common-dir`, minus `/.git`) — Step 7 pulls `main` there, and by then `/my-command:task` may have torn down the worktree this started in.
-3. Resolve the default branch (`git remote show origin | sed -n 's/.*HEAD branch: //p'`); `main` below is shorthand for it.
-4. The criteria are specific enough to act on and no mutually exclusive flags conflict.
+1. `my-command-tools doctor` — confirms `git` and `gh` are both available. Then `gh auth status` for authentication, which `doctor` doesn't check.
+2. `my-command-tools state` — one call covers the rest: it errors if this isn't a git repo, and reports `branch` (the starting branch), `root` (the **main checkout path** — Step 7 pulls `main` there, and by then `/my-command:task` may have torn down the worktree this started in), and `defaultBranch`. `main` below is shorthand for that.
+   - When `worktree` is true, `root` is the worktree's root, not the main checkout. Resolve the main checkout separately in that case: `git rev-parse --path-format=absolute --git-common-dir`, minus `/.git`.
+3. The criteria are specific enough to act on and no mutually exclusive flags conflict.
 
 ## Step 2 — Run `/my-command:task`, with `/my-command:review` woven in
 

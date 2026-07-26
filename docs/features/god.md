@@ -38,8 +38,9 @@ Owned by `god`:
 
 ## Behavior
 
-Preconditions record the starting branch and the **main checkout path** up front,
-because `/task` tears down the worktree it creates before the merge stage runs.
+Preconditions come from the toolkit: `doctor` confirms `git` and `gh` are present, and
+`state` records the starting branch and the **main checkout path** up front, because
+`/task` tears down the worktree it creates before the merge stage runs.
 
 `/task` is then invoked with the forwarded flags and, unless `--no-review`, an
 appended `--add review …` entry. That entry lands the review inside `/task`'s
