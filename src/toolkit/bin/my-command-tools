@@ -1,0 +1,31 @@
+#!/bin/sh
+# my-command-tools — stable entry point for the MyCommand shared CLI.
+#
+# Installed to <claude-config>/my-command/bin/ so a command can call it by one fixed
+# path no matter how the suite was installed. The lookup order mirrors
+# src/toolkit/lib/paths.mjs; keep the two in step.
+set -eu
+
+CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+
+if [ -n "${MY_COMMAND_TOOLKIT:-}" ] && [ -f "$MY_COMMAND_TOOLKIT/cli.mjs" ]; then
+  ROOT="$MY_COMMAND_TOOLKIT"
+# Plugin mode ships the toolkit beside the commands and auto-updates with them, so it
+# outranks the device copy, which is only as fresh as the last wizard run.
+elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "$CLAUDE_PLUGIN_ROOT/src/toolkit/cli.mjs" ]; then
+  ROOT="$CLAUDE_PLUGIN_ROOT/src/toolkit"
+elif [ -f "$CLAUDE_DIR/my-command/toolkit/cli.mjs" ]; then
+  ROOT="$CLAUDE_DIR/my-command/toolkit"
+else
+  echo "my-command-tools: no toolkit found." >&2
+  echo "Looked in \$MY_COMMAND_TOOLKIT, \$CLAUDE_PLUGIN_ROOT/src/toolkit, and $CLAUDE_DIR/my-command/toolkit." >&2
+  echo "Reinstall with: npx github:llevasseur/my-command" >&2
+  exit 127
+fi
+
+command -v node >/dev/null 2>&1 || {
+  echo "my-command-tools: node is not on PATH (Node 22+ required)." >&2
+  exit 127
+}
+
+exec node "$ROOT/cli.mjs" "$@"

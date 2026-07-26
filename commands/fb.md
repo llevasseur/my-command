@@ -23,12 +23,10 @@ Run `/my-command:task --here <feedback request>` on the **current branch**.
 
 ### `--target <branch>` / `-t <branch>` given
 
-1. Confirm the branch exists: `git fetch` then `git rev-parse --verify <branch>` (or `git rev-parse --verify origin/<branch>`). If it doesn't exist, stop and tell me — do **not** create a new branch. This flag is for applying feedback onto existing work.
-2. Create a worktree checking out that **existing** branch (no `-b`):
-   `git worktree add .claude/worktrees/<branch> <branch>`
-   (use the branch's last path segment for the worktree dir if the name contains slashes).
-3. Switch into it with the `EnterWorktree` tool using `path: .claude/worktrees/<branch>`.
-4. Once inside the worktree, run `/my-command:task --here <feedback request>`. `-h` keeps `/my-command:task` on the checked-out branch — no nested worktree, no new branch.
+1. `my-command-tools worktree begin --branch <branch> --existing --bootstrap`. It fetches first, then checks out that **existing** branch into a worktree and reports the `path`. `--existing` is what makes this safe: without it the verb would create a new branch, silently abandoning the work already on `<branch>`.
+   - If it errors with `branch does not exist locally or on origin`, stop and tell me — do **not** create a new branch. This flag is for applying feedback onto existing work.
+2. Switch into the reported `path` with the `EnterWorktree` tool.
+3. Once inside the worktree, run `/my-command:task --here <feedback request>`. `-h` keeps `/my-command:task` on the checked-out branch — no nested worktree, no new branch.
 
 ## Notes
 

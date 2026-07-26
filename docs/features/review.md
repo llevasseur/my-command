@@ -33,18 +33,18 @@ and `/pr` — updating the same PR.
 
 ## Behavior
 
-Resolves the target PR via `gh pr view`. By default it checks the branch out in
-a fresh worktree and dispatches a fresh, non-forked agent to review it. With
-`--here`, it stays in the current checkout and the current agent runs the same
-review rubric directly, without spawning another agent. The review reads the
-diff, checks it against the PR's own description, runs the repository's
-verification for touched areas, and compares against existing conventions. Its
-report ends with findings plus a fenced `/fb` line (or a statement that none is
-needed). `/review` shows that block, then — if there were findings — runs it via
-the `fb` skill in the same worktree/checkout, so `fb`'s default (current branch,
-no `--target`) applies the fix directly onto the PR's branch. It never merges
-or approves the PR, and never posts a GitHub PR review/comment — its only output
-is the `/fb`-ready feedback, shown and applied.
+Resolves the target PR via `gh pr view`. By default it checks the branch out in a
+fresh worktree with `worktree begin --existing` and dispatches a **fresh**
+(non-fork) agent to review it. With `--here`, it stays in the current checkout and
+the current agent runs the same review rubric directly, without spawning another
+agent. The review reads the diff, checks it against the PR's own description, runs
+the repo's verification with the toolkit's `verify` verb, and compares against
+existing conventions. Its report ends with findings plus a fenced `/fb` line (or a
+statement that none is needed). `/review` shows that block, then — if there were
+findings — runs it via the `fb` skill in the same worktree/checkout, so `fb`'s
+default (current branch, no `--target`) applies the fix directly onto the PR's
+branch. It never merges or approves the PR, and never posts a GitHub PR
+review/comment — its only output is the `/fb`-ready feedback, shown and applied.
 
 ## Related
 

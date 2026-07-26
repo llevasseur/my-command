@@ -8,7 +8,8 @@
 # 2. Command invariants - commands/ in sync, feature docs present, wizard globs.
 # 3. Linting with Biome - enforces code style and quality standards.
 # 4. TypeScript type checking - validates types with tsc --noEmit.
-# 5. Build - compiles the TypeScript source to dist/ via tsc.
+# 5. Toolkit - typechecks the shipped .mjs tooling and runs its tests.
+# 6. Build - compiles the TypeScript source to dist/ via tsc.
 # ================================================
 
 name: Pull Request CI
@@ -64,14 +65,20 @@ jobs:
   # Command invariants
   # ================================================
   # Fails the PR when a command is half-wired: commands/ out of sync with
-  # src/commands/, a command missing its feature doc or generated copy, or the
-  # wizard no longer enumerating src/commands/ dynamically. Pure bash — no deps.
+  # src/commands/, a command missing its feature doc or generated copy, the wizard
+  # no longer enumerating src/commands/ dynamically, or the shared toolkit unwired.
+  # Bash plus a bare `node` — the verb check asks the CLI for its live registry.
   commands:
     name: Command invariants in sync
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Check command invariants
         run: ./scripts/check-commands.sh
@@ -127,6 +134,37 @@ jobs:
 
       - name: Run TypeScript type check
         run: pnpm typecheck
+
+  # ================================================
+  # Toolkit
+  # ================================================
+  # The toolkit ships as raw .mjs — plugin installs are a git clone with no build
+  # step — so the main typecheck never sees it. checkJs covers it here, alongside
+  # the node:test suite that exercises the verbs against real throwaway git repos.
+  toolkit:
+    name: Toolkit typecheck and tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check toolkit
+        run: pnpm run check:toolkit
+
+      - name: Run toolkit tests
+        run: pnpm test
 
   # ================================================
   # Build

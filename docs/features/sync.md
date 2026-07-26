@@ -27,6 +27,10 @@ updates the marketplace and re-runs the personal install script. For the plugin 
 updates the marketplace and reminds you to `/reload-plugins`. Consumes updates
 only — publishing is the maintainer flow.
 
+Both personal paths finish with `my-command-tools doctor`, since a sync that refreshed
+the command Markdown but left the shared toolkit stale or unresolvable is only half
+applied — the commands call it for their git plumbing.
+
 ## Related
 
 - Command source: `src/commands/sync.md`

@@ -95,6 +95,24 @@ It asks how you want them installed:
 2. **Personal commands** — bare commands (`/task`) copied into
    `~/.claude/commands`.
 
+Either choice also installs the **command toolkit** — a zero-dependency Node CLI
+the commands call for the deterministic git/gh plumbing of a workflow run. It
+lands device-wide at `~/.claude/my-command/`, so every command reaches the same
+tooling however it was invoked:
+
+```bash
+~/.claude/my-command/bin/my-command-tools doctor
+```
+
+The workflow commands route their git/gh plumbing through it — `/task` sets up its
+worktree with `worktree begin`, gates on `state`'s `hasWork`, runs the repo's gates
+with `verify`, and commits an explicit path list with `commit`; `/pr` pushes and
+opens or updates the PR in one `pr` call. Judgment stays in the prompts; the
+toolkit owns only what's identical on every run. `/clean` is the deliberate
+exception — its scope call is a judgment call too, so it reads the diff itself.
+
+See [Command toolkit](./docs/specs/command-toolkit.md).
+
 ### Manual — as a plugin
 
 ```bash
@@ -110,16 +128,22 @@ they are invoked as `/my-command:task`, `/my-command:pr`, and so on.
 ```
 src/commands/       Canonical BARE commands — edit these (they call each other as /task, /clean, …)
 src/my-command.ts   The npx install wizard, in TypeScript (compiled to dist/, ships dependency-free)
+src/toolkit/        Shared CLI every command calls — raw .mjs, shipped as-is (see docs/specs/command-toolkit.md)
+  cli.mjs              Entrypoint and verb registry; JSON on stdout
+  verbs/               state, verify, commit, pr, worktree, doctor
+  lib/                 git/process/path helpers
+  bin/my-command-tools The shim that resolves the toolkit device-wide
 dist/               GENERATED wizard build (tsc output; gitignored, built on install via `prepare`)
 commands/           GENERATED namespaced commands the plugin ships (do not edit by hand)
 scripts/
   build-plugin.sh      Regenerate commands/ from src/commands/ (bare → /my-command:)
-  check-commands.sh    Enforce command invariants (commands/ in sync, feature docs, wizard glob) — runs in CI
+  check-commands.sh    Enforce command + toolkit invariants (commands/ in sync, feature docs, verbs registered) — runs in CI
   install-personal.sh  Symlink src/commands/*.md into ~/.claude/commands (bare, git-synced)
 AGENTS.md           Repo rules for agents (the adding-a-command checklist + the CI gate)
 biome.json          Biome lint + format config
 tsconfig.json       TypeScript config (strict; compiles src/ → dist/)
-.github/workflows/  Pull-request CI (merge-conflict check, Biome, typecheck, build)
+tsconfig.toolkit.json  Typechecks src/toolkit/*.mjs via allowJs + checkJs (no emit — it ships as source)
+.github/workflows/  Pull-request CI (merge-conflict check, Biome, typecheck, toolkit, build)
 .claude-plugin/     plugin.json + marketplace.json
 docs/               okq spec bundle — specs/ (process), features/ (one per command), adrs/
 ```
@@ -136,8 +160,11 @@ bundle under [`docs/`](./docs) — process specs plus one feature doc per comman
 - **[Adding a command](./docs/specs/adding-a-command.md)** — the checklist for
   adding a command as agent instructions (bare source → build → feature doc →
   wizard → README/CHANGELOG). Read this before adding one.
-- **[Install wizard](./docs/specs/install-wizard.md)** — how `bin/my-command.mjs`
+- **[Install wizard](./docs/specs/install-wizard.md)** — how the npx wizard
   installs the suite and its per-command overwrite behavior.
+- **[Command toolkit](./docs/specs/command-toolkit.md)** — the device-wide
+  `my-command-tools` CLI, its verbs and guards, and how it reaches every install
+  mode.
 - **`docs/features/<cmd>.md`** — the flags, parameters, and behavior of each
   command.
 

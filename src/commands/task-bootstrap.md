@@ -17,13 +17,13 @@ The `<command-args>` block above: parse leading flags off the front; anything el
 
 ## Step 1 — Set up the workspace
 
-Same as `/task` Step 1, based on **live** git state (`git rev-parse --abbrev-ref HEAD`, `git status`):
+Same as `/task` Step 1, based on **live** git state from `my-command-tools state`:
 
-- **Default:** fresh worktree off `main` via `EnterWorktree` (branch `chore/worktree-bootstrap`).
-- **`--base <branch>`:** `git fetch`, then `git worktree add .claude/worktrees/<name> -b <name> <base>`, then `EnterWorktree` by `path`.
-- **`--here`:** stay on the current branch; if it's `main`, create a feature branch first and say so.
+- **Default:** `my-command-tools worktree begin --branch chore/worktree-bootstrap`, then `EnterWorktree` at the `path` it reports.
+- **`--base <branch>`:** the same call plus `--base <branch>`.
+- **`--here`:** stay on the current branch; if `state` reports `onDefaultBranch`, create a feature branch first and say so.
 
-The bootstrap you're creating doesn't exist yet, so this command's own worktree can't use it — that's expected. A fresh worktree here only needs git, which it has.
+Don't pass `--bootstrap` — the bootstrap you're creating doesn't exist yet, so this command's own worktree can't use it. That's expected; a fresh worktree here only needs git, which it has.
 
 ## Step 2 — Detect the stack (before asking anything)
 
@@ -88,7 +88,7 @@ cd "$WORKTREE_ROOT"
 ## Step 7 — Changelog, then /clean and /pr
 
 - If the repo tracks a changelog, add an entry.
-- Commit only the files you created — stage paths explicitly (never `git add -A`). Invoking this command is standing permission to commit on this branch (never on `main`).
+- Commit only the files you created: `my-command-tools commit --message <text> <path> [<path>...]`. Staging is always explicit — the verb refuses whole-tree staging — so nothing you didn't author comes along. Invoking this command is standing permission to commit on this branch (never on `main`).
 - Run **`/clean`**, then **`/pr`** (`/pr --draft` if `--draft`/`-d`).
 
 ## Notes

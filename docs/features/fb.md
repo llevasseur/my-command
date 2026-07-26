@@ -23,8 +23,9 @@ existing branch in a fresh worktree.
 ## Behavior
 
 No flag: feedback is applied on the current branch through `/task --here`. With
-`--target`, an existing branch is checked out in a worktree and the feedback is
-applied there, then cleaned and PR'd like a normal task run.
+`--target`, `worktree begin --existing` checks that branch out in a worktree — the
+`--existing` flag is what keeps it from creating a new branch over work that already
+exists — and the feedback is applied there, then cleaned and PR'd like a normal task run.
 
 ## Related
 
