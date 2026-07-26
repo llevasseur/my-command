@@ -32,4 +32,4 @@ Run `/task --here <feedback request>` on the **current branch**.
 
 - Either path ends by delegating to `/task`, so `/task`'s own rules apply: it restates scope, implements, verifies, then runs `/clean` and `/pr`, and it has standing permission to commit on the branch (never on `main`).
 - If the feedback request is too vague to act on, ask me one focused clarifying question before setting anything up.
-- Report the branch name up front and the PR number/URL at the end (from `/task`/`/pr`).
+- Report the branch name up front and the PR number/URL at the end (from `/task`/`/pr`), in a **text-only turn** — after the last tool call, never in the same turn as one, or the run is recorded as unfinished even though the feedback shipped.

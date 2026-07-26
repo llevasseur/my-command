@@ -70,6 +70,7 @@ Treat typecheck errors like "cannot find generated module" or a missing `*.gen.t
 ## Step 2 — Implement the task
 
 - Restate the criteria in one line so we agree on scope, then implement it.
+- **Read in batches, and only once.** Issue independent reads/greps in a single turn rather than one per turn — a run of them with no decision in between is independent by construction, so serializing them buys nothing. A file you already read this session is already in context: re-read it only after it changed, and prefer a targeted `offset`/`limit` over pulling a whole file back in.
 - For "create/initialize X" criteria, inspect the target path first — X may already exist, and the real work is extending it rather than scaffolding greenfield.
 - Once isolated in a worktree, the worktree directory is the only writable root — resolve every read/edit/commit path under it, never the original shared checkout.
 - Follow the repo's own conventions (read `CLAUDE.md`/`AGENTS.md` and match surrounding code — style, naming, tests).
@@ -103,4 +104,6 @@ Otherwise, dispatch **one fresh subagent** via the `Agent` tool, not inline, to 
 - Never implement or commit directly on `main`.
 - If the criteria are too vague to act on, ask me one focused clarifying question before setting up the workspace — don't spin up a worktree for a guess.
 - A PR is the goal, not a quota: if the criteria turn out to need no changes, the run ends with `/my-command:clean` and `/my-command:pr` skipped and the worktree removed, not with an empty PR.
-- Report the branch name up front and the PR number/URL at the end — or, on a no-change run, that no PR was opened and why.
+- **Never wait by sleeping.** A foreground `sleep` is blocked by the harness, and so is polling with `sleep N && <check>`. Wait on a condition with the `Monitor` tool and an until-loop, or with the tool that blocks properly (`gh pr checks --watch`).
+- **A command that may need approval goes in its own Bash call** — `git fetch`, `git config`, and the like. Folding one into an `&&` chain escalates approval to the whole compound command and costs a turn plus a retry.
+- Report the branch name up front and the PR number/URL at the end — or, on a no-change run, that no PR was opened and why. The final report is a **text-only turn**: state it after the last tool call, never in the same turn as one, or the run is recorded as unfinished even though it finished.

@@ -19,4 +19,4 @@ The `<command-args>` block above, if non-empty, is a summary or area tag to reco
 ## Finish
 
 - Apply the edit directly. Don't commit unless the repo's flow expects the changelog committed with the work.
-- Report the entry you added and where.
+- Report the entry you added and where, in a **text-only turn** — after the last tool call, never in the same turn as one, or the run reads as unfinished even though the entry landed.
