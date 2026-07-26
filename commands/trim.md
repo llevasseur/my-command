@@ -47,4 +47,6 @@ If every gate passes, finish with `TRIM`, followed by a single copyable command:
 
 The instructions must tell `/compact` to preserve the original goal, user constraints and decisions, current implementation and repository state, changed files, verification evidence, unresolved work, and exact next action. Tell it to discard superseded plans, repetitive tool output, completed narration, and failed approaches except for concise negative knowledge needed to prevent retries.
 
+Emit the six lines and the verdict in a **text-only turn** — after any reads, never in the same turn as a tool call, or the assessment is recorded as an unfinished run.
+
 Never claim that `/my-command:trim` performed compaction. `/compact` is a Claude Code built-in that only the user can invoke.

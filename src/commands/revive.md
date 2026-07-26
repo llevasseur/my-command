@@ -44,6 +44,7 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 3. **Cross-walk the two stores when needed.** A proxy transcript's header carries `- session: <uuid>` — the CLI session id. So:
    - id → CLI transcript: read that header, then find `~/.claude/projects/*/<uuid>.jsonl`.
    - UUID → proxy transcript: grep the store for that uuid (`grep -l "session: <uuid>" "$CLAUDE_PROXY_STORE"/*.md`, then the archive).
+   - **Quote any argument holding `*` or `?` that grep — not the shell — should expand** (`grep -rl --include='*.md' …`, `'$CLAUDE_PROXY_ARCHIVE/**/<id>.md'`). The shell is zsh: an unquoted glob matching nothing aborts the whole command with `no matches found`, so a store with no hit reads as a tooling error rather than a miss.
    - **One session can have several thread ids.** Subagents run under the parent's session id with their own conversation root, so the proxy writes each as its own transcript. If the id resolves to a subagent's transcript, the sibling transcripts sharing that `- session:` uuid are the rest of the run — find them before concluding what the session was doing.
 4. **Report the file you resolved and which store it came from**, before reading further.
 5. **If nothing resolves**, say so plainly: the id, the exact paths and globs you searched, and that no transcript exists for it. Do not substitute a different session that looks similar, and do not proceed on the id alone. Stop.
@@ -113,7 +114,7 @@ Finishing the edits is not finishing the run. Go back to the workflow you identi
 - A run that was never inside `/task` ends wherever its own instructions say. If that is just "report", report.
 - Do **not** wrap the resumption in a new `/task` invocation: the branch and workspace already exist, and a nested run would create a second worktree for work that is already checked out.
 
-Report at the end: which transcript and store you used, where the session stopped, what you finished, what you deliberately left alone, and the PR number/URL if the workflow ended at one.
+Report at the end: which transcript and store you used, where the session stopped, what you finished, what you deliberately left alone, and the PR number/URL if the workflow ended at one. Make that report a **text-only turn** — after the last tool call, never in the same turn as one. A resumed run that ends on a tool call records no `done:` and so reads as interrupted to the next `/revive`, which is exactly the signal Step 2 keys off.
 
 ## Notes
 
@@ -121,4 +122,5 @@ Report at the end: which transcript and store you used, where the session stoppe
 - **The human's mid-run decisions stand.** Answers recorded in the transcript are settled input, not a starting point for renegotiation.
 - **Report a miss plainly.** No transcript, a dead branch, a session still running, work already merged — each is a real answer. Say which, with what you checked, and stop.
 - The proxy store is device-local and wherever `CLAUDE_PROXY_STORE` points; nothing in it is guaranteed to survive, and the archive keeps transcripts on a retention window. An id that resolved yesterday may not resolve today — that's the store's lifecycle, not a bug to work around.
-- A transcript can be long. Read the header and task headings first, then the tail where it stopped; pull the middle only when you need a specific decision.
+- A transcript can be long. Read the header and task headings first, then the tail where it stopped; pull the middle only when you need a specific decision — a targeted `offset`/`limit` over the whole file.
+- **Batch the reconnaissance, and read each file once.** Reconstructing a run means many independent reads and greps — the transcript, the sibling transcripts, the files it touched. Issue them in a single turn rather than one per turn; a run of reads with no decision between them is independent by construction. A file already read this session is already in context: re-read it only after it changed.

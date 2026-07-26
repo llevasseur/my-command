@@ -38,6 +38,7 @@ Review material:
   - Run the repo's own verification with `my-command-tools verify` and report failures — it discovers the repo's gates itself and returns a bounded log for each one that failed.
   - Compare against surrounding code and this repo's own conventions (`AGENTS.md`/`CLAUDE.md`, existing patterns in touched files) for things that clash: inconsistent style, skipped repo-specific steps (e.g. a missing feature doc, an out-of-sync generated file), missed edge cases, dead code, anything the PR description doesn't mention but the diff does.
   - Fold in the extra context from `<command-args>` (if any) as additional review focus.
+  - **Read in batches, and only once.** Reading the diff's files and their neighbours is independent work — issue those reads/greps in a single turn rather than one per turn. A file already read this session is already in context: re-read it only after it changed, and prefer a targeted `offset`/`limit` over the whole file.
 - Required output shape — the review report MUST end with:
   1. A short bullet list of concrete findings (or a single line stating none were found).
   2. If there are findings: a fenced code block containing **exactly one** ready-to-run `/my-command:fb` line that folds every finding into a single imperative feedback request, e.g.:
@@ -52,6 +53,7 @@ Review material:
 1. Show me the review findings and the `/my-command:fb` block verbatim — this is the copy-pasteable output the wish asked for, so it must be visible even though the next step also applies it. In `--here` mode, emit your own report in exactly the same shape.
 2. If the review found nothing to fix: stop here. Don't invoke `/my-command:fb` for a clean PR.
 3. If the review produced an `/my-command:fb` line: run it via the `Skill` tool (`skill: "fb"`, `args:` the feedback text after `/my-command:fb`). This runs inside the same worktree/checkout from Step 2, so `/my-command:fb`'s default (current branch, no `--target`) is correct — do not add `--target` yourself.
+   - Close the run with a **text-only turn** — the verdict, what `/my-command:fb` applied, and the PR — stated after the last tool call, never in the same turn as one. A run whose final act is a tool call is recorded as unfinished even when the review is done.
    - `/my-command:fb` wraps `/my-command:task --here`, which implements the fix, commits, then runs `/my-command:clean` and `/my-command:pr` — `/my-command:pr` updates the **same** PR (same branch, already pushed) and removes the worktree it's running in once the branch is confirmed pushed. Don't tear down the worktree yourself in this command — `/my-command:pr` at the end of that chain already does it.
 
 ## Notes

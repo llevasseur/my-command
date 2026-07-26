@@ -38,3 +38,4 @@ Clean up the comments in my changes. Only touch comments — never change code, 
 
 - Apply edits directly with Edit.
 - Report a short summary: how many comments removed vs. tightened, grouped by file. Do not commit.
+- The summary is a **text-only turn** — stated after the last edit, never in the same turn as one, or the run is recorded as unfinished even though the cleanup is done.

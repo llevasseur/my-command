@@ -58,7 +58,7 @@ Re-resolve from git rather than trusting the hand-off text: `gh pr view <branch>
 
 ## Step 4 — Make it mergeable (`/my-command:mc` on conflict)
 
-`main` may have moved while `/my-command:task` worked. Test **locally** — `git fetch origin`, then `git merge-tree --write-tree main <branch>`; GitHub's `mergeable` is lazy and reports `UNKNOWN` for a fresh branch.
+`main` may have moved while `/my-command:task` worked. Test **locally** — `git fetch origin`, then `git merge-tree --write-tree main <branch>`; GitHub's `mergeable` is lazy and reports `UNKNOWN` for a fresh branch. Issue the `git fetch` as its **own** Bash call: it may require approval, and folding it into an `&&` chain escalates approval to the whole compound command and costs a turn plus a retry.
 
 - **No conflict** → Step 5.
 - **Conflict** → run **`/my-command:mc -t <branch>`**. If it puts the branch in its 🔴 "needs human" list, **stop**: report the branch, the files, and why, and leave the PR open. That is the one failure this command cannot drive through.
@@ -68,6 +68,7 @@ Re-resolve from git rather than trusting the hand-off text: `gh pr view <branch>
 
 - **`--auto`** → skip the wait; Step 6 hands the merge to GitHub.
 - **Otherwise** → `gh pr checks <number> --watch --fail-fast`. A PR with no required checks returns immediately; that's a pass.
+- **Never wait by sleeping.** `--watch` is the wait — a foreground `sleep` is blocked by the harness, and so is polling with `sleep N && gh pr checks …`. If a condition needs waiting on outside `--watch`, use the `Monitor` tool with an until-loop.
 
 Red, with repair budget (`--fix <n>`, default `1`) left:
 
@@ -100,7 +101,7 @@ Under `--here` this leaves you on `main` rather than the branch you started on �
 
 ## Step 8 — Report
 
-One concise summary: branch and PR number/URL; what `/my-command:review` found and what was applied (or clean / skipped); whether `/my-command:mc` ran and on which files; CI green first try or the repair rounds spent; and the outcome — ✅ merged into `main` and pulled, ⏳ queued for auto-merge, or 🔴 stopped with the reason and the PR left open. On a no-change run: no PR was opened, and what established that.
+One concise summary, in a **text-only turn** — after the last tool call, never in the same turn as one, or this run is recorded as unfinished even after the merge landed. It covers: branch and PR number/URL; what `/my-command:review` found and what was applied (or clean / skipped); whether `/my-command:mc` ran and on which files; CI green first try or the repair rounds spent; and the outcome — ✅ merged into `main` and pulled, ⏳ queued for auto-merge, or 🔴 stopped with the reason and the PR left open. On a no-change run: no PR was opened, and what established that.
 
 ## Notes
 

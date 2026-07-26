@@ -21,7 +21,10 @@ These commands are installed one of three ways; detect which and act accordingly
 1. Locate the clone from the symlink, so this works regardless of where the repo was cloned:
    `REPO="$(cd "$(dirname "$(readlink -f ~/.claude/commands/sync.md)")/../.." && pwd)"`
    (the resolved path is `<clone>/src/commands/sync.md`, so the clone root is two directories up).
-2. `git -C "$REPO" fetch origin` and compare local `HEAD` to `origin/<default-branch>`.
+2. `git -C "$REPO" fetch origin` — as its **own** Bash call, not chained with `&&` into the
+   comparison: a fetch may require approval, and folding it into a compound command escalates
+   approval to the whole chain and costs a turn plus a retry. Then compare local `HEAD` to
+   `origin/<default-branch>`.
    - If already up to date, say so and stop.
    - For `--check`, report how many commits behind (with `git -C "$REPO" log HEAD..origin/<branch> --oneline`) and stop without pulling.
 3. Before pulling, check the clone is clean: `my-command-tools state --cwd "$REPO"` — both `changes.tracked` and `changes.untracked` must be empty. If there are local edits (you may be the author mid-change), report them and stop — never discard local work.
@@ -42,5 +45,6 @@ These commands are installed one of three ways; detect which and act accordingly
 
 ## Notes
 
+- Whichever install path ran, the closing report is a **text-only turn** — after the last tool call, never in the same turn as one, or the sync is recorded as unfinished even though it landed.
 - This command only consumes updates. Publishing a change is the maintainer flow: edit `src/commands/`, run `scripts/build-plugin.sh`, commit, push.
 - Never force, reset, or stash the clone's working tree.

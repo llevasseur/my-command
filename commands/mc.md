@@ -107,6 +107,8 @@ human — collect it and move on; never leave a branch mid-merge.
    - 🟡 branches that had conflicts you resolved and pushed (name the files you touched)
    - 🔴 branches left for a human (fork PRs, diverged, or unresolved conflicts) + the reason
 3. Never mark the task complete if any branch is in the 🔴 list without saying so explicitly.
+4. Deliver that summary in a **text-only turn** — after the last git call, never in the same
+   turn as one, or the run is recorded as unfinished even though every branch was handled.
 
 ## Rules
 
