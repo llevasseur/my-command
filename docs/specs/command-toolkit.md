@@ -31,17 +31,16 @@ noise, what a PR description should say, or whether a failure is worth fixing.
 | `commit` | stage an explicit path list and commit, with guards |
 | `pr` | push, then create or update the branch's PR |
 | `worktree begin\|end\|list` | the isolated-workspace lifecycle |
-| `clean-scope` | the comment lines this branch added or modified |
 | `doctor` | where the toolkit resolved from, and what's on PATH |
 
 `state` collapses the rev-parse / status / log / diff opening volley into one call
 and settles `/task`'s no-change gate with a single `hasWork` boolean.
 
-`clean-scope` ships as a standalone verb, but **no command calls it**. `/clean`
-reads the branch diff itself, on purpose: which comments are worth touching is a
+There is deliberately no comment-scoping verb. `/clean` runs entirely as an agent
+pass and reads the branch diff itself: which comments are worth touching is a
 judgment about the surrounding code, and a pre-filtered list of comment lines
 narrows what the agent looks at right where the wider context is what the call
-depends on. The verb stays for direct use; `/clean`'s scope stays in its prompt.
+depends on. `/clean`'s scope stays in its prompt.
 
 `worktree begin` covers both ways a run acquires a workspace, and they are not
 interchangeable. Without `--existing` it creates a branch — the `/task` default.
@@ -66,9 +65,6 @@ failure a workflow run has actually hit:
   the top of it.
 - `pr` only ever moves a PR *toward* draft — it never silently flips an existing
   draft to ready and puts it in front of reviewers early.
-- `clean-scope` skips generated and vendored paths, and never offers a lint
-  directive (`biome-ignore`, `@ts-expect-error`, `noqa`, a shebang) as a comment to
-  clean. Those are load-bearing.
 - `verify` returns no log at all for a passing gate and a bounded tail for a
   failing one, so callers stop hand-rolling `2>&1 | tail -12` and stop re-running a
   whole build because they guessed the window too small.

@@ -8,7 +8,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { porcelain } from '../lib/repo.mjs';
-import { run as cleanScope } from './clean-scope.mjs';
 import { run as commit } from './commit.mjs';
 import { run as state } from './state.mjs';
 import { run as worktree } from './worktree.mjs';
@@ -121,22 +120,6 @@ test('commit reports a no-op instead of failing when nothing is staged', () => {
   git(['checkout', '-qb', 'feat/x']);
   const r = commit(ctx(dir, ['a.ts'], { message: 'nothing changed' }));
   assert.equal(r.committed, false);
-});
-
-test('clean-scope finds added comments and skips lint directives', () => {
-  const { dir, git } = repo();
-  git(['checkout', '-qb', 'feat/x']);
-  writeFileSync(
-    join(dir, 'a.ts'),
-    `${['// a real comment', '// biome-ignore lint: keep', 'export const a = 5;'].join('\n')}\n`,
-  );
-  git(['add', 'a.ts']);
-  git(['commit', '-qm', 'feat: comments']);
-
-  const s = cleanScope(ctx(dir, [], { base: 'main' }));
-  const texts = s.files.flatMap((f) => f.comments.map((c) => c.text.trim()));
-  assert.ok(texts.includes('// a real comment'));
-  assert.ok(!texts.some((t) => t.includes('biome-ignore')));
 });
 
 test('worktree begin --existing checks out a branch instead of creating one', () => {

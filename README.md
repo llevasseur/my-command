@@ -130,7 +130,7 @@ src/commands/       Canonical BARE commands — edit these (they call each other
 src/my-command.ts   The npx install wizard, in TypeScript (compiled to dist/, ships dependency-free)
 src/toolkit/        Shared CLI every command calls — raw .mjs, shipped as-is (see docs/specs/command-toolkit.md)
   cli.mjs              Entrypoint and verb registry; JSON on stdout
-  verbs/               state, verify, commit, pr, worktree, clean-scope, doctor
+  verbs/               state, verify, commit, pr, worktree, doctor
   lib/                 git/process/path helpers
   bin/my-command-tools The shim that resolves the toolkit device-wide
 dist/               GENERATED wizard build (tsc output; gitignored, built on install via `prepare`)

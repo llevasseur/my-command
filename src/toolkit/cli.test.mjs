@@ -20,7 +20,7 @@ test('a flag with no value is boolean true', () => {
 });
 
 test('repeating a flag collects it into an array', () => {
-  assert.deepEqual(parseArgs(['clean-scope', '--path', 'a', '--path', 'b']).flags.path, ['a', 'b']);
+  assert.deepEqual(parseArgs(['verify', '--only', 'lint', '--only', 'test']).flags.only, ['lint', 'test']);
 });
 
 test('non-flag tokens stay positional', () => {

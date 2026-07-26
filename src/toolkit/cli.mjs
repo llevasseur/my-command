@@ -7,7 +7,6 @@
 import { realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { ToolkitError } from './lib/proc.mjs';
-import * as cleanScope from './verbs/clean-scope.mjs';
 import * as commit from './verbs/commit.mjs';
 import * as doctor from './verbs/doctor.mjs';
 import * as pr from './verbs/pr.mjs';
@@ -30,7 +29,6 @@ const VERBS = {
   commit,
   pr,
   worktree,
-  'clean-scope': cleanScope,
   doctor,
 };
 
