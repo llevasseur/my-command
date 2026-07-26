@@ -123,13 +123,14 @@ After removing anything, fix what pointed at it: `okq --bundle <dir> deadlinks` 
 2. Re-run the health checks until clean: `okq --bundle <dir> validate`, `deadlinks --check`, `orphans` (exit code 3 means the gate tripped — branch on `$?`, not the text).
 3. Run the repo's own doc gate if it has one (e.g. `pnpm run check:commands`, the `docs` CI job's command). Report exactly what you ran.
 4. Report a table: doc | verdict (`fresh` / `updated` / `added` / `pruned` / `flagged`) | what changed. Then, separately, the **code-side findings** — places the code, not the doc, looked wrong — since those need my decision.
-5. Apply edits directly, then let the surrounding `/task` run take it from here — its Step 2 commits the doc changes, and its Step 3 runs `/clean`, `/pr`, and worktree teardown. Report the table above as this pass's result rather than opening the PR yourself. Under `--dry-run` there is nothing to hand off.
+5. Apply edits directly, then let the surrounding `/task` run take it from here — its Step 2 commits the doc changes, and its Step 3 runs `/clean`, `/pr`, and worktree teardown. Report the table above as this pass's result rather than opening the PR yourself, and deliver it in a **text-only turn** — after the last `okq` call or edit, never in the same turn as one, or the pass is recorded as unfinished even though it completed. Under `--dry-run` there is nothing to hand off.
 
 ## Notes
 
 - **Every claim you write traces to source you read.** Never fill a doc from the feature's name, and never soften a doc to match code you didn't verify.
 - **Docs are a contract, not a cache.** When doc and code disagree, that's a judgment call for me — this command surfaces it rather than silently picking the code.
 - `okq` over `grep` throughout: `search`/`find`/`get`/`neighbors` are ranked and structure-aware, and `get --section` keeps whole files out of context.
+- **Quote any Bash argument holding `*` or `?` that the invoked program — not the shell — should expand** (`okq --bundle docs find 'docs/adrs/*'`, `grep --include='*.md'`). The shell is zsh: an unquoted glob that matches nothing aborts the whole command with `no matches found`, and the argument never reaches the program.
 - This command edits **docs only** — never source code, never tests. Code problems get reported, not fixed. That holds inside the `/task` run too: the PR it opens is a docs-only PR.
 - Delegating to `/task` means `/task`'s rules apply — it has standing permission to commit on the branch (never on `main`), and it ends at a PR. A doc-vs-code conflict still comes back to me before anything is blessed, and `--yes` / `-y` governs those confirmations, not whether a PR gets opened.
 - Hand-editing a generated `index.md` is always wrong; regenerate it.

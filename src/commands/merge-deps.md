@@ -45,7 +45,9 @@ Parse leading flags off `$ARGUMENTS`:
    abort the user's work. Tell them to commit or stash and stop.
 4. Update and fast-forward local main: `git fetch --all --prune`, then
    `git checkout main && git pull --ff-only origin main`. If the fast-forward fails, stop
-   and report — local `main` diverged and needs a human.
+   and report — local `main` diverged and needs a human. Keep the `git fetch` in its **own**
+   Bash call: it may require approval, and folding it into an `&&` chain escalates approval
+   to the whole compound command and costs a turn plus a retry.
 
 ## Select the PRs
 
@@ -128,6 +130,8 @@ For each PR (number `N`, branch `B`):
    - 🔴 left for a human — with the reason (fork/cross-repo, unresolved conflict, or failed
      verification)
 4. Never mark the run complete if anything is 🔴 without saying so explicitly.
+5. Deliver that summary in a **text-only turn** — after the last tool call, never in the same
+   turn as one, or the run is recorded as unfinished even though every PR was handled.
 
 ## Notes
 

@@ -83,7 +83,7 @@ LOG_DIR="<logDir>" pnpm --filter server suggestions mark -r <bucket> -i <id>[,<i
 - A suggestion the subagent dropped, deferred, or couldn't act on stays `pending` — it should come back on the next `/my-command:improve`. Flagging it now is how real work gets lost.
 - Use `-s skipped -n "<why>"` only for a suggestion deliberately passed over for a stated reason, so it stops resurfacing without pretending it was applied.
 - If the subagent opened no PR, mark nothing.
-- Report at the end: the range read, how many suggestions were pending, the criteria that shipped, the PR number/URL, what was marked `done` or `skipped`, and what stays `pending` with why.
+- Report at the end: the range read, how many suggestions were pending, the criteria that shipped, the PR number/URL, what was marked `done` or `skipped`, and what stays `pending` with why. That report is a **text-only turn** — after the last `mark` call, never in the same turn as one, or this run joins the unfinished-task count the suggestions are measuring.
 
 ## Notes
 

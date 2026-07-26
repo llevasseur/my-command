@@ -95,4 +95,4 @@ cd "$WORKTREE_ROOT"
 
 - One-time per repo. If a bootstrap already exists, **update** it rather than scaffolding a new one — inspect it first.
 - Keep this command device- and project-agnostic: everything project-specific comes from detection + the interview, never hardcoded here.
-- Report the branch up front and the PR number/URL at the end.
+- Report the branch up front and the PR number/URL at the end, in a **text-only turn** — after the last tool call, never in the same turn as one, or the run is recorded as unfinished even though the PR is open.
