@@ -55,4 +55,27 @@ if [ -d "$TOOLKIT_SRC" ]; then
     echo "failed to point $TOOLKIT_ROOT/toolkit at $TOOLKIT_SRC" >&2
     exit 1
   fi
+
+  # The fixed path above is not enough on its own: commands spell the call as a bare
+  # `my-command-tools` (and declare it as `Bash(my-command-tools:*)`), so it has to be on
+  # PATH. Link it into a user bin dir the PATH already has — never edit a shell profile.
+  # Keep the candidate list in step with linkDirs() in src/toolkit/lib/paths.mjs.
+  SHIM="$TOOLKIT_ROOT/bin/my-command-tools"
+  LINK_DIR=""
+  for candidate in "$HOME/.local/bin" "$HOME/bin"; do
+    case ":$PATH:" in *":$candidate:"*) LINK_DIR="$candidate"; break ;; esac
+  done
+
+  if [ -z "$LINK_DIR" ]; then
+    echo "note: neither ~/.local/bin nor ~/bin is on PATH, so 'my-command-tools' is not callable by name." >&2
+    echo "      add it with: export PATH=\"$TOOLKIT_ROOT/bin:\$PATH\"" >&2
+  elif [ -e "$LINK_DIR/my-command-tools" ] && [ ! -L "$LINK_DIR/my-command-tools" ]; then
+    # A real file under our name belongs to something else; clobbering it isn't ours to do.
+    echo "note: $LINK_DIR/my-command-tools exists and is not a symlink — left untouched." >&2
+  else
+    mkdir -p "$LINK_DIR"
+    # -n so an existing link to a directory is replaced rather than followed into.
+    ln -sfn "$SHIM" "$LINK_DIR/my-command-tools"
+    echo "On PATH as 'my-command-tools' via $LINK_DIR/my-command-tools (new shells only)."
+  fi
 fi

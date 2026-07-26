@@ -7,15 +7,18 @@ import {
   copyFileSync,
   cpSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { stdin as input, stdout as output } from 'node:process';
 import { emitKeypressEvents, type Key } from 'node:readline';
 import { createInterface } from 'node:readline/promises';
@@ -224,6 +227,72 @@ interface ToolkitResult {
   installed: boolean;
   bin: string;
   reason?: string;
+  link?: PathLink;
+}
+
+interface PathLink {
+  /** The link that now resolves a bare call, or null when none could be placed. */
+  linked: string | null;
+  /** Set when nothing was linked, or when an existing link was left alone. */
+  reason?: string;
+}
+
+// Directories a PATH link may go in, most preferred first. Both are user-owned by
+// convention, so this needs no elevation and no shell profile edit.
+// Keep in step with linkDirs() in src/toolkit/lib/paths.mjs and install-personal.sh.
+const linkDirs = () => [join(homedir(), '.local', 'bin'), join(homedir(), 'bin')];
+
+/** Fully resolved path, or null when it doesn't resolve (a dangling link, a missing file). */
+function realOrNull(p: string): string | null {
+  try {
+    return realpathSync(p);
+  } catch {
+    return null;
+  }
+}
+
+// Put the shim where a bare `my-command-tools` resolves. Installing to a fixed device
+// path is only half the job: every command spells the call bare (and declares it as
+// `Bash(my-command-tools:*)`), so an unlinked shim reads to a command as "not
+// installed" — and an absolute-path call would not match that permission rule anyway.
+//
+// Deliberately never edits a shell profile. Linking into a directory the user already
+// has on PATH takes effect in the next shell with nothing to undo, where rewriting
+// dotfiles guesses at the shell and leaves a mess behind.
+function linkOnPath(shim: string): PathLink {
+  const onPath = new Set(
+    process.env.PATH?.split(delimiter)
+      .filter(Boolean)
+      .map((d) => (d.length > 1 && d.endsWith('/') ? d.slice(0, -1) : d)),
+  );
+
+  const dirs = linkDirs();
+  const target = dirs.find((d) => onPath.has(d));
+  if (!target) {
+    return { linked: null, reason: `no user bin directory on PATH (looked for ${dirs.join(', ')})` };
+  }
+
+  const link = join(target, TOOLKIT_BIN);
+  try {
+    // lstat, not existsSync: a link pointing at a since-removed shim is broken, not absent,
+    // and has to be replaced rather than reported as already present.
+    const existing = lstatSync(link, { throwIfNoEntry: false });
+    if (existing?.isSymbolicLink()) {
+      // Resolve the link itself rather than joining its target onto the dir: the target
+      // may be absolute, and a link left dangling by a removed shim must be replaced,
+      // not reported as already correct.
+      if (realOrNull(link) !== null && realOrNull(link) === realOrNull(shim)) return { linked: link };
+      unlinkSync(link); // Ours by name — repoint it at this install.
+    } else if (existing) {
+      // A real file under our name is something else's; clobbering it is not ours to do.
+      return { linked: null, reason: `${link} already exists and is not a symlink — left untouched` };
+    }
+    mkdirSync(target, { recursive: true });
+    symlinkSync(shim, link);
+    return { linked: link };
+  } catch (err) {
+    return { linked: null, reason: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 // Install the shared CLI to a fixed device path. Runs for BOTH install modes on
@@ -248,7 +317,9 @@ function installToolkit(): ToolkitResult {
     chmodSync(bin, 0o755);
     chmodSync(join(dest, 'bin', TOOLKIT_BIN), 0o755);
     writeFileSync(join(root, 'VERSION'), `${version()} ${new Date().toISOString()}\n`);
-    return { installed: true, bin };
+    // The link points at the fixed shim path, not at this payload, so it keeps working
+    // when a later install replaces the toolkit underneath it.
+    return { installed: true, bin, link: linkOnPath(bin) };
   } catch (err) {
     return { installed: false, bin: '', reason: err instanceof Error ? err.message : String(err) };
   }
@@ -271,7 +342,17 @@ function version(): string {
 function reportToolkit(result: ToolkitResult) {
   if (result.installed) {
     console.log(`\nShared CLI installed: ${result.bin}`);
-    console.log(`Check it any time with: ${result.bin} doctor`);
+    if (result.link?.linked) {
+      console.log(`On PATH as \`${TOOLKIT_BIN}\` via: ${result.link.linked}`);
+      console.log(`Check it any time with: ${TOOLKIT_BIN} doctor   (new shells only)`);
+    } else {
+      // Commands call it bare, so say plainly that they can't reach it yet — and how.
+      console.log(`Not on PATH (${result.link?.reason ?? 'unknown'}).`);
+      console.log(`Commands call it as a bare \`${TOOLKIT_BIN}\`, so add it to PATH with either:`);
+      console.log(`  ln -s ${result.bin} ${join(linkDirs()[0], TOOLKIT_BIN)}   # if that dir is on your PATH`);
+      console.log(`  export PATH="${dirname(result.bin)}:$PATH"                # in your shell profile`);
+      console.log(`Check it any time with: ${result.bin} doctor`);
+    }
   } else {
     console.log(`\nShared CLI not installed (${result.reason}).`);
     console.log('Commands that shell out to it will report the missing toolkit when run.');
@@ -314,4 +395,4 @@ if (invokedDirectly) {
   });
 }
 
-export { checkboxPrompt, installPersonal, installToolkit };
+export { checkboxPrompt, installPersonal, installToolkit, linkOnPath };

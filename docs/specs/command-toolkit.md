@@ -85,6 +85,36 @@ The order lives in exactly three places, each cross-referenced by comment:
 `doctor` reports), and `installToolkit()` in `src/my-command.ts` (what writes root
 3). Changing one means changing all three.
 
+## Reachable by name
+
+Resolution answers "where is the toolkit"; it does not answer "can a command call
+it". A command spells the call as a bare `my-command-tools` and declares it as
+`allowed-tools: Bash(my-command-tools:*)`, so the shim has to be **on PATH** —
+a fixed device path alone is invisible to a command. Absolute-path invocation is not
+the workaround: it fails to match that permission rule, trading a missing command for
+a prompt on every call.
+
+So every install that places the shim also links it onto PATH, at
+`<user bin dir>/my-command-tools` → `<device root>/bin/my-command-tools`:
+
+- The link targets the **fixed shim path**, never one install's payload, so it keeps
+  working when a later install replaces the toolkit underneath it.
+- The directory is the first of `~/.local/bin`, `~/bin` **already on the user's
+  PATH**. Both are user-owned, so linking needs no elevation.
+- **No shell profile is ever edited.** Linking into a directory the user already has
+  on PATH takes effect in the next shell with nothing to undo, where rewriting
+  dotfiles guesses at the shell and leaves a mess behind. When neither candidate is on
+  PATH, the installer prints the `export PATH=…` line instead of writing it.
+- A real file already under that name belongs to something else and is left alone; a
+  symlink is repointed, so a re-run is idempotent.
+
+The failure this closes was silent: with the shim installed but unlinked, a command
+found no `my-command-tools`, reported it as "not installed", and fell back to
+hand-rolled `git`/`gh` — losing every guard above while still looking like it worked.
+`doctor`'s `onPath` is what makes that state visible, reporting whether a bare call
+resolves, whether it resolves to *this* install's shim, and the exact link command
+when it doesn't.
+
 ## Shipping constraint
 
 **The toolkit ships as raw `.mjs` under `src/toolkit/`, never as build output.**
@@ -116,6 +146,9 @@ with `allowJs` + `checkJs` + `noEmit`, run as `pnpm run check:toolkit`.
 - **Both install modes place the toolkit.** `src/my-command.ts` calls
   `installToolkit()` for the plugin path *and* the personal path, so no install
   leaves commands without their tooling. Enforced by `check-commands.sh`.
+- **Placing it implies linking it.** `installToolkit()` calls `linkOnPath()`, so the
+  shim it just placed is callable by name. Dropping the call reinstates the silent
+  fallback above. Enforced by `check-commands.sh`.
 - **Zero dependencies, Node 22+.** Stdlib only — the toolkit runs from a bare clone
   with nothing installed. Tests use the built-in `node --test` runner.
 - **JSON out, exit code carries the verdict.** 0 success, 1 a failed gate or refused
@@ -126,6 +159,8 @@ with `allowJs` + `checkJs` + `noEmit`, run as `pnpm run check:toolkit`.
 ## Acceptance criteria
 
 - [ ] `my-command-tools doctor` resolves from all three roots, reporting which won.
+- [ ] `doctor` reports `onPath.reachable`, and on a device with no link reports
+      `reachable: false` with the exact `ln -s` fix rather than looking healthy.
 - [ ] Every verb returns parseable JSON on stdout and nothing else, on both its success
       and its failure path. (`--help` output is prose, by design.)
 - [ ] `commit` refuses the default branch and refuses whole-tree staging.
@@ -133,7 +168,8 @@ with `allowJs` + `checkJs` + `noEmit`, run as `pnpm run check:toolkit`.
       existing branch is refused.
 - [ ] `worktree end` refuses a worktree with unpushed commits absent `--force`.
 - [ ] `pnpm run check:toolkit` and `pnpm test` pass in CI.
-- [ ] A fresh `npx` install lands a runnable shim on the device root.
+- [ ] A fresh `npx` install lands a runnable shim on the device root **and** leaves a
+      bare `my-command-tools` call working in a new shell.
 
 ## Related
 
