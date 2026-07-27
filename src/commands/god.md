@@ -33,6 +33,8 @@ Owned here:
 
 ## Step 2 — Run `/task`, with `/review` woven in
 
+If the repo being changed is not the repo this session started in, prefer starting a new session in the target repo. Otherwise, `/task` must not use `EnterWorktree`: it uses `my-command-tools worktree begin`, works through absolute paths under the returned `path`, then tears down with `my-command-tools worktree end`, which re-verifies the branch reached origin before removing it.
+
 Invoke `/task` with the forwarded flags and the criteria; it owns the whole branch → implement → verify → `/clean` → `/pr` → teardown pipeline. Don't re-implement any of it here.
 
 Unless `--no-review` was given, append this entry to `/task`'s `--add` list (after any entries I passed, so mine keep their order):

@@ -14,6 +14,8 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 
 ## Behavior
 
+During implementation, read each file immediately before `Edit`. Re-read it if any external action, hook, formatter, generator, or another agent may have changed it since the prior read.
+
 ### Default (no `--target`)
 
 Run `/task --here <feedback request>` on the **current branch**.
@@ -23,10 +25,13 @@ Run `/task --here <feedback request>` on the **current branch**.
 
 ### `--target <branch>` / `-t <branch>` given
 
+If the target repo is not the repo this session started in, prefer starting a new session in the target repo. Otherwise, use the steps below without `EnterWorktree`: do all work through absolute paths under the returned `path`, then tear down with `my-command-tools worktree end`, which re-verifies the branch reached origin before removing it.
+
 1. `my-command-tools worktree begin --branch <branch> --existing --bootstrap`. It fetches first, then checks out that **existing** branch into a worktree and reports the `path`. `--existing` is what makes this safe: without it the verb would create a new branch, silently abandoning the work already on `<branch>`.
    - If it errors with `branch does not exist locally or on origin`, stop and tell me — do **not** create a new branch. This flag is for applying feedback onto existing work.
-2. Switch into the reported `path` with the `EnterWorktree` tool.
-3. Once inside the worktree, run `/task --here <feedback request>`. `-h` keeps `/task` on the checked-out branch — no nested worktree, no new branch.
+2. When the target and session-start repo are the same, switch into the reported `path` with the `EnterWorktree` tool. For a cross-repo run, stay outside it and use absolute paths under `path`.
+3. Run `/task --here <feedback request>` against the reported worktree: from inside it for a same-repo run, or through its absolute paths for a cross-repo run. `-h` keeps `/task` on the checked-out branch — no nested worktree, no new branch.
+4. For a cross-repo run, after `/task` has pushed the branch, work from outside `path` and run `my-command-tools worktree end --branch <branch>`.
 
 ## Notes
 
