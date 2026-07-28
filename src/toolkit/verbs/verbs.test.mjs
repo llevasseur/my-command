@@ -217,6 +217,77 @@ test('pr --draft converts a non-draft PR toward draft', () => {
   }
 });
 
+const SHOT = 'https://github.com/user-attachments/assets/1111-2222';
+const CLIP = 'https://github.com/user-attachments/assets/3333-4444';
+
+/** @param {Record<string, unknown>} extra */
+const openPr = (extra) => ({
+  number: 9,
+  url: 'https://example.test/pr/9',
+  isDraft: false,
+  title: 'T',
+  state: 'OPEN',
+  ...extra,
+});
+
+test("pr carries an existing description's assets into the rewritten body", () => {
+  const { dir, calls, restore } = repoWithFakeGh(
+    openPr({ body: `Old prose\n\n![screenshot](${SHOT})\n\n<video src="${CLIP}"></video>\n` }),
+  );
+  try {
+    const r = pr(ctx(dir, [], { title: 'T', body: '- rewrote the thing' }));
+    assert.equal(r.assetsPreserved, 2);
+    const log = calls();
+    assert.match(log, /- rewrote the thing/);
+    assert.match(log, /## Assets/);
+    assert.ok(log.includes(`![screenshot](${SHOT})`));
+    assert.ok(log.includes(`<video src="${CLIP}"></video>`));
+    assert.doesNotMatch(log, /Old prose/);
+  } finally {
+    restore();
+  }
+});
+
+test('pr does not re-append an asset the new body already carries', () => {
+  const { dir, calls, restore } = repoWithFakeGh(openPr({ body: `![shot](${SHOT})` }));
+  try {
+    const r = pr(ctx(dir, [], { title: 'T', body: `- new prose\n\n![shot](${SHOT})` }));
+    assert.equal(r.assetsPreserved, 0);
+    assert.doesNotMatch(calls(), /## Assets/);
+  } finally {
+    restore();
+  }
+});
+
+test('pr treats a bare attachment link as an asset and keeps one heading across updates', () => {
+  // Second pass: the previous body already has the heading, plus a new bare URL.
+  const { dir, calls, restore } = repoWithFakeGh(
+    openPr({ body: `Prose\n\n## Assets\n\n![shot](${SHOT})\n\n${CLIP}\n` }),
+  );
+  try {
+    const r = pr(ctx(dir, [], { title: 'T', body: `- prose\n\n## Assets\n\n![shot](${SHOT})` }));
+    assert.equal(r.assetsPreserved, 1);
+    const log = calls();
+    assert.ok(log.includes(CLIP));
+    assert.equal(log.match(/## Assets/g)?.length, 1);
+  } finally {
+    restore();
+  }
+});
+
+test('pr adds nothing when the previous description had no assets', () => {
+  const { dir, calls, restore } = repoWithFakeGh(
+    openPr({ body: 'Just prose, and a [plain link](https://example.test/docs).' }),
+  );
+  try {
+    const r = pr(ctx(dir, [], { title: 'T', body: '- new prose' }));
+    assert.equal(r.assetsPreserved, 0);
+    assert.doesNotMatch(calls(), /## Assets/);
+  } finally {
+    restore();
+  }
+});
+
 test('worktree begin --existing refuses a branch that does not exist', () => {
   const { dir } = repo();
   assert.throws(() => worktree(ctx(dir, ['begin'], { branch: 'feat/nope', existing: true })), /does not exist/);
