@@ -46,6 +46,12 @@ default (current branch, no `--target`) applies the fix directly onto the PR's
 branch. It never merges or approves the PR, and never posts a GitHub PR
 review/comment — its only output is the `/fb`-ready feedback, shown and applied.
 
+In default mode `/review` removes its own worktree at the end, clean PR or not:
+[pr](pr.md) tears down only worktrees its own session created, and one entered via
+`EnterWorktree({path})` can only be left with `action: "keep"` — so `/review` steps back
+out and removes it with `worktree end --branch <headRefName>`. Under `--here` there is no
+worktree to remove and the checkout is left alone.
+
 ## Related
 
 - Command source: `src/commands/review.md`

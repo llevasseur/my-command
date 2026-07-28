@@ -51,10 +51,11 @@ Review material:
 ## Step 4 — Report and apply
 
 1. Show me the review findings and the `/my-command:fb` block verbatim — this is the copy-pasteable output the wish asked for, so it must be visible even though the next step also applies it. In `--here` mode, emit your own report in exactly the same shape.
-2. If the review found nothing to fix: stop here. Don't invoke `/my-command:fb` for a clean PR.
+2. If the review found nothing to fix: don't invoke `/my-command:fb` for a clean PR — go straight to (4).
 3. If the review produced an `/my-command:fb` line: run it via the `Skill` tool (`skill: "fb"`, `args:` the feedback text after `/my-command:fb`). This runs inside the same worktree/checkout from Step 2, so `/my-command:fb`'s default (current branch, no `--target`) is correct — do not add `--target` yourself.
-   - Close the run with a **text-only turn** — the verdict, what `/my-command:fb` applied, and the PR — stated after the last tool call, never in the same turn as one. A run whose final act is a tool call is recorded as unfinished even when the review is done.
-   - `/my-command:fb` wraps `/my-command:task --here`, which implements the fix, commits, then runs `/my-command:clean` and `/my-command:pr` — `/my-command:pr` updates the **same** PR (same branch, already pushed) and removes the worktree it's running in once the branch is confirmed pushed. Don't tear down the worktree yourself in this command — `/my-command:pr` at the end of that chain already does it.
+   - `/my-command:fb` wraps `/my-command:task --here`, which implements the fix, commits, then runs `/my-command:clean` and `/my-command:pr` — `/my-command:pr` updates the **same** PR (same branch, already pushed).
+4. **Tear down the Step 2 worktree yourself** (default mode only — under `--here` there is no worktree, so touch nothing), whether or not `/my-command:fb` ran. `/my-command:pr` does **not** remove it: it skips teardown for any worktree its session didn't create, and this one was entered with `EnterWorktree({path})`, which `ExitWorktree` also refuses to remove. Call `ExitWorktree` with `action: "keep"` to step back out, then run `my-command-tools worktree end --branch <headRefName>` from the original checkout — it re-verifies the branch reached origin before removing, so if it refuses, push rather than forcing.
+5. Close the run with a **text-only turn** — the verdict, what `/my-command:fb` applied (or that the PR was clean), and the PR — stated after the last tool call, never in the same turn as one. A run whose final act is a tool call is recorded as unfinished even when the review is done.
 
 ## Notes
 

@@ -3,12 +3,13 @@
 // than assumed.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { porcelain } from '../lib/repo.mjs';
 import { run as commit } from './commit.mjs';
+import { run as pr } from './pr.mjs';
 import { run as state } from './state.mjs';
 import { run as worktree } from './worktree.mjs';
 
@@ -22,6 +23,11 @@ function repo() {
   git(['init', '-q', '-b', 'main']);
   git(['config', 'user.email', 'test@example.com']);
   git(['config', 'user.name', 'Test']);
+  // A throwaway repo must not inherit the developer's commit signing: a hardware or
+  // agent-backed key blocks on a prompt that never comes in a test run, and the commit
+  // then fails outright.
+  git(['config', 'commit.gpgsign', 'false']);
+  git(['config', 'tag.gpgsign', 'false']);
   writeFileSync(join(dir, 'a.ts'), 'export const a = 1;\n');
   git(['add', 'a.ts']);
   git(['commit', '-qm', 'init']);
@@ -138,6 +144,77 @@ test('worktree begin --existing checks out a branch instead of creating one', ()
   // The checkout is the branch's own tip, not main's.
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: r.path, encoding: 'utf8' }).trim();
   assert.equal(head, execFileSync('git', ['rev-parse', 'feat/existing'], { cwd: dir, encoding: 'utf8' }).trim());
+});
+
+/**
+ * A repo with a real `origin` to push to, plus a stub `gh` on PATH that answers
+ * `pr view` with `json` and records every invocation. Returns the log reader, so a
+ * test can assert on what the verb did *not* call as well as what it did.
+ * @param {Record<string, unknown>} json  What `gh pr view --json ...` should report.
+ */
+function repoWithFakeGh(json) {
+  const { dir, git } = repo();
+  const remote = mkdtempSync(join(tmpdir(), 'mct-origin-'));
+  made.push(remote);
+  execFileSync('git', ['init', '-q', '--bare', remote]);
+  git(['remote', 'add', 'origin', remote]);
+  git(['push', '-q', '-u', 'origin', 'main']);
+  git(['checkout', '-qb', 'feat/x']);
+
+  const bin = join(dir, '.fakebin');
+  mkdirSync(bin);
+  const log = join(dir, 'gh.log');
+  writeFileSync(
+    join(bin, 'gh'),
+    `#!/bin/sh\necho "$@" >> ${JSON.stringify(log)}\n[ "$1 $2" = "pr view" ] && cat <<'JSON'\n${JSON.stringify(json)}\nJSON\nexit 0\n`,
+  );
+  chmodSync(join(bin, 'gh'), 0o755);
+
+  const previous = process.env.PATH;
+  process.env.PATH = `${bin}:${previous}`;
+  const restore = () => {
+    process.env.PATH = previous;
+  };
+  const calls = () => readFileSync(log, 'utf8');
+  return { dir, git, calls, restore };
+}
+
+test('pr leaves an existing draft as a draft', () => {
+  const { dir, calls, restore } = repoWithFakeGh({
+    number: 7,
+    url: 'https://example.test/pr/7',
+    isDraft: true,
+    title: 'Existing',
+    state: 'OPEN',
+  });
+  try {
+    const r = pr(ctx(dir, [], { title: 'New title', body: 'body' }));
+    assert.equal(r.action, 'updated');
+    assert.equal(r.draft, true);
+    // The whole point: updating a draft never promotes it to ready for review.
+    assert.doesNotMatch(calls(), /pr ready/);
+    // And a title is only rewritten on request.
+    assert.doesNotMatch(calls(), /--title/);
+  } finally {
+    restore();
+  }
+});
+
+test('pr --draft converts a non-draft PR toward draft', () => {
+  const { dir, calls, restore } = repoWithFakeGh({
+    number: 8,
+    url: 'https://example.test/pr/8',
+    isDraft: false,
+    title: 'Existing',
+    state: 'OPEN',
+  });
+  try {
+    const r = pr(ctx(dir, [], { title: 'New title', body: 'body', draft: true }));
+    assert.equal(r.draft, true);
+    assert.match(calls(), /pr ready 8 --undo/);
+  } finally {
+    restore();
+  }
 });
 
 test('worktree begin --existing refuses a branch that does not exist', () => {

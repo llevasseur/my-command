@@ -90,6 +90,7 @@ cd "$WORKTREE_ROOT"
 - If the repo tracks a changelog, add an entry.
 - Commit only the files you created: `my-command-tools commit --message <text> <path> [<path>...]`. Staging is always explicit — the verb refuses whole-tree staging — so nothing you didn't author comes along. Invoking this command is standing permission to commit on this branch (never on `main`).
 - Run **`/my-command:clean`**, then **`/my-command:pr`** (`/my-command:pr --draft` if `--draft`/`-d`).
+- **Tear the worktree down yourself** if Step 1 created one. `/my-command:pr` skips teardown for a worktree its session didn't create, and this one was entered with `EnterWorktree({path})`, which `ExitWorktree` also refuses to remove: call `ExitWorktree` with `action: "keep"`, then `my-command-tools worktree end --branch chore/worktree-bootstrap` from the original checkout. It re-verifies the branch reached origin first.
 
 ## Notes
 

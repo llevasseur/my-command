@@ -31,7 +31,10 @@ If the target repo is not the repo this session started in, prefer starting a ne
    - If it errors with `branch does not exist locally or on origin`, stop and tell me — do **not** create a new branch. This flag is for applying feedback onto existing work.
 2. When the target and session-start repo are the same, switch into the reported `path` with the `EnterWorktree` tool. For a cross-repo run, stay outside it and use absolute paths under `path`.
 3. Run `/task --here <feedback request>` against the reported worktree: from inside it for a same-repo run, or through its absolute paths for a cross-repo run. `-h` keeps `/task` on the checked-out branch — no nested worktree, no new branch.
-4. For a cross-repo run, after `/task` has pushed the branch, work from outside `path` and run `my-command-tools worktree end --branch <branch>`.
+4. Tear the worktree down yourself once `/task` reports the PR — **`/pr` will not do it for you.** It skips teardown for any worktree its session didn't create, and this one is yours.
+   - **Same repo:** you entered it with `EnterWorktree({path})`, so `ExitWorktree` refuses to remove it. Call `ExitWorktree` with `action: "keep"` to step back out to the original checkout, then run `my-command-tools worktree end --branch <branch>` from there.
+   - **Cross-repo:** you never entered it — just run `my-command-tools worktree end --branch <branch>` from outside `path`.
+   - Either way the verb re-verifies the branch reached origin before removing, and refuses if it hasn't. If it refuses, push first rather than forcing.
 
 ## Notes
 

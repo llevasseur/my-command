@@ -24,7 +24,10 @@ Inspects the project (package manager, env files, generated code) and writes a
 repo-specific bootstrap script that `task` prefers over its generic fallback — the
 same script the toolkit's `worktree begin --bootstrap` runs. Its own workspace comes
 from `worktree begin` *without* `--bootstrap`, since the script it is about to write
-doesn't exist yet.
+doesn't exist yet. It removes that workspace itself after `/clean` and `/pr` —
+[pr](pr.md) only tears down worktrees its own session created — by stepping out with
+`ExitWorktree` (`action: "keep"`) and running `worktree end --branch
+chore/worktree-bootstrap`.
 
 ## Related
 

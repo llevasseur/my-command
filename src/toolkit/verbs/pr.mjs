@@ -12,7 +12,8 @@ Push the current branch and create or update its PR.
 
   --title <text>   PR title. Only applied to an existing PR when --retitle is given.
   --body <text>    PR description. Use \`-\` to read it from stdin.
-  --draft          Create as a draft, or convert an existing PR back to draft.
+  --draft          Create as a draft, or convert an existing non-draft PR to draft.
+                   An existing draft is never taken out of draft, flag or not.
   --base <branch>  Target branch (default: the repo's default branch).
   --retitle        Also update the title of an existing PR.`;
 

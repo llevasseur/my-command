@@ -110,7 +110,7 @@ Do this **before** any new work, and trust the repo over the transcript every ti
 
 Finishing the edits is not finishing the run. Go back to the workflow you identified in Step 2 and complete **its** documented ending — read that command's file again rather than assuming.
 
-- A run wrapped in `/task` (which is most of them, including everything `/docs`, `/fb`, and `/review` delegate) ends at a **PR**: commit the work on the branch, run `/clean`, then `/pr`, then tear the worktree down. `/task`'s standing permission to commit on that branch carries over — you are completing its run, not starting a new one.
+- A run wrapped in `/task` (which is most of them, including everything `/docs`, `/fb`, and `/review` delegate) ends at a **PR**: commit the work on the branch, run `/clean`, then `/pr`, then tear the worktree down. Teardown is yours, not `/pr`'s — `/pr` skips any worktree its session didn't create, and a worktree you re-entered via `EnterWorktree({path})` in Step 4 is one `ExitWorktree` refuses to remove, so step out with `action: "keep"` and finish with `my-command-tools worktree end --branch <branch>`. `/task`'s standing permission to commit on that branch carries over — you are completing its run, not starting a new one.
 - A run that was never inside `/task` ends wherever its own instructions say. If that is just "report", report.
 - Do **not** wrap the resumption in a new `/task` invocation: the branch and workspace already exist, and a nested run would create a second worktree for work that is already checked out.
 

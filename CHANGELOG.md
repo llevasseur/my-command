@@ -5,6 +5,15 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-07-28
+
+### Fixed
+
+- **`pr` no longer tries to remove a worktree it doesn't own.** `/task` Step 3 dispatches `/clean` + `/pr` into a fresh subagent, and `/pr` Step 4 then attempted teardown from inside a workspace the parent session created — so every shipped run ended on `This session is not the owner of the worktree at … — it either entered a pre-existing worktree via EnterWorktree({path}) or resumed into a checkout whose liveness lock another running Claude Code session still holds`. The old fallback made it worse by reaching for `git worktree remove`, which git also refuses while the owner's lock is live. Teardown is now ownership-scoped: `/pr` removes the worktree only when its own session created it, skips it outright when dispatched as a subagent, and on an unexpected refusal steps out with `action: "keep"`, tries `my-command-tools worktree end`, and leaves the path in place — reporting it — rather than forcing past a live lock.
+- **The commands that set up a worktree and delegate now tear their own down.** They previously leaned on `/pr` doing it, which would have stranded a workspace now that `/pr` declines: `/fb --target` (same-repo and cross-repo), `/review` (default mode, clean PR or not), `/task-bootstrap`, and `/revive` each finish with `ExitWorktree` (`action: "keep"` — the only action allowed for a worktree entered via `EnterWorktree({path})`) followed by `my-command-tools worktree end --branch <branch>`, which re-verifies the branch reached origin before removing.
+- **`pr` says explicitly that a draft stays a draft.** The `pr` verb already only ever moved a PR *toward* draft, but nothing said so to the agent driving it; Step 3 now forbids `gh pr ready` and "helpfully" marking a finished-looking draft ready — only `/god` promotes a draft, right before merging. Two toolkit tests lock the behavior in: an update to an existing draft never calls `pr ready`, and `--draft` on a non-draft PR still converts it.
+- **Toolkit tests no longer hang on commit signing.** The throwaway repos inherited the developer's global `commit.gpgsign`, so an agent- or hardware-backed key turned `git commit` into a prompt that never comes — the suite blocked, then failed with `1Password: agent returned an error`. Each test repo now disables `commit.gpgsign`/`tag.gpgsign` locally.
+
 ## 2026-07-26
 
 ### Changed

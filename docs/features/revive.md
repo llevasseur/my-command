@@ -88,8 +88,11 @@ commit/clean/PR tail never reached.
 **Finishing.** Only outstanding items are worked, with claims re-verified against
 source rather than trusted from the transcript. Then the *original* workflow is
 completed on its own terms — for anything wrapped in `/task` that means commit,
-`/clean`, `/pr`, worktree teardown. The resumption is never wrapped in a new
-`/task` run, since the branch and workspace already exist.
+`/clean`, `/pr`, worktree teardown. Teardown belongs to the resuming session, not to
+[pr](pr.md), which skips any worktree it didn't create: a worktree re-entered by path is
+left with `ExitWorktree` (`action: "keep"`) and then removed with `worktree end`. The
+resumption is never wrapped in a new `/task` run, since the branch and workspace already
+exist.
 
 ## Related
 
