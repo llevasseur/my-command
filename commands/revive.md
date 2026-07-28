@@ -110,7 +110,7 @@ Do this **before** any new work, and trust the repo over the transcript every ti
 
 Finishing the edits is not finishing the run. Go back to the workflow you identified in Step 2 and complete **its** documented ending — read that command's file again rather than assuming.
 
-- A run wrapped in `/my-command:task` (which is most of them, including everything `/my-command:docs`, `/my-command:fb`, and `/my-command:review` delegate) ends at a **PR**: commit the work on the branch, run `/my-command:clean`, then `/my-command:pr`, then tear the worktree down. `/my-command:task`'s standing permission to commit on that branch carries over — you are completing its run, not starting a new one.
+- A run wrapped in `/my-command:task` (which is most of them, including everything `/my-command:docs`, `/my-command:fb`, and `/my-command:review` delegate) ends at a **PR**: commit the work on the branch, run `/my-command:clean`, then `/my-command:pr`, then tear the worktree down. Teardown is yours, not `/my-command:pr`'s — `/my-command:pr` skips any worktree its session didn't create, and a worktree you re-entered via `EnterWorktree({path})` in Step 4 is one `ExitWorktree` refuses to remove, so step out with `action: "keep"` and finish with `my-command-tools worktree end --branch <branch>`. `/my-command:task`'s standing permission to commit on that branch carries over — you are completing its run, not starting a new one.
 - A run that was never inside `/my-command:task` ends wherever its own instructions say. If that is just "report", report.
 - Do **not** wrap the resumption in a new `/my-command:task` invocation: the branch and workspace already exist, and a nested run would create a second worktree for work that is already checked out.
 
