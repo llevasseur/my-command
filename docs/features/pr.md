@@ -31,6 +31,23 @@ unless `--retitle` is passed, and `--draft` only ever moves a PR *toward* draft:
 existing draft stays a draft, flag or not, and nothing here runs `gh pr ready`. Only
 `/god` promotes a draft, deliberately, right before merging.
 
+### Assets in the description are never dropped
+
+Updating a PR rewrites its body wholesale, and the replacement is authored from the
+branch's commits and diff — which know nothing about a screenshot or screen recording
+someone pasted into the PR by hand. So before editing, `my-command-tools pr` reads the
+current body and carries its assets forward: markdown images, `<img>`/`<video>`/`<audio>`
+/`<picture>` elements, and links to GitHub-hosted attachments (`user-attachments/assets/`,
+`user-images.githubusercontent.com`), including a bare attachment URL, which GitHub embeds
+on its own.
+
+Each is reinserted verbatim, so alt text and sizing attributes survive the round trip.
+Anything the rewritten body already references — matched by URL — is left where the new
+body put it; the rest is appended under an `## Assets` heading, reusing that heading when
+the body already has one so repeated updates collect into one section instead of stacking.
+Where markup nests, the outermost match wins, so a `<picture>` is kept whole rather than
+shredded into its `<img>`. Updates report the carry-over count as `assetsPreserved`.
+
 ### Worktree teardown is ownership-scoped
 
 Teardown happens only when **this session created the worktree**. Then it force-removes
