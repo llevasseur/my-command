@@ -92,28 +92,28 @@ function findExisting(cwd) {
   }
 }
 
-// GitHub-hosted media. A bare link to one of these renders as an inline image or a
-// video player, so it counts as an asset even with no image syntax wrapped around it.
+// GitHub-hosted media. A bare link to one of these renders inline, so it is an asset
+// even with no image syntax wrapped around it.
 const ATTACHMENT_URL =
   String.raw`https?://(?:github\.com/user-attachments/assets/[^\s)>"']+` +
   String.raw`|github\.com/[^\s/)>"']+/[^\s/)>"']+/assets/[^\s)>"']+` +
   String.raw`|(?:private-)?user-images\.githubusercontent\.com/[^\s)>"']+)`;
 
-/** How each asset shape is spotted, and where its URL lives once it is. */
+/** Each asset shape, and where its URL lives. */
 const ASSET_PATTERNS = [
-  // ![alt](url "title") — an image, whatever it points at.
+  // A markdown image, whatever it points at.
   { re: /!\[[^\]]*\]\(\s*<?([^\s)>]+)>?[^)]*\)/g, url: (/** @type {RegExpExecArray} */ m) => m[1] },
-  // <img>, <video>, <audio>, <picture> — with their closing tag when they have one.
+  // A media element, with its closing tag when it has one.
   {
     re: /<(img|video|audio|picture)\b[^>]*?(?:\/>|>(?:[\s\S]*?<\/\1>)?)/gi,
     url: (/** @type {RegExpExecArray} */ m) => m[0].match(/\bsrc\s*=\s*["']?([^"'\s>]+)/i)?.[1] ?? m[0],
   },
-  // [name](https://github.com/user-attachments/…) — GitHub renders these as media.
+  // A markdown link to an attachment host, which GitHub renders as media.
   {
     re: new RegExp(String.raw`\[[^\]]*\]\(\s*(${ATTACHMENT_URL})[^)]*\)`, 'g'),
     url: (/** @type {RegExpExecArray} */ m) => m[1],
   },
-  // A bare attachment URL, which GitHub embeds on its own line all by itself.
+  // A bare attachment URL, which GitHub embeds on its own.
   { re: new RegExp(ATTACHMENT_URL, 'g'), url: (/** @type {RegExpExecArray} */ m) => m[0] },
 ];
 
@@ -121,7 +121,6 @@ const ASSETS_HEADING = '## Assets';
 
 /**
  * Media embedded in a description, verbatim and in document order.
- * Snippets come back whole so alt text and sizing attributes survive the round trip.
  * @param {string} body
  * @returns {{snippet: string, url: string}[]}
  */
@@ -133,8 +132,8 @@ function extractAssets(body) {
       found.push({ start: m.index, end: m.index + m[0].length, snippet: m[0], url: url(m) });
     }
   }
-  // Outermost match wins: a `<picture>` swallows its `<img>`, an image swallows the
-  // bare URL inside it. Sorting longest-first at each offset makes that one pass.
+  // Outermost match wins, so nested markup is claimed once: sorting longest-first at
+  // each offset settles it in a single pass.
   found.sort((a, b) => a.start - b.start || b.end - a.end);
 
   /** @type {{snippet: string, url: string}[]} */
@@ -152,10 +151,9 @@ function extractAssets(body) {
 }
 
 /**
- * Fold every asset of `oldBody` that `newBody` dropped back into it.
- * A regenerated description is written from the branch's commits and diff, so it has no
- * way to know about a screenshot or a screen recording someone pasted into the PR by
- * hand — editing the body wholesale would silently delete them.
+ * Fold every asset of `oldBody` that `newBody` dropped back into it. A regenerated
+ * description is written from the branch's commits, so it never knows about media
+ * pasted into the PR by hand.
  * @param {string} newBody @param {string} oldBody
  * @returns {{body: string, preserved: number}}
  */
@@ -165,7 +163,7 @@ function preserveAssets(newBody, oldBody) {
 
   const kept = newBody.replace(/\s+$/, '');
   // Reuse a heading the new body already carries, so repeated updates collect into one
-  // section instead of stacking a fresh heading on every pass.
+  // section rather than stacking.
   const heading = kept.includes(ASSETS_HEADING) ? '' : `${ASSETS_HEADING}\n\n`;
   const block = missing.map((a) => a.snippet).join('\n\n');
   return { body: `${kept ? `${kept}\n\n` : ''}${heading}${block}\n`, preserved: missing.length };

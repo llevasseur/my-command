@@ -235,16 +235,13 @@ test("pr carries an existing description's assets into the rewritten body", () =
     openPr({ body: `Old prose\n\n![screenshot](${SHOT})\n\n<video src="${CLIP}"></video>\n` }),
   );
   try {
-    // The rewritten body is authored from the diff and mentions neither asset.
     const r = pr(ctx(dir, [], { title: 'T', body: '- rewrote the thing' }));
     assert.equal(r.assetsPreserved, 2);
     const log = calls();
-    // Both survive, verbatim, under one heading — and the new prose is still there.
     assert.match(log, /- rewrote the thing/);
     assert.match(log, /## Assets/);
     assert.ok(log.includes(`![screenshot](${SHOT})`));
     assert.ok(log.includes(`<video src="${CLIP}"></video>`));
-    // The old prose is not dragged along with them.
     assert.doesNotMatch(log, /Old prose/);
   } finally {
     restore();
@@ -263,8 +260,7 @@ test('pr does not re-append an asset the new body already carries', () => {
 });
 
 test('pr treats a bare attachment link as an asset and keeps one heading across updates', () => {
-  // Second pass: the body written last time already has the `## Assets` heading, and a
-  // new bare attachment URL showed up in the description since.
+  // Second pass: the previous body already has the heading, plus a new bare URL.
   const { dir, calls, restore } = repoWithFakeGh(
     openPr({ body: `Prose\n\n## Assets\n\n![shot](${SHOT})\n\n${CLIP}\n` }),
   );
@@ -273,7 +269,6 @@ test('pr treats a bare attachment link as an asset and keeps one heading across 
     assert.equal(r.assetsPreserved, 1);
     const log = calls();
     assert.ok(log.includes(CLIP));
-    // One heading, not a second one stacked underneath.
     assert.equal(log.match(/## Assets/g)?.length, 1);
   } finally {
     restore();
