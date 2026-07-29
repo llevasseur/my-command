@@ -4,8 +4,8 @@
 #
 #   1. commands/ is byte-in-sync with what build-plugin.sh generates from
 #      src/commands/ (the generated namespaced copy was regenerated and committed).
-#   2. every src/commands/<name>.md has a docs/features/<name>.md feature doc and a
-#      generated commands/<name>.md.
+#   2. every src/commands/<name>.md has a feature doc, generated Claude command,
+#      and Codex-native skill directory.
 #   3. the install wizard still enumerates src/commands/ dynamically, so new commands
 #      are auto-included — guards against someone replacing the glob with a hardcoded
 #      list (which is how a new command would silently drop out of the wizard).
@@ -28,7 +28,7 @@ fi
 
 # 2 + 3 below reuse the freshly-built commands/ (identical when in sync).
 
-# 2. Each command has a feature doc and a generated copy.
+# 2. Each command has a feature doc, generated copy, and Codex-native skill.
 for f in src/commands/*.md; do
   name="$(basename "$f" .md)"
   if [ ! -f "docs/features/$name.md" ]; then
@@ -39,11 +39,27 @@ for f in src/commands/*.md; do
     echo "::error::command '$name' has no generated commands/$name.md — run ./scripts/build-plugin.sh."
     fail=1
   fi
+  if [ ! -f "skills/$name/SKILL.md" ]; then
+    echo "::error::command '$name' has no skills/$name/SKILL.md — every Claude command needs a Codex-native translation."
+    fail=1
+  fi
+done
+
+for f in skills/*/SKILL.md; do
+  name="$(basename "$(dirname "$f")")"
+  if [ ! -f "src/commands/$name.md" ]; then
+    echo "::error::Codex skill '$name' has no src/commands/$name.md counterpart."
+    fail=1
+  fi
 done
 
 # 3. Wizard still globs the command directory rather than a hardcoded list.
 if ! grep -q 'readdirSync(SRC_DIR)' src/my-command.ts; then
   echo "::error::src/my-command.ts no longer enumerates src/commands/ with readdirSync(SRC_DIR); new commands may not auto-appear in the wizard."
+  fail=1
+fi
+if ! grep -q 'readdirSync(SKILLS_DIR)' src/my-command.ts; then
+  echo "::error::src/my-command.ts no longer enumerates skills/ dynamically; new Codex skills may not appear in the wizard."
   fail=1
 fi
 

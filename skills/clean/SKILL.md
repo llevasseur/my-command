@@ -1,0 +1,14 @@
+---
+name: clean
+description: Clean up comments across a branch's committed and uncommitted changes without altering behavior.
+---
+
+# Clean Comments
+
+Only touch comments—never code, logic, formatting, or behavior.
+
+1. Resolve the target branch from the request or use the current branch. Do not switch branches.
+2. Diff from the target's merge base with its upstream, plus staged and unstaged changes when the target is current.
+3. Inspect only comments on added or modified lines; ignore generated files and out-of-scope earlier work.
+4. Delete comments that restate code or narrate steps. Tighten verbose comments to the essential fact. Preserve licenses, directives, annotations, non-obvious constraints, JSX structural labels, and load-bearing empty-block comments.
+5. Never add comments. Report removed and tightened counts by file; do not commit.

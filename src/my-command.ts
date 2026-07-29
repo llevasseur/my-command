@@ -2,7 +2,7 @@
 // MyCommand install wizard. Run with: npx github:llevasseur/my-command
 // Compiled from TypeScript to dist/ so the published bin ships dependency-free.
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { stdin as input, stdout as output } from 'node:process';
@@ -12,6 +12,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const PKG_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const SRC_DIR = join(PKG_ROOT, 'src', 'commands');
+const SKILLS_DIR = join(PKG_ROOT, 'skills');
 const REPO = 'llevasseur/my-command';
 const MARKETPLACE = 'my-command';
 const PLUGIN = 'my-command';
@@ -20,6 +21,9 @@ const commands: string[] = existsSync(SRC_DIR)
   ? readdirSync(SRC_DIR)
       .filter((f) => f.endsWith('.md'))
       .map((f) => f.replace(/\.md$/, ''))
+  : [];
+const skills: string[] = existsSync(SKILLS_DIR)
+  ? readdirSync(SKILLS_DIR).filter((name) => existsSync(join(SKILLS_DIR, name, 'SKILL.md')))
   : [];
 
 interface CheckboxPromptOptions {
@@ -125,6 +129,7 @@ interface RunResult {
 }
 
 interface InstallFilesOptions {
+  items: string[];
   dest: string;
   itemLabel: string;
   targetPath: (command: string) => string;
@@ -156,12 +161,12 @@ async function installPlugin() {
   console.log(commands.map((c) => `  /${MARKETPLACE}:${c}`).join('\n'));
 }
 
-async function installFiles({ dest, itemLabel, targetPath, install, summary, display }: InstallFilesOptions) {
+async function installFiles({ items, dest, itemLabel, targetPath, install, summary, display }: InstallFilesOptions) {
   mkdirSync(dest, { recursive: true });
 
   const fresh: string[] = [];
   const conflicts: string[] = [];
-  for (const c of commands) {
+  for (const c of items) {
     (existsSync(targetPath(c)) ? conflicts : fresh).push(c);
   }
 
@@ -206,7 +211,7 @@ async function installFiles({ dest, itemLabel, targetPath, install, summary, dis
 
   console.log(`\nCopied ${copied} new, overwrote ${overwritten}, skipped ${skipped} in ${dest}.`);
   console.log(summary);
-  console.log(commands.map((c) => `  ${display(c)}`).join('\n'));
+  console.log(items.map((c) => `  ${display(c)}`).join('\n'));
 }
 
 function codexSkillsDir() {
@@ -215,32 +220,10 @@ function codexSkillsDir() {
   return join(homedir(), '.agents', 'skills');
 }
 
-function codexSkillContent(command: string, source: string) {
-  const match = source.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
-  if (!match) {
-    return `---\nname: ${command}\ndescription: MyCommand ${command} workflow\n---\n\n${source}`;
-  }
-
-  const frontmatter = match[1].split(/\r?\n/);
-  const descriptionIndex = frontmatter.findIndex((line) => /^description:\s*/.test(line));
-  const description =
-    descriptionIndex >= 0 ? frontmatter[descriptionIndex] : `description: MyCommand ${command} workflow`;
-  const descriptionValue = description.slice('description:'.length).trimStart();
-  const descriptionLines = [description];
-
-  if (descriptionValue.startsWith('>') || descriptionValue.startsWith('|')) {
-    for (let i = descriptionIndex + 1; i < frontmatter.length; i++) {
-      if (/^[A-Za-z][\w-]*\s*:/.test(frontmatter[i])) break;
-      descriptionLines.push(frontmatter[i]);
-    }
-  }
-
-  return `---\nname: ${command}\n${descriptionLines.join('\n')}\n---\n\n${match[2]}`;
-}
-
 async function installPersonal() {
   const dest = process.env.CLAUDE_COMMANDS_DIR || join(homedir(), '.claude', 'commands');
   await installFiles({
+    items: commands,
     dest,
     itemLabel: 'command',
     targetPath: (command) => join(dest, `${command}.md`),
@@ -253,14 +236,14 @@ async function installPersonal() {
 async function installCodexSkills() {
   const dest = codexSkillsDir();
   await installFiles({
+    items: skills,
     dest,
     itemLabel: 'skill',
     targetPath: (command) => join(dest, command, 'SKILL.md'),
     install: (command) => {
       const skillDir = join(dest, command);
       mkdirSync(skillDir, { recursive: true });
-      const source = readFileSync(join(SRC_DIR, `${command}.md`), 'utf8');
-      writeFileSync(join(skillDir, 'SKILL.md'), codexSkillContent(command, source));
+      cpSync(join(SKILLS_DIR, command), skillDir, { recursive: true, force: true });
     },
     summary: 'They run as Codex skills (type `$` to invoke them):',
     display: (command) => `$${command}`,
@@ -304,4 +287,4 @@ if (invokedDirectly) {
   });
 }
 
-export { checkboxPrompt, codexSkillContent, installCodexSkills, installPersonal };
+export { checkboxPrompt, installCodexSkills, installPersonal };

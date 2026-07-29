@@ -65,9 +65,12 @@ It asks how you want them installed:
    **auto-update** whenever this repo is pushed.
 2. **Personal commands** — bare commands (`/task`) copied into
    `~/.claude/commands`.
-3. **Codex Skills** — skills such as `$task` copied into
-   `~/.agents/skills/<name>/SKILL.md`. Set `CODEX_SKILLS_DIR` to override the
-   destination, or set `CODEX_HOME` to use `<CODEX_HOME>/skills`.
+3. **Codex Skills** — Codex-native workflows such as `$task` copied as complete
+   skill folders into `~/.agents/skills/<name>/`. Set `CODEX_SKILLS_DIR` to
+   override the destination, or set `CODEX_HOME` to use `<CODEX_HOME>/skills`.
+
+The repository also ships `.codex-plugin/plugin.json`, so supported Codex
+surfaces can install the complete skill bundle as a plugin.
 
 ### Manual — as a plugin
 
@@ -83,6 +86,7 @@ they are invoked as `/my-command:task`, `/my-command:pr`, and so on.
 
 ```
 src/commands/       Canonical BARE commands — edit these (they call each other as /task, /clean, …)
+skills/             Codex-native workflow skills — one semantic counterpart per Claude command
 src/my-command.ts   The npx install wizard, in TypeScript (compiled to dist/, ships dependency-free)
 dist/               GENERATED wizard build (tsc output; gitignored, built on install via `prepare`)
 commands/           GENERATED namespaced commands the plugin ships (do not edit by hand)
@@ -100,9 +104,9 @@ docs/               okq spec bundle — specs/ (process), features/ (one per com
 
 The two Claude forms exist because the commands reference each other: a bare
 `task` calls `/clean`, but the published plugin's `task` must call
-`/my-command:clean`. The Codex mode adapts the same bare source into
-`<name>/SKILL.md` folders. The **bare source is canonical**; the namespaced
-`commands/` is built from it.
+`/my-command:clean`. The Codex mode installs checked-in native skills instead of
+presenting Claude-only prose under Codex frontmatter. CI enforces that every
+Claude command has exactly one Codex counterpart.
 
 ## Specs
 

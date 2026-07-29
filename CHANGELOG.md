@@ -9,10 +9,14 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 ### Added
 
+- **Codex-native workflow bundle** — every Claude command now has a checked-in
+  `skills/<name>/SKILL.md` counterpart with Codex invocation, worktree,
+  subagent, and device-tool semantics; a Codex plugin manifest ships the bundle,
+  and command checks reject Claude/Codex set drift.
 - **Codex Skills wizard mode** — the install wizard now writes each canonical
-  command as a Codex-compatible `<name>/SKILL.md` under `~/.agents/skills` (or a
-  `CODEX_SKILLS_DIR` / `CODEX_HOME` override), with the same safe per-skill
-  overwrite prompt used by personal Claude commands.
+  skill directory under `~/.agents/skills` (or a `CODEX_SKILLS_DIR` /
+  `CODEX_HOME` override), preserving supporting files and using the same safe
+  per-skill overwrite prompt used by personal Claude commands.
 - **Claude/Codex support research** — documents the shared Agent Skills pattern,
   discovery locations, and the adapter's compatibility decisions.
 

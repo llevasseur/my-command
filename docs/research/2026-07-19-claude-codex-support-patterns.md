@@ -14,13 +14,15 @@ timestamp: 2026-07-19
 
 ## Summary
 
-The common interoperability pattern is one focused Markdown workflow packaged as an
-Agent Skill, with small installation adapters for each agent. Claude Code accepts a
+The common interoperability pattern is one focused workflow with native
+instructions for each agent surface. Claude Code accepts a
 `SKILL.md` inside `~/.claude/skills/<name>/`, while current Codex documentation uses
 `SKILL.md` directories and user-scoped `~/.agents/skills/`; older Codex tooling also
 documents `$CODEX_HOME/skills` and its `~/.codex/skills` fallback. Codex requires
-`name` and `description` metadata, so MyCommand should generate a Codex-facing copy
-from each canonical command rather than copy a flat Claude command file unchanged.
+`name` and `description` metadata, but the differences go beyond frontmatter:
+invocation syntax, worktree paths, subagent tools, transcript sources, and device
+capabilities differ. MyCommand therefore needs checked-in Codex-native skills
+rather than a mechanical copy of Claude command prose.
 The wizard should keep Claude's existing plugin and personal-command modes intact and
 add an explicit Codex Skills mode with a safe overwrite prompt.
 
@@ -47,13 +49,11 @@ add an explicit Codex Skills mode with a safe overwrite prompt.
 
 ## Implementation implications
 
-1. Keep `src/commands/*.md` as the canonical source for Claude and the generated
-   plugin copy.
-2. Add a wizard mode that writes each command to
-   `<codex-skills-dir>/<command>/SKILL.md`.
-3. Generate Codex frontmatter with `name` and the existing `description`, omitting
-   Claude-only `argument-hint` and `allowed-tools` keys. Keep the Markdown body
-   shared so workflow changes do not drift between agents.
+1. Keep `src/commands/*.md` as the Claude source and generated Claude plugin copy.
+2. Keep Codex translations under `skills/<name>/`, including optional scripts,
+   references, assets, and tool metadata.
+3. Make CI enforce a one-to-one command/skill set so semantic translations cannot
+   silently drift or disappear.
 4. Default to `~/.agents/skills` for current Codex, while honoring
    `CODEX_SKILLS_DIR` and `CODEX_HOME` for alternate/legacy locations.
 5. Treat an existing `SKILL.md` as a conflict and reuse the existing checkbox
@@ -64,9 +64,9 @@ add an explicit Codex Skills mode with a safe overwrite prompt.
 - Codex's current documentation recommends plugins for broad distribution. This
   repository's requested scope is the local install wizard, so a Codex plugin is
   out of scope for this change.
-- The existing command bodies contain Claude-oriented slash-command wording and
-  tool names. The wizard can make them discoverable as Codex skills, but a future
-  compatibility pass may want agent-neutral wording or Codex-specific adaptations.
+- Codex device tools vary by surface and installation. Skill instructions should
+  use tools available in the active session and treat Browser, Chrome, Computer
+  Use, and subagents as conditional capabilities rather than universal commands.
 
 ## Sources
 

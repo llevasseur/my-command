@@ -34,20 +34,24 @@ build step namespaces them for the published plugin.
 1. **Author the bare source** — create `src/commands/<name>.md`.
 2. **Regenerate the plugin** — run `./scripts/build-plugin.sh`; it writes
    `commands/<name>.md` with `/my-command:` prefixes. Never hand-edit `commands/`.
-3. **Write a feature doc** — add `docs/features/<name>.md`
+3. **Author the Codex skill** — create `skills/<name>/SKILL.md`. Translate the
+   workflow into Codex-native `$skill` composition, `.codex/worktrees`, safe git
+   worktree handling, and Codex tools available in the session. Do not merely
+   replace frontmatter on the Claude command.
+4. **Write a feature doc** — add `docs/features/<name>.md`
    (`okq --bundle docs new feature "<name>"`). Fill Summary, Flags / Parameters,
    Behavior, Related. **A command without a feature doc is incomplete.**
-4. **Confirm wizard inclusion** — the wizard (`src/my-command.ts`) enumerates
-   `src/commands/*.md` at runtime with `readdirSync(SRC_DIR)`, so a new bare source
-   is picked up automatically for both install modes and the overwrite prompt.
+5. **Confirm wizard inclusion** — the wizard (`src/my-command.ts`) enumerates
+   Claude sources with `readdirSync(SRC_DIR)` and Codex skills with
+   `readdirSync(SKILLS_DIR)`, so both forms are picked up automatically.
    **There is nothing to hand-edit in the wizard** — only verify the command
    appears (`scripts/check-commands.sh` asserts the wizard still globs the
    directory). See the [Install wizard](install-wizard.md) spec.
-5. **README + CHANGELOG** — add the command to both README tables (What's inside,
+6. **README + CHANGELOG** — add the command to both README tables (What's inside,
    Use cases) and add a CHANGELOG `### Added` entry.
-6. **Verify** — run `pnpm run check:commands` (or `./scripts/check-commands.sh`):
-   it fails unless `commands/` is in sync with `src/commands/`, every command has a
-   `docs/features/<name>.md`, and the wizard still globs `src/commands/`. Also
+7. **Verify** — run `pnpm run check:commands` (or `./scripts/check-commands.sh`):
+   it fails unless Claude commands, Codex skills, and feature docs are in
+   one-to-one sync and the wizard still globs both source directories. Also
    confirm `okq --bundle docs validate` passes. This check runs in PR CI, so a
    missed step blocks the merge rather than shipping silently.
 
@@ -60,7 +64,8 @@ also update the command's README Use cases row.
 
 ## Acceptance criteria
 
-- [ ] New command has a bare source, a generated namespaced copy, and a feature doc.
+- [ ] New command has a bare source, generated namespaced copy, Codex-native
+      skill, and feature doc.
 - [ ] Wizard listing and overwrite prompt include the command.
 - [ ] README and CHANGELOG mention the command.
 - [ ] Any flag/param change is reflected in the matching feature doc.

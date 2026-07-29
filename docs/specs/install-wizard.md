@@ -17,17 +17,15 @@ commands copied into `~/.claude/commands`, or Codex Skills written as
 
 ## Behavior
 
-- **Data-driven command list.** The wizard enumerates `src/commands/*.md` at run
-  time — there is no hardcoded command list. Dropping a bare source file is the
-  only step needed to include a command in all install modes and the overwrite
-  prompt.
+- **Data-driven workflow lists.** The wizard enumerates `src/commands/*.md` for
+  Claude and `skills/*/SKILL.md` for Codex—there are no hardcoded lists.
 - **Mode 1 — plugin.** `claude plugin marketplace add` + `plugin install`;
   commands run namespaced (`/my-command:<cmd>`) and auto-update on push.
 - **Mode 2 — personal.** Copies each `src/commands/*.md` into `~/.claude/commands`
   as a bare `/<cmd>`.
-- **Mode 3 — Codex Skills.** Converts each canonical command into a Codex-compatible
-  `<dest>/<cmd>/SKILL.md`, preserving its description and Markdown workflow while
-  adding the required `name` metadata and omitting Claude-only frontmatter. The
+- **Mode 3 — Codex Skills.** Copies each complete Codex-native
+  `skills/<cmd>/` directory to `<dest>/<cmd>/`, including `SKILL.md` and any
+  supporting scripts, references, assets, or tool metadata. The
   default user destination is `~/.agents/skills`; `CODEX_SKILLS_DIR` overrides it,
   and `CODEX_HOME` selects `<CODEX_HOME>/skills` for legacy Codex setups.
 
@@ -49,9 +47,8 @@ overwrite prompt.
 
 ## Invariants
 
-- **New command ⇒ wizard inclusion.** Because the list is data-driven, adding
-  `src/commands/<name>.md` includes the command in all three modes; verify the
-  listing and that the relevant overwrite prompts cover it.
+- **New command ⇒ wizard inclusion.** Add both `src/commands/<name>.md` and
+  `skills/<name>/SKILL.md`; the data-driven lists include each native form.
 - **New command ⇒ feature doc.** See [Adding a command](adding-a-command.md).
 - The module stays importable: `checkboxPrompt`, `installPersonal`, and
   `installCodexSkills` are
@@ -61,8 +58,7 @@ overwrite prompt.
 
 - [ ] The dynamic listing includes every command in `src/commands/`.
 - [ ] Personal install offers an overwrite choice for every pre-existing command.
-- [ ] Codex install writes every selected command as `<name>/SKILL.md` with
-      `name` and `description` metadata.
+- [ ] Codex install preserves every selected native skill directory.
 - [ ] Plugin and personal modes both enumerate the full suite.
 - [ ] Codex mode enumerates the full suite and respects `CODEX_SKILLS_DIR`.
 - [ ] Non-interactive install leaves existing commands untouched.
