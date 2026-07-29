@@ -5,7 +5,6 @@ description: Clean up comments across a branch's changes — lean and to the poi
 tags: [command, comments]
 timestamp: 2026-07-15
 updated: 2026-07-28
-dirty: true
 ---
 
 # clean

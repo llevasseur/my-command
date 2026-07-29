@@ -1,8 +1,9 @@
 ---
 type: readme
 title: MyCommand specs
-description: Queryable OKF bundle for the MyCommand command suite — process specs plus one feature doc per command.
+description: Queryable OKF bundle for the MyCommand workflow suite — process specs plus one feature doc per command.
 timestamp: 2026-07-15
+updated: 2026-07-28
 ---
 
 # MyCommand specs
@@ -10,7 +11,7 @@ timestamp: 2026-07-15
 <!-- okq:begin -->
 ## MyCommand specs
 
-The queryable spec bundle for the MyCommand command suite — an
+The queryable spec bundle for the MyCommand workflow suite — an
 [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf)
 (OKF) bundle explored with [okq](https://github.com/mikevalstar/okq):
 
@@ -20,13 +21,17 @@ The queryable spec bundle for the MyCommand command suite — an
 
 Folders:
 
-- `specs/` — process specs: how to add a command, how the install wizard works.
+- `specs/` — process specs: [adding a command](specs/adding-a-command.md), the
+  [install wizard](specs/install-wizard.md), and the shared
+  [command toolkit](specs/command-toolkit.md).
 - `features/` — one feature doc per command (its flags, params, and behavior).
 - `adrs/` — decisions.
+- `research/` — supporting investigations, including the
+  [Claude/Codex adapter](research/2026-07-19-claude-codex-support-patterns.md).
 
-Invariants (see [Adding a command](specs/adding-a-command.md)): a new command
-needs a feature doc and wizard inclusion; a flag/param change needs a feature-doc
-update.
+Invariants (see [Adding a command](specs/adding-a-command.md)): a new workflow
+needs a Claude command, generated plugin copy, Codex skill, feature doc, and
+wizard inclusion; a flag/param change needs a feature-doc update.
 
 Frontmatter keys beyond OKF's `type` / `title` / `description` / `tags`:
 

@@ -5,25 +5,17 @@ description: Reconcile an okq doc bundle with the code via /task — refresh sta
 tags: [command, docs, process]
 timestamp: 2026-07-24
 updated: 2026-07-28
-dirty: true
 ---
 
 # docs
 
 ## Summary
 
-Audits a repo's OKF doc bundle against the code it describes and fixes the three
-ways docs rot: a doc that no longer matches the code (**stale**), a feature with
-no doc at all (**missing**), and a doc for something that was removed
-(**obsolete**). Built on [okq](https://github.com/mikevalstar/okq) — it explores,
-writes, and gates the bundle with `okq`, never `grep`. Edits docs only; code
-problems are reported, not changed.
-
-The reconciliation runs inside a **`/task` workflow**: `/docs` resolves where the
-work happens and delegates the passes to [task](task.md), which owns the
-worktree, the commits, `/clean`, `/pr`, and teardown. Like `/task`, it defaults
-to a fresh worktree off the latest `main`, so a `/docs` run normally ends at a
-docs-only PR.
+Audits an OKF bundle against its code for stale, missing, and obsolete docs.
+It uses [okq](https://github.com/mikevalstar/okq), never `grep`, edits docs only,
+and reports code problems rather than changing code. Reconciliation runs through
+[task](task.md), which owns the worktree, commits, `/clean`, `/pr`, and teardown;
+the default is a fresh worktree off latest `main` and a docs-only PR.
 
 ## Flags / Parameters
 
@@ -56,50 +48,39 @@ pass, in `/task` it registers extra commands to weave in.
 
 ## Behavior
 
-First resolves the workspace and hands off: the pass flags and scope become plain
-language criteria for `/task`, which sets up the worktree (or stays put for
-`--here`), then runs the pipeline below as its implementation step and finishes
-with `/clean` and `/pr`. `/docs` never creates a worktree itself — doing both
-would nest one inside another. `--dry-run` short-circuits the handoff entirely:
-it stays in the current checkout, reports the plan, and creates no worktree,
-commit, or PR.
+Pass flags and scope become plain-language `/task` criteria; `/docs` never
+creates a second, nested worktree. `--dry-run` skips the handoff and creates no
+worktree, commit, or PR.
 
-Locates the bundle, then reads the bundle's **own** contract first — its
-frontmatter keys, generated `index.md` files, folder `_template.md`s, the 1:1
-unit it documents (here: one feature doc per command), and any docs gate script
-or CI job. Those rules win over the command's defaults.
+It locates the bundle and reads its own contract first: frontmatter keys,
+generated `index.md` files, folder `_template.md`s, the 1:1 unit documented
+(here, one feature doc per command), and docs gates. Those rules win.
 
-It then inventories both sides — every concept via `okq find`, every documentable
-unit in the code — and reconciles them into **CHECK** / **MISSING** /
-**OBSOLETE** before editing anything. ADRs, process specs, and index pages are
-CHECK-only: never "missing", never auto-pruned.
+Before editing, it inventories concepts with `okq find` and documentable code
+units into **CHECK** / **MISSING** / **OBSOLETE**. ADRs, process specs, and index
+pages are CHECK-only: never missing or auto-pruned.
 
-The refresh pass audits docs **one at a time**, each in its own fresh subagent
-(parallel batches of ~4) so full doc + implementation reads stay out of the main
-context. Git recency and frontmatter dates only rank suspicion; the real audit
-extracts each doc's checkable claims (flags, defaults, paths, exit codes,
-behavior) and marks them matches / drifted / wrong with `old → current`, then
-re-checks `neighbors` and `backlinks` for the same drift. A stale doc is updated;
-code that looks like the regression is **flagged for the user**, not blessed by
-rewriting the doc; a wrong ADR is superseded, never edited.
+The refresh pass audits each doc independently in a fresh subagent, in parallel
+batches of about four. Git and frontmatter dates only rank suspicion. The audit
+classifies checkable claims—flags, defaults, paths, exit codes, behavior—as
+matching, drifted, or wrong with `old → current`, then checks `neighbors` and
+`backlinks`. Stale docs are updated; suspected code regressions are flagged
+instead, and wrong ADRs are superseded rather than edited.
 
-Every doc it **updates** or **adds** is then marked `dirty: true` in frontmatter
-— never one audited and found fresh. That flag is the handoff to
-[truncate](truncate.md): correct claims, prose not yet evaluated for density.
-`/docs` never clears it and never shortens a doc for style; the closing report
-names the dirty count and the `/truncate` line that would clear it, without
-running it, so a density rewrite stays out of a correctness PR.
+Every updated or added doc—not an audited-fresh one—gets `dirty: true`, meaning
+correct claims whose prose still needs [truncate](truncate.md). `/docs` never
+clears it or shortens for style; it reports the dirty count and `/truncate`
+invocation without running the separate density pass.
 
-The add pass scaffolds from a bundle-local `_template.md` or `okq new`, fills it
-from source actually read, reuses existing tags, and cross-links so the doc isn't
-born an orphan. The prune pass treats a rename as a rename (repoint links, don't
-delete), never deletes an ADR or a generated index, never equates orphan with
-obsolete, confirms each deletion with evidence, and removes with `git rm`.
+The add pass uses `_template.md` or `okq new`, source actually read, existing
+tags, and cross-links. The prune pass repoints renames, never deletes an ADR or
+generated index, never equates orphan with obsolete, confirms deletions with
+evidence, and uses `git rm`.
 
-Finishes by regenerating `okq index`, running `validate` / `deadlinks --check` /
-`orphans` until clean, running the repo's own doc gate, and reporting a
-doc-by-doc verdict table plus code-side findings separately. Applies edits
-directly; the surrounding `/task` run commits them and opens the PR.
+Finally it regenerates `okq index`, runs `validate`, `deadlinks --check`,
+`orphans`, and repository doc gates until clean, then reports per-doc verdicts
+separately from code findings. It edits directly; `/task` commits and opens the
+PR.
 
 ## Related
 

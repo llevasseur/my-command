@@ -4,6 +4,7 @@ title: god
 description: Carry a plain-language task all the way to merged — /task with /review woven in, /mc on conflict, wait for CI, merge the PR into main, pull main. No human in the loop.
 tags: [command, workflow, git, merge]
 timestamp: 2026-07-24
+updated: 2026-07-28
 ---
 
 # god
@@ -41,6 +42,9 @@ Owned by `god`:
 Preconditions come from the toolkit: `doctor` confirms `git` and `gh` are present, and
 `state` records the starting branch and the **main checkout path** up front, because
 `/task` tears down the worktree it creates before the merge stage runs.
+For work in a different repository, `god` prefers a session started there; if the
+same session must continue, `/task` uses toolkit-managed worktrees and absolute paths
+instead of `EnterWorktree`.
 
 `/task` is then invoked with the forwarded flags and, unless `--no-review`, an
 appended `--add review …` entry. That entry lands the review inside `/task`'s
