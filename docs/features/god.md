@@ -5,7 +5,6 @@ description: Carry a plain-language task all the way to merged — /task with /r
 tags: [command, workflow, git, merge]
 timestamp: 2026-07-24
 updated: 2026-07-28
-dirty: true
 ---
 
 # god

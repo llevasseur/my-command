@@ -5,21 +5,16 @@ description: The device-wide `my-command-tools` CLI that commands call for the d
 tags: [process, toolkit, install, cli]
 timestamp: 2026-07-25
 updated: 2026-07-28
-dirty: true
 ---
 
 # Command toolkit
 
 ## Summary
 
-A command is agent instructions, not code — but workflow commands such as `/task`,
-`/pr`, `/fb`, `/god`, and `/revive` open by re-deriving the same git state
-with a volley of one-off shell calls, and re-derives it slightly differently each
-run. `my-command-tools` is a zero-dependency Node CLI that owns that deterministic
-half: it answers "where am I and what did this run produce", runs the repo's own
-gates, stages and commits an explicit path list, pushes and opens the PR, and
-manages the worktree lifecycle. Every verb returns **JSON on stdout**, so a command
-parses one structured answer instead of interpreting prose.
+Workflow commands such as `/task`, `/pr`, `/fb`, `/god`, and `/revive` repeatedly
+derive the same git state. The zero-dependency Node CLI `my-command-tools` owns
+that deterministic work: state, repository gates, explicit-path commits, PRs,
+and worktrees. Every verb returns **JSON on stdout**.
 
 Judgment stays with the agent. The toolkit never decides whether a comment is
 noise, what a PR description should say, or whether a failure is worth fixing.
@@ -38,19 +33,13 @@ noise, what a PR description should say, or whether a failure is worth fixing.
 `state` collapses the rev-parse / status / log / diff opening volley into one call
 and settles `/task`'s no-change gate with a single `hasWork` boolean.
 
-There is deliberately no comment-scoping verb. `/clean` runs entirely as an agent
-pass and reads the branch diff itself: which comments are worth touching is a
-judgment about the surrounding code, and a pre-filtered list of comment lines
-narrows what the agent looks at right where the wider context is what the call
-depends on. `/clean`'s scope stays in its prompt.
+There is deliberately no comment-scoping verb. `/clean` needs the surrounding
+branch diff to judge comments; pre-filtering would remove that context.
 
-`worktree begin` covers both ways a run acquires a workspace, and they are not
-interchangeable. Without `--existing` it creates a branch — the `/task` default.
-With `--existing` it checks an existing branch out, which is what `/fb --target`,
-`/review`, `/revive`, and `/merge-deps` need: they apply work *onto* a branch that
-already has commits on it. Creating where you meant to check out silently abandons
-that work, so the verb refuses an existing branch unless `--existing` says so, and
-refuses `--base` alongside it (a branch that exists already has a base).
+`worktree begin` creates a branch by default (`/task`) or, with `--existing`,
+checks one out (`/fb --target`, `/review`, `/revive`, `/merge-deps`). It refuses
+an existing branch without that flag and refuses `--base` with it, preventing a
+fresh branch from abandoning existing commits.
 
 ## Guards
 
@@ -112,12 +101,9 @@ So every install that places the shim also links it onto PATH, at
 - A real file already under that name belongs to something else and is left alone; a
   symlink is repointed, so a re-run is idempotent.
 
-The failure this closes was silent: with the shim installed but unlinked, a command
-found no `my-command-tools`, reported it as "not installed", and fell back to
-hand-rolled `git`/`gh` — losing every guard above while still looking like it worked.
-`doctor`'s `onPath` is what makes that state visible, reporting whether a bare call
-resolves, whether it resolves to *this* install's shim, and the exact link command
-when it doesn't.
+Without the link, commands silently fell back to unguarded hand-written
+`git`/`gh`. `doctor.onPath` reports whether the bare call resolves to this
+install's shim and gives the exact link command when it does not.
 
 ## Shipping constraint
 

@@ -4,7 +4,6 @@ title: MyCommand specs
 description: Queryable OKF bundle for the MyCommand workflow suite — process specs plus one feature doc per command.
 timestamp: 2026-07-15
 updated: 2026-07-28
-dirty: true
 ---
 
 # MyCommand specs

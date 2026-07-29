@@ -4,7 +4,6 @@ title: A dirty frontmatter flag hands changed docs to a separate density pass
 description: Track docs whose prose has not been evaluated since it changed with dirty:true, and split the density rewrite out of the correctness pass into /truncate.
 tags: [process, docs, commands]
 timestamp: 2026-07-28
-dirty: true
 ---
 
 # A dirty frontmatter flag hands changed docs to a separate density pass

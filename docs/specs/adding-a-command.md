@@ -5,18 +5,14 @@ description: The checklist an agent follows to add a MyCommand slash command so 
 tags: [process, commands, wizard]
 timestamp: 2026-07-15
 updated: 2026-07-28
-dirty: true
 ---
 
 # Adding a command
 
 ## Summary
 
-Every MyCommand command is a Markdown instruction file an agent follows when the
-command is invoked — not code. This spec is the authoritative checklist for
-adding a new command so the bare source, the generated plugin, the install
-wizard, and the docs never drift apart. Agents adding a command (for example via
-`/task`) should read this first.
+MyCommand commands are Markdown agent instructions, not code. This checklist
+keeps bare source, generated plugin, install wizard, and docs aligned.
 
 ## A command is agent instructions
 
@@ -64,10 +60,8 @@ same change.** The feature doc's Flags / Parameters section is the contract for
 that command; a drifted doc is worse than none. If a flag is added or renamed,
 also update the command's README Use cases row.
 
-When drift has already happened — a doc that no longer matches its command, a
-command that shipped without one, or a doc for a command that was removed — the
-[docs](../features/docs.md) command audits this bundle against the source and
-reconciles all three.
+For a stale, missing, or obsolete command doc, [docs](../features/docs.md)
+reconciles the bundle against source.
 
 **Any doc you write or change gets `dirty: true` in its frontmatter.** The flag
 means the claims are correct but the prose hasn't been evaluated for density
