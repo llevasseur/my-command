@@ -16,6 +16,7 @@ Add one with `okq new feature "<title>"`.
 | docs | [docs.md](docs.md) |
 | fb | [fb.md](fb.md) |
 | god | [god.md](god.md) |
+| improve | [improve.md](improve.md) |
 | mc | [mc.md](mc.md) |
 | merge-deps | [merge-deps.md](merge-deps.md) |
 | pr | [pr.md](pr.md) |
@@ -25,4 +26,5 @@ Add one with `okq new feature "<title>"`.
 | task-bootstrap | [task-bootstrap.md](task-bootstrap.md) |
 | task | [task.md](task.md) |
 | trim | [trim.md](trim.md) |
+| truncate | [truncate.md](truncate.md) |
 <!-- okq:index:end -->

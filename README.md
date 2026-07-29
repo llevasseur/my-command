@@ -25,6 +25,7 @@
 | `sync` | Update this device's installed commands to the latest version from GitHub. |
 | `changelog` | Add a concise entry to the current repo's `CHANGELOG.md`, matching its existing format. |
 | `docs` | Reconcile a repo's [okq](https://github.com/mikevalstar/okq) doc bundle with the code via `/task` — refresh stale docs, add docs for undocumented features, prune docs for things that no longer exist. |
+| `truncate` | Cut a doc bundle down to high-signal tokens without losing a claim — the density pass `docs` skips, queued by the `dirty` frontmatter flag `docs` sets. |
 | `revive` | Resume an interrupted session from its recorded transcript — reconstruct what it was doing, recover its branch/worktree, finish only what's outstanding, and complete the original workflow. |
 | `improve` | Turn claude-proxy's session suggestions into an implemented improvement — read the pending findings for a range of session buckets, hand them to `task` as criteria, and flag what shipped as done. |
 | `trim` | Decide whether the current conversation is safe to compact, then provide focused instructions for Claude Code's built-in `/compact`. |
@@ -61,6 +62,10 @@ skill syntax—for example, `$task -h ...`, `$review -t 42`, or `$mc -t feat/sea
 | `docs` | `/docs --base release/2.0` | `--base <branch>` — worktree branched off `release/2.0` instead of `main` (passed through to `/task`). |
 | `docs` | `/docs -n` | `--dry-run` / `-n` — report the plan (stale / missing / obsolete) and change nothing. No worktree, no commit, no PR. |
 | `docs` | `/docs -r features/pr` | Pass flags (`--refresh` / `-r`, `--add` / `-a`, `--prune` / `-p`) run only those passes; trailing text scopes the run to a concept id, path/glob, or topic. `--bundle` / `-b <dir>` picks the bundle, `--yes` / `-y` skips confirmations. |
+| `truncate` | `/truncate` | Default — tighten every doc marked `dirty: true` (what `/docs` last updated or added), preserving every claim, then clear the flag. Runs via `/task`: fresh worktree off `main` on a `docs/…` branch, then `/clean` + `/pr`. |
+| `truncate` | `/truncate -A` | `--all` / `-A` — evaluate the **whole bundle**, not just the dirty docs. For a bulk import or a bundle's first pass. |
+| `truncate` | `/truncate -n` | `--dry-run` / `-n` — report the queue and the proposed cuts, change nothing. No worktree, commit, or PR. |
+| `truncate` | `/truncate features/task` | Trailing text scopes the run to a concept id, path/glob, or topic, **overriding** the dirty filter. `--bundle` / `-b <dir>` picks the bundle, `--yes` / `-y` skips the 40%-cut confirmation, `--here` / `-h` and `--base <branch>` pass through to `/task`. |
 | `revive` | `/revive 59da5fc97e6b9465` | Default — resolve the id in claude-proxy's transcript store (`$CLAUDE_PROXY_STORE`), recover the branch/worktree the session was in, finish what's outstanding, then complete its workflow (usually `/clean` + `/pr`). |
 | `revive` | `/revive -n 59da5fc97e6b9465` | `--dry-run` / `-n` — report where the session stopped and what remains; change nothing. |
 | `revive` | `/revive --source cli 70c65b5b-ceda-4764-89f0-d68f1db6fff6` | `--source proxy` (default), `cli`, or a `<path>` — pick the transcript store; a 36-char UUID is a CLI session id, a 16-hex id a proxy thread id. |
@@ -199,6 +204,12 @@ bundle under [`docs/`](./docs) — process specs plus one feature doc per comman
 Two invariants the specs enforce: **a new command needs a feature doc and wizard
 inclusion**, and **a flag/param change needs its feature doc updated in the same
 change**. Query them with `okq --bundle docs find --type feature`.
+
+A doc you write or change also gets **`dirty: true`** in its frontmatter — its
+claims are right, its prose hasn't been evaluated for density since it changed.
+`/truncate` works that queue (`okq --bundle docs find --where dirty=true`) and is
+the only thing that clears the key; see
+[ADR 0003](./docs/adrs/0003-dirty-flag-for-doc-density.md).
 
 ## Editing the commands (maintainer)
 

@@ -49,7 +49,7 @@ This command does no branching, committing, or PR work of its own. It resolves *
 
 1. Confirm `okq` is installed (`command -v okq`). If it isn't, say so, point at the install instructions in the [okq repo](https://github.com/mikevalstar/okq) (`cargo install okq`, unless this repo documents its own way), and stop — this command is built on it.
 2. Resolve the bundle directory, in order: `--bundle` if given; the path this repo's own docs use (grep `AGENTS.md`/`CLAUDE.md`/`README.md` for `okq --bundle <dir>`); then a conventional directory that exists and holds Markdown with frontmatter (`docs/`, `.okf/`, `notes/`); then the repo root. Confirm the choice with `okq --bundle <dir> stats` — if it reports no concepts, you picked wrong. If two plausible bundles exist, ask me which rather than guessing.
-3. **Read the bundle's own contract before touching a file.** Its README/index, and any process spec it keeps about itself, define: which frontmatter keys it uses (`timestamp`, `updated`, `status`, `related`), whether directory `index.md` files are generated (`okq --bundle <dir> index`), whether a `_template.md` exists per folder, and — most importantly — **what unit it documents 1:1** (e.g. "one feature doc per command"). If the repo has a script or CI job gating docs (`scripts/check-*.sh`, a `docs` job in `.github/workflows/`), read it: it encodes the invariants in executable form.
+3. **Read the bundle's own contract before touching a file.** Its README/index, and any process spec it keeps about itself, define: which frontmatter keys it uses (`timestamp`, `updated`, `status`, `related`, `dirty`), whether directory `index.md` files are generated (`okq --bundle <dir> index`), whether a `_template.md` exists per folder, and — most importantly — **what unit it documents 1:1** (e.g. "one feature doc per command"). If the repo has a script or CI job gating docs (`scripts/check-*.sh`, a `docs` job in `.github/workflows/`), read it: it encodes the invariants in executable form.
 4. **The bundle's own rules win over anything in this command.** Where they conflict, follow the bundle and say you did.
 
 ## Step 2 — Take inventory and classify, before editing anything
@@ -87,10 +87,20 @@ A doc can be stale with a newer mtime and fresh with an older one, so every susp
 
 **Applying what comes back:**
 
-- **Doc is stale** → update the doc to match the code and bump `updated`/`timestamp` if the bundle tracks it.
+- **Doc is stale** → update the doc to match the code, bump `updated`/`timestamp` if the bundle tracks it, and set `dirty: true` (Step 3.5).
 - **Code looks like the regression** → do **not** rewrite the doc to bless it. A doc can legitimately record intended behavior the code drifted from. Report it as a code-side finding for me to decide; without `--yes`, ask before treating either side as the source of truth.
 - **A committed ADR is now wrong** → never rewrite the decision. Supersede it with a new record following the bundle's convention (a new ADR, and `status: superseded` on the old one if the bundle uses status).
-- Edit prose only where a claim changed. This pass is not a rewrite-for-style pass.
+- Edit prose only where a claim changed. This pass is not a rewrite-for-style pass — that is [truncate](truncate.md), and the `dirty` flag is how a doc gets there.
+
+## Step 3.5 — Mark what you touched as `dirty`
+
+Every doc this run **updates** (Step 3) or **creates** (Step 4) gets `dirty: true` in its frontmatter. That flag is a work queue, not a defect: it says the doc's claims are now correct but its prose has not been evaluated for density since it changed. [truncate](truncate.md) finds those docs with `okq --bundle <dir> find --where dirty=true`, cuts the packaging without touching a claim, and removes the key.
+
+- Set it on updated and added docs only. A doc you audited and found **fresh** is not dirty — nothing changed in it.
+- Set it as a plain boolean (`dirty: true`) at the top level of the frontmatter, alongside `type` and `title`. `okq find --where` reads arbitrary frontmatter keys, so no schema change or okq upgrade is needed.
+- Leave an already-set `dirty: true` in place; never clear it. Only `/truncate` clears it.
+- **The bundle's own contract wins.** If it names a different key or tracks this some other way, follow the bundle and say you did.
+- `--dry-run` sets nothing, like every other write in this command.
 
 ## Step 4 — Add pass: docs for undocumented features
 
@@ -100,6 +110,7 @@ For each **MISSING** unit from Step 2:
 2. Fill the skeleton **from the actual source you read** — the real flags, the real defaults, the real behavior. Never describe a feature from its name. Keep the template's headings; match the length and shape of an existing doc of the same type.
 3. Cross-link so the doc isn't born an orphan: a `Related` section (and/or frontmatter `related:`) pointing at the sibling docs and the spec it follows, **plus at least one inbound link** from wherever it belongs (the relevant index, spec, or hub doc). `okq --bundle <dir> orphans` at the end must not name it.
 4. Reuse the bundle's existing tags (`okq --bundle <dir> stats` lists them) instead of inventing near-duplicates.
+5. Set `dirty: true` per Step 3.5 — a doc written in one pass has never been evaluated for density, so it starts in `/truncate`'s queue.
 
 Also add a doc for genuinely undocumented **user-facing** behavior you hit while auditing, even where it isn't a 1:1 unit — a flag nobody wrote down, a documented-nowhere workflow. Keep it to features people invoke; internals don't need a doc, and a thin doc nobody needed is its own kind of rot.
 
@@ -122,13 +133,14 @@ After removing anything, fix what pointed at it: `okq --bundle <dir> deadlinks` 
 1. Regenerate what's generated: `okq --bundle <dir> index` if the bundle has generated `index.md` files.
 2. Re-run the health checks until clean: `okq --bundle <dir> validate`, `deadlinks --check`, `orphans` (exit code 3 means the gate tripped — branch on `$?`, not the text).
 3. Run the repo's own doc gate if it has one (e.g. `pnpm run check:commands`, the `docs` CI job's command). Report exactly what you ran.
-4. Report a table: doc | verdict (`fresh` / `updated` / `added` / `pruned` / `flagged`) | what changed. Then, separately, the **code-side findings** — places the code, not the doc, looked wrong — since those need my decision.
+4. Report a table: doc | verdict (`fresh` / `updated` / `added` / `pruned` / `flagged`) | what changed. Then, separately, the **code-side findings** — places the code, not the doc, looked wrong — since those need my decision. Close with the count of docs left `dirty: true` and the `/truncate` line that would clear them; don't run it here, since a density rewrite has no business in a correctness PR.
 5. Apply edits directly, then let the surrounding `/task` run take it from here — its Step 2 commits the doc changes, and its Step 3 runs `/clean`, `/pr`, and worktree teardown. Report the table above as this pass's result rather than opening the PR yourself, and deliver it in a **text-only turn** — after the last `okq` call or edit, never in the same turn as one, or the pass is recorded as unfinished even though it completed. Under `--dry-run` there is nothing to hand off.
 
 ## Notes
 
 - **Every claim you write traces to source you read.** Never fill a doc from the feature's name, and never soften a doc to match code you didn't verify.
 - **Docs are a contract, not a cache.** When doc and code disagree, that's a judgment call for me — this command surfaces it rather than silently picking the code.
+- **Correctness here, density in [truncate](truncate.md).** This command may make a doc longer to make it right; it never shortens one for style. The `dirty` flag is the whole handoff between them.
 - `okq` over `grep` throughout: `search`/`find`/`get`/`neighbors` are ranked and structure-aware, and `get --section` keeps whole files out of context.
 - **Quote any Bash argument holding `*` or `?` that the invoked program — not the shell — should expand** (`okq --bundle docs find 'docs/adrs/*'`, `grep --include='*.md'`). The shell is zsh: an unquoted glob that matches nothing aborts the whole command with `no matches found`, and the argument never reaches the program.
 - This command edits **docs only** — never source code, never tests. Code problems get reported, not fixed. That holds inside the `/task` run too: the PR it opens is a docs-only PR.

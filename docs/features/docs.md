@@ -4,7 +4,8 @@ title: docs
 description: Reconcile an okq doc bundle with the code via /task — refresh stale docs, add docs for undocumented features, prune docs for things that no longer exist.
 tags: [command, docs, process]
 timestamp: 2026-07-24
-updated: 2026-07-24
+updated: 2026-07-28
+dirty: true
 ---
 
 # docs
@@ -82,6 +83,13 @@ re-checks `neighbors` and `backlinks` for the same drift. A stale doc is updated
 code that looks like the regression is **flagged for the user**, not blessed by
 rewriting the doc; a wrong ADR is superseded, never edited.
 
+Every doc it **updates** or **adds** is then marked `dirty: true` in frontmatter
+— never one audited and found fresh. That flag is the handoff to
+[truncate](truncate.md): correct claims, prose not yet evaluated for density.
+`/docs` never clears it and never shortens a doc for style; the closing report
+names the dirty count and the `/truncate` line that would clear it, without
+running it, so a density rewrite stays out of a correctness PR.
+
 The add pass scaffolds from a bundle-local `_template.md` or `okq new`, fills it
 from source actually read, reuses existing tags, and cross-links so the doc isn't
 born an orphan. The prune pass treats a rename as a rename (repoint links, don't
@@ -102,5 +110,8 @@ directly; the surrounding `/task` run commits them and opens the PR.
 - Spec: [Adding a command](../specs/adding-a-command.md) — the invariants this
   command audits (a command needs a feature doc; a flag change needs a doc update)
 - ADR: [0002 Command docs as okq specs](../adrs/0002-command-docs-as-okq-specs.md)
+- Follow-up pass: [truncate](truncate.md) — consumes and clears the `dirty` flag
+  this command sets, cutting docs to high-signal tokens without touching a claim
+- ADR: [0003 Dirty flag for doc density](../adrs/0003-dirty-flag-for-doc-density.md)
 - Related commands: [clean](clean.md) does the same lean-up for comments;
   [changelog](changelog.md) records the change once docs are right
