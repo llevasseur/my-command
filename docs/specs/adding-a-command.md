@@ -4,6 +4,8 @@ title: Adding a command
 description: The checklist an agent follows to add a MyCommand slash command so the suite, the install wizard, and the docs stay in sync.
 tags: [process, commands, wizard]
 timestamp: 2026-07-15
+updated: 2026-07-28
+dirty: true
 ---
 
 # Adding a command
@@ -63,12 +65,22 @@ command that shipped without one, or a doc for a command that was removed — th
 [docs](../features/docs.md) command audits this bundle against the source and
 reconciles all three.
 
+**Any doc you write or change gets `dirty: true` in its frontmatter.** The flag
+means the claims are correct but the prose hasn't been evaluated for density
+since it changed; [truncate](../features/truncate.md) finds those docs
+(`okq --bundle docs find --where dirty=true`), tightens them without touching a
+claim, and is the only thing that clears the key. `/docs` sets it automatically
+on what it updates or adds — a hand-edit has to set it, or the doc silently
+misses the queue. Do not bump `updated` for a truncation: no claim changed. See
+[ADR 0003](../adrs/0003-dirty-flag-for-doc-density.md).
+
 ## Acceptance criteria
 
 - [ ] New command has a bare source, a generated namespaced copy, and a feature doc.
 - [ ] Wizard listing and overwrite prompt include the command.
 - [ ] README and CHANGELOG mention the command.
 - [ ] Any flag/param change is reflected in the matching feature doc.
+- [ ] Every doc written or changed carries `dirty: true`.
 
 ## Related
 

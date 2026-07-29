@@ -13,4 +13,5 @@ Add one with `okq new adr "<title>"`.
 |-------|------|
 | Record architecture decisions | [0001-record-architecture-decisions.md](0001-record-architecture-decisions.md) |
 | Command docs as okq specs and per-command feature docs | [0002-command-docs-as-okq-specs.md](0002-command-docs-as-okq-specs.md) |
+| A dirty frontmatter flag hands changed docs to a separate density pass | [0003-dirty-flag-for-doc-density.md](0003-dirty-flag-for-doc-density.md) |
 <!-- okq:index:end -->

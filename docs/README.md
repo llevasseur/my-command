@@ -27,4 +27,19 @@ Folders:
 Invariants (see [Adding a command](specs/adding-a-command.md)): a new command
 needs a feature doc and wizard inclusion; a flag/param change needs a feature-doc
 update.
+
+Frontmatter keys beyond OKF's `type` / `title` / `description` / `tags`:
+
+- `timestamp` — when the doc was written. `updated` — when its claims last
+  changed.
+- `status` — ADRs only (`accepted`, `superseded`).
+- `dirty: true` — the doc's claims are correct but its prose has not been
+  evaluated for density since it changed. Set by [docs](features/docs.md) on
+  every doc it updates or adds, and by whoever hand-edits a doc. Consumed and
+  cleared only by [truncate](features/truncate.md):
+
+      okq --bundle docs find --where dirty=true
+
+  A truncation never bumps `updated` — no claim changed. See
+  [ADR 0003](adrs/0003-dirty-flag-for-doc-density.md).
 <!-- okq:end -->
