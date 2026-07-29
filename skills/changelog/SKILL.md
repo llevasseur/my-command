@@ -5,7 +5,8 @@ description: Add a concise, factual CHANGELOG.md entry for the work in the curre
 
 # Changelog
 
-Derive the entry from git status, the current diff, and commits since the task base; never guess.
+Derive the entry from `my-command-tools state` when available, plus the current
+diff and commits since the task base; never guess.
 
 1. Find the root `CHANGELOG.md`, read repository guidance, and match its headings, ordering, tone, and references.
 2. Add one tight factual entry in the appropriate newest-first location. Group related work into one bullet and do not invent PR or issue numbers.

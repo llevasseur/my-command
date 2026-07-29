@@ -5,7 +5,7 @@ description: >
   Default: merge main into every open PR branch based on main. --here / -h: only the
   current branch. --target / -t <branch>: only the named branch.
 argument-hint: "[--here | -h] [--target | -t <branch>]"
-allowed-tools: Bash(git:*), Bash(gh:*), Read, Edit, Write
+allowed-tools: Bash(git:*), Bash(gh:*), Bash(my-command-tools:*), Read, Edit, Write
 ---
 
 # mc — Merge main & resolve conflicts
@@ -27,10 +27,12 @@ Parse `$ARGUMENTS`:
 
 ## Preconditions (do these once, up front)
 
-1. Confirm you are inside a git repo: `git rev-parse --is-inside-work-tree`. If not, stop.
-2. Record the starting branch so you can return to it at the end:
-   `START_BRANCH=$(git rev-parse --abbrev-ref HEAD)`.
-3. **Working tree must be clean.** Run `git status --porcelain`. If there is uncommitted
+1. `my-command-tools state` — it errors if you are not inside a git repo, and one call
+   settles the next three preconditions. Read `branch` as `START_BRANCH` (the branch to
+   return to at the end), `defaultBranch` as `MAIN`, and `changes` for the clean-tree
+   check below.
+2. **Working tree must be clean.** Both `changes.tracked` and `changes.untracked` must be
+   empty. If there is uncommitted
    work, first check for an in-progress merge before stopping: if `.git/MERGE_HEAD` exists,
    a prior merge was interrupted before completing or aborting. Read `.git/MERGE_MSG` to see
    what was being merged. If that pending merge is **exactly the operation this invocation
@@ -40,9 +42,8 @@ Parse `$ARGUMENTS`:
    resolution already staged. Only if the pending merge is unrelated, or there is dirty work
    with no `MERGE_HEAD`, stop and tell the user to commit or stash first — do **not** stash or
    abort on their behalf.
-4. Identify the default branch name (usually `main`): `git remote show origin | sed -n 's/.*HEAD branch: //p'`.
-   Call it `MAIN`. Everything below uses `main` as shorthand for it.
-5. Update remotes and fast-forward local main:
+3. Everything below uses `main` as shorthand for the `defaultBranch` from step 1.
+4. Update remotes and fast-forward local main:
    - `git fetch --all --prune`
    - `git checkout main && git pull --ff-only origin main`
    - If the fast-forward fails, stop and report — local `main` has diverged and needs a human.
@@ -92,8 +93,9 @@ human — collect it and move on; never leave a branch mid-merge.
      data loss either way): **do not guess**. `git merge --abort`, record the branch +
      file + why in a "needs human" list, and move to the next branch.
 5. Once every conflict is staged: `git commit --no-edit` to complete the merge commit.
-6. **Sanity check before pushing** (best effort, only if fast and available): if the repo
-   has an obvious typecheck/lint and it was passing before, run it. Don't block on a
+6. **Sanity check before pushing** (best effort): `my-command-tools verify --only check,typecheck`
+   — or whatever subset of the repo's gates is fast. It reports a bounded log for each
+   failure, and `missing` for any gate this repo doesn't have. Don't block on a
    pre-existing failure — only bail if *your* merge resolution introduced it.
 7. Push: `git push origin HEAD`. If it's a brand-new branch upstream, `git push -u origin HEAD`.
 
@@ -105,6 +107,8 @@ human — collect it and move on; never leave a branch mid-merge.
    - 🟡 branches that had conflicts you resolved and pushed (name the files you touched)
    - 🔴 branches left for a human (fork PRs, diverged, or unresolved conflicts) + the reason
 3. Never mark the task complete if any branch is in the 🔴 list without saying so explicitly.
+4. Deliver that summary in a **text-only turn** — after the last git call, never in the same
+   turn as one, or the run is recorded as unfinished even though every branch was handled.
 
 ## Rules
 

@@ -17,12 +17,8 @@
     "longDescription": "Codex-native task, review, pull-request, merge, synchronization, and context-management workflows.",
     "developerName": "Leevon Levasseur",
     "category": "Productivity",
-    "capabilities": ["Interactive", "Write"],
+    "capabilities": [],
     "websiteURL": "https://github.com/llevasseur/my-command",
-    "defaultPrompt": [
-      "Use $task to implement this work through a pull request.",
-      "Use $review to review and address this pull request.",
-      "Use $mc to update this branch with main."
-    ]
+    "defaultPrompt": "Use $task to implement this work through a pull request."
   }
 }

@@ -3,17 +3,18 @@ type: spec
 title: Install wizard
 description: The npx wizard that installs the command suite as a Claude Code plugin, bare personal commands, or Codex Skills, with per-item overwrite.
 tags: [process, wizard, install, codex]
-timestamp: 2026-07-15
+timestamp: 2026-07-28
 ---
 
 # Install wizard
 
 ## Summary
 
-`npx github:llevasseur/my-command` runs the compiled zero-dependency wizard that
-installs the command suite one of three ways: a Claude Code plugin, bare personal
-commands copied into `~/.claude/commands`, or Codex Skills written as
-`<skill>/SKILL.md` folders.
+`npx github:llevasseur/my-command` runs `dist/my-command.js` (compiled from
+`src/my-command.ts` by the `prepare` script), a zero-dependency wizard that
+installs the suite as a Claude Code plugin, bare Claude commands, or Codex-native
+skills. Every mode also installs the shared [command toolkit](command-toolkit.md)
+in that product's device config root and links it onto PATH when possible.
 
 ## Behavior
 
@@ -28,6 +29,19 @@ commands copied into `~/.claude/commands`, or Codex Skills written as
   supporting scripts, references, assets, or tool metadata. The
   default user destination is `~/.agents/skills`; `CODEX_SKILLS_DIR` overrides it,
   and `CODEX_HOME` selects `<CODEX_HOME>/skills` for legacy Codex setups.
+- **All modes install the toolkit.** `installToolkit()` copies `src/toolkit/` to
+  the product's device root—`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/my-command` for
+  Claude or `${CODEX_HOME:-$HOME/.codex}/my-command` for Codex—places the executable
+  shim at `<root>/bin/my-command-tools`, and writes a `VERSION` stamp. Plugin mode
+  gets it too: a plugin command normally resolves via `$CLAUDE_PLUGIN_ROOT`, but the
+  device copy keeps the tooling reachable from bare Claude commands, Codex skills,
+  and manual shell use.
+- **And put it on PATH.** `linkOnPath()` links that shim into the first of
+  `~/.local/bin`, `~/bin` already on PATH, because commands call it by bare name —
+  see [command toolkit](command-toolkit.md#reachable-by-name). It never edits a shell
+  profile: with neither candidate on PATH it prints the `ln -s` and `export PATH=…`
+  lines and says plainly that commands cannot reach the CLI yet. Re-running is
+  idempotent, and a non-symlink already under that name is left untouched.
 
 ## Overwrite behavior
 
@@ -50,9 +64,15 @@ overwrite prompt.
 - **New command ⇒ wizard inclusion.** Add both `src/commands/<name>.md` and
   `skills/<name>/SKILL.md`; the data-driven lists include each native form.
 - **New command ⇒ feature doc.** See [Adding a command](adding-a-command.md).
-- The module stays importable: `checkboxPrompt`, `installPersonal`, and
-  `installCodexSkills` are
-  exported, and `main()` runs only when the file is invoked directly.
+- The module stays importable: `checkboxPrompt`, `installPersonal`,
+  `installCodexSkills`, `installToolkit`, and `linkOnPath` are exported, and
+  `main()` runs only when the file is invoked directly.
+- **No install without tooling.** All modes call `installToolkit()`; dropping the
+  call from either would ship commands whose toolkit calls fail at run time.
+  Enforced by `check-commands.sh`.
+- **No tooling without PATH.** `installToolkit()` calls `linkOnPath()`; a shim that is
+  installed but unlinked reads to a command as "not installed". Enforced by
+  `check-commands.sh`.
 
 ## Acceptance criteria
 
@@ -62,10 +82,16 @@ overwrite prompt.
 - [ ] Plugin and personal modes both enumerate the full suite.
 - [ ] Codex mode enumerates the full suite and respects `CODEX_SKILLS_DIR`.
 - [ ] Non-interactive install leaves existing commands untouched.
+- [ ] All modes leave a runnable `my-command-tools` at the appropriate device root.
+- [ ] All modes leave it callable as a bare `my-command-tools` in a new shell, or say
+      why not and how to fix it.
+- [ ] A second run reports the existing PATH link rather than duplicating or breaking it.
 
 ## Related
 
 - Spec: [Adding a command](adding-a-command.md)
+- Spec: [Command toolkit](command-toolkit.md)
+- `scripts/install-codex-personal.sh` provides the git-synced Codex device install.
 - ADR: [0002 Command docs as okq specs](../adrs/0002-command-docs-as-okq-specs.md)
 - Command specs live in `features/` — list them with
   `okq --bundle docs find --type feature`.

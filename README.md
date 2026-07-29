@@ -14,7 +14,9 @@
 | Command | What it does |
 | :------ | :----------- |
 | `task` | Take a task from plain-language criteria to an open PR: isolated branch/worktree, bootstrap, implement, verify, then clean + PR. |
+| `god` | Take a task all the way to **merged**: `task` with `review` woven in, `mc` on conflict, wait for CI, merge the PR into `main`, pull `main`. No human in the loop. |
 | `fb` | Implement a feedback request. Thin wrapper around `task` — current branch by default, or a worktree of an existing branch with `--target`. |
+| `review` | Independently review an open PR against the codebase, then apply its findings via `fb`. Spawns a fresh reviewer by default; `--here` reviews directly in the current agent. |
 | `pr` | Create/update the PR for the current branch with a concise bulleted description, written straight to GitHub. |
 | `clean` | Clean up comments across a branch's changes — lean and to the point, comments only, never code. |
 | `mc` | Merge the latest `main` into open PR branches (or one branch), resolve every conflict, and push. |
@@ -22,13 +24,17 @@
 | `task-bootstrap` | One-time per repo: interview the stack and generate that repo's own `scripts/bootstrap-worktree.sh` so `task` can bootstrap fresh worktrees. |
 | `sync` | Update this device's installed commands to the latest version from GitHub. |
 | `changelog` | Add a concise entry to the current repo's `CHANGELOG.md`, matching its existing format. |
+| `docs` | Reconcile a repo's [okq](https://github.com/mikevalstar/okq) doc bundle with the code via `/task` — refresh stale docs, add docs for undocumented features, prune docs for things that no longer exist. |
+| `revive` | Resume an interrupted session from its recorded transcript — reconstruct what it was doing, recover its branch/worktree, finish only what's outstanding, and complete the original workflow. |
+| `improve` | Turn claude-proxy's session suggestions into an implemented improvement — read the pending findings for a range of session buckets, hand them to `task` as criteria, and flag what shipped as done. |
 | `trim` | Decide whether the current conversation is safe to compact, then provide focused instructions for Claude Code's built-in `/compact`. |
 
 ## Use cases
 
 Each command parses **leading flags off the front**; everything after them is the
 free-text criteria (task, feedback, etc.). The examples below focus on how the
-parameters change what happens.
+parameters change what happens. In Codex, use the same names and flags with
+skill syntax—for example, `$task -h ...`, `$review -t 42`, or `$mc -t feat/search`.
 
 | Command | Example | What the parameters do |
 | :------ | :------ | :--------------------- |
@@ -37,14 +43,46 @@ parameters change what happens.
 | `task` | `/task --base release/2.0 backport the auth fix` | `--base <branch>` — branch off `release/2.0` instead of `main`. |
 | `task` | `/task -d wire up the metrics endpoint` | `--draft` / `-d` — open the resulting PR as a **draft**. |
 | `task` | `/task -a changelog note this once it works add retry logic to the fetch client` | `--add` / `-a <command> <prompt>` — weave `/changelog` into the run per its prompt, then implement the task. Separate multiple added commands with a comma before each next command. |
+| `god` | `/god add a dark-mode toggle to settings` | Default — the whole `/task` pipeline with `/review` woven in, then `/mc` if `main` moved, wait for CI, `gh pr merge --squash`, and pull the new `main`. Merges without asking. |
+| `god` | `/god --auto ship the retry backoff` | `--auto` — don't wait on CI; enable GitHub auto-merge and finish. `--merge`/`--rebase` change the method, `--fix <n>` sets the red-CI repair budget (default 1), `--no-review` skips the woven-in `/review`. |
+| `god` | `/god -h fix the typo in the footer` | `--here` / `-h`, `--base <branch>`, and `--add` / `-a` pass straight through to `/task`. `--draft` / `-d` is rejected — a draft can't merge. |
 | `fb` | `/fb tighten the copy on the empty state` | Default — apply the feedback on the **current branch** (via `/task --here`). |
 | `fb` | `/fb -t feat/checkout-redesign use the brand blue for the CTA` | `--target` / `-t <branch>` — apply the feedback onto **existing** branch `feat/checkout-redesign` in a fresh worktree. |
+| `review` | `/review` | Default — review the current branch's open PR in a fresh worktree with a new agent, then apply its findings via `/fb`. |
+| `review` | `/review -h` | `--here` / `-h` — the current agent reviews the current branch's PR directly: no worktree and no spawned reviewer. Use when already running in a fresh review agent. |
+| `review` | `/review -t 42` | `--target` / `-t <PR-number-or-branch>` — review PR #42 (or a named branch) instead of the current branch's PR. |
 | `mc` | `/mc` | Default — merge latest `main` into **every** open PR branch, resolve conflicts, push. |
 | `mc` | `/mc -h` | `--here` / `-h` — only the **current branch**. |
 | `mc` | `/mc -t feat/search` | `--target` / `-t <branch>` — only the named branch `feat/search`. |
 | `merge-deps` | `/merge-deps` | Default — merge every open non-draft `dependencies`-labeled PR into `main`, one by one (`/mc` first, verify, `gh pr merge --squash`, clean the worktree). |
 | `merge-deps` | `/merge-deps --auto -n` | `--auto` enables GitHub auto-merge instead of waiting on CI; `--dry-run` / `-n` just lists the PRs. `--label <name>` narrows the filter, `--merge`/`--rebase` change the method. |
+| `docs` | `/docs` | Default — audit every doc in the bundle for staleness, add docs for undocumented features, and prune docs for things that no longer exist. Runs via `/task`: fresh worktree off `main` on a `docs/…` branch, then `/clean` + `/pr`. |
+| `docs` | `/docs -h` | `--here` / `-h` — reconcile on the **current branch**, no worktree (passed through to `/task`). |
+| `docs` | `/docs --base release/2.0` | `--base <branch>` — worktree branched off `release/2.0` instead of `main` (passed through to `/task`). |
+| `docs` | `/docs -n` | `--dry-run` / `-n` — report the plan (stale / missing / obsolete) and change nothing. No worktree, no commit, no PR. |
+| `docs` | `/docs -r features/pr` | Pass flags (`--refresh` / `-r`, `--add` / `-a`, `--prune` / `-p`) run only those passes; trailing text scopes the run to a concept id, path/glob, or topic. `--bundle` / `-b <dir>` picks the bundle, `--yes` / `-y` skips confirmations. |
+| `revive` | `/revive 59da5fc97e6b9465` | Default — resolve the id in claude-proxy's transcript store (`$CLAUDE_PROXY_STORE`), recover the branch/worktree the session was in, finish what's outstanding, then complete its workflow (usually `/clean` + `/pr`). |
+| `revive` | `/revive -n 59da5fc97e6b9465` | `--dry-run` / `-n` — report where the session stopped and what remains; change nothing. |
+| `revive` | `/revive --source cli 70c65b5b-ceda-4764-89f0-d68f1db6fff6` | `--source proxy` (default), `cli`, or a `<path>` — pick the transcript store; a 36-char UUID is a CLI session id, a 16-hex id a proxy thread id. |
+| `improve` | `/improve` | Default — read **every** session bucket's pending suggestions from claude-proxy (`$CLAUDE_PROXY_STORE`), compose them into criteria, run `/task` on them in a subagent, then mark what shipped as `done`. |
+| `improve` | `/improve -r 2-9` | `--range` / `-r <spec>` — only those buckets. One (`9`), a list (`2,3,9`), a span (`2-9`), or a mix (`2-4,9`). |
+| `improve` | `/improve -n -r 9` | `--dry-run` / `-n` — report the pending suggestions and the criteria they compose into; no subagent, no PR, nothing marked. |
+| `improve` | `/improve -d -r 9 only the serial-discovery findings` | `--here` / `-h`, `--base <branch>`, `--draft` / `-d`, `--add` / `-a` pass straight through to `/task`; trailing text narrows which pending suggestions to act on. |
 | `trim` | `/trim` | Evaluate six evidence-backed safety gates; recommend continuing or emit a tailored `/compact` command. |
+
+`revive`'s default proxy source is location-agnostic: export **`CLAUDE_PROXY_STORE`**
+(the directory holding `<id>.md` transcripts) and optionally **`CLAUDE_PROXY_ARCHIVE`**
+(where older days are relocated) in your shell. Without `CLAUDE_PROXY_STORE`,
+`/revive` fails fast instead of guessing a path — `--source cli` and
+`--source <path>` still work. `improve` reads the same variable: its parent is the
+log directory the suggestion flags live in, and the directory above that is the
+claude-proxy checkout whose `suggestions` CLI it calls. Without it, `/improve`
+stops rather than searching for a checkout.
+
+```sh
+export CLAUDE_PROXY_STORE="$HOME/path/to/claude-proxy/logs/sessions"
+export CLAUDE_PROXY_ARCHIVE="$HOME/path/to/archived/claude/logs"   # optional
+```
 
 The `trim` command adapts the context-compaction strategy introduced by Yujiang Li,
 Zhenyu Hou, Yi Jing, Jie Tang, and Yuxiao Dong in
@@ -72,6 +110,30 @@ It asks how you want them installed:
 The repository also ships `.codex-plugin/plugin.json`, so supported Codex
 surfaces can install the complete skill bundle as a plugin.
 
+Every choice also installs the **command toolkit** — a zero-dependency Node CLI
+the commands and skills call for deterministic git/gh plumbing. It lands under
+`~/.claude/my-command/` for Claude or `${CODEX_HOME:-~/.codex}/my-command/` for
+Codex and gets linked onto PATH, because every workflow spells the call as a
+bare `my-command-tools`. In a new shell:
+
+```bash
+my-command-tools doctor
+```
+
+`doctor`'s `onPath` block reports whether that bare call resolves and whether it
+resolves to this install's shim. If the installer found neither `~/.local/bin` nor
+`~/bin` on your PATH it links nothing and prints the `ln -s` line to run — it never
+edits a shell profile.
+
+The Claude commands and Codex skills route git/gh plumbing through it—`task`
+sets up its worktree with `worktree begin`, gates on `state`'s `hasWork`, runs
+repository checks with `verify`, and commits an explicit path list with
+`commit`; `pr` pushes and opens or updates the PR in one call. Judgment stays in
+the prompts. `clean` is the deliberate exception because comment scope itself
+requires judgment.
+
+See [Command toolkit](./docs/specs/command-toolkit.md).
+
 ### Manual — as a plugin
 
 ```bash
@@ -88,17 +150,25 @@ they are invoked as `/my-command:task`, `/my-command:pr`, and so on.
 src/commands/       Canonical BARE commands — edit these (they call each other as /task, /clean, …)
 skills/             Codex-native workflow skills — one semantic counterpart per Claude command
 src/my-command.ts   The npx install wizard, in TypeScript (compiled to dist/, ships dependency-free)
+src/toolkit/        Shared CLI every command calls — raw .mjs, shipped as-is (see docs/specs/command-toolkit.md)
+  cli.mjs              Entrypoint and verb registry; JSON on stdout
+  verbs/               state, verify, commit, pr, worktree, doctor
+  lib/                 git/process/path helpers
+  bin/my-command-tools The shim that resolves the toolkit device-wide
 dist/               GENERATED wizard build (tsc output; gitignored, built on install via `prepare`)
 commands/           GENERATED namespaced commands the plugin ships (do not edit by hand)
 scripts/
   build-plugin.sh      Regenerate commands/ from src/commands/ (bare → /my-command:)
-  check-commands.sh    Enforce command invariants (commands/ in sync, feature docs, wizard glob) — runs in CI
+  check-commands.sh    Enforce command + toolkit invariants (commands/ in sync, feature docs, verbs registered) — runs in CI
   install-personal.sh  Symlink src/commands/*.md into ~/.claude/commands (bare, git-synced)
+  install-codex-personal.sh  Symlink skills + toolkit into Codex device scopes (git-synced)
 AGENTS.md           Repo rules for agents (the adding-a-command checklist + the CI gate)
 biome.json          Biome lint + format config
 tsconfig.json       TypeScript config (strict; compiles src/ → dist/)
-.github/workflows/  Pull-request CI (merge-conflict check, Biome, typecheck, build)
-.claude-plugin/     plugin.json + marketplace.json
+tsconfig.toolkit.json  Typechecks src/toolkit/*.mjs via allowJs + checkJs (no emit — it ships as source)
+.github/workflows/  Pull-request CI (merge-conflict check, Biome, typecheck, toolkit, build)
+.claude-plugin/     Claude Code plugin + marketplace metadata
+.codex-plugin/      Codex plugin manifest for the native skills bundle
 docs/               okq spec bundle — specs/ (process), features/ (one per command), adrs/
 ```
 
@@ -118,6 +188,9 @@ bundle under [`docs/`](./docs) — process specs plus one feature doc per comman
   wizard → README/CHANGELOG). Read this before adding one.
 - **[Install wizard](./docs/specs/install-wizard.md)** — how the wizard installs
   the suite for Claude Code and Codex, including per-item overwrite behavior.
+- **[Command toolkit](./docs/specs/command-toolkit.md)** — the device-wide
+  `my-command-tools` CLI, its verbs and guards, and how it reaches every install
+  mode.
 - **`docs/features/<cmd>.md`** — the flags, parameters, and behavior of each
   command.
 - **[Claude and Codex support patterns](./docs/research/2026-07-19-claude-codex-support-patterns.md)** —
@@ -154,11 +227,12 @@ Keep the short bare commands (`/task`) on every machine, controlled from this re
 git clone git@github.com:llevasseur/my-command.git
 cd my-command
 ./scripts/install-personal.sh      # symlinks the bare commands into ~/.claude/commands
+./scripts/install-codex-personal.sh # symlinks $skills and toolkit for Codex
 ```
 
-The symlinks point back into the clone, so `git pull` in this repo updates every
-command on that device. Run `install-personal.sh` once per machine (it's
-path-agnostic — clone the repo wherever you like).
+The symlinks point back into the clone, so `git pull` updates every Claude
+command, Codex skill, and the toolkit. Run the relevant script once per machine;
+both are path-agnostic.
 
 Once set up, pull updates from any session with **`/sync`** — it finds the clone,
 fast-forwards it, and re-links any newly added commands, without hardcoding where

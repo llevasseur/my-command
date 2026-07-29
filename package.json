@@ -1,21 +1,23 @@
 {
   "name": "@llevasseur/my-command",
   "version": "1.0.0",
-  "description": "Your Wish is My Command — install wizard for the MyCommand Claude Code command bundle.",
+  "description": "Your Wish is My Command — install Claude commands, Codex skills, and shared workflow tooling.",
   "type": "module",
   "packageManager": "pnpm@11.5.2",
   "engines": {
     "node": ">=22"
   },
   "bin": {
-    "my-command": "dist/my-command.js"
+    "my-command": "dist/my-command.js",
+    "my-command-tools": "src/toolkit/cli.mjs"
   },
   "files": [
     "dist",
     "src",
     "skills",
     "commands",
-    ".claude-plugin"
+    ".claude-plugin",
+    ".codex-plugin"
   ],
   "scripts": {
     "build": "tsc",
@@ -24,7 +26,9 @@
     "lint": "biome lint .",
     "format": "biome check --write .",
     "check": "biome check .",
-    "check:commands": "./scripts/check-commands.sh"
+    "check:commands": "./scripts/check-commands.sh",
+    "check:toolkit": "tsc -p tsconfig.toolkit.json",
+    "test": "node --test \"src/toolkit/**/*.test.mjs\""
   },
   "license": "MIT",
   "author": "Leevon Levasseur",

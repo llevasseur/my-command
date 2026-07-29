@@ -7,7 +7,7 @@ Set up a **repo-local worktree bootstrap** so a fresh `git worktree` behaves lik
 
 Run it **once per repo** — or to update an existing bootstrap when the stack changes.
 
-$ARGUMENTS: parse leading flags off the front; anything else is free-text **notes about the stack** that seed the interview.
+The `<command-args>` block above: parse leading flags off the front; anything else is free-text **notes about the stack** that seed the interview.
 
 ## Flags (where the work happens — mirrors /my-command:task)
 
@@ -17,13 +17,13 @@ $ARGUMENTS: parse leading flags off the front; anything else is free-text **note
 
 ## Step 1 — Set up the workspace
 
-Same as `/my-command:task` Step 1, based on **live** git state (`git rev-parse --abbrev-ref HEAD`, `git status`):
+Same as `/my-command:task` Step 1, based on **live** git state from `my-command-tools state`:
 
-- **Default:** fresh worktree off `main` via `EnterWorktree` (branch `chore/worktree-bootstrap`).
-- **`--base <branch>`:** `git fetch`, then `git worktree add .claude/worktrees/<name> -b <name> <base>`, then `EnterWorktree` by `path`.
-- **`--here`:** stay on the current branch; if it's `main`, create a feature branch first and say so.
+- **Default:** `my-command-tools worktree begin --branch chore/worktree-bootstrap`, then `EnterWorktree` at the `path` it reports.
+- **`--base <branch>`:** the same call plus `--base <branch>`.
+- **`--here`:** stay on the current branch; if `state` reports `onDefaultBranch`, create a feature branch first and say so.
 
-The bootstrap you're creating doesn't exist yet, so this command's own worktree can't use it — that's expected. A fresh worktree here only needs git, which it has.
+Don't pass `--bootstrap` — the bootstrap you're creating doesn't exist yet, so this command's own worktree can't use it. That's expected; a fresh worktree here only needs git, which it has.
 
 ## Step 2 — Detect the stack (before asking anything)
 
@@ -37,7 +37,7 @@ Read the repo so you ask only about what you can't infer:
 
 ## Step 3 — Interview to confirm + fill gaps
 
-Present what you detected and ask only for the unknowns and confirmations — one tight round, using AskUserQuestion for structured choices. If the notes in $ARGUMENTS already answer something, don't re-ask.
+Present what you detected and ask only for the unknowns and confirmations — one tight round, using AskUserQuestion for structured choices. If the notes in the arguments already answer something, don't re-ask.
 
 - Confirm the **env files** to symlink.
 - Confirm the **install** command.
@@ -88,11 +88,12 @@ cd "$WORKTREE_ROOT"
 ## Step 7 — Changelog, then /my-command:clean and /my-command:pr
 
 - If the repo tracks a changelog, add an entry.
-- Commit only the files you created — stage paths explicitly (never `git add -A`). Invoking this command is standing permission to commit on this branch (never on `main`).
+- Commit only the files you created: `my-command-tools commit --message <text> <path> [<path>...]`. Staging is always explicit — the verb refuses whole-tree staging — so nothing you didn't author comes along. Invoking this command is standing permission to commit on this branch (never on `main`).
 - Run **`/my-command:clean`**, then **`/my-command:pr`** (`/my-command:pr --draft` if `--draft`/`-d`).
+- **Tear the worktree down yourself** if Step 1 created one. `/my-command:pr` skips teardown for a worktree its session didn't create, and this one was entered with `EnterWorktree({path})`, which `ExitWorktree` also refuses to remove: call `ExitWorktree` with `action: "keep"`, then `my-command-tools worktree end --branch chore/worktree-bootstrap` from the original checkout. It re-verifies the branch reached origin first.
 
 ## Notes
 
 - One-time per repo. If a bootstrap already exists, **update** it rather than scaffolding a new one — inspect it first.
 - Keep this command device- and project-agnostic: everything project-specific comes from detection + the interview, never hardcoded here.
-- Report the branch up front and the PR number/URL at the end.
+- Report the branch up front and the PR number/URL at the end, in a **text-only turn** — after the last tool call, never in the same turn as one, or the run is recorded as unfinished even though the PR is open.

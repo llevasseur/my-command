@@ -3,13 +3,13 @@ type: research
 title: Claude and Codex support patterns
 description: Research notes for adding Codex Skills support to the MyCommand install wizard.
 tags: [research, claude, codex, skills]
-timestamp: 2026-07-19
+timestamp: 2026-07-28
 ---
 
 # Claude and Codex support patterns
 
-**Date:** 2026-07-19
-**Relevance:** Decide how the MyCommand wizard should install the existing Claude command bundle for Codex without duplicating the canonical workflows.
+**Date:** 2026-07-28
+**Relevance:** Decide how MyCommand should distribute native Claude and Codex workflows without losing semantic parity.
 **Depth:** surface
 
 ## Summary
@@ -61,9 +61,8 @@ add an explicit Codex Skills mode with a safe overwrite prompt.
 
 ## Open questions / gaps
 
-- Codex's current documentation recommends plugins for broad distribution. This
-  repository's requested scope is the local install wizard, so a Codex plugin is
-  out of scope for this change.
+- Codex recommends plugins for broad distribution, so the repository ships a
+  `.codex-plugin/plugin.json` manifest in addition to the local wizard path.
 - Codex device tools vary by surface and installation. Skill instructions should
   use tools available in the active session and treat Browser, Chrome, Computer
   Use, and subagents as conditional capabilities rather than universal commands.
@@ -71,6 +70,6 @@ add an explicit Codex Skills mode with a safe overwrite prompt.
 ## Sources
 
 1. [Extend Claude with skills](https://code.claude.com/docs/en/slash-commands) — Claude Code documentation, accessed 2026-07-19.
-2. [Build skills](https://developers.openai.com/codex/skills) — OpenAI Codex documentation, accessed 2026-07-19.
+2. [Build skills](https://developers.openai.com/plugins/build/skills) — OpenAI Codex documentation, accessed 2026-07-28.
 3. [Codex skill-creator sample](https://github.com/openai/codex/blob/main/codex-rs/skills/src/assets/samples/skill-creator/SKILL.md) — OpenAI Codex repository, accessed 2026-07-19.
 4. [alirezarezvani/claude-skills](https://github.com/alirezarezvani/claude-skills) — representative multi-agent skills repository, accessed 2026-07-19.

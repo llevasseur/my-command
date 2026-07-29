@@ -11,3 +11,5 @@ Parse `--check` as read-only. Detect whether the active workflow is a symlinked 
 - For a copied install or plugin, use its supported update flow. If read-only checking is unavailable, report that rather than mutating state.
 
 Never reset, stash, force, or overwrite local work. Explain whether a new Codex session is needed to pick up already-loaded skill changes.
+Finish with `my-command-tools doctor` when available so command, skill, toolkit,
+and PATH state are reported together.

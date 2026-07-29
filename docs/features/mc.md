@@ -22,10 +22,14 @@ pushes. Handles machine-generated index/listing conflicts (e.g. okq-generated
 
 ## Behavior
 
-For each in-scope branch: merge latest `main`, resolve conflicts (regenerating
-generated indexes where a resolver script exists), and push the result.
+Preconditions come from the toolkit's `state` verb — repo check, starting branch,
+default branch, and the clean-tree check in one call. Then for each in-scope branch:
+merge latest `main`, resolve conflicts (regenerating generated indexes where a resolver
+script exists), sanity-check with `verify`, and push the result.
 
 ## Related
 
 - Command source: `src/commands/mc.md`
+- Called by: [merge-deps](merge-deps.md) per dependency PR, and [god](god.md) when
+  `main` moved under the PR before its merge
 - Spec: [Adding a command](../specs/adding-a-command.md)

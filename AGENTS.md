@@ -5,10 +5,10 @@ Project-specific rules for agents working in this repo. Device-wide rules live i
 
 ## What this repo is
 
-A bundle of Claude Code slash commands. **A command is agent instructions, not code** —
-each is a Markdown file in `src/commands/<name>.md`. The bare source in `src/commands/` is
-canonical; `commands/` is a generated namespaced copy the plugin ships. The `npx` install
-wizard is `src/my-command.ts` (compiled to `dist/`).
+A paired bundle of Claude Code slash commands and Codex skills. A workflow is
+agent instructions, not code: Claude sources live in `src/commands/<name>.md`
+and Codex translations in `skills/<name>/SKILL.md`. `commands/` is the generated
+namespaced Claude plugin copy. The `npx` wizard is `src/my-command.ts`.
 
 ## Adding or changing a command — non-negotiable checklist
 
