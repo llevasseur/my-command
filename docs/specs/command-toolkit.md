@@ -4,14 +4,16 @@ title: Command toolkit
 description: The device-wide `my-command-tools` CLI that commands call for the deterministic git/gh plumbing of a workflow run, and how it ships with every install mode.
 tags: [process, toolkit, install, cli]
 timestamp: 2026-07-25
+updated: 2026-07-28
+dirty: true
 ---
 
 # Command toolkit
 
 ## Summary
 
-A command is agent instructions, not code — but every workflow command (`/task`,
-`/pr`, `/fb`, `/god`, `/revive`) opens by re-deriving the same git state
+A command is agent instructions, not code — but workflow commands such as `/task`,
+`/pr`, `/fb`, `/god`, and `/revive` open by re-deriving the same git state
 with a volley of one-off shell calls, and re-derives it slightly differently each
 run. `my-command-tools` is a zero-dependency Node CLI that owns that deterministic
 half: it answers "where am I and what did this run produce", runs the repo's own
@@ -122,14 +124,15 @@ when it doesn't.
 **The toolkit ships as raw `.mjs` under `src/toolkit/`, never as build output.**
 A plugin install is a git clone with no build step, and `dist/` is gitignored — so
 anything requiring compilation simply does not exist in plugin mode. Raw `.mjs` is
-the only payload that reaches all four install paths:
+the only payload that reaches every supported install path:
 
 | Install path | How the toolkit arrives |
 |---|---|
 | `claude plugin install` | in the clone; found via `$CLAUDE_PLUGIN_ROOT` |
 | `npx github:llevasseur/my-command` | `installToolkit()` copies it to the selected Claude or Codex device root |
 | `scripts/install-personal.sh` | symlinks the checkout, so `git pull` updates it |
-| `scripts/install-marketplace-personal.sh` | same wizard path |
+| `scripts/install-codex-personal.sh` | symlinks the checkout into the Codex device root, so `git pull` updates it |
+| `scripts/install-marketplace-personal.sh` | updates command files only; the initial wizard install supplies the toolkit |
 | `npm i -g @llevasseur/my-command` | the `my-command-tools` bin runs `src/toolkit/cli.mjs` from the installed package |
 
 The npm bin points at `cli.mjs` directly rather than at the shim: an npm-installed

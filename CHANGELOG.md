@@ -14,6 +14,10 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 ### Changed
 
+- **Documentation bundle reconciliation** — the bundle landing page now covers
+  the toolkit, research, and Claude/Codex workflow invariant; the toolkit spec
+  distinguishes the Codex clone installer from the command-only marketplace
+  copier; and the `god` feature doc records its cross-repository worktree rule.
 - **Codex `docs`, `clean`, and `truncate` skills preserve the complete density-pass handoff.** Updated and added docs enter the `dirty: true` queue, comment cleanup leaves Markdown prose untouched, and `$truncate` preserves the source command's aliases, selection precedence, size guard, and queue-clearing behavior.
 
 ### Fixed
