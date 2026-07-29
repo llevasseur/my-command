@@ -3,7 +3,7 @@ type: readme
 title: MyCommand specs
 description: Queryable OKF bundle for the MyCommand workflow suite — process specs plus one feature doc per command.
 timestamp: 2026-07-15
-updated: 2026-07-28
+updated: 2026-07-29
 ---
 
 # MyCommand specs
@@ -40,11 +40,11 @@ Frontmatter keys beyond OKF's `type` / `title` / `description` / `tags`:
 - `status` — ADRs only (`accepted`, `superseded`).
 - `dirty: true` — the doc's claims are correct but its prose has not been
   evaluated for density since it changed. Set by [docs](features/docs.md) on
-  every doc it updates or adds, and by whoever hand-edits a doc. Consumed and
-  cleared only by [truncate](features/truncate.md):
+  every doc it updates or adds, and by whoever hand-edits a doc. The final docs
+  phase or standalone [truncate](features/truncate.md) consumes and clears it:
 
       okq --bundle docs find --where dirty=true
 
   A truncation never bumps `updated` — no claim changed. See
-  [ADR 0003](adrs/0003-dirty-flag-for-doc-density.md).
+  [ADR 0004](adrs/0004-docs-completes-density-pass.md).
 <!-- okq:end -->

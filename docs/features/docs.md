@@ -1,21 +1,22 @@
 ---
 type: feature
 title: docs
-description: Reconcile an okq doc bundle with the code via /task — refresh stale docs, add docs for undocumented features, prune docs for things that no longer exist.
+description: Reconcile an okq doc bundle with the code via /task, then truncate dirty docs to high-signal prose without losing claims.
 tags: [command, docs, process]
 timestamp: 2026-07-24
-updated: 2026-07-28
+updated: 2026-07-29
 ---
 
 # docs
 
 ## Summary
 
-Audits an OKF bundle against its code for stale, missing, and obsolete docs.
-It uses [okq](https://github.com/mikevalstar/okq), never `grep`, edits docs only,
-and reports code problems rather than changing code. Reconciliation runs through
+Audits an OKF bundle against its code for stale, missing, and obsolete docs,
+then truncates its dirty queue without losing claims. It uses
+[okq](https://github.com/mikevalstar/okq), never `grep`, edits docs only, and
+reports code problems rather than changing code. Both phases run through one
 [task](task.md), which owns the worktree, commits, `/clean`, `/pr`, and teardown;
-the default is a fresh worktree off latest `main` and a docs-only PR.
+the default is a fresh worktree off latest `main` and one docs-only PR.
 
 ## Flags / Parameters
 
@@ -36,10 +37,11 @@ flags):
 - `--add` / `-a` — run only the missing-docs pass.
 - `--prune` / `-p` — run only the obsolete-docs pass.
 - Pass flags combine; with **none** given, all three run. That's the default.
-- `--dry-run` / `-n` — report the plan and change nothing (stops after
-  classification).
-- `--yes` / `-y` — apply without confirmation, including deletions. Without it,
-  every deletion and every doc-vs-code conflict is confirmed first.
+- `--dry-run` / `-n` — report the reconciliation plan and projected density
+  queue, then change nothing.
+- `--yes` / `-y` — apply without confirmation, including deletions and density
+  cuts over 40%. Without it, deletions, doc-vs-code conflicts, and cuts past
+  that guard are confirmed first.
 - Anything left after flags scopes the run to a concept id, a path/glob, or a
   topic (resolved with `okq search`).
 
@@ -48,9 +50,10 @@ pass, in `/task` it registers extra commands to weave in.
 
 ## Behavior
 
-Pass flags and scope become plain-language `/task` criteria; `/docs` never
-creates a second, nested worktree. `--dry-run` skips the handoff and creates no
-worktree, commit, or PR.
+Pass flags and scope become plain-language `/task` criteria for the complete
+correctness-then-density pipeline; `/docs` never creates a second, nested
+worktree or invokes `/truncate` as another task. `--dry-run` skips the handoff
+and creates no worktree, commit, or PR.
 
 It locates the bundle and reads its own contract first: frontmatter keys,
 generated `index.md` files, folder `_template.md`s, the 1:1 unit documented
@@ -68,9 +71,13 @@ matching, drifted, or wrong with `old → current`, then checks `neighbors` and
 instead, and wrong ADRs are superseded rather than edited.
 
 Every updated or added doc—not an audited-fresh one—gets `dirty: true`, meaning
-correct claims whose prose still needs [truncate](truncate.md). `/docs` never
-clears it or shortens for style; it reports the dirty count and `/truncate`
-invocation without running the separate density pass.
+correct claims whose prose still needs [truncate](truncate.md). After
+reconciliation, `/docs` processes the complete dirty queue, including earlier
+queued hand edits or interrupted work. It inventories actionable claims, cuts
+narration and repetition, rechecks the inventory, applies the 40% size guard,
+and clears `dirty` from every evaluated doc. Suspected drift is reported rather
+than shortened or fixed; generated indexes are excluded. A successful run
+leaves the dirty queue empty; deferred entries are reported as incomplete work.
 
 The add pass uses `_template.md` or `okq new`, source actually read, existing
 tags, and cross-links. The prune pass repoints renames, never deletes an ADR or
@@ -78,9 +85,10 @@ generated index, never equates orphan with obsolete, confirms deletions with
 evidence, and uses `git rm`.
 
 Finally it regenerates `okq index`, runs `validate`, `deadlinks --check`,
-`orphans`, and repository doc gates until clean, then reports per-doc verdicts
-separately from code findings. It edits directly; `/task` commits and opens the
-PR.
+`orphans`, and repository doc gates until clean, then reports reconciliation
+and density verdicts separately from code findings. It edits directly; `/task`
+commits both phases and opens one PR. `check-commands.sh` rejects either command
+surface if this integrated density phase disappears.
 
 ## Related
 
@@ -91,8 +99,9 @@ PR.
 - Spec: [Adding a command](../specs/adding-a-command.md) — the invariants this
   command audits (a command needs a feature doc; a flag change needs a doc update)
 - ADR: [0002 Command docs as okq specs](../adrs/0002-command-docs-as-okq-specs.md)
-- Follow-up pass: [truncate](truncate.md) — consumes and clears the `dirty` flag
-  this command sets, cutting docs to high-signal tokens without touching a claim
-- ADR: [0003 Dirty flag for doc density](../adrs/0003-dirty-flag-for-doc-density.md)
+- Density pass: [truncate](truncate.md) — the standalone form of the rules this
+  command runs inline over its resulting dirty queue
+- ADR: [0004 Docs completes the density pass](../adrs/0004-docs-completes-density-pass.md)
+- Superseded ADR: [0003 Dirty flag for doc density](../adrs/0003-dirty-flag-for-doc-density.md)
 - Related commands: [clean](clean.md) does the same lean-up for comments;
   [changelog](changelog.md) records the change once docs are right

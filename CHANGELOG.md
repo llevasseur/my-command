@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-07-29
+
+### Changed
+
+- **`docs` now finishes with the `truncate` density pass in the same task and PR.** Both Claude `/docs` and Codex `$docs` still reconcile stale, missing, and obsolete documentation first, but they no longer stop after marking updated or added docs `dirty: true`. The final in-workflow phase consumes the complete dirty queue, inventories and preserves every claim, cuts narration and repetition, applies the existing 40% size guard, clears evaluated flags, and runs the final docs gates. It executes truncate's rules inline instead of nesting another task. Standalone `/truncate` and `$truncate` remain available for hand edits, explicit scopes, interrupted queues, and whole-bundle sweeps. ADR 0004 supersedes the earlier separate-PR decision, and `check-commands.sh` guards the phase on both command surfaces.
+
 ## 2026-07-28
 
 ### Added

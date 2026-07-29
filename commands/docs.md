@@ -1,11 +1,11 @@
 ---
-description: Reconcile an okq doc bundle with the code via /my-command:task — refresh stale docs, add docs for undocumented features, prune docs for things that no longer exist
+description: Reconcile an okq doc bundle with the code via /my-command:task, then truncate dirty docs to high-signal prose without losing claims
 argument-hint: "[--here|-h] [--base <branch>] [--bundle|-b <dir>] [--refresh|-r] [--add|-a] [--prune|-p] [--dry-run|-n] [--yes|-y] [doc id / path / topic to scope to]"
 ---
 
-Bring this repo's doc bundle back in line with the code it describes. Docs rot in three directions, and this command handles all three: a doc that no longer matches the code (**stale**), a feature with no doc at all (**missing**), and a doc for something that was removed (**obsolete**).
+Bring this repo's doc bundle back in line with the code it describes, then make the resulting docs lean. Docs rot in three directions, and this command handles all three: a doc that no longer matches the code (**stale**), a feature with no doc at all (**missing**), and a doc for something that was removed (**obsolete**). Its final phase applies [truncate](truncate.md)'s claim-preserving density rules to the dirty queue so a successful run does not knowingly ship noisy docs.
 
-The reconciliation itself runs inside a `/my-command:task` workflow: `/my-command:docs` decides **where** the work happens and hands the passes to `/my-command:task`, which isolates the workspace, commits, then runs `/my-command:clean` and `/my-command:pr` (Step 0). Like `/my-command:task`, it defaults to a fresh worktree off the latest `main`.
+The reconciliation and density phases run inside one `/my-command:task` workflow: `/my-command:docs` decides **where** the work happens and hands the complete pipeline to `/my-command:task`, which isolates the workspace, commits, then runs `/my-command:clean` and `/my-command:pr` (Step 0). Like `/my-command:task`, it defaults to a fresh worktree off the latest `main`. Never invoke `/my-command:truncate` as a nested command; execute its density rules inline before `/my-command:task` commits.
 
 The bundle is an [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) collection of Markdown-with-frontmatter docs, queried with [okq](https://github.com/mikevalstar/okq). Use `okq` to explore, write, and check it — not `grep`. The `okq-reference`, `okq-explore`, `okq-write-okf`, and `okq-maintain` skills are the contract; load them via the `Skill` tool as each step needs them.
 
@@ -26,8 +26,8 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 - `--add` / `-a` — run only the missing-docs pass (Step 4).
 - `--prune` / `-p` — run only the obsolete-docs pass (Step 5).
 - Pass flags combine (`-r -p` = refresh and prune, no additions). **With none of them, run all three** — that's the default.
-- `--dry-run` / `-n` — report the full plan and change nothing. Stop after Step 2.
-- `--yes` / `-y` — apply without pausing for confirmation, including deletions. Without it, every deletion and every doc-vs-code conflict is confirmed with me first.
+- `--dry-run` / `-n` — report the reconciliation plan and projected density queue, then change nothing. Stop after Step 2.
+- `--yes` / `-y` — apply without pausing for confirmation, including deletions and density cuts past the 40% size guard. Without it, every deletion, doc-vs-code conflict, and over-40% cut is confirmed with me first.
 - Anything left after flags scopes the run to a concept id (`features/pr`), a path or glob (`docs/adrs/*`), or a topic (`worktree handling`) — resolve a topic with `okq --bundle <dir> search "<topic>"` and audit the hits. Unscoped means the whole bundle.
 
 **`-a` means different things in the two commands.** Here `--add` / `-a` is the missing-docs pass; in `/my-command:task` it registers extra commands to weave in. Never forward this command's `-a` (or `-r`, `-p`, `-n`, `-y`, `-b`) to `/my-command:task` as a flag — they belong in the criteria text, not the invocation.
@@ -40,10 +40,10 @@ This command does no branching, committing, or PR work of its own. It resolves *
    - **Default (neither flag):** `/my-command:task <criteria>` — a fresh worktree off the latest `main`, exactly like `/my-command:task`'s own default. The branch type is always `docs` (this command only ever changes docs), so: `docs/<kebab-summary>` — e.g. `docs/reconcile-bundle`, or scope-specific like `docs/refresh-pr-command`.
    - **`--here` / `-h`:** `/my-command:task --here <criteria>` — reconcile on the current branch, no worktree. If that branch is `main`, `/my-command:task` creates a feature branch in place; let it.
    - **`--base <branch>`:** `/my-command:task --base <branch> <criteria>` — worktree branched off `<branch>`.
-2. The `<criteria>` you hand `/my-command:task` is **this command's Steps 1–6 with the passes and scope already resolved** — state them in plain language rather than as flags (e.g. "reconcile the doc bundle per `/my-command:docs` Steps 1–6: refresh pass only, scoped to `features/pr`"). `/my-command:task`'s Step 2 *is* this pipeline.
+2. The `<criteria>` you hand `/my-command:task` is **this command's Steps 1–7 with the passes and scope already resolved** — state them in plain language rather than as flags (e.g. "reconcile the doc bundle per `/my-command:docs` Steps 1–7: refresh pass only, scoped to `features/pr`, then run the integrated density phase over the resulting dirty queue"). `/my-command:task`'s Step 2 *is* this pipeline.
 3. **Don't create the worktree yourself** — `/my-command:task` Step 1 does it. Doing both nests a worktree inside a worktree. Report the branch name once `/my-command:task` has it.
 4. `/my-command:task`'s Step 1.5 bootstrap can skip code generation (this is a docs-only change), but the workspace still needs `okq` on `PATH` — it's a device-level install, so a fresh worktree inherits it.
-5. **`--dry-run` / `-n` skips this step entirely.** A dry run writes nothing, so there is nothing to isolate, commit, or open a PR for: stay in the current checkout, run Steps 1–2 in place, report the plan, and stop. Never spin up a worktree or call `/my-command:task` for a dry run.
+5. **`--dry-run` / `-n` skips this step entirely.** A dry run writes nothing, so there is nothing to isolate, commit, or open a PR for: stay in the current checkout, run Steps 1–2 in place, report the reconciliation plan and projected density queue, and stop. Never spin up a worktree or call `/my-command:task` for a dry run.
 
 ## Step 1 — Locate the bundle and learn its rules
 
@@ -63,7 +63,7 @@ This command does no branching, committing, or PR work of its own. It resolves *
    - **OBSOLETE** — doc whose unit is gone → Step 5 prunes it.
    - Docs that aren't 1:1 with a unit (ADRs, process specs, index/landing pages) are **CHECK only**. They are never "missing" and never auto-pruned.
 5. Apply the scope filter from `<command-args>`, if any, to all three buckets.
-6. **`--dry-run` stops here**, having reported the table and what each pass would do.
+6. **`--dry-run` stops here**, having reported the table, what each reconciliation pass would do, and the projected Step 6 queue: docs already marked dirty plus docs expected to be updated or added. Make no density edits and clear no flags.
 
 ## Step 3 — Refresh pass: audit each doc individually
 
@@ -90,15 +90,15 @@ A doc can be stale with a newer mtime and fresh with an older one, so every susp
 - **Doc is stale** → update the doc to match the code, bump `updated`/`timestamp` if the bundle tracks it, and set `dirty: true` (Step 3.5).
 - **Code looks like the regression** → do **not** rewrite the doc to bless it. A doc can legitimately record intended behavior the code drifted from. Report it as a code-side finding for me to decide; without `--yes`, ask before treating either side as the source of truth.
 - **A committed ADR is now wrong** → never rewrite the decision. Supersede it with a new record following the bundle's convention (a new ADR, and `status: superseded` on the old one if the bundle uses status).
-- Edit prose only where a claim changed. This pass is not a rewrite-for-style pass — that is [truncate](truncate.md), and the `dirty` flag is how a doc gets there.
+- Edit prose only where a claim changed. Density belongs to Step 6; the `dirty` flag hands the corrected doc to that final phase.
 
 ## Step 3.5 — Mark what you touched as `dirty`
 
-Every doc this run **updates** (Step 3) or **creates** (Step 4) gets `dirty: true` in its frontmatter. That flag is a work queue, not a defect: it says the doc's claims are now correct but its prose has not been evaluated for density since it changed. [truncate](truncate.md) finds those docs with `okq --bundle <dir> find --where dirty=true`, cuts the packaging without touching a claim, and removes the key.
+Every doc this run **updates** (Step 3) or **creates** (Step 4) gets `dirty: true` in its frontmatter. That flag is a work queue, not a defect: it says the doc's claims are now correct but its prose has not been evaluated for density since it changed. Step 6 consumes that queue with [truncate](truncate.md)'s rules before the surrounding `/my-command:task` commits.
 
 - Set it on updated and added docs only. A doc you audited and found **fresh** is not dirty — nothing changed in it.
 - Set it as a plain boolean (`dirty: true`) at the top level of the frontmatter, alongside `type` and `title`. `okq find --where` reads arbitrary frontmatter keys, so no schema change or okq upgrade is needed.
-- Leave an already-set `dirty: true` in place; never clear it. Only `/my-command:truncate` clears it.
+- Leave an already-set `dirty: true` in place during reconciliation. Only the Step 6 density phase or a standalone `/my-command:truncate` run clears it.
 - **The bundle's own contract wins.** If it names a different key or tracks this some other way, follow the bundle and say you did.
 - `--dry-run` sets nothing, like every other write in this command.
 
@@ -122,25 +122,35 @@ Rules that override "it looks unused":
 
 - **A rename is not a removal.** If the unit was renamed or moved, rename/rewrite the doc and repoint every inbound link (`okq --bundle <dir> backlinks <old-id>`) — don't delete and re-add.
 - **Never delete an ADR.** Decisions are append-only; mark it superseded/deprecated per the bundle's convention instead.
-- **Never delete a generated `index.md`.** It is output — regenerate it in Step 6.
+- **Never delete a generated `index.md`.** It is output — regenerate it in Step 7.
 - **Orphan ≠ obsolete.** A landing or root doc legitimately has no inbound links, and a doc can be correct but simply unlinked — that's an add-a-link fix, not a delete.
 - **Confirm every deletion with me before it happens** unless `--yes` was given, with the evidence (the unit is gone as of commit X). Delete with `git rm` so it stays recoverable.
 
 After removing anything, fix what pointed at it: `okq --bundle <dir> deadlinks` must come back clean, and the removed doc's entry must be gone from any hand-maintained list that named it.
 
-## Step 6 — Reconcile, verify, report
+## Step 6 — Truncate the dirty queue
+
+Run the density pass **inside the existing `/my-command:task` workflow**. Do not invoke `/my-command:truncate` and do not create another worktree, commit sequence, or PR.
+
+1. Build the queue with `okq --bundle <dir> find --where dirty=true --json` after reconciliation. This intentionally includes dirty docs from earlier hand edits or interrupted runs as well as docs updated or added above. Exclude generated indexes and anything the bundle marks generated. Record each queued doc's body lines and characters. An empty queue is a successful clean result.
+2. Evaluate each doc independently, in parallel subagents where allowed. Inventory every actionable claim first: commands, flags, defaults, exit codes, paths, environment variables, behavior, ordering, guardrails, non-obvious constraints, and links.
+3. Cut narration, ceremony, unactionable justification, repetition, linked-doc duplication, hedging, filler, and redundant examples. Preserve every inventoried claim, required section, ADR rationale, frontmatter `description`, command line, code block, and table. Never add claims, fix suspected drift, rewrite voice, or bump `updated` / `timestamp`.
+4. Re-derive the claim inventory after each edit and restore anything missing. A missing claim is a bug, not a successful truncation. Confirm a cut over 40% of the body unless `--yes` / `-y` was given.
+5. Remove `dirty` from every evaluated doc, including one already lean enough to receive a `reviewed` verdict. If a doc cannot be evaluated safely, defer it, keep it dirty, and report why rather than silently declaring the queue clean.
+
+## Step 7 — Reconcile, verify, report
 
 1. Regenerate what's generated: `okq --bundle <dir> index` if the bundle has generated `index.md` files.
 2. Re-run the health checks until clean: `okq --bundle <dir> validate`, `deadlinks --check`, `orphans` (exit code 3 means the gate tripped — branch on `$?`, not the text).
 3. Run the repo's own doc gate if it has one (e.g. `pnpm run check:commands`, the `docs` CI job's command). Report exactly what you ran.
-4. Report a table: doc | verdict (`fresh` / `updated` / `added` / `pruned` / `flagged`) | what changed. Then, separately, the **code-side findings** — places the code, not the doc, looked wrong — since those need my decision. Close with the count of docs left `dirty: true` and the `/my-command:truncate` line that would clear them; don't run it here, since a density rewrite has no business in a correctness PR.
-5. Apply edits directly, then let the surrounding `/my-command:task` run take it from here — its Step 2 commits the doc changes, and its Step 3 runs `/my-command:clean`, `/my-command:pr`, and worktree teardown. Report the table above as this pass's result rather than opening the PR yourself, and deliver it in a **text-only turn** — after the last `okq` call or edit, never in the same turn as one, or the pass is recorded as unfinished even though it completed. Under `--dry-run` there is nothing to hand off.
+4. Report the reconciliation table—doc | verdict (`fresh` / `updated` / `added` / `pruned` / `flagged`) | what changed—then the density table—doc | verdict (`truncated` / `reviewed` / `deferred`) | lines before → after | what was cut. Report code-side findings and suspected drift separately. Close with the remaining dirty count. A successful run leaves the queue empty; report every deferred dirty doc as incomplete work with its reason.
+5. Apply edits directly, then let the surrounding `/my-command:task` run take it from here—its Step 2 commits the complete reconciliation-and-density change, and its Step 3 runs `/my-command:clean`, `/my-command:pr`, and worktree teardown. Report the tables above as this pass's result rather than opening the PR yourself, and deliver them in a **text-only turn** after the last tool call. Under `--dry-run` there is nothing to hand off.
 
 ## Notes
 
 - **Every claim you write traces to source you read.** Never fill a doc from the feature's name, and never soften a doc to match code you didn't verify.
 - **Docs are a contract, not a cache.** When doc and code disagree, that's a judgment call for me — this command surfaces it rather than silently picking the code.
-- **Correctness here, density in [truncate](truncate.md).** This command may make a doc longer to make it right; it never shortens one for style. The `dirty` flag is the whole handoff between them.
+- **Correctness before density.** Steps 1–5 may make a doc longer to make it right; Step 6 then applies [truncate](truncate.md)'s claim-preserving density rules. Keeping the phases ordered prevents a style edit from deciding what a claim should say while still completing both in one PR.
 - `okq` over `grep` throughout: `search`/`find`/`get`/`neighbors` are ranked and structure-aware, and `get --section` keeps whole files out of context.
 - **Quote any Bash argument holding `*` or `?` that the invoked program — not the shell — should expand** (`okq --bundle docs find 'docs/adrs/*'`, `grep --include='*.md'`). The shell is zsh: an unquoted glob that matches nothing aborts the whole command with `no matches found`, and the argument never reaches the program.
 - This command edits **docs only** — never source code, never tests. Code problems get reported, not fixed. That holds inside the `/my-command:task` run too: the PR it opens is a docs-only PR.

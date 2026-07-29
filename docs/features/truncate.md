@@ -4,6 +4,7 @@ title: truncate
 description: Rewrite-for-style pass over an okq doc bundle via /task — cut docs to high-signal tokens without losing a claim, driven by the dirty frontmatter flag.
 tags: [command, docs, process]
 timestamp: 2026-07-28
+updated: 2026-07-29
 ---
 
 # truncate
@@ -12,10 +13,11 @@ timestamp: 2026-07-28
 
 Cuts narration, restated headings, unactionable justification, and repeated
 mechanisms while preserving every claim—flags, defaults, paths, behavior,
-guardrails, and links. [docs](docs.md) owns correctness; `/truncate` owns
-density, keeping style churn out of correctness PRs. It delegates worktree,
-commit, `/clean`, `/pr`, and teardown to [task](task.md), so a run normally ends
-at a docs-only PR.
+guardrails, and links. [docs](docs.md) runs these rules after reconciling
+correctness. Standalone `/truncate` applies density alone to hand edits, an
+explicit scope, or a whole-bundle sweep. It delegates worktree, commit,
+`/clean`, `/pr`, and teardown to [task](task.md), so a run normally ends at a
+docs-only PR.
 
 ## The `dirty` flag
 
@@ -25,9 +27,10 @@ The two commands are wired together by one frontmatter key:
 dirty: true
 ```
 
-`/docs` sets it on updated or added docs, never audited-fresh ones. It is a work
-queue for correct claims whose prose needs density review. `/truncate` selects
-and exclusively clears it:
+`/docs` sets it on updated or added docs, never audited-fresh ones, and consumes
+the resulting queue in its final phase. It is a work queue for correct claims
+whose prose needs density review. Standalone `/truncate` selects and clears the
+same queue:
 
     okq --bundle docs find --where dirty=true
 
@@ -105,9 +108,10 @@ suspected drift separate. A lost last inbound link appears as a new orphan.
 - Command source: `src/commands/truncate.md`
 - Wrapper target: [task](task.md) — owns the worktree, commits, `/clean`,
   `/pr`, and teardown for every non-`--dry-run` run
-- Counterpart: [docs](docs.md) — correctness pass; sets the `dirty` flag this
-  command consumes and clears
+- Complete workflow: [docs](docs.md) — reconciles correctness, then runs these
+  density rules inline over the resulting dirty queue
 - Sibling: [clean](clean.md) — the same lean-up for **code comments** across a
   branch diff. Doc prose is out of scope there and in scope here
-- ADR: [0003 Dirty flag for doc density](../adrs/0003-dirty-flag-for-doc-density.md)
+- ADR: [0004 Docs completes the density pass](../adrs/0004-docs-completes-density-pass.md)
+- Superseded ADR: [0003 Dirty flag for doc density](../adrs/0003-dirty-flag-for-doc-density.md)
 - Spec: [Adding a command](../specs/adding-a-command.md)
