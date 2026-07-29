@@ -16,6 +16,7 @@ Clean up the comments in my changes. Only touch comments — never change code, 
 4. Only consider comments on lines added or modified anywhere in that combined diff. Do NOT clean comments in untouched code, even if they're bad. Ignore generated files.
    - On a long-lived/shared branch, the branch-wide diff resurfaces earlier commits' code — including comments a prior clean pass already handled. If the branch shows evidence of an earlier clean (e.g. a `chore: clean ... comments` commit), scope to the current task's commits (`git diff <task-base>...HEAD`) and report the older code as out-of-scope instead of re-litigating it.
 5. If $ARGUMENTS also names a path or scope (beyond the branch name), limit to that.
+   - Prose in Markdown docs is out of scope even when the diff touches it — tightening a doc is [truncate](truncate.md)'s pass, and it has claim-preservation rules this one doesn't. Only comments inside fenced code blocks in a doc are fair game here.
 6. If the combined diff is empty, say so and stop.
 
 ## How I want comments
