@@ -39,12 +39,27 @@ rather than ad-hoc `git` calls, which is also where the guards live: staging is 
 explicit path list, so carryover files from a shared worktree or dirty checkout stay put
 instead of riding along.
 
+Reconnaissance is batched when no result depends on another, files are read once at the
+targeted region and only re-read after something can have changed them, and pagination uses
+numeric offsets and limits. Read-only probes that can legitimately miss handle that one
+nonzero exit explicitly and quote program-owned globs for zsh. Relative commands are rooted
+in the latest toolkit state/worktree result; missing paths trigger one cwd/worktree
+re-resolution rather than a blind retry. Dev servers and watchers run in the background with
+startup logs and a bounded harness wait — never a foreground two-minute timeout or a
+resource-burning `until …; do :; done` loop.
+
 Step 3 is gated on the run having produced something: `state`'s `hasWork` answers it in
 one call, counting this run's commits and tracked edits while deliberately excluding
 untracked strays. When it comes back false the command skips `/clean` and `/pr` entirely,
 tears the worktree down, and reports that the criteria were already satisfied — no push,
 no empty PR. Conditional criteria ("do X if it isn't already the case") therefore
 terminate without inventing edits.
+
+The terminal report is a standalone text-only assistant turn. That is the form the proxy
+records as `- done: <outcome>`; a final tool call has no outcome and therefore looks
+interrupted. "Complete" is reserved for an existing PR plus finished worktree teardown.
+A run that stops earlier reports the stop accurately and points to `/revive <thread id>`
+when its proxy thread id is available.
 
 ## Related
 
