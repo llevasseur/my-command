@@ -26,6 +26,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const PKG_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const SRC_DIR = join(PKG_ROOT, 'src', 'commands');
+const SKILLS_DIR = join(PKG_ROOT, 'skills');
 const TOOLKIT_SRC = join(PKG_ROOT, 'src', 'toolkit');
 const TOOLKIT_BIN = 'my-command-tools';
 const REPO = 'llevasseur/my-command';
@@ -34,12 +35,23 @@ const PLUGIN = 'my-command';
 
 // The device-wide root every command resolves the toolkit from.
 // Keep in step with src/toolkit/lib/paths.mjs and src/toolkit/bin/my-command-tools.
-const deviceRoot = () => join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'my-command');
+type InstallSurface = 'claude' | 'codex';
+
+const deviceRoot = (surface: InstallSurface = 'claude') => {
+  const configDir =
+    surface === 'codex'
+      ? process.env.CODEX_HOME || join(homedir(), '.codex')
+      : process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+  return join(configDir, 'my-command');
+};
 
 const commands: string[] = existsSync(SRC_DIR)
   ? readdirSync(SRC_DIR)
       .filter((f) => f.endsWith('.md'))
       .map((f) => f.replace(/\.md$/, ''))
+  : [];
+const skills: string[] = existsSync(SKILLS_DIR)
+  ? readdirSync(SKILLS_DIR).filter((name) => existsSync(join(SKILLS_DIR, name, 'SKILL.md')))
   : [];
 
 interface CheckboxPromptOptions {
@@ -144,6 +156,16 @@ interface RunResult {
   missing: boolean;
 }
 
+interface InstallFilesOptions {
+  items: string[];
+  dest: string;
+  itemLabel: string;
+  targetPath: (command: string) => string;
+  install: (command: string) => void;
+  summary: string;
+  display: (command: string) => string;
+}
+
 function run(cmd: string, args: string[]): RunResult {
   const r = spawnSync(cmd, args, { stdio: 'inherit' });
   if (r.error && (r.error as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -167,17 +189,14 @@ async function installPlugin() {
   console.log(commands.map((c) => `  /${MARKETPLACE}:${c}`).join('\n'));
 }
 
-async function installPersonal() {
-  const dest = process.env.CLAUDE_COMMANDS_DIR || join(homedir(), '.claude', 'commands');
+async function installFiles({ items, dest, itemLabel, targetPath, install, summary, display }: InstallFilesOptions) {
   mkdirSync(dest, { recursive: true });
 
   const fresh: string[] = [];
   const conflicts: string[] = [];
-  for (const c of commands) {
-    (existsSync(join(dest, `${c}.md`)) ? conflicts : fresh).push(c);
+  for (const c of items) {
+    (existsSync(targetPath(c)) ? conflicts : fresh).push(c);
   }
-
-  const install = (c: string) => copyFileSync(join(SRC_DIR, `${c}.md`), join(dest, `${c}.md`));
 
   let copied = 0;
   for (const c of fresh) {
@@ -190,16 +209,16 @@ async function installPersonal() {
   if (conflicts.length > 0) {
     let chosen: string[] | null = null;
     if (input.isTTY) {
-      console.log(`\n${conflicts.length} command(s) already exist in ${dest}.`);
+      console.log(`\n${conflicts.length} ${itemLabel}(s) already exist in ${dest}.`);
       // Require a pick only when nothing is fresh — an empty selection would be a no-op.
       chosen = await checkboxPrompt({
-        message: 'Select which existing commands to overwrite:',
+        message: `Select which existing ${itemLabel}s to overwrite:`,
         items: conflicts,
         requireSelection: fresh.length === 0,
       });
     } else {
       // No TTY to prompt on — keep the safe default of never clobbering.
-      console.log(`\n${conflicts.length} existing command(s) left untouched (non-interactive shell).`);
+      console.log(`\n${conflicts.length} existing ${itemLabel}(s) left untouched (non-interactive shell).`);
     }
     const overwrite = new Set(chosen || []);
     for (const c of conflicts) {
@@ -214,13 +233,49 @@ async function installPersonal() {
 
   // Nothing installed or overwritten — report the cancel plainly rather than "Copied 0, overwrote 0".
   if (copied === 0 && overwritten === 0) {
-    console.log(`\nNothing changed${skipped > 0 ? ` — left ${skipped} existing command(s) untouched` : ''}.`);
+    console.log(`\nNothing changed${skipped > 0 ? ` — left ${skipped} existing ${itemLabel}(s) untouched` : ''}.`);
     return;
   }
 
   console.log(`\nCopied ${copied} new, overwrote ${overwritten}, skipped ${skipped} in ${dest}.`);
-  console.log('They run as bare slash commands:');
-  console.log(commands.map((c) => `  /${c}`).join('\n'));
+  console.log(summary);
+  console.log(items.map((c) => `  ${display(c)}`).join('\n'));
+}
+
+function codexSkillsDir() {
+  if (process.env.CODEX_SKILLS_DIR) return process.env.CODEX_SKILLS_DIR;
+  if (process.env.CODEX_HOME) return join(process.env.CODEX_HOME, 'skills');
+  return join(homedir(), '.agents', 'skills');
+}
+
+async function installPersonal() {
+  const dest = process.env.CLAUDE_COMMANDS_DIR || join(homedir(), '.claude', 'commands');
+  await installFiles({
+    items: commands,
+    dest,
+    itemLabel: 'command',
+    targetPath: (command) => join(dest, `${command}.md`),
+    install: (command) => copyFileSync(join(SRC_DIR, `${command}.md`), join(dest, `${command}.md`)),
+    summary: 'They run as bare slash commands:',
+    display: (command) => `/${command}`,
+  });
+}
+
+async function installCodexSkills() {
+  const dest = codexSkillsDir();
+  await installFiles({
+    items: skills,
+    dest,
+    itemLabel: 'skill',
+    targetPath: (command) => join(dest, command, 'SKILL.md'),
+    install: (command) => {
+      const skillDir = join(dest, command);
+      mkdirSync(skillDir, { recursive: true });
+      cpSync(join(SKILLS_DIR, command), skillDir, { recursive: true, force: true });
+    },
+    summary: 'They run as Codex skills (type `$` to invoke them):',
+    display: (command) => `$${command}`,
+  });
 }
 
 interface ToolkitResult {
@@ -290,11 +345,10 @@ function linkOnPath(shim: string): PathLink {
 // Install the shared CLI to a fixed device path. Runs for BOTH install modes on
 // purpose: a command must be able to spell the call one way without knowing whether it
 // was installed as a plugin or copied in bare.
-function installToolkit(): ToolkitResult {
+function installToolkit(root = deviceRoot()): ToolkitResult {
   const shim = join(TOOLKIT_SRC, 'bin', TOOLKIT_BIN);
   if (!existsSync(shim)) return { installed: false, bin: '', reason: `no ${TOOLKIT_BIN} in ${TOOLKIT_SRC}` };
 
-  const root = deviceRoot();
   const dest = join(root, 'toolkit');
   try {
     // Replace wholesale rather than merging, so a verb deleted upstream doesn't linger.
@@ -355,7 +409,8 @@ async function main() {
   console.log('How would you like to install?');
   console.log('  1) Claude Code plugin   → namespaced commands, e.g. /my-command:task (auto-updates)');
   console.log('  2) Personal commands    → bare commands, e.g. /task (copied into ~/.claude/commands)');
-  console.log('  3) Cancel');
+  console.log('  3) Codex Skills         → skills such as $task (copied into ~/.agents/skills)');
+  console.log('  4) Cancel');
 
   const rl = createInterface({ input, output });
   const choice = (await rl.question('\nChoice [1]: ')).trim() || '1';
@@ -367,6 +422,9 @@ async function main() {
   } else if (choice === '2') {
     await installPersonal();
     reportToolkit(installToolkit());
+  } else if (choice === '3') {
+    await installCodexSkills();
+    reportToolkit(installToolkit(deviceRoot('codex')));
   } else {
     console.log('Cancelled. Nothing changed.');
   }
@@ -385,4 +443,4 @@ if (invokedDirectly) {
   });
 }
 
-export { checkboxPrompt, installPersonal, installToolkit, linkOnPath };
+export { checkboxPrompt, installCodexSkills, installPersonal, installToolkit, linkOnPath };

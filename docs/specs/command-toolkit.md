@@ -71,7 +71,7 @@ failure a workflow run has actually hit:
 
 ## Device-wide resolution
 
-A command must reach the toolkit no matter how MyCommand was installed. Three
+A command or skill must reach the toolkit no matter how MyCommand was installed. Four
 roots are tried in order, first hit wins:
 
 1. `$MY_COMMAND_TOOLKIT` — explicit override (development, testing).
@@ -79,11 +79,13 @@ roots are tried in order, first hit wins:
    runs, so a plugin install needs no separate step.
 3. `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/my-command/toolkit` — the device install
    the npx wizard writes, which is what personal-copy commands use.
+4. `${CODEX_HOME:-$HOME/.codex}/my-command/toolkit` — the device install written
+   with Codex Skills, which is what native `$skill` workflows use.
 
 The order lives in exactly three places, each cross-referenced by comment:
 `src/toolkit/bin/my-command-tools` (the shim), `src/toolkit/lib/paths.mjs` (what
 `doctor` reports), and `installToolkit()` in `src/my-command.ts` (what writes root
-3). Changing one means changing all three.
+3 and 4). Changing one means changing all three.
 
 ## Reachable by name
 
@@ -125,7 +127,7 @@ the only payload that reaches all four install paths:
 | Install path | How the toolkit arrives |
 |---|---|
 | `claude plugin install` | in the clone; found via `$CLAUDE_PLUGIN_ROOT` |
-| `npx github:llevasseur/my-command` | `installToolkit()` copies it to the device root |
+| `npx github:llevasseur/my-command` | `installToolkit()` copies it to the selected Claude or Codex device root |
 | `scripts/install-personal.sh` | symlinks the checkout, so `git pull` updates it |
 | `scripts/install-marketplace-personal.sh` | same wizard path |
 | `npm i -g @llevasseur/my-command` | the `my-command-tools` bin runs `src/toolkit/cli.mjs` from the installed package |
@@ -143,9 +145,10 @@ with `allowJs` + `checkJs` + `noEmit`, run as `pnpm run check:toolkit`.
   `VERBS` registry, or it can never be invoked. Enforced by `check-commands.sh`.
 - **The shim stays executable.** `src/toolkit/bin/my-command-tools` is what lands on
   PATH; a lost mode bit fails only at call time. Enforced by `check-commands.sh`.
-- **Both install modes place the toolkit.** `src/my-command.ts` calls
-  `installToolkit()` for the plugin path *and* the personal path, so no install
-  leaves commands without their tooling. Enforced by `check-commands.sh`.
+- **All install modes place the toolkit.** `src/my-command.ts` calls
+  `installToolkit()` for the Claude plugin, personal-command, and Codex Skills
+  paths, so no workflow ships without its tooling. Enforced by
+  `check-commands.sh`.
 - **Placing it implies linking it.** `installToolkit()` calls `linkOnPath()`, so the
   shim it just placed is callable by name. Dropping the call reinstates the silent
   fallback above. Enforced by `check-commands.sh`.
@@ -158,7 +161,7 @@ with `allowJs` + `checkJs` + `noEmit`, run as `pnpm run check:toolkit`.
 
 ## Acceptance criteria
 
-- [ ] `my-command-tools doctor` resolves from all three roots, reporting which won.
+- [ ] `my-command-tools doctor` resolves from all four roots, reporting which won.
 - [ ] `doctor` reports `onPath.reachable`, and on a device with no link reports
       `reachable: false` with the exact `ln -s` fix rather than looking healthy.
 - [ ] Every verb returns parseable JSON on stdout and nothing else, on both its success

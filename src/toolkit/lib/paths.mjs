@@ -15,9 +15,19 @@ function claudeDir() {
   return process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
 }
 
+/** The Codex config directory, honoring CODEX_HOME when the user relocates it. */
+function codexDir() {
+  return process.env.CODEX_HOME || join(homedir(), '.codex');
+}
+
 /** The device-wide install root: the shared logic folder every command can reach. */
 export function deviceRoot() {
   return join(claudeDir(), 'my-command');
+}
+
+/** The Codex device-wide install root. */
+export function codexDeviceRoot() {
+  return join(codexDir(), 'my-command');
 }
 
 /**
@@ -88,5 +98,6 @@ export function candidateRoots() {
     roots.push({ source: 'CLAUDE_PLUGIN_ROOT', path: join(process.env.CLAUDE_PLUGIN_ROOT, 'src', 'toolkit') });
   }
   roots.push({ source: 'device install', path: join(deviceRoot(), 'toolkit') });
+  roots.push({ source: 'Codex device install', path: join(codexDeviceRoot(), 'toolkit') });
   return roots;
 }

@@ -6,7 +6,7 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { candidateRoots, deviceRoot, deviceShim, findOnPath, linkDirs, TOOLKIT_BIN } from '../lib/paths.mjs';
+import { candidateRoots, codexDeviceRoot, deviceRoot, findOnPath, linkDirs, TOOLKIT_BIN } from '../lib/paths.mjs';
 import { run as exec } from '../lib/proc.mjs';
 
 export const usage = `doctor
@@ -38,9 +38,10 @@ function real(p) {
 /**
  * Whether a bare `my-command-tools` call resolves, and to the shim this install placed.
  * A caller reporting "not installed" while `installed` is true is really reporting this.
+ * @param {string} device
  */
-function pathReachability() {
-  const shim = deviceShim();
+function pathReachability(device) {
+  const shim = join(device, 'bin', TOOLKIT_BIN);
   const resolved = findOnPath(TOOLKIT_BIN);
   return {
     reachable: resolved !== null,
@@ -53,21 +54,23 @@ function pathReachability() {
 
 export function run() {
   const roots = candidateRoots().map((c) => ({ ...c, exists: existsSync(join(c.path, 'cli.mjs')) }));
-  const device = deviceRoot();
-  const stamp = join(device, 'VERSION');
 
   // Match against where this process actually loaded from, not merely the first root
   // that exists — otherwise doctor can name a root it did not run from and contradict
   // its own `runningFrom`.
   const here = real(HERE);
+  const resolved = roots.find((root) => root.exists && real(root.path) === here);
+  const devices = [deviceRoot(), codexDeviceRoot()];
+  const device = devices.find((root) => real(join(root, 'toolkit')) === here) ?? deviceRoot();
+  const stamp = join(device, 'VERSION');
 
   return {
     runningFrom: HERE,
-    resolvedBy: roots.find((r) => r.exists && real(r.path) === here)?.source ?? 'direct invocation',
+    resolvedBy: resolved?.source ?? 'direct invocation',
     roots,
     deviceRoot: device,
     installed: existsSync(join(device, 'toolkit', 'cli.mjs')),
-    onPath: pathReachability(),
+    onPath: pathReachability(device),
     version: existsSync(stamp) ? readFileSync(stamp, 'utf8').trim() : null,
     node: process.version,
     git: probe('git', ['--version']),

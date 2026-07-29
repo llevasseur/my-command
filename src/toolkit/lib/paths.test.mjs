@@ -5,7 +5,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { after, test } from 'node:test';
-import { deviceShim, findOnPath, linkDirs, pathDirs, TOOLKIT_BIN } from './paths.mjs';
+import { candidateRoots, codexDeviceRoot, deviceShim, findOnPath, linkDirs, pathDirs, TOOLKIT_BIN } from './paths.mjs';
 
 /** @type {string[]} */
 const made = [];
@@ -78,6 +78,22 @@ test('deviceShim sits under the configured Claude dir and is what a link points 
   } finally {
     if (previous === undefined) delete process.env.CLAUDE_CONFIG_DIR;
     else process.env.CLAUDE_CONFIG_DIR = previous;
+  }
+});
+
+test('candidateRoots includes the configured Codex device install', () => {
+  const previous = process.env.CODEX_HOME;
+  process.env.CODEX_HOME = '/tmp/codex-cfg';
+  try {
+    assert.equal(codexDeviceRoot(), join('/tmp/codex-cfg', 'my-command'));
+    assert.ok(
+      candidateRoots().some(
+        (root) => root.source === 'Codex device install' && root.path === join(codexDeviceRoot(), 'toolkit'),
+      ),
+    );
+  } finally {
+    if (previous === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = previous;
   }
 });
 

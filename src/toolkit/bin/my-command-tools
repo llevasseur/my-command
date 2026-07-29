@@ -1,12 +1,19 @@
 #!/bin/sh
 # my-command-tools — stable entry point for the MyCommand shared CLI.
 #
-# Installed to <claude-config>/my-command/bin/ so a command can call it by one fixed
+# Installed to a Claude or Codex config root so a workflow can call it by one fixed
 # path no matter how the suite was installed. The lookup order mirrors
 # src/toolkit/lib/paths.mjs; keep the two in step.
 set -eu
 
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+CODEX_DIR="${CODEX_HOME:-$HOME/.codex}"
+SELF="$0"
+if [ -L "$SELF" ]; then
+  SELF="$(readlink "$SELF")"
+fi
+BIN_DIR="$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd)"
+INSTALL_ROOT="$(dirname "$BIN_DIR")"
 
 if [ -n "${MY_COMMAND_TOOLKIT:-}" ] && [ -f "$MY_COMMAND_TOOLKIT/cli.mjs" ]; then
   ROOT="$MY_COMMAND_TOOLKIT"
@@ -14,11 +21,15 @@ if [ -n "${MY_COMMAND_TOOLKIT:-}" ] && [ -f "$MY_COMMAND_TOOLKIT/cli.mjs" ]; the
 # outranks the device copy, which is only as fresh as the last wizard run.
 elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "$CLAUDE_PLUGIN_ROOT/src/toolkit/cli.mjs" ]; then
   ROOT="$CLAUDE_PLUGIN_ROOT/src/toolkit"
+elif [ -f "$INSTALL_ROOT/toolkit/cli.mjs" ]; then
+  ROOT="$INSTALL_ROOT/toolkit"
 elif [ -f "$CLAUDE_DIR/my-command/toolkit/cli.mjs" ]; then
   ROOT="$CLAUDE_DIR/my-command/toolkit"
+elif [ -f "$CODEX_DIR/my-command/toolkit/cli.mjs" ]; then
+  ROOT="$CODEX_DIR/my-command/toolkit"
 else
   echo "my-command-tools: no toolkit found." >&2
-  echo "Looked in \$MY_COMMAND_TOOLKIT, \$CLAUDE_PLUGIN_ROOT/src/toolkit, and $CLAUDE_DIR/my-command/toolkit." >&2
+  echo "Looked beside this shim, in \$MY_COMMAND_TOOLKIT, \$CLAUDE_PLUGIN_ROOT/src/toolkit, $CLAUDE_DIR/my-command/toolkit, and $CODEX_DIR/my-command/toolkit." >&2
   echo "Reinstall with: npx github:llevasseur/my-command" >&2
   exit 127
 fi

@@ -1,0 +1,24 @@
+{
+  "name": "my-command",
+  "version": "1.0.0",
+  "description": "Codex-native workflows for carrying software changes from task to pull request.",
+  "author": {
+    "name": "Leevon Levasseur",
+    "url": "https://github.com/llevasseur"
+  },
+  "homepage": "https://github.com/llevasseur/my-command",
+  "repository": "https://github.com/llevasseur/my-command",
+  "license": "MIT",
+  "keywords": ["workflow", "worktree", "pull-request", "git", "productivity"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "MyCommand",
+    "shortDescription": "Codex workflows from task to pull request",
+    "longDescription": "Codex-native task, review, pull-request, merge, synchronization, and context-management workflows.",
+    "developerName": "Leevon Levasseur",
+    "category": "Productivity",
+    "capabilities": [],
+    "websiteURL": "https://github.com/llevasseur/my-command",
+    "defaultPrompt": "Use $task to implement this work through a pull request."
+  }
+}

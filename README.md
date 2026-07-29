@@ -3,8 +3,8 @@
 <p align="center"><strong>Your Wish is My Command.</strong></p>
 
 <p align="center">
-  A bundle of Claude Code workflow commands for carrying tasks from idea to a
-  merged pull request and keeping long sessions focused.
+  A bundle of Claude Code commands and Codex Skills for carrying tasks from idea
+  to a merged pull request and keeping long sessions focused.
 </p>
 
 ---
@@ -34,7 +34,8 @@
 
 Each command parses **leading flags off the front**; everything after them is the
 free-text criteria (task, feedback, etc.). The examples below focus on how the
-parameters change what happens.
+parameters change what happens. In Codex, use the same names and flags with
+skill syntax—for example, `$task -h ...`, `$review -t 42`, or `$mc -t feat/search`.
 
 | Command | Example | What the parameters do |
 | :------ | :------ | :--------------------- |
@@ -107,13 +108,18 @@ It asks how you want them installed:
    **auto-update** whenever this repo is pushed.
 2. **Personal commands** — bare commands (`/task`) copied into
    `~/.claude/commands`.
+3. **Codex Skills** — Codex-native workflows such as `$task` copied as complete
+   skill folders into `~/.agents/skills/<name>/`. Set `CODEX_SKILLS_DIR` to
+   override the destination, or set `CODEX_HOME` to use `<CODEX_HOME>/skills`.
 
-Either choice also installs the **command toolkit** — a zero-dependency Node CLI
-the commands call for the deterministic git/gh plumbing of a workflow run. It
-lands device-wide at `~/.claude/my-command/` **and gets linked onto your PATH**,
-because commands spell the call as a bare `my-command-tools` — landing on the
-device alone would leave it installed and invisible at the same time. In a new
-shell:
+The repository also ships `.codex-plugin/plugin.json`, so supported Codex
+surfaces can install the complete skill bundle as a plugin.
+
+Every choice also installs the **command toolkit** — a zero-dependency Node CLI
+the commands and skills call for deterministic git/gh plumbing. It lands under
+`~/.claude/my-command/` for Claude or `${CODEX_HOME:-~/.codex}/my-command/` for
+Codex and gets linked onto PATH, because every workflow spells the call as a
+bare `my-command-tools`. In a new shell:
 
 ```bash
 my-command-tools doctor
@@ -124,12 +130,12 @@ resolves to this install's shim. If the installer found neither `~/.local/bin` n
 `~/bin` on your PATH it links nothing and prints the `ln -s` line to run — it never
 edits a shell profile.
 
-The workflow commands route their git/gh plumbing through it — `/task` sets up its
-worktree with `worktree begin`, gates on `state`'s `hasWork`, runs the repo's gates
-with `verify`, and commits an explicit path list with `commit`; `/pr` pushes and
-opens or updates the PR in one `pr` call. Judgment stays in the prompts; the
-toolkit owns only what's identical on every run. `/clean` is the deliberate
-exception — its scope call is a judgment call too, so it reads the diff itself.
+The Claude commands and Codex skills route git/gh plumbing through it—`task`
+sets up its worktree with `worktree begin`, gates on `state`'s `hasWork`, runs
+repository checks with `verify`, and commits an explicit path list with
+`commit`; `pr` pushes and opens or updates the PR in one call. Judgment stays in
+the prompts. `clean` is the deliberate exception because comment scope itself
+requires judgment.
 
 See [Command toolkit](./docs/specs/command-toolkit.md).
 
@@ -147,6 +153,7 @@ they are invoked as `/my-command:task`, `/my-command:pr`, and so on.
 
 ```
 src/commands/       Canonical BARE commands — edit these (they call each other as /task, /clean, …)
+skills/             Codex-native workflow skills — one semantic counterpart per Claude command
 src/my-command.ts   The npx install wizard, in TypeScript (compiled to dist/, ships dependency-free)
 src/toolkit/        Shared CLI every command calls — raw .mjs, shipped as-is (see docs/specs/command-toolkit.md)
   cli.mjs              Entrypoint and verb registry; JSON on stdout
@@ -159,18 +166,22 @@ scripts/
   build-plugin.sh      Regenerate commands/ from src/commands/ (bare → /my-command:)
   check-commands.sh    Enforce command + toolkit invariants (commands/ in sync, feature docs, verbs registered) — runs in CI
   install-personal.sh  Symlink src/commands/*.md into ~/.claude/commands (bare, git-synced)
+  install-codex-personal.sh  Symlink skills + toolkit into Codex device scopes (git-synced)
 AGENTS.md           Repo rules for agents (the adding-a-command checklist + the CI gate)
 biome.json          Biome lint + format config
 tsconfig.json       TypeScript config (strict; compiles src/ → dist/)
 tsconfig.toolkit.json  Typechecks src/toolkit/*.mjs via allowJs + checkJs (no emit — it ships as source)
 .github/workflows/  Pull-request CI (merge-conflict check, Biome, typecheck, toolkit, build)
-.claude-plugin/     plugin.json + marketplace.json
+.claude-plugin/     Claude Code plugin + marketplace metadata
+.codex-plugin/      Codex plugin manifest for the native skills bundle
 docs/               okq spec bundle — specs/ (process), features/ (one per command), adrs/
 ```
 
-Two forms exist because the commands reference each other: a bare `task` calls
-`/clean`, but the published plugin's `task` must call `/my-command:clean`. The
-**bare source is canonical**; the namespaced `commands/` is built from it.
+The two Claude forms exist because the commands reference each other: a bare
+`task` calls `/clean`, but the published plugin's `task` must call
+`/my-command:clean`. The Codex mode installs checked-in native skills instead of
+presenting Claude-only prose under Codex frontmatter. CI enforces that every
+Claude command has exactly one Codex counterpart.
 
 ## Specs
 
@@ -180,13 +191,15 @@ bundle under [`docs/`](./docs) — process specs plus one feature doc per comman
 - **[Adding a command](./docs/specs/adding-a-command.md)** — the checklist for
   adding a command as agent instructions (bare source → build → feature doc →
   wizard → README/CHANGELOG). Read this before adding one.
-- **[Install wizard](./docs/specs/install-wizard.md)** — how the npx wizard
-  installs the suite and its per-command overwrite behavior.
+- **[Install wizard](./docs/specs/install-wizard.md)** — how the wizard installs
+  the suite for Claude Code and Codex, including per-item overwrite behavior.
 - **[Command toolkit](./docs/specs/command-toolkit.md)** — the device-wide
   `my-command-tools` CLI, its verbs and guards, and how it reaches every install
   mode.
 - **`docs/features/<cmd>.md`** — the flags, parameters, and behavior of each
   command.
+- **[Claude and Codex support patterns](./docs/research/2026-07-19-claude-codex-support-patterns.md)** —
+  research behind the Codex Skills adapter.
 
 Two invariants the specs enforce: **a new command needs a feature doc and wizard
 inclusion**, and **a flag/param change needs its feature doc updated in the same
@@ -225,11 +238,12 @@ Keep the short bare commands (`/task`) on every machine, controlled from this re
 git clone git@github.com:llevasseur/my-command.git
 cd my-command
 ./scripts/install-personal.sh      # symlinks the bare commands into ~/.claude/commands
+./scripts/install-codex-personal.sh # symlinks $skills and toolkit for Codex
 ```
 
-The symlinks point back into the clone, so `git pull` in this repo updates every
-command on that device. Run `install-personal.sh` once per machine (it's
-path-agnostic — clone the repo wherever you like).
+The symlinks point back into the clone, so `git pull` updates every Claude
+command, Codex skill, and the toolkit. Run the relevant script once per machine;
+both are path-agnostic.
 
 Once set up, pull updates from any session with **`/sync`** — it finds the clone,
 fast-forwards it, and re-links any newly added commands, without hardcoding where
