@@ -39,17 +39,18 @@ skill syntax—for example, `$task -h ...`, `$review -t 42`, or `$mc -t feat/sea
 
 | Command | Example | What the parameters do |
 | :------ | :------ | :--------------------- |
-| `task` | `/task add a dark-mode toggle to settings` | Default — fresh worktree off `main`, implement, then `/clean` + `/pr`. |
+| `task` | `/task add a dark-mode toggle to settings` | Default — fresh worktree off `main`, implement, then `/clean` + `/pr` **inline**; no subagent is spawned. |
 | `task` | `/task -h fix the typo in the footer` | `--here` / `-h` — work on the **current branch**, no worktree. |
 | `task` | `/task --base release/2.0 backport the auth fix` | `--base <branch>` — branch off `release/2.0` instead of `main`. |
 | `task` | `/task -d wire up the metrics endpoint` | `--draft` / `-d` — open the resulting PR as a **draft**. |
+| `task` | `/task -s add a dark-mode toggle to settings` | `--sub` / `-s` — run the `/clean` + `/pr` stage in **one fresh subagent** instead of inline. Same commands and order; a fresh context for the pair. |
 | `task` | `/task -a changelog note this once it works add retry logic to the fetch client` | `--add` / `-a <command> <prompt>` — weave `/changelog` into the run per its prompt, then implement the task. Separate multiple added commands with a comma before each next command. |
 | `god` | `/god add a dark-mode toggle to settings` | Default — the whole `/task` pipeline with `/review` woven in, then `/mc` if `main` moved, wait for CI, `gh pr merge --squash`, and pull the new `main`. Merges without asking. |
 | `god` | `/god --auto ship the retry backoff` | `--auto` — don't wait on CI; enable GitHub auto-merge and finish. `--merge`/`--rebase` change the method, `--fix <n>` sets the red-CI repair budget (default 1), `--no-review` skips the woven-in `/review`. |
-| `god` | `/god -h fix the typo in the footer` | `--here` / `-h`, `--base <branch>`, and `--add` / `-a` pass straight through to `/task`. `--draft` / `-d` is rejected — a draft can't merge. |
+| `god` | `/god -h fix the typo in the footer` | `--here` / `-h`, `--base <branch>`, and `--add` / `-a` pass straight through to `/task`. `--sub` is always added to that invocation — the woven-in `/review` needs the subagent to land in. `--draft` / `-d` is rejected — a draft can't merge. |
 | `fb` | `/fb tighten the copy on the empty state` | Default — apply the feedback on the **current branch** (via `/task --here`). |
 | `fb` | `/fb -t feat/checkout-redesign use the brand blue for the CTA` | `--target` / `-t <branch>` — apply the feedback onto **existing** branch `feat/checkout-redesign` in a fresh worktree. |
-| `review` | `/review` | Default — review the current branch's open PR in a fresh worktree with a new agent, then apply its findings via `/fb`. |
+| `review` | `/review` | Default — review the current branch's open PR in a fresh worktree with a new agent, then apply its findings via `/fb`, run **inline** rather than in another agent. |
 | `review` | `/review -h` | `--here` / `-h` — the current agent reviews the current branch's PR directly: no worktree and no spawned reviewer. Use when already running in a fresh review agent. |
 | `review` | `/review -t 42` | `--target` / `-t <PR-number-or-branch>` — review PR #42 (or a named branch) instead of the current branch's PR. |
 | `mc` | `/mc` | Default — merge latest `main` into **every** open PR branch, resolve conflicts, push. |

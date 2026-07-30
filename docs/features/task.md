@@ -4,6 +4,8 @@ title: task
 description: Carry a plain-language task from criteria to an open PR — isolated worktree, bootstrap, implement, verify, then clean + PR.
 tags: [command, workflow, git]
 timestamp: 2026-07-15
+updated: 2026-07-30
+dirty: true
 ---
 
 # task
@@ -11,8 +13,9 @@ timestamp: 2026-07-15
 ## Summary
 
 Takes free-text criteria and drives the whole pipeline: set up an isolated
-branch/worktree, bootstrap it, implement, verify, then run `/clean` and `/pr` in
-one fresh subagent. The end goal is always an open PR.
+branch/worktree, bootstrap it, implement, verify, then run `/clean` and `/pr` —
+inline in the calling session by default, or in one fresh subagent with `--sub`.
+The end goal is always an open PR.
 
 ## Flags / Parameters
 
@@ -20,6 +23,8 @@ one fresh subagent. The end goal is always an open PR.
 - `--base <branch>` — branch off `<branch>` instead of `main`. Ignored with `--here`.
 - `--draft` / `-d` — open the resulting PR as a draft (passed through to `/pr`). Does
   not preserve the worktree; teardown still runs.
+- `--sub` / `-s` — run the `/clean` + `/pr` stage in one fresh subagent. Off by
+  default: `task` spawns no subagent of its own unless asked.
 - `--add` / `-a <list>` — comma-separated `command + prompt` entries to weave extra
   commands into the run; the leading token names the command, the rest is its prompt.
 - Everything after the flags is the **task criteria**.
@@ -47,6 +52,17 @@ in the latest toolkit state/worktree result; missing paths trigger one cwd/workt
 re-resolution rather than a blind retry. Dev servers and watchers run in the background with
 startup logs and a bounded harness wait — never a foreground two-minute timeout or a
 resource-burning `until …; do :; done` loop.
+
+Delegation is opt-in. Step 3 runs `/clean` then `/pr` inline in the calling session unless
+`--sub` is given, in which case both go to **one** fresh subagent — never one each, so
+`/pr`'s description picks up whatever `/clean` touched without a second handoff. The
+commands, their order, and teardown are identical in both modes; only the execution locus
+moves, and an added command scheduled at that point follows the pair. `--sub` buys a fresh
+context (both commands re-derive their inputs from git, so nothing is lost by shedding the
+implementation's file reads) at the cost of a handoff, which is why [god](god.md) always
+sets it — it is where that command's woven-in review lands. Teardown never belongs to the
+subagent: [pr](pr.md) skips it for a workspace it doesn't own, and Step 3 removes the
+worktree itself once the pair returns.
 
 Step 3 is gated on the run having produced something: `state`'s `hasWork` answers it in
 one call, counting this run's commits and tracked edits while deliberately excluding
