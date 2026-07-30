@@ -5,6 +5,15 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-07-30
+
+### Changed
+
+- **Subagent delegation is opt-in: `/task` gained `--sub` / `-s` and spawns nothing by default.** `/task` Step 3 always dispatched `/clean` + `/pr` into a fresh subagent, which costs a handoff and a second context on every run — including the many where the caller is already sitting in the right worktree and wants to watch the cleanup and the PR description land. That stage now runs **inline** in the calling session unless `--sub` / `-s` asks for the subagent form. Everything else about the stage is unchanged in both modes: `/clean` first and its edits committed, then `/pr` in the same run, `--draft` passed through, teardown owned by Step 3 rather than the pair, and the `hasWork` gate still skipping both on an empty diff. A Step 0 `--add` command scheduled at that point follows the pair, so it runs inline by default and inside the subagent under `--sub`. `--sub` still dispatches **one** subagent for both, never one each, because `/pr`'s description has to see what `/clean` touched without a second handoff.
+- **`/god` always invokes `/task --sub`.** Its woven-in `--add review …` entry runs `/review --here` "in that same subagent", which only exists in the `--sub` form — so `god` sets the flag unconditionally rather than inheriting the new inline default and leaving that entry pointing at nothing. Passing `--sub` / `-s` to `/god` yourself is accepted and redundant. An unattended run also has the most to gain from the fresh context, since the reviewer's reads never enter the merge stage's conversation.
+- **`/review` runs its `/fb` inline, explicitly.** The independence a spawned agent buys belongs to the *review*, and Step 3 already spent it; applying findings that are already written down is ordinary work on the PR's branch, and running it in the session that just read them keeps them in context. The command now says so rather than leaving it implied by the `Skill` invocation, and the Codex skill matches.
+- **`/pr` skips teardown for an inline caller too.** Its rule was "teardown is yours only if this session created the worktree", which the new inline `/task` path satisfies — `/pr` would have removed the workspace out from under `/task`'s own Step 3, which has a push check to run first. Ownership is now scoped to "this session created it **and** no command that invoked you owns its teardown", with the inline case called out beside the dispatched-as-a-subagent one.
+
 ## 2026-07-28
 
 ### Added

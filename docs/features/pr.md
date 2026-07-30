@@ -4,6 +4,8 @@ title: pr
 description: Create or update the PR for the current branch with a concise bulleted description, written straight to GitHub.
 tags: [command, git, github]
 timestamp: 2026-07-15
+updated: 2026-07-30
+dirty: true
 ---
 
 # pr
@@ -50,14 +52,18 @@ shredded into its `<img>`. Updates report the carry-over count as `assetsPreserv
 
 ### Worktree teardown is ownership-scoped
 
-Teardown happens only when **this session created the worktree**. Then it force-removes
+Teardown happens only when **this session created the worktree and no command that
+invoked `/pr` owns its teardown**. Then it force-removes
 at the end (`ExitWorktree` with `discard_changes: true`), expecting the task's commits to
 live on the worktree — they were pushed to origin, so only the redundant local copy is
 discarded.
 
-When `/pr` runs as someone else's subagent — `/task` Step 3 dispatches `/clean` + `/pr`
-into a fresh one — it does not own the worktree, so it skips teardown entirely and the
-dispatching command removes the workspace after it returns. Attempting removal there is
+When `/pr` runs as someone else's subagent — `/task --sub` Step 3 dispatches `/clean` +
+`/pr` into a fresh one — it does not own the worktree, so it skips teardown entirely and
+the dispatching command removes the workspace after it returns. It skips teardown in the
+inline case too (`/task` without `--sub`, where `/pr` runs in the very session that created
+the worktree): that command's own Step 3 removes it immediately afterwards, and has a push
+check to run first. Attempting removal there is
 what produced the recurring `not the owner of the worktree` refusal: `ExitWorktree`
 refuses, and `git worktree remove` refuses too while the owning session's liveness lock is
 held. If `ExitWorktree` refuses anyway, `/pr` steps out with `action: "keep"` and tries

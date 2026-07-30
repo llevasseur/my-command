@@ -4,7 +4,8 @@ title: god
 description: Carry a plain-language task all the way to merged — /task with /review woven in, /mc on conflict, wait for CI, merge the PR into main, pull main. No human in the loop.
 tags: [command, workflow, git, merge]
 timestamp: 2026-07-24
-updated: 2026-07-28
+updated: 2026-07-30
+dirty: true
 ---
 
 # god
@@ -24,6 +25,12 @@ Forwarded to `/task` untouched:
 - `--base <branch>` — branch off `<branch>` instead of `main`.
 - `--add` / `-a <list>` — extra commands to weave into the `/task` run. `god`
   appends its own `review` entry after any entries passed in.
+
+Set unconditionally on the `/task` invocation:
+
+- `--sub` — `/task` runs `/clean` + `/pr` inline by default; `god` always asks for
+  the subagent form, because that subagent is where the woven-in `review` entry
+  lands. Passing it yourself is accepted and redundant.
 
 Owned by `god`:
 
@@ -46,11 +53,12 @@ For work in a different repository, `god` prefers a session started there; if th
 same session must continue, `/task` uses toolkit-managed worktrees and absolute paths
 instead of `EnterWorktree`.
 
-`/task` is then invoked with the forwarded flags and, unless `--no-review`, an
-appended `--add review …` entry. That entry lands the review inside `/task`'s
-existing `/clean` + `/pr` subagent: it runs `/review --here` after `/pr` and before
-teardown, where the subagent is already on the PR's branch with the PR pushed, so
-`/review`'s own `/fb` chain updates the same PR rather than nesting a worktree.
+`/task` is then invoked with `--sub`, the forwarded flags and, unless `--no-review`, an
+appended `--add review …` entry. `--sub` is what makes `/task`'s `/clean` + `/pr` stage a
+single fresh subagent, and that entry lands the review inside it: it runs
+`/review --here` after `/pr` and before teardown, where the subagent is already on the
+PR's branch with the PR pushed, so `/review`'s own `/fb` chain runs inline there and
+updates the same PR rather than nesting a worktree or another agent.
 Both review outcomes resolve inside that subagent: findings mean it runs the `/fb`
 line itself, and a clean sign-off means it returns without one — neither comes back
 to `god` as pending work. A `/task` run that produced no changes ends the whole

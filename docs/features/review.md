@@ -4,6 +4,8 @@ title: review
 description: Independently review an open PR against the codebase, then apply its findings via fb.
 tags: [command, workflow, git]
 timestamp: 2026-07-22
+updated: 2026-07-30
+dirty: true
 ---
 
 # review
@@ -43,7 +45,10 @@ existing conventions. Its report ends with findings plus a fenced `/fb` line (or
 statement that none is needed). `/review` shows that block, then — if there were
 findings — runs it via the `fb` skill in the same worktree/checkout, so `fb`'s
 default (current branch, no `--target`) applies the fix directly onto the PR's
-branch. It never merges or approves the PR, and never posts a GitHub PR
+branch. That `fb` run is always **inline**, never handed to another agent: the
+independence a spawned agent buys belongs to the review itself and was already
+spent, while applying known findings is ordinary work on the branch and keeps the
+findings in the context that just read them. It never merges or approves the PR, and never posts a GitHub PR
 review/comment — its only output is the `/fb`-ready feedback, shown and applied.
 
 In default mode `/review` removes its own worktree at the end, clean PR or not:
@@ -58,5 +63,5 @@ worktree to remove and the checkout is left alone.
 - Applies findings via: [fb](fb.md), which wraps [task](task.md) and chains into
   [pr](pr.md) for the actual PR update
 - Woven into: [god](god.md), which adds this as a `task --add` entry so the review
-  runs after `pr` inside that same subagent
+  runs after `pr` inside the subagent `task --sub` creates for that stage
 - Spec: [Adding a command](../specs/adding-a-command.md)

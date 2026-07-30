@@ -13,6 +13,8 @@ Input is the text in the `<command-args>` block above. Parse leading flags off t
 
 Forwarded to `/my-command:task` untouched: `--here` / `-h`, `--base <branch>`, `--add` / `-a <list>` (this command appends its own `review` entry after any entries you pass).
 
+Always added to the `/my-command:task` invocation, whether or not you pass it: **`--sub`** — `/my-command:task` runs `/my-command:clean` + `/my-command:pr` inline by default, and this command needs that stage to be one subagent, because that is where the woven-in `review` entry lands and where an unattended run should keep the reviewer's context off this conversation. Passing `--sub` / `-s` yourself is accepted and redundant.
+
 Owned here:
 
 - `--squash` (default) / `--merge` / `--rebase` — method handed to `gh pr merge`. Mutually exclusive.
@@ -35,7 +37,7 @@ Owned here:
 
 If the repo being changed is not the repo this session started in, prefer starting a new session in the target repo. Otherwise, `/my-command:task` must not use `EnterWorktree`: it uses `my-command-tools worktree begin`, works through absolute paths under the returned `path`, then tears down with `my-command-tools worktree end`, which re-verifies the branch reached origin before removing it.
 
-Invoke `/my-command:task` with the forwarded flags and the criteria; it owns the whole branch → implement → verify → `/my-command:clean` → `/my-command:pr` → teardown pipeline. Don't re-implement any of it here.
+Invoke `/my-command:task` with **`--sub`**, the forwarded flags, and the criteria; it owns the whole branch → implement → verify → `/my-command:clean` → `/my-command:pr` → teardown pipeline. Don't re-implement any of it here. `--sub` is what makes `/my-command:task`'s `/my-command:clean` + `/my-command:pr` stage a single fresh subagent, so the `review` entry below has a subagent to land in.
 
 Unless `--no-review` was given, append this entry to `/my-command:task`'s `--add` list (after any entries I passed, so mine keep their order):
 
@@ -43,7 +45,7 @@ Unless `--no-review` was given, append this entry to `/my-command:task`'s `--add
 review after /my-command:pr has opened or updated the PR, run /my-command:review --here in that same subagent before any teardown, and carry /my-command:review through to its own end there — including running the /my-command:fb it emits, if it emits one. Show the reviewer's output verbatim. Never hand remaining review work back to the parent.
 ```
 
-`--here` because that subagent is already sitting on the PR's branch with the PR pushed. `/my-command:review` resolves both of its outcomes in place, so by the time `/my-command:task` returns the PR is either review-clean or was never dirty — nothing comes back here as pending work.
+The `--sub` above guarantees that subagent exists. `--here` because it is already sitting on the PR's branch with the PR pushed, and `/my-command:review --here` runs its own `/my-command:fb` inline there rather than nesting another agent. `/my-command:review` resolves both of its outcomes in place, so by the time `/my-command:task` returns the PR is either review-clean or was never dirty — nothing comes back here as pending work.
 
 Then:
 
