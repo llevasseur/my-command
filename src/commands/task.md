@@ -1,6 +1,6 @@
 ---
-description: Take a task from criteria to PR — set up an isolated branch/worktree, implement, then /clean and /pr in one subagent
-argument-hint: "[--here|-h] [--base <branch>] [--draft|-d] [--add|-a <command + prompt>[, <command + prompt>]] <task criteria>"
+description: Take a task from criteria to PR — set up an isolated branch/worktree, implement, then /clean and /pr (inline, or in one subagent with --sub)
+argument-hint: "[--here|-h] [--base <branch>] [--draft|-d] [--sub|-s] [--add|-a <command + prompt>[, <command + prompt>]] <task criteria>"
 ---
 
 Take a task from a plain-language description all the way to an open PR. The task can be a new feature, a bug fix, an update, a refactor — anything. The end goal is always a PR, and I always run `/clean` before `/pr`.
@@ -14,6 +14,7 @@ The task is the text in the `<command-args>` block above. Parse leading flags of
 - `--here` / `-h` — do NOT create a worktree. Work on the **current branch** as it is now.
 - `--base <branch>` — branch off `<branch>` instead of `main`. Ignored when `--here` is set.
 - `--draft` / `-d` — open the resulting PR as a draft. Passed straight through to `/pr` in step 3. Default is **not** draft. It does **not** keep the worktree around — step 3's teardown still removes it.
+- `--sub` / `-s` — run Step 3's `/clean` + `/pr` stage in **one fresh subagent** instead of inline. Default is **inline**: this command spawns no subagents of its own unless you ask for one.
 - `--add` / `-a` — register one or more commands available to the user for the agent to weave into this `/task` run, each paired with a prompt that guides its use. See Step 0 below.
 - Anything not a recognized flag is part of the task criteria.
 
@@ -87,7 +88,7 @@ Treat typecheck errors like "cannot find generated module" or a missing `*.gen.t
   - Paths are always explicit, and the verb refuses `.`/`-A`-style whole-tree staging for exactly this reason: only commit files **you** created or changed for this task. Pre-existing untracked files that carried over from the original workspace (e.g. via a worktree or a dirty checkout) are not yours to ship — the verb reports them under `remaining` so you can confirm they stayed put.
 - If the repo tracks a changelog (e.g. a `changelog` command or `CHANGELOG.md`), add an entry.
 
-## Step 3 — Clean, then PR (in one fresh subagent)
+## Step 3 — Clean, then PR (inline by default; one fresh subagent with `--sub`)
 
 **First, confirm this run actually produced changes — if it did not, skip this stage.** `/clean` and `/pr` only make sense when there is something to ship; on an empty diff they're wasted work and `/pr` would push a branch and open a PR with no content.
 
@@ -96,12 +97,17 @@ Treat typecheck errors like "cannot find generated module" or a missing `*.gen.t
 - **`hasWork: false`** — nothing to ship. It already accounts for both halves: `commits` since the base, and `changes.tracked`. Untracked strays are reported separately under `changes.untracked` and deliberately don't count, since they're the carryover files Step 2 forbids committing.
 - **`hasWork: true`** — carry on below.
 
-On `false`, **do not dispatch the subagent and do not push.** Go straight to teardown (3), then tell me the criteria were already satisfied, what you checked to establish that, and that no PR was opened. Under `--here`, if the branch carries unpushed commits from *before* this run, leave them alone and say they are there — they are not this run's work to ship.
+On `false`, **run neither `/clean` nor `/pr`, and do not push.** Go straight to teardown (2), then tell me the criteria were already satisfied, what you checked to establish that, and that no PR was opened. Under `--here`, if the branch carries unpushed commits from *before* this run, leave them alone and say they are there — they are not this run's work to ship.
 
-Otherwise, dispatch **one fresh subagent** via the `Agent` tool, not inline, to run `/clean` then `/pr` in sequence on this branch. Both derive their inputs from git (`/clean` from the branch diff, `/pr` from `git log`/`git diff`/`gh`), so a fresh context loses nothing while shedding this task's stale file reads, and running them in the same subagent lets `/pr`'s description pick up whatever `/clean` touched without a second handoff. The subagent shares this worktree but not this conversation — hand it the branch name and enough context to act alone.
+Otherwise run `/clean` then `/pr` in sequence on this branch. **Where** they run is the only thing `--sub` changes — same commands, same order, same verification, same teardown guarantees either way:
 
-1. **Clean, then PR.** Dispatch the subagent to run **`/clean`** on this branch first, commit any edits it makes (`/clean` is branch-aware — committed + staged + unstaged — so it picks up step 2's commits; if nothing changes, there's nothing to commit), then, in the same subagent and same run, run **`/pr`** — push and open (or update) the PR with a concise bulleted description, passing `--draft` when `--draft`/`-d` was given, plus any title/context I supplied. Tell it **not** to tear down the worktree — teardown is (2) below. `/pr` skips teardown on its own for a worktree its session didn't create, so this is a reminder, not the only thing standing between you and a subagent deleting the workspace out from under you.
-2. **Teardown.** After the subagent returns — or straight away on the no-change path above — remove a dedicated worktree. For a cross-repo run, work from outside its returned `path` and run `my-command-tools worktree end --branch <branch>`; it re-verifies that `HEAD` reached origin before removal. Otherwise remove it here with `ExitWorktree` (`action: "remove"`); the branch is either already pushed or carries no work, so this only discards the local copy. Use `ExitWorktree`, not `worktree end`, for the same-repo path: this session is *inside* the worktree, and only `ExitWorktree` moves the session back out. **Remove it even when the PR is a draft** — `--draft`/`-d` controls the PR's review state on GitHub, not the local workspace, and a draft's commits are on origin just the same, so there is nothing left to preserve locally. Skip teardown only for `--here`.
+- **Default (no `--sub`):** run both **inline in this session**, via the `Skill` tool, one after the other. No subagent is dispatched.
+- **`--sub` / `-s`:** dispatch **one fresh subagent** via the `Agent` tool to run both. Both derive their inputs from git (`/clean` from the branch diff, `/pr` from `git log`/`git diff`/`gh`), so a fresh context loses nothing while shedding this task's stale file reads. It shares this worktree but not this conversation — hand it the branch name and enough context to act alone. **One subagent for both**, never one each: running them in the same subagent lets `/pr`'s description pick up whatever `/clean` touched without a second handoff.
+
+Either way it is one continuous stage: a Step 0 added command scheduled at this point runs in the same place the pair does — inline here by default, inside that same subagent under `--sub`.
+
+1. **Clean, then PR.** Run **`/clean`** on this branch first, commit any edits it makes (`/clean` is branch-aware — committed + staged + unstaged — so it picks up step 2's commits; if nothing changes, there's nothing to commit), then, in the same run, run **`/pr`** — push and open (or update) the PR with a concise bulleted description, passing `--draft` when `--draft`/`-d` was given, plus any title/context I supplied. Teardown is not part of this stage; it is (2) below. Under `--sub`, tell the subagent that explicitly — **not** to tear down the worktree. `/pr` skips teardown on its own for a worktree its session didn't create, so this is a reminder, not the only thing standing between you and a subagent deleting the workspace out from under you.
+2. **Teardown.** After `/pr` returns — from the subagent under `--sub`, or inline — or straight away on the no-change path above, remove a dedicated worktree. For a cross-repo run, work from outside its returned `path` and run `my-command-tools worktree end --branch <branch>`; it re-verifies that `HEAD` reached origin before removal. Otherwise remove it here with `ExitWorktree` (`action: "remove"`); the branch is either already pushed or carries no work, so this only discards the local copy. Use `ExitWorktree`, not `worktree end`, for the same-repo path: this session is *inside* the worktree, and only `ExitWorktree` moves the session back out. **Remove it even when the PR is a draft** — `--draft`/`-d` controls the PR's review state on GitHub, not the local workspace, and a draft's commits are on origin just the same, so there is nothing left to preserve locally. Skip teardown only for `--here`.
    - **For same-repo teardown, expect the commit guard on the shipped path.** With commits on the branch, `action: "remove"` alone refuses (`Worktree has N commits on <branch>`). So once `/pr` has pushed, confirm the work is on origin — `my-command-tools state` reports `head`, and it must match `origin/<branch>` — then call `ExitWorktree` with `action: "remove"` **and** `discard_changes: true` on the first attempt. If HEAD is ahead of origin, push before tearing down instead of discarding. On the no-change path there are no commits and plain `action: "remove"` is correct.
 
 ## Notes
