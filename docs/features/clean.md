@@ -4,7 +4,7 @@ title: clean
 description: Clean up comments across a branch's changes — lean and to the point, comments only, never code.
 tags: [command, comments]
 timestamp: 2026-07-15
-updated: 2026-07-28
+updated: 2026-07-31
 ---
 
 # clean
@@ -26,7 +26,14 @@ the point. Only touches comments — never code, logic, formatting, or behavior.
 Computes the branch diff against its merge-base (plus uncommitted changes when
 targeting the current branch) and only considers comments on added/modified lines.
 Deletes restating/narration/ceremony comments, tightens verbose ones, keeps
-load-bearing and structural ones. Never adds comments; does not commit.
+load-bearing and structural ones. Never adds comments.
+
+Does not commit — a rule scoped to the command itself, not to its caller. The edits
+are left for whoever invoked `/clean` to own: uncommitted is the deliverable for a
+direct run, while an invoking workflow ([task](task.md) Step 3,
+[task-bootstrap](task-bootstrap.md) Step 7) commits them and isn't finished until it
+has. Nested runs hand back and continue the invoker rather than stopping at
+uncommitted cleanup.
 
 Prose in Markdown docs is out of scope even when the branch diff touches it —
 that is [truncate](truncate.md)'s pass, which has claim-preservation rules this

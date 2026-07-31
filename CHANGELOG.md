@@ -5,6 +5,13 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-07-31
+
+### Fixed
+
+- **`/clean`'s "do not commit" no longer escapes its own scope.** The rule read as an unqualified `Do not commit.` at the end of the Finish section, so an agent running `/clean` nested inside `/task` carried it up to the caller and stopped with the cleanup edits sitting uncommitted — one step short of `/task` Step 3, which says the opposite for the invoker ("commit any edits it makes, then run `/pr`"). Since `/pr` never commits, those edits would have shipped as nothing at all. The line now states what it is scoped to: `/clean` leaves the edits uncommitted **for the invoker to own**, uncommitted is the deliverable only for a direct run, a nesting workflow commits them and isn't finished until it has, and a nested run hands back and continues that workflow at its next step instead of reporting the branch done. When an invoker's instructions never say who commits, the summary flags the uncommitted edits rather than `/clean` committing them itself. Phrasing follows the boundary `/changelog` already drew ("Don't commit unless the repo's flow expects the changelog committed with the work"), and the Codex skill and feature doc carry the same scoping.
+- **`/task-bootstrap` Step 7 now commits the cleanup it asks for.** It ran `/clean` between its own commit step and `/pr`, which left it as the one `/clean` invoker with no instruction to commit what the pass produced — the same silent loss, reachable even with `/clean`'s rule correctly scoped. Both the command and its Codex skill now commit whatever `/clean` leaves behind before invoking `/pr`.
+
 ## 2026-07-30
 
 ### Changed

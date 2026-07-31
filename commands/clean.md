@@ -38,5 +38,6 @@ Clean up the comments in my changes. Only touch comments — never change code, 
 ## Finish
 
 - Apply edits directly with Edit.
-- Report a short summary: how many comments removed vs. tightened, grouped by file. Do not commit.
+- Report a short summary: how many comments removed vs. tightened, grouped by file.
+- **Don't commit** — and don't carry that rule past this command. It is scoped to `/my-command:clean` and does not survive nesting: the edits are left uncommitted for whoever invoked `/my-command:clean` to own. Invoked directly, uncommitted *is* the deliverable. Invoked from inside another workflow (`/my-command:task` Step 3, `/my-command:task-bootstrap` Step 7, or anything wrapping them), that workflow commits them and its run is not finished until it has — so hand back and continue it at its next step rather than stopping at uncommitted cleanup or reporting the branch as done. If an invoker's instructions never say who commits, flag the uncommitted edits in the summary instead of committing them here.
 - The summary is a **text-only turn** — stated after the last edit, never in the same turn as one, or the run is recorded as unfinished even though the cleanup is done.
