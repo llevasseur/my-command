@@ -12,8 +12,7 @@ MANIFEST="$REPO_ROOT/.claude-plugin/plugin.json"
 
 [ -d "$SRC_DIR" ] || { echo "no source dir: $SRC_DIR" >&2; exit 1; }
 
-# Refresh the shared rule blocks in src/commands/ from src/shared/ before copying, so the
-# generated plugin can never carry a stale copy of a rule the snippet already fixed.
+# Refresh src/commands/ from src/shared/ before copying, so the plugin can't carry a stale rule.
 node "$REPO_ROOT/scripts/expand-includes.mjs"
 
 # Namespace = the plugin's name field; commands invoke as /<namespace>:<command>.

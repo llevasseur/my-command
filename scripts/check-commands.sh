@@ -18,9 +18,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 fail=0
 
-# 0. Shared rule blocks in src/commands/ match src/shared/. This runs BEFORE build-plugin.sh,
-# which expands them in place — otherwise the build would silently repair a hand-edit and the
-# sync check below would pass on text nobody reviewed.
+# 0. src/commands/ matches src/shared/. Must run before 1, whose build expands them in place
+# and would otherwise repair a hand-edit before the sync check ever saw it.
 if ! node scripts/expand-includes.mjs --check; then
   fail=1
 fi
