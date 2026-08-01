@@ -32,6 +32,12 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 - **`/review` runs its `/fb` inline, explicitly.** The independence a spawned agent buys belongs to the *review*, and Step 3 already spent it; applying findings that are already written down is ordinary work on the PR's branch, and running it in the session that just read them keeps them in context. The command now says so rather than leaving it implied by the `Skill` invocation, and the Codex skill matches.
 - **`/pr` skips teardown for an inline caller too.** Its rule was "teardown is yours only if this session created the worktree", which the new inline `/task` path satisfies — `/pr` would have removed the workspace out from under `/task`'s own Step 3, which has a push check to run first. Ownership is now scoped to "this session created it **and** no command that invoked you owns its teardown", with the inline case called out beside the dispatched-as-a-subagent one.
 
+## 2026-07-29
+
+### Changed
+
+- **`docs` now finishes with the `truncate` density pass in the same task and PR.** Both Claude `/docs` and Codex `$docs` still reconcile stale, missing, and obsolete documentation first, but they no longer stop after marking updated or added docs `dirty: true`. The final in-workflow phase consumes the complete dirty queue, inventories and preserves every claim, cuts narration and repetition, applies the existing 40% size guard, clears evaluated flags, and runs the final docs gates. It executes truncate's rules inline instead of nesting another task. Standalone `/truncate` and `$truncate` remain available for hand edits, explicit scopes, interrupted queues, and whole-bundle sweeps. ADR 0004 supersedes the earlier separate-PR decision, and `check-commands.sh` guards the phase on both command surfaces.
+
 ## 2026-07-28
 
 ### Added

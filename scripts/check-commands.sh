@@ -12,6 +12,7 @@
 #   4. the shared toolkit every command calls is still wired end to end: entrypoint and
 #      shim present and runnable, every verb registered, and the wizard still installing
 #      it device-wide (docs/specs/command-toolkit.md).
+#   5. the Claude and Codex docs workflows both retain their integrated density phase.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -119,6 +120,16 @@ fi
 # definition contains `linkOnPath(` too, so a looser pattern would pass with the call gone.
 if ! grep -q 'linkOnPath(bin)' src/my-command.ts; then
   echo "::error::src/my-command.ts no longer calls linkOnPath(); the installed shim would not be callable as a bare my-command-tools."
+  fail=1
+fi
+
+# 5. Docs must finish its own dirty queue instead of requiring a second task and PR.
+if ! grep -Fq '## Step 6 — Truncate the dirty queue' src/commands/docs.md; then
+  echo "::error::src/commands/docs.md no longer contains its integrated truncate phase."
+  fail=1
+fi
+if ! grep -Fq 'Run the `$truncate` density rules inline' skills/docs/SKILL.md; then
+  echo "::error::skills/docs/SKILL.md no longer contains its integrated truncate phase."
   fail=1
 fi
 

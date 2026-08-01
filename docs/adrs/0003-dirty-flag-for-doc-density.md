@@ -10,7 +10,7 @@ timestamp: 2026-07-28
 
 ## Status
 
-Accepted.
+Superseded by [ADR 0004](0004-docs-completes-density-pass.md).
 
 ## Context
 

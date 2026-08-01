@@ -87,12 +87,12 @@ reconciles the bundle against source.
 
 **Any doc you write or change gets `dirty: true` in its frontmatter.** The flag
 means the claims are correct but the prose hasn't been evaluated for density
-since it changed; [truncate](../features/truncate.md) finds those docs
-(`okq --bundle docs find --where dirty=true`), tightens them without touching a
-claim, and is the only thing that clears the key. `/docs` sets it automatically
-on what it updates or adds — a hand-edit has to set it, or the doc silently
-misses the queue. Do not bump `updated` for a truncation: no claim changed. See
-[ADR 0003](../adrs/0003-dirty-flag-for-doc-density.md).
+since it changed. [docs](../features/docs.md) consumes the resulting queue in
+its final phase; standalone [truncate](../features/truncate.md) does the same
+without reconciliation (`okq --bundle docs find --where dirty=true`). A
+hand-edit has to set the flag or it silently misses both workflows. Do not bump
+`updated` for a truncation: no claim changed. See
+[ADR 0004](../adrs/0004-docs-completes-density-pass.md).
 
 ## Acceptance criteria
 

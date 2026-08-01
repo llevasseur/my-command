@@ -5,9 +5,9 @@ argument-hint: "[--here|-h] [--base <branch>] [--bundle|-b <dir>] [--all|-A] [--
 
 Make this repo's docs lean. A doc earns its tokens by carrying claims a reader can act on — flags, defaults, paths, behavior, the non-obvious constraint. Everything else is packaging: narration, restated headings, justification nobody asked for, the same mechanism explained three times in three sections. This command strips the packaging and leaves the claims **exactly** as they were.
 
-This is the pass [docs](docs.md) deliberately does not run. `/my-command:docs` owns **correctness** — it edits prose only where a claim changed, and says so. `/my-command:truncate` owns **density**, and never touches a claim at all.
+This is the density pass [docs](docs.md) runs after reconciliation. `/my-command:docs` owns the whole correctness-then-density flow in one task; standalone `/my-command:truncate` runs the same claim-preserving rules for hand edits, an explicit scope, or a whole-bundle sweep without reconciling first.
 
-The two are wired together by a `dirty` frontmatter flag: `/my-command:docs` marks every doc it refreshes or adds as `dirty: true`, and `/my-command:truncate` treats those as its work queue. See Step 2.
+The two are wired together by a `dirty` frontmatter flag: `/my-command:docs` marks every doc it refreshes or adds as `dirty: true`, then consumes the resulting queue in its final phase. Standalone `/my-command:truncate` treats the same flag as its default work queue. See Step 2.
 
 The run happens inside a `/my-command:task` workflow (Step 0). Like `/my-command:task`, it defaults to a fresh worktree off the latest `main`.
 
