@@ -5,7 +5,15 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
-## 2026-07-31
+## 2026-08-01
+
+### Added
+
+- **Four environment rules moved out of claude-proxy's always-on `AGENTS.md` and into the commands that need them mid-task.** They only matter while a task is running, so they were costing every session's context to serve a handful of steps. **1Password signing** (`failed to fill whole buffer` + `fatal: failed to write commit object` is an unapproved prompt, not a repo problem — retry once, never `--no-gpg-sign`) lands in `/task` Step 2's commit bullets, `/pr`'s do-not-commit note, and `/clean`'s finish. **gh GraphQL collaborator identity** (`must be a collaborator` means the wrong account, not a permission to request) lands in `/pr` Step 3 and `/task`'s Notes. **Worktree ownership** (remove a worktree through the same mechanism that created it; inspect `git worktree list --porcelain`, locked state, uncommitted changes, and unpushed commits first; never retry a tool that says the session doesn't own it) lands in `/task` Step 3's teardown and `/clean`'s finish. **Classifier-sensitive Git calls** (branch-lifecycle operations as individual calls, the narrow-retry rule, and the final refusal on PR merge and remote-ref deletion) lands in `/task` and `/pr`'s Notes. Each sits at the step it governs rather than in an appendix, and `/task`'s pre-existing approval-call bullet was reconciled into one merged rule instead of gaining a second copy. The Codex skills for `task`, `pr`, and `clean` carry the same rules.
+
+### Changed
+
+- **Density pass over every command in `src/commands/`.** Same rubric as `/truncate` but applied to behavioral specs: a line earns its tokens by naming what the agent must do or must not do — a flag, a default, a constraint, a failure mode. Narration, rationale nobody asked for, and mechanisms re-explained across sections were cut; every flag, step number, ordering rule, and never/always constraint survives verbatim. Cross-file duplication was the main lever, but only where it is safe: a rule may be dropped from command A only when A always loads B's file, so the delegating commands (`/docs`, `/truncate`, `/fb`, `/god`) stop restating `/task`'s commit and read-before-edit rules, while standalone-invocable commands keep theirs. The plugin format offers no shared include — both installers produce a flat set of standalone files in `~/.claude/commands/` — so one canonical copy in the owning command is the only option. 3,486 bytes of packaging removed across 11 files; `changelog` and `trim` had none to cut and were left alone.
 
 ### Fixed
 

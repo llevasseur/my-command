@@ -35,8 +35,6 @@ Owned here:
 
 ## Step 2 — Run `/task`, with `/review` woven in
 
-If the repo being changed is not the repo this session started in, prefer starting a new session in the target repo. Otherwise, `/task` must not use `EnterWorktree`: it uses `my-command-tools worktree begin`, works through absolute paths under the returned `path`, then tears down with `my-command-tools worktree end`, which re-verifies the branch reached origin before removing it.
-
 Invoke `/task` with **`--sub`**, the forwarded flags, and the criteria; it owns the whole branch → implement → verify → `/clean` → `/pr` → teardown pipeline. Don't re-implement any of it here. `--sub` is what makes `/task`'s `/clean` + `/pr` stage a single fresh subagent, so the `review` entry below has a subagent to land in.
 
 Unless `--no-review` was given, append this entry to `/task`'s `--add` list (after any entries I passed, so mine keep their order):
@@ -45,7 +43,7 @@ Unless `--no-review` was given, append this entry to `/task`'s `--add` list (aft
 review after /pr has opened or updated the PR, run /review --here in that same subagent before any teardown, and carry /review through to its own end there — including running the /fb it emits, if it emits one. Show the reviewer's output verbatim. Never hand remaining review work back to the parent.
 ```
 
-The `--sub` above guarantees that subagent exists. `--here` because it is already sitting on the PR's branch with the PR pushed, and `/review --here` runs its own `/fb` inline there rather than nesting another agent. `/review` resolves both of its outcomes in place, so by the time `/task` returns the PR is either review-clean or was never dirty — nothing comes back here as pending work.
+`/review` resolves both of its outcomes in place, so nothing comes back here as pending review work.
 
 Then:
 

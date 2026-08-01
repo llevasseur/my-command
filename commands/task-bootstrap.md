@@ -3,7 +3,7 @@ description: Interview a repo's tech stack, then generate that repo's own worktr
 argument-hint: "[--here|-h] [--base <branch>] [--draft|-d] [notes about the stack]"
 ---
 
-Set up a **repo-local worktree bootstrap** so a fresh `git worktree` behaves like the main checkout — and so the device-wide `/my-command:task` command never has to hardcode this repo's paths. `/my-command:task` Step 1.5 looks for exactly this: a `scripts/bootstrap-worktree.sh` (or a "Worktree Setup" section in `AGENTS.md`/`CLAUDE.md`). This command detects the stack, interviews you to confirm the gaps, generates the bootstrap, verifies it, and opens a PR.
+Set up a **repo-local worktree bootstrap** so a fresh `git worktree` behaves like the main checkout — and so the device-wide `/my-command:task` command never has to hardcode this repo's paths. `/my-command:task` Step 1.5 looks for exactly this: a `scripts/bootstrap-worktree.sh` (or a "Worktree Setup" section in `AGENTS.md`/`CLAUDE.md`).
 
 Run it **once per repo** — or to update an existing bootstrap when the stack changes.
 

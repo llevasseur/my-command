@@ -3,7 +3,7 @@ description: Turn claude-proxy's session suggestions into an implemented improve
 argument-hint: "[--range|-r <spec>] [--dry-run|-n] [--here|-h] [--base <branch>] [--draft|-d] [--add|-a <list>] [extra context]"
 ---
 
-Improve the agentic workflow using evidence instead of intuition. claude-proxy reads every ten recorded sessions and reports what would have reached the same outcome in fewer steps — work issued serially that was independent by construction, the same error rediscovered session after session, a guardrail refusing a call the agent had already decided to make, a file read three times in one run. This command collects those findings, turns the pending ones into task criteria, runs `/task` on them in a subagent, and records which suggestions were actually applied so the next run doesn't re-propose them.
+Improve the agentic workflow using evidence instead of intuition. claude-proxy reads every ten recorded sessions and reports what would have reached the same outcome in fewer steps. This command collects those findings, turns the pending ones into task criteria, runs `/task` on them in a subagent, and records which suggestions were actually applied so the next run doesn't re-propose them.
 
 Your input is the text in the `<command-args>` block above. Parse leading flags off the front; anything left over is extra context that steers which pending suggestions to act on (it narrows the work, it never invents work the suggestions don't support).
 
@@ -68,7 +68,7 @@ Dispatch **one fresh subagent** via the `Agent` tool to run `/task` with the com
 ```
 
 - One subagent for the whole run, not one per suggestion — the criteria were grouped in Step 3 so they land in a single coherent PR.
-- A fresh context is the point: the subagent gets the criteria and the evidence, not this run's proxy reads. Give it everything it needs to act alone, including the source sessions each criterion rests on.
+- Give the subagent everything it needs to act alone, including the source sessions each criterion rests on — it has the criteria and the evidence, not this run's proxy reads.
 - `/task` owns the workspace, the verification, the commits and the PR from here. Do not create a worktree, edit files, or commit in this command — that is `/task`'s pipeline and duplicating it produces two workspaces for one change.
 - When the subagent returns, record what it reports: the branch, the PR number/URL, and **which criteria it actually implemented** versus dropped. That distinction is what Step 5 writes down.
 

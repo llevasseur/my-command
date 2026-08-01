@@ -4,7 +4,7 @@ argument-hint: "[--check]"
 allowed-tools: Bash(git:*), Bash(readlink:*), Bash(ls:*), Bash(bash:*), Bash(claude:*), Bash(my-command-tools:*)
 ---
 
-Update this device's MyCommand commands to the latest version from the GitHub repo. Run this whenever a change has been pushed and you want it locally.
+Update this device's MyCommand commands to the latest version from the GitHub repo.
 
 `--check` (from $ARGUMENTS): report whether the local copy is behind, but don't change anything.
 

@@ -35,8 +35,6 @@ Owned here:
 
 ## Step 2 — Run `/my-command:task`, with `/my-command:review` woven in
 
-If the repo being changed is not the repo this session started in, prefer starting a new session in the target repo. Otherwise, `/my-command:task` must not use `EnterWorktree`: it uses `my-command-tools worktree begin`, works through absolute paths under the returned `path`, then tears down with `my-command-tools worktree end`, which re-verifies the branch reached origin before removing it.
-
 Invoke `/my-command:task` with **`--sub`**, the forwarded flags, and the criteria; it owns the whole branch → implement → verify → `/my-command:clean` → `/my-command:pr` → teardown pipeline. Don't re-implement any of it here. `--sub` is what makes `/my-command:task`'s `/my-command:clean` + `/my-command:pr` stage a single fresh subagent, so the `review` entry below has a subagent to land in.
 
 Unless `--no-review` was given, append this entry to `/my-command:task`'s `--add` list (after any entries I passed, so mine keep their order):
@@ -45,7 +43,7 @@ Unless `--no-review` was given, append this entry to `/my-command:task`'s `--add
 review after /my-command:pr has opened or updated the PR, run /my-command:review --here in that same subagent before any teardown, and carry /my-command:review through to its own end there — including running the /my-command:fb it emits, if it emits one. Show the reviewer's output verbatim. Never hand remaining review work back to the parent.
 ```
 
-The `--sub` above guarantees that subagent exists. `--here` because it is already sitting on the PR's branch with the PR pushed, and `/my-command:review --here` runs its own `/my-command:fb` inline there rather than nesting another agent. `/my-command:review` resolves both of its outcomes in place, so by the time `/my-command:task` returns the PR is either review-clean or was never dirty — nothing comes back here as pending work.
+`/my-command:review` resolves both of its outcomes in place, so nothing comes back here as pending review work.
 
 Then:
 

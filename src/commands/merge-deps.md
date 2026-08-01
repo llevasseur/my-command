@@ -9,10 +9,9 @@ allowed-tools: Bash, Read, Edit, Write
 
 # merge-deps — Batch-merge Dependabot PRs
 
-Merge every open, non-draft dependency PR (Dependabot) into `main`, one at a time.
-Each PR is brought up to date with `main` and conflict-resolved via `/mc` first,
-checked out in an isolated worktree to verify it is green, then merged into `main`
-through GitHub (so branch protection is respected). Worktrees are cleaned up as you go.
+Merge every open, non-draft dependency PR (Dependabot) into `main`, one at a time:
+`/mc` it up to date with `main`, verify it green in an isolated worktree, then merge
+through GitHub so branch protection is respected. Worktrees are cleaned up as you go.
 
 **Announce at start** the label filter, merge method, and whether this is a dry run.
 
@@ -137,11 +136,6 @@ For each PR (number `N`, branch `B`):
 
 - **Dependency PRs only.** Scope is the label filter — never touch unlabeled or feature
   PRs. Non-draft only.
-- **Fetch each PR branch fresh right before you touch it.** Dependabot force-pushes
-  branches after your up-front `git fetch`, so a branch's remote-tracking ref goes stale
-  mid-run; branching `/mc` off the stale ref triggers a non-fast-forward push rejection.
-- Skip fork / cross-repo PRs: their conflict resolution can't be pushed.
-- Sequential by design: refresh `main` between PRs so each merges against the latest.
 - Delegate all conflict resolution to `/mc` — never hand-merge here. Never force-push;
   merges only.
 - Never merge a PR whose `/mc` conflicts are unresolved or whose verification failed.

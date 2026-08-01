@@ -10,9 +10,6 @@ allowed-tools: Bash(git:*), Bash(gh:*), Bash(my-command-tools:*), Read, Edit, Wr
 
 # mc — Merge main & resolve conflicts
 
-Use this skill when the user invokes `/my-command:mc` or asks for the same workflow: get branches
-up to date with `main` and resolve every resulting merge conflict, then push.
-
 **Announce at start** which mode you are running (all PRs / here / target `<branch>`).
 
 ## Argument parsing
