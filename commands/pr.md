@@ -39,7 +39,7 @@ Parse these off the front of the `<command-args>` block above; everything else i
 
 ## Notes
 
-- Do NOT commit or create new commits — only push existing commits and write the PR metadata. If the caller's commit failed with `1Password: failed to fill whole buffer` and `fatal: failed to write commit object`, that is an unapproved signing prompt, not a repository problem: the commit did not happen and the tree is untouched. Hand back so it is retried once after the prompt is approved. Never rewrite the commit, pass `--no-gpg-sign`, or change the repo's signing configuration to get around it.
+- Do NOT commit or create new commits — only push existing commits and write the PR metadata. A caller whose commit failed hands back to retry it; never rewrite a commit, pass `--no-gpg-sign`, or change the repo's signing configuration here.
 - Keep bullets terse and technical. Group under short headers if there are many.
 - **A command that may need approval goes in its own Bash call.** As a narrow exception to the general rule to chain dependent mutations, issue branch-lifecycle operations such as checkout/switch, pull, remote-branch inspection, and local branch deletion as individual shell calls. Put status output, pipes, and follow-up verification in separate read-only calls.
 - A classifier refusal is not evidence that repository protections should be weakened. Inspect the refused command first; when the intended operation is safe and the refusal looks incidental to the command's shape — an over-broad chain, pipe, or extra flag — retry only the smallest exact command, never an allowlisted Bash pattern or a permission-settings change.

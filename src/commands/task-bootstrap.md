@@ -89,6 +89,7 @@ cd "$WORKTREE_ROOT"
 
 - If the repo tracks a changelog, add an entry.
 - Commit only the files you created: `my-command-tools commit --message <text> <path> [<path>...]`. Staging is always explicit — the verb refuses whole-tree staging — so nothing you didn't author comes along. Invoking this command is standing permission to commit on this branch (never on `main`).
+  - `1Password: failed to fill whole buffer` with `fatal: failed to write commit object` is an unapproved signing prompt, not a repository problem: the commit did not happen and the tree is untouched. Retry the same commit once after the prompt is approved. Never rewrite the commit, pass `--no-gpg-sign`, or change the repo's signing configuration to get around it.
 - Run **`/clean`**, commit any edits it makes (it deliberately leaves them uncommitted for the invoker — that's you — and `/pr` never commits), then **`/pr`** (`/pr --draft` if `--draft`/`-d`).
 - **Tear the worktree down yourself** if Step 1 created one. `/pr` skips teardown for a worktree its session didn't create, and this one was entered with `EnterWorktree({path})`, which `ExitWorktree` also refuses to remove: call `ExitWorktree` with `action: "keep"`, then `my-command-tools worktree end --branch chore/worktree-bootstrap` from the original checkout. It re-verifies the branch reached origin first.
 
