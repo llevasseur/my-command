@@ -5,11 +5,11 @@ argument-hint: "[--here|-h] [--base <branch>] [--bundle|-b <dir>] [--all|-A] [--
 
 Make this repo's docs lean. A doc earns its tokens by carrying claims a reader can act on — flags, defaults, paths, behavior, the non-obvious constraint. Everything else is packaging: narration, restated headings, justification nobody asked for, the same mechanism explained three times in three sections. This command strips the packaging and leaves the claims **exactly** as they were.
 
-This is the pass [docs](docs.md) deliberately does not run. `/my-command:docs` owns **correctness** — it edits prose only where a claim changed, and says so. `/my-command:truncate` owns **density**, and never touches a claim at all. Splitting them keeps style churn out of a correctness PR and keeps a correctness fix from hiding inside a rewrite.
+This is the pass [docs](docs.md) deliberately does not run. `/my-command:docs` owns **correctness** — it edits prose only where a claim changed, and says so. `/my-command:truncate` owns **density**, and never touches a claim at all.
 
 The two are wired together by a `dirty` frontmatter flag: `/my-command:docs` marks every doc it refreshes or adds as `dirty: true`, and `/my-command:truncate` treats those as its work queue. See Step 2.
 
-The run itself happens inside a `/my-command:task` workflow: `/my-command:truncate` decides **where** the work happens and hands the passes to `/my-command:task`, which isolates the workspace, commits, then runs `/my-command:clean` and `/my-command:pr` (Step 0). Like `/my-command:task`, it defaults to a fresh worktree off the latest `main`.
+The run happens inside a `/my-command:task` workflow (Step 0). Like `/my-command:task`, it defaults to a fresh worktree off the latest `main`.
 
 The bundle is an [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) collection of Markdown-with-frontmatter docs, queried with [okq](https://github.com/mikevalstar/okq). Use `okq` to find and read them — not `grep`. The `okq-reference`, `okq-explore`, and `okq-maintain` skills are the contract; load them via the `Skill` tool as each step needs them.
 
@@ -116,7 +116,7 @@ That inventory is the contract for Step 4: it must survive the edit unchanged, o
 2. Re-run the health checks until clean: `okq --bundle <dir> validate`, `deadlinks --check`, `orphans` (exit code 3 means the gate tripped — branch on `$?`, not the text). A cut that removed the last link to a doc shows up here as a new orphan; restore the link.
 3. Run the repo's own doc gate if it has one (e.g. `pnpm run check:commands`, the `docs` CI job's command). Report exactly what you ran.
 4. Report a table: doc | verdict (`truncated` / `reviewed` / `deferred`) | lines before → after | what was cut. `reviewed` means it was evaluated and already lean — a real outcome, not a miss. Then, separately, the **claims that looked wrong** — drift you noticed but deliberately left alone — since those are a `/my-command:docs` run, not this one.
-5. Apply edits directly, then let the surrounding `/my-command:task` run take it from here — its Step 2 commits the changes, and its Step 3 runs `/my-command:clean`, `/my-command:pr`, and worktree teardown. Report the table above as this pass's result rather than opening the PR yourself, and deliver it in a **text-only turn** — after the last `okq` call or edit, never in the same turn as one, or the pass is recorded as unfinished even though it completed. Under `--dry-run` there is nothing to hand off.
+5. Apply edits directly, then let the surrounding `/my-command:task` run take it from here — its Step 2 commits the changes, and its Step 3 runs `/my-command:clean`, `/my-command:pr`, and worktree teardown. Report the table above as this pass's result rather than opening the PR yourself. <!-- include: shared/text-only-turn.md -->Deliver that report in a **text-only turn** — after the last tool call, never in the same turn as one, or the run is recorded as unfinished even though the work landed.<!-- /include --> Under `--dry-run` there is nothing to hand off.
 
 ## Notes
 
@@ -124,7 +124,7 @@ That inventory is the contract for Step 4: it must survive the edit unchanged, o
 - **This command edits docs only** — never source code, never tests, never a command's own instructions in `src/commands/`. Those are read as the source of truth, not rewritten.
 - **Shorter is not the goal; higher signal per token is.** A doc that is already lean gets `reviewed` and no edit. Never manufacture cuts to show a number.
 - `okq` over `grep` throughout: `find --where`, `get --section`, and `search` are structure-aware, and `get --section` keeps whole files out of context.
-- **Quote any Bash argument holding `*` or `?` that the invoked program — not the shell — should expand** (`okq --bundle docs find 'docs/adrs/*'`). The shell is zsh: an unquoted glob that matches nothing aborts the whole command with `no matches found`, and the argument never reaches the program.
-- Delegating to `/my-command:task` means `/my-command:task`'s rules apply — it has standing permission to commit on the branch (never on `main`), and it ends at a PR. `--yes` / `-y` governs the size-guard confirmations, not whether a PR gets opened.
+- **Quote any Bash argument holding `*` or `?` that the invoked program — not the shell — should expand** (`okq --bundle docs find 'docs/adrs/*'`). The shell is zsh: an unquoted glob that matches nothing aborts the whole command with `no matches found`.
+- Delegating to `/my-command:task` means `/my-command:task`'s own rules apply. `--yes` / `-y` governs the size-guard confirmations, not whether a PR gets opened.
 - `--dry-run` writes nothing at all — no edits, no `dirty` clearing, and no worktree, commit, or PR either.
 - If the queue is empty, say so plainly and stop. Nothing to truncate is a real result.

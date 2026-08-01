@@ -18,3 +18,21 @@ Use only when the user explicitly invokes `$god`, `/god`, or requests an unatten
 6. Report task, review, repairs, checks, merge, and local update in a final text-only outcome.
 
 Use `my-command-tools doctor`, `state`, and `verify` for deterministic repository checks when available.
+
+## Git call shape
+
+- Issue a command that may need approval as its own shell call — fetch, config,
+  and branch-lifecycle operations such as checkout/switch, pull, remote-branch
+  inspection, and local branch deletion. Folding one into a chain escalates
+  approval to the whole compound command and costs a turn plus a retry. Put
+  status output, pipes, and follow-up verification in separate read-only calls.
+- A classifier refusal is not evidence that repository protections should be
+  weakened. Inspect the refused command first; when the intended operation is
+  safe and the refusal looks incidental to the command's shape — an over-broad
+  chain, pipe, or extra flag — retry only the smallest exact command, never a
+  permission-settings change.
+- A refusal of a PR merge or a remote-ref deletion is final. Surface it to the
+  human and carry on with the rest of the work; re-expressing the same operation
+  through a raw API call or a different credential is refused for the same reason
+  and costs a second turn. Steps 4 and 5 are where this fires: the branch-deleting
+  merge and the local branch cleanup that follows it.

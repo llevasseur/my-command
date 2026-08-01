@@ -35,8 +35,6 @@ Owned here:
 
 ## Step 2 — Run `/my-command:task`, with `/my-command:review` woven in
 
-If the repo being changed is not the repo this session started in, prefer starting a new session in the target repo. Otherwise, `/my-command:task` must not use `EnterWorktree`: it uses `my-command-tools worktree begin`, works through absolute paths under the returned `path`, then tears down with `my-command-tools worktree end`, which re-verifies the branch reached origin before removing it.
-
 Invoke `/my-command:task` with **`--sub`**, the forwarded flags, and the criteria; it owns the whole branch → implement → verify → `/my-command:clean` → `/my-command:pr` → teardown pipeline. Don't re-implement any of it here. `--sub` is what makes `/my-command:task`'s `/my-command:clean` + `/my-command:pr` stage a single fresh subagent, so the `review` entry below has a subagent to land in.
 
 Unless `--no-review` was given, append this entry to `/my-command:task`'s `--add` list (after any entries I passed, so mine keep their order):
@@ -45,7 +43,7 @@ Unless `--no-review` was given, append this entry to `/my-command:task`'s `--add
 review after /my-command:pr has opened or updated the PR, run /my-command:review --here in that same subagent before any teardown, and carry /my-command:review through to its own end there — including running the /my-command:fb it emits, if it emits one. Show the reviewer's output verbatim. Never hand remaining review work back to the parent.
 ```
 
-The `--sub` above guarantees that subagent exists. `--here` because it is already sitting on the PR's branch with the PR pushed, and `/my-command:review --here` runs its own `/my-command:fb` inline there rather than nesting another agent. `/my-command:review` resolves both of its outcomes in place, so by the time `/my-command:task` returns the PR is either review-clean or was never dirty — nothing comes back here as pending work.
+`/my-command:review` resolves both of its outcomes in place, so nothing comes back here as pending review work.
 
 Then:
 
@@ -62,7 +60,7 @@ Re-resolve from git rather than trusting the hand-off text: `gh pr view <branch>
 
 ## Step 4 — Make it mergeable (`/my-command:mc` on conflict)
 
-`main` may have moved while `/my-command:task` worked. Test **locally** — `git fetch origin`, then `git merge-tree --write-tree main <branch>`; GitHub's `mergeable` is lazy and reports `UNKNOWN` for a fresh branch. Issue the `git fetch` as its **own** Bash call: it may require approval, and folding it into an `&&` chain escalates approval to the whole compound command and costs a turn plus a retry.
+`main` may have moved while `/my-command:task` worked. Test **locally** — `git fetch origin`, then `git merge-tree --write-tree main <branch>`; GitHub's `mergeable` is lazy and reports `UNKNOWN` for a fresh branch.
 
 - **No conflict** → Step 5.
 - **Conflict** → run **`/my-command:mc -t <branch>`**. If it puts the branch in its 🔴 "needs human" list, **stop**: report the branch, the files, and why, and leave the PR open. That is the one failure this command cannot drive through.
@@ -105,10 +103,13 @@ Under `--here` this leaves you on `main` rather than the branch you started on �
 
 ## Step 8 — Report
 
-One concise summary, in a **text-only turn** — after the last tool call, never in the same turn as one, or this run is recorded as unfinished even after the merge landed. It covers: branch and PR number/URL; what `/my-command:review` found and what was applied (or clean / skipped); whether `/my-command:mc` ran and on which files; CI green first try or the repair rounds spent; and the outcome — ✅ merged into `main` and pulled, ⏳ queued for auto-merge, or 🔴 stopped with the reason and the PR left open. On a no-change run: no PR was opened, and what established that.
+One concise summary. <!-- include: shared/text-only-turn.md -->Deliver that report in a **text-only turn** — after the last tool call, never in the same turn as one, or the run is recorded as unfinished even though the work landed.<!-- /include --> It covers: branch and PR number/URL; what `/my-command:review` found and what was applied (or clean / skipped); whether `/my-command:mc` ran and on which files; CI green first try or the repair rounds spent; and the outcome — ✅ merged into `main` and pulled, ⏳ queued for auto-merge, or 🔴 stopped with the reason and the PR left open. On a no-change run: no PR was opened, and what established that.
 
 ## Notes
 
 - **No human in the loop is the point.** Never stop to confirm anything you have a defined path for — including the merge. Do stop for the four things with no safe automatic answer: an unresolvable `/my-command:mc` conflict, CI still red after the repair budget, a diverged local `main`, and a PR that isn't this run's.
 - **`/my-command:task` owns the branch, the commits, the PR, and the teardown.** This command adds only the last mile — never implement, commit, or clean up here.
 - Never commit or push to `main` directly, never use `--admin`, never force-push.
+- <!-- include: shared/approval-own-call.md -->**A command that may need approval goes in its own Bash call** — `git fetch`, `git config`, and, as a narrow exception to the general rule to chain dependent mutations, branch-lifecycle operations such as checkout/switch, pull, remote-branch inspection, and local branch deletion. Folding one into an `&&` chain escalates approval to the whole compound command and costs a turn plus a retry. Put status output, pipes, and follow-up verification in separate read-only calls.<!-- /include -->
+- <!-- include: shared/classifier-refusal.md -->A classifier refusal is not evidence that repository protections should be weakened. Inspect the refused command first; when the intended operation is safe and the refusal looks incidental to the command's shape — an over-broad chain, pipe, or extra flag — retry only the smallest exact command, never an allowlisted Bash pattern or a permission-settings change.<!-- /include -->
+- <!-- include: shared/refusal-final.md -->A refusal of a **PR merge or a remote-ref deletion is final.** Surface it to the human and carry on with the rest of the work. Re-expressing the same operation is refused for the same reason and costs a second turn: `gh api -X PUT .../pulls/N/merge` is `gh pr merge`, and `gh api --method DELETE .../git/refs/heads/...` is `git push origin --delete`, so neither is a narrow retry — nor is re-running one under `GH_TOKEN=...`.<!-- /include --> Steps 6 and 7 are where this fires: `gh pr merge --delete-branch` and `git branch -d`.

@@ -31,7 +31,7 @@ Clean up the comments in my changes. Only touch comments — never change code, 
 - **Delete** comments that restate what the code plainly says, narrate steps ("Now we loop over...", "This function does..."), or add ceremony (obvious section banners, TODO-less filler).
 - **Tighten** comments that carry real information but are verbose — cut them to the essential what, one line where possible.
 - **Keep** comments that document something non-obvious the code can't express (edge cases, gotchas, external constraints). Leave license headers, linter directives (e.g. `biome-ignore`, `eslint-disable`), and doc/JSDoc annotation tags intact.
-- **Keep** section-header comments inside JSX (e.g. `{/* Header */}`, `{/* Sidebar */}`) that label a structural region of markup — JSX has no other lightweight way to mark these regions, so they aren't ceremony the way a banner in plain code is. Only tighten them if verbose; don't delete them.
+- **Keep** section-header comments inside JSX (e.g. `{/* Header */}`, `{/* Sidebar */}`) that label a structural region of markup — JSX has no other lightweight way to mark these regions, so they aren't ceremony. Only tighten them if verbose; don't delete them.
 - **Keep** the sole comment inside an intentionally empty block (`catch {}`, `else {}`) — it is load-bearing: linters like Biome's `noEmptyBlockStatements` fail on an empty block with no comment.
 - **Never add** new comments. This command only removes and shortens.
 
@@ -40,4 +40,5 @@ Clean up the comments in my changes. Only touch comments — never change code, 
 - Apply edits directly with Edit.
 - Report a short summary: how many comments removed vs. tightened, grouped by file.
 - **Don't commit** — and don't carry that rule past this command. It is scoped to `/clean` and does not survive nesting: the edits are left uncommitted for whoever invoked `/clean` to own. Invoked directly, uncommitted *is* the deliverable. Invoked from inside another workflow (`/task` Step 3, `/task-bootstrap` Step 7, or anything wrapping them), that workflow commits them and its run is not finished until it has — so hand back and continue it at its next step rather than stopping at uncommitted cleanup or reporting the branch as done. If an invoker's instructions never say who commits, flag the uncommitted edits in the summary instead of committing them here.
-- The summary is a **text-only turn** — stated after the last edit, never in the same turn as one, or the run is recorded as unfinished even though the cleanup is done.
+- **Teardown is never yours.** Never remove a worktree here — not with `git worktree remove`, not by any other route. Whoever invoked `/clean` owns that workspace and its teardown.
+- <!-- include: shared/text-only-turn.md -->Deliver that report in a **text-only turn** — after the last tool call, never in the same turn as one, or the run is recorded as unfinished even though the work landed.<!-- /include -->

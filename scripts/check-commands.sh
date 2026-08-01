@@ -18,6 +18,12 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 fail=0
 
+# 0. src/commands/ matches src/shared/. Must run before 1, whose build expands them in place
+# and would otherwise repair a hand-edit before the sync check ever saw it.
+if ! node scripts/expand-includes.mjs --check; then
+  fail=1
+fi
+
 # 1. commands/ in sync with src/commands/ via build-plugin.sh.
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
