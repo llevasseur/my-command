@@ -10,6 +10,14 @@ agent instructions, not code: Claude sources live in `src/commands/<name>.md`
 and Codex translations in `skills/<name>/SKILL.md`. `commands/` is the generated
 namespaced Claude plugin copy. The `npx` wizard is `src/my-command.ts`.
 
+A rule that belongs to more than one command lives once in `src/shared/<name>.md`
+(one line, no frontmatter) and is pulled in with `<!-- include: shared/<name>.md -->`.
+`scripts/expand-includes.mjs` expands it **in place** in `src/commands/`, inline on
+the directive's own line so it survives inside a nested bullet. `build-plugin.sh`
+runs the expansion before copying, so no installer changes; `check-commands.sh`
+runs it with `--check` first, so a hand-edit between the markers fails CI.
+**Edit `src/shared/`, never the text between `<!-- include -->` and `<!-- /include -->`.**
+
 ## Adding or changing a command — non-negotiable checklist
 
 Follow **[`docs/specs/adding-a-command.md`](docs/specs/adding-a-command.md)** in full. The
@@ -34,7 +42,8 @@ Run before you commit, and expect it in PR CI:
 pnpm run check:commands   # or ./scripts/check-commands.sh
 ```
 
-It fails unless: `commands/` is byte-in-sync with `src/commands/`, every command has a
+It fails unless: `src/commands/` is in sync with `src/shared/`, `commands/` is
+byte-in-sync with `src/commands/`, every command has a
 feature doc, generated Claude command, and Codex-native skill, and the wizard still
 globs both source directories. This is why the wizard "auto-updates" is safe to rely
 on—if someone replaces a glob with a hardcoded list, the check fails. The `commands` job in
