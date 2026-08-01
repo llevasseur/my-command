@@ -20,3 +20,16 @@ Parse `--here` / `-h`, `--target <branch>` / `-t <branch>`, or default to all sa
    with file names, and human-blocked branches.
 
 Use `git merge-tree --write-tree` for conflict prechecks rather than GitHub's lazy mergeability state. Never rewrite history, stash user work, or discard a side merely to compile.
+
+## Git call shape
+
+- Issue a command that may need approval as its own shell call — fetch, config,
+  and the branch-lifecycle operations steps 2-4 depend on: checkout/switch, pull,
+  and remote-branch inspection. Folding one into a chain escalates approval to the
+  whole compound command and costs a turn plus a retry. Put status output, pipes,
+  and follow-up verification in separate read-only calls.
+- A classifier refusal is not evidence that repository protections should be
+  weakened. Inspect the refused command first; when the intended operation is
+  safe and the refusal looks incidental to the command's shape — an over-broad
+  chain, pipe, or extra flag — retry only the smallest exact command, never a
+  permission-settings change.

@@ -3,7 +3,7 @@ description: Independently review an open PR, produce /fb-ready structured feedb
 argument-hint: "[--here|-h] [--target|-t <PR-number-or-branch>]"
 ---
 
-Review an open PR independently, then apply what the review finds. By default, spawn a **fresh** agent so it has no prior investment in the PR's approach and reviews the diff cold, the way an outside reviewer would. With `--here`, do the review yourself; the caller is asserting that you are already the fresh, independent agent.
+Review an open PR independently, then apply what the review finds. By default, spawn a **fresh** agent so it has no prior investment in the PR's approach and reviews the diff cold. With `--here`, do the review yourself; the caller is asserting that you are already the fresh, independent agent.
 
 Your input is the text in the `<command-args>` block above. Parse leading flags off the front; anything left over is extra context for the reviewer (e.g. "focus on the auth changes").
 
@@ -52,13 +52,13 @@ Review material:
 
 1. Show me the review findings and the `/my-command:fb` block verbatim — this is the copy-pasteable output the wish asked for, so it must be visible even though the next step also applies it. In `--here` mode, emit your own report in exactly the same shape.
 2. If the review found nothing to fix: don't invoke `/my-command:fb` for a clean PR — go straight to (4).
-3. If the review produced an `/my-command:fb` line: run it via the `Skill` tool (`skill: "fb"`, `args:` the feedback text after `/my-command:fb`). This runs inside the same worktree/checkout from Step 2, so `/my-command:fb`'s default (current branch, no `--target`) is correct — do not add `--target` yourself.
+3. If the review produced an `/my-command:fb` line: run it **inline in this session** via the `Skill` tool (`skill: "fb"`, `args:` the feedback text after `/my-command:fb`). Never dispatch `/my-command:fb` to a subagent via the `Agent` tool — the independence a subagent buys is the *reviewer's*, and Step 3 already spent it; running `/my-command:fb` here keeps the findings you just read in context. This runs inside the same worktree/checkout from Step 2, so `/my-command:fb`'s default (current branch, no `--target`) is correct — do not add `--target` yourself.
    - `/my-command:fb` wraps `/my-command:task --here`, which implements the fix, commits, then runs `/my-command:clean` and `/my-command:pr` — `/my-command:pr` updates the **same** PR (same branch, already pushed).
-4. **Tear down the Step 2 worktree yourself** (default mode only — under `--here` there is no worktree, so touch nothing), whether or not `/my-command:fb` ran. `/my-command:pr` does **not** remove it: it skips teardown for any worktree its session didn't create, and this one was entered with `EnterWorktree({path})`, which `ExitWorktree` also refuses to remove. Call `ExitWorktree` with `action: "keep"` to step back out, then run `my-command-tools worktree end --branch <headRefName>` from the original checkout — it re-verifies the branch reached origin before removing, so if it refuses, push rather than forcing.
-5. Close the run with a **text-only turn** — the verdict, what `/my-command:fb` applied (or that the PR was clean), and the PR — stated after the last tool call, never in the same turn as one. A run whose final act is a tool call is recorded as unfinished even when the review is done.
+4. **Tear down the Step 2 worktree yourself** (default mode only — under `--here` there is no worktree, so touch nothing), whether or not `/my-command:fb` ran. `/my-command:pr` does **not** remove it: it skips teardown for any worktree its session didn't create. <!-- include: shared/worktree-ownership.md -->**Remove a worktree through the same mechanism that created it.** One created by `git worktree add` or `my-command-tools worktree begin` is not owned by the session worktree tool merely because the session later entered it via `EnterWorktree({path})` — `ExitWorktree` refuses to remove it. Step back out with `action: "keep"`, then run `my-command-tools worktree end --branch <branch>` from outside the worktree; it re-verifies the branch reached origin before removing, so push rather than forcing if it refuses. If it refuses because another live session still holds the worktree, stop and report the path as left in place — never force past a live lock.<!-- /include -->
+5. Report the verdict, what `/my-command:fb` applied (or that the PR was clean), and the PR. <!-- include: shared/text-only-turn.md -->Deliver that report in a **text-only turn** — after the last tool call, never in the same turn as one, or the run is recorded as unfinished even though the work landed.<!-- /include -->
 
 ## Notes
 
 - This command never merges or approves the PR — it only reviews, then fixes what it finds. Merging is a separate, human decision.
-- This command doesn't post the review as a GitHub PR comment/review (`gh pr review`) — its output is the `/my-command:fb`-ready text, both shown to me and applied locally. That's the scope the wish asked for.
+- This command doesn't post the review as a GitHub PR comment/review (`gh pr review`) — its output is the `/my-command:fb`-ready text, both shown to me and applied locally.
 - If `--here` is used and the current branch has uncommitted changes unrelated to the PR, stop and tell me rather than mixing them into the review.

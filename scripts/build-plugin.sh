@@ -12,6 +12,9 @@ MANIFEST="$REPO_ROOT/.claude-plugin/plugin.json"
 
 [ -d "$SRC_DIR" ] || { echo "no source dir: $SRC_DIR" >&2; exit 1; }
 
+# Refresh src/commands/ from src/shared/ before copying, so the plugin can't carry a stale rule.
+node "$REPO_ROOT/scripts/expand-includes.mjs"
+
 # Namespace = the plugin's name field; commands invoke as /<namespace>:<command>.
 NS="$(sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$MANIFEST" | head -1)"
 [ -n "$NS" ] || { echo "could not read plugin name from $MANIFEST" >&2; exit 1; }

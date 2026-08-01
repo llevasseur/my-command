@@ -7,7 +7,10 @@ description: Take a task unattended through implementation, review, CI repair, m
 
 Use only when the user explicitly invokes `$god`, `/god`, or requests an unattended task-to-merge workflow. Parse task workspace flags, `--auto`, merge method, `--fix <n>`, and `--no-review`; reject draft mode.
 
-1. Record the main checkout and task branch. Invoke `$task`, weaving in `$review --here` unless disabled, and require the resulting PR to belong to this run's branch.
+1. Record the main checkout and task branch. Invoke `$task` with `--sub` so its
+   cleanup and PR stage runs as one delegated subagent, weaving in
+   `$review --here` there unless disabled, and require the resulting PR to belong
+   to this run's branch.
 2. Re-resolve the PR from GitHub. Detect default-branch conflicts locally with `git merge-tree --write-tree`; invoke `$mc --target <branch>` when needed and stop on unresolved conflicts.
 3. Unless `--auto`, watch required checks without foreground sleeps. For red CI, inspect the failing job log and spend at most the requested repair rounds through `$fb --target <branch>`.
 4. Merge with `gh pr merge` using the requested method and branch protection. Never use `--admin`, force-push, or push directly to the default branch. If checks are pending, enable auto-merge; if the base moved, refresh conflicts once.
@@ -15,3 +18,21 @@ Use only when the user explicitly invokes `$god`, `/god`, or requests an unatten
 6. Report task, review, repairs, checks, merge, and local update in a final text-only outcome.
 
 Use `my-command-tools doctor`, `state`, and `verify` for deterministic repository checks when available.
+
+## Git call shape
+
+- Issue a command that may need approval as its own shell call — fetch, config,
+  and branch-lifecycle operations such as checkout/switch, pull, remote-branch
+  inspection, and local branch deletion. Folding one into a chain escalates
+  approval to the whole compound command and costs a turn plus a retry. Put
+  status output, pipes, and follow-up verification in separate read-only calls.
+- A classifier refusal is not evidence that repository protections should be
+  weakened. Inspect the refused command first; when the intended operation is
+  safe and the refusal looks incidental to the command's shape — an over-broad
+  chain, pipe, or extra flag — retry only the smallest exact command, never a
+  permission-settings change.
+- A refusal of a PR merge or a remote-ref deletion is final. Surface it to the
+  human and carry on with the rest of the work; re-expressing the same operation
+  through a raw API call or a different credential is refused for the same reason
+  and costs a second turn. Steps 4 and 5 are where this fires: the branch-deleting
+  merge and the local branch cleanup that follows it.

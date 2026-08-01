@@ -17,3 +17,14 @@ Parse `--label <name>` (default `dependencies`), one merge method (default squas
    `my-command-tools verify --fast` when available. End it with the toolkit only
    after confirming it has no authored or unpushed work.
 5. Merge through `gh pr merge`, respecting branch protection. Refresh the default branch between PRs and report merged, queued, conflict-resolved, and blocked items.
+
+## Git call shape
+
+- Issue a command that may need approval as its own shell call — fetch, config,
+  and branch-lifecycle operations such as checkout/switch, pull, remote-branch
+  inspection, and local branch deletion. Folding one into a chain escalates
+  approval to the whole compound command and costs a turn plus a retry.
+- A refusal of a PR merge or a remote-ref deletion is final. Surface it to the
+  human and carry on with the remaining PRs; re-expressing the same operation
+  through a raw API call or a different credential is refused for the same reason
+  and costs a second turn. Step 5's branch-deleting merge is where this fires.

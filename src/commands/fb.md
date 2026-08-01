@@ -14,8 +14,6 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 
 ## Behavior
 
-During implementation, read each file immediately before `Edit`. Re-read it if any external action, hook, formatter, generator, or another agent may have changed it since the prior read.
-
 ### Default (no `--target`)
 
 Run `/task --here <feedback request>` on the **current branch**.
@@ -39,6 +37,6 @@ If the target repo is not the repo this session started in, prefer starting a ne
 
 ## Notes
 
-- Either path ends by delegating to `/task`, so `/task`'s own rules apply: it restates scope, implements, verifies, then runs `/clean` and `/pr`, and it has standing permission to commit on the branch (never on `main`).
+- Either path ends by delegating to `/task`, so `/task`'s own rules apply.
 - If the feedback request is too vague to act on, ask me one focused clarifying question before setting anything up.
-- Report the branch name up front and the PR number/URL at the end (from `/task`/`/pr`), in a **text-only turn** — after the last tool call, never in the same turn as one, or the run is recorded as unfinished even though the feedback shipped.
+- Report the branch name up front and the PR number/URL at the end (from `/task`/`/pr`). <!-- include: shared/text-only-turn.md -->Deliver that report in a **text-only turn** — after the last tool call, never in the same turn as one, or the run is recorded as unfinished even though the work landed.<!-- /include -->

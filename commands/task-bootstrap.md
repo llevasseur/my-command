@@ -3,7 +3,7 @@ description: Interview a repo's tech stack, then generate that repo's own worktr
 argument-hint: "[--here|-h] [--base <branch>] [--draft|-d] [notes about the stack]"
 ---
 
-Set up a **repo-local worktree bootstrap** so a fresh `git worktree` behaves like the main checkout — and so the device-wide `/my-command:task` command never has to hardcode this repo's paths. `/my-command:task` Step 1.5 looks for exactly this: a `scripts/bootstrap-worktree.sh` (or a "Worktree Setup" section in `AGENTS.md`/`CLAUDE.md`). This command detects the stack, interviews you to confirm the gaps, generates the bootstrap, verifies it, and opens a PR.
+Set up a **repo-local worktree bootstrap** so a fresh `git worktree` behaves like the main checkout — and so the device-wide `/my-command:task` command never has to hardcode this repo's paths. `/my-command:task` Step 1.5 looks for exactly this: a `scripts/bootstrap-worktree.sh` (or a "Worktree Setup" section in `AGENTS.md`/`CLAUDE.md`).
 
 Run it **once per repo** — or to update an existing bootstrap when the stack changes.
 
@@ -89,11 +89,12 @@ cd "$WORKTREE_ROOT"
 
 - If the repo tracks a changelog, add an entry.
 - Commit only the files you created: `my-command-tools commit --message <text> <path> [<path>...]`. Staging is always explicit — the verb refuses whole-tree staging — so nothing you didn't author comes along. Invoking this command is standing permission to commit on this branch (never on `main`).
-- Run **`/my-command:clean`**, then **`/my-command:pr`** (`/my-command:pr --draft` if `--draft`/`-d`).
-- **Tear the worktree down yourself** if Step 1 created one. `/my-command:pr` skips teardown for a worktree its session didn't create, and this one was entered with `EnterWorktree({path})`, which `ExitWorktree` also refuses to remove: call `ExitWorktree` with `action: "keep"`, then `my-command-tools worktree end --branch chore/worktree-bootstrap` from the original checkout. It re-verifies the branch reached origin first.
+  - <!-- include: shared/signing-retry.md -->`1Password: failed to fill whole buffer` with `fatal: failed to write commit object` is an unapproved signing prompt, not a repository problem: the commit did not happen and the tree is untouched. Retry the same commit once after the prompt is approved. Never rewrite the commit, pass `--no-gpg-sign`, or change the repo's signing configuration to get around it.<!-- /include -->
+- Run **`/my-command:clean`**, commit any edits it makes (it deliberately leaves them uncommitted for the invoker — that's you — and `/my-command:pr` never commits), then **`/my-command:pr`** (`/my-command:pr --draft` if `--draft`/`-d`).
+- **Tear the worktree down yourself** if Step 1 created one; `/my-command:pr` skips teardown for a worktree its session didn't create. <!-- include: shared/worktree-ownership.md -->**Remove a worktree through the same mechanism that created it.** One created by `git worktree add` or `my-command-tools worktree begin` is not owned by the session worktree tool merely because the session later entered it via `EnterWorktree({path})` — `ExitWorktree` refuses to remove it. Step back out with `action: "keep"`, then run `my-command-tools worktree end --branch <branch>` from outside the worktree; it re-verifies the branch reached origin before removing, so push rather than forcing if it refuses. If it refuses because another live session still holds the worktree, stop and report the path as left in place — never force past a live lock.<!-- /include --> Here that branch is `chore/worktree-bootstrap`.
 
 ## Notes
 
 - One-time per repo. If a bootstrap already exists, **update** it rather than scaffolding a new one — inspect it first.
 - Keep this command device- and project-agnostic: everything project-specific comes from detection + the interview, never hardcoded here.
-- Report the branch up front and the PR number/URL at the end, in a **text-only turn** — after the last tool call, never in the same turn as one, or the run is recorded as unfinished even though the PR is open.
+- Report the branch up front and the PR number/URL at the end. <!-- include: shared/text-only-turn.md -->Deliver that report in a **text-only turn** — after the last tool call, never in the same turn as one, or the run is recorded as unfinished even though the work landed.<!-- /include -->

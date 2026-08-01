@@ -4,7 +4,8 @@ title: Adding a command
 description: The checklist an agent follows to add a MyCommand slash command so the suite, the install wizard, and the docs stay in sync.
 tags: [process, commands, wizard]
 timestamp: 2026-07-15
-updated: 2026-07-29
+updated: 2026-08-01
+dirty: true
 ---
 
 # Adding a command
@@ -26,6 +27,27 @@ existing commands:
 
 Bare is canonical: sibling commands are referenced bare (`/clean`, `/pr`); the
 build step namespaces them for the published plugin.
+
+## A rule shared by several commands lives in `src/shared/`
+
+Each installed command file is loaded standalone, so there is no runtime include —
+shared text must be physically present in every copy. `src/shared/<name>.md` holds
+one line of canonical text (no frontmatter), and a command pulls it in with:
+
+```markdown
+- <!-- include: shared/text-only-turn.md -->
+```
+
+`scripts/expand-includes.mjs` rewrites that directive **in place** in
+`src/commands/`, inline on its own line so it survives inside a nested bullet, and
+wraps the body in `<!-- /include -->`. Re-running replaces the body rather than
+nesting a copy. `build-plugin.sh` expands before copying, so no installer changes;
+`check-commands.sh` runs `expand-includes.mjs --check` **before** the build, so a
+hand-edit between the markers fails CI instead of being silently repaired.
+
+Edit `src/shared/`; never the text between the markers. A snippet must be a single
+line — the expander refuses a multi-line one. Codex skills do **not** use the
+mechanism: they are translations, not copies.
 
 ## Checklist
 

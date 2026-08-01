@@ -4,7 +4,7 @@ argument-hint: "[--check]"
 allowed-tools: Bash(git:*), Bash(readlink:*), Bash(ls:*), Bash(bash:*), Bash(claude:*), Bash(my-command-tools:*)
 ---
 
-Update this device's MyCommand commands to the latest version from the GitHub repo. Run this whenever a change has been pushed and you want it locally.
+Update this device's MyCommand commands to the latest version from the GitHub repo.
 
 `--check` (from $ARGUMENTS): report whether the local copy is behind, but don't change anything.
 
@@ -45,6 +45,6 @@ These commands are installed one of three ways; detect which and act accordingly
 
 ## Notes
 
-- Whichever install path ran, the closing report is a **text-only turn** — after the last tool call, never in the same turn as one, or the sync is recorded as unfinished even though it landed.
+- Step 6 closes the run whichever install path ran. <!-- include: shared/text-only-turn.md -->Deliver that report in a **text-only turn** — after the last tool call, never in the same turn as one, or the run is recorded as unfinished even though the work landed.<!-- /include -->
 - This command only consumes updates. Publishing a change is the maintainer flow: edit `src/commands/`, run `scripts/build-plugin.sh`, commit, push.
 - Never force, reset, or stash the clone's working tree.

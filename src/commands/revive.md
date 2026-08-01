@@ -3,7 +3,7 @@ description: Resume an interrupted Claude Code session from its recorded transcr
 argument-hint: "[--dry-run|-n] [--source proxy|cli|<path>] <session-id> [extra context]"
 ---
 
-Pick up a session that stopped mid-flight. A run gets interrupted — cleared, compacted away, killed, or simply abandoned — and its work is left half-applied on a branch somewhere. This command reads that session's recorded transcript, works out what it was doing and where it stopped, finishes what's actually left, and carries the original workflow through to its end.
+Pick up a session that stopped mid-flight — cleared, compacted away, killed, or abandoned — with its work left half-applied on a branch somewhere.
 
 Your input is the text in the `<command-args>` block above. Parse leading flags off the front; the first bare token is the **session id**, and anything after it is optional extra context that steers the resumption (it never overrides what the transcript and repo state show).
 
@@ -65,7 +65,7 @@ A proxy transcript is a **lossy digest, not a replay log**. Its shape:
 - done: <outcome>
 ```
 
-Reasoning lines and tool arguments are cut off mid-string, so you can reconstruct *intent and sequence* but never replay the run verbatim. Extract:
+Reasoning lines and tool arguments are cut off mid-string: reconstruct *intent and sequence*, never replay verbatim. Extract:
 
 1. **The subtitle and the `## Task:` headings** — the original ask, in the human's words.
 2. **The workflow that was running.** These sessions are usually inside a slash-command pipeline, often nested (`/docs` handing off to `/task`). A `Skill(skill=…)` line names it. **Open that command's own file** (`~/.claude/commands/<name>.md`, or this repo's `src/commands/`) and read its steps — that document, not your guess, defines what "finished" means for this run.
@@ -114,13 +114,13 @@ Finishing the edits is not finishing the run. Go back to the workflow you identi
 - A run that was never inside `/task` ends wherever its own instructions say. If that is just "report", report.
 - Do **not** wrap the resumption in a new `/task` invocation: the branch and workspace already exist, and a nested run would create a second worktree for work that is already checked out.
 
-Report at the end: which transcript and store you used, where the session stopped, what you finished, what you deliberately left alone, and the PR number/URL if the workflow ended at one. Make that report a **text-only turn** — after the last tool call, never in the same turn as one. A resumed run that ends on a tool call records no `done:` and so reads as interrupted to the next `/revive`, which is exactly the signal Step 2 keys off.
+Report at the end: which transcript and store you used, where the session stopped, what you finished, what you deliberately left alone, and the PR number/URL if the workflow ended at one. <!-- include: shared/text-only-turn.md -->Deliver that report in a **text-only turn** — after the last tool call, never in the same turn as one, or the run is recorded as unfinished even though the work landed.<!-- /include --> A run that ends on a tool call records no `done:` and reads as interrupted to the next `/revive`.
 
 ## Notes
 
 - **Never fabricate intent.** What the session "meant to do next" is bounded by the transcript plus the current repo state. If they don't support a step, say the transcript doesn't reach that far instead of inventing it.
 - **The human's mid-run decisions stand.** Answers recorded in the transcript are settled input, not a starting point for renegotiation.
 - **Report a miss plainly.** No transcript, a dead branch, a session still running, work already merged — each is a real answer. Say which, with what you checked, and stop.
-- The proxy store is device-local and wherever `CLAUDE_PROXY_STORE` points; nothing in it is guaranteed to survive, and the archive keeps transcripts on a retention window. An id that resolved yesterday may not resolve today — that's the store's lifecycle, not a bug to work around.
+- The store is device-local and on a retention window: an id that resolved yesterday may not resolve today. That's the store's lifecycle, not a bug to work around.
 - A transcript can be long. Read the header and task headings first, then the tail where it stopped; pull the middle only when you need a specific decision — pass numeric `offset` and `limit` values, never strings, for a targeted slice instead of the whole file.
-- **Batch the reconnaissance, and read each file once.** Reconstructing a run means many independent reads and greps — the transcript, the sibling transcripts, the files it touched. Issue them in a single turn rather than one per turn; a run of reads with no decision between them is independent by construction. A file already read this session is already in context: re-read it only after it changed.
+- **Batch the reconnaissance, and read each file once.** Reconstructing a run means many independent reads and greps — the transcript, the sibling transcripts, the files it touched. Issue them in a single turn rather than one per turn. A file already read this session is already in context: re-read it only after it changed.
