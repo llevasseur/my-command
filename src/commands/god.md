@@ -60,7 +60,7 @@ Re-resolve from git rather than trusting the hand-off text: `gh pr view <branch>
 
 ## Step 4 — Make it mergeable (`/mc` on conflict)
 
-`main` may have moved while `/task` worked. Test **locally** — `git fetch origin`, then `git merge-tree --write-tree main <branch>`; GitHub's `mergeable` is lazy and reports `UNKNOWN` for a fresh branch. Issue the `git fetch` as its **own** Bash call: it may require approval, and folding it into an `&&` chain escalates approval to the whole compound command and costs a turn plus a retry.
+`main` may have moved while `/task` worked. Test **locally** — `git fetch origin`, then `git merge-tree --write-tree main <branch>`; GitHub's `mergeable` is lazy and reports `UNKNOWN` for a fresh branch.
 
 - **No conflict** → Step 5.
 - **Conflict** → run **`/mc -t <branch>`**. If it puts the branch in its 🔴 "needs human" list, **stop**: report the branch, the files, and why, and leave the PR open. That is the one failure this command cannot drive through.
@@ -103,10 +103,13 @@ Under `--here` this leaves you on `main` rather than the branch you started on �
 
 ## Step 8 — Report
 
-One concise summary, in a **text-only turn** — after the last tool call, never in the same turn as one, or this run is recorded as unfinished even after the merge landed. It covers: branch and PR number/URL; what `/review` found and what was applied (or clean / skipped); whether `/mc` ran and on which files; CI green first try or the repair rounds spent; and the outcome — ✅ merged into `main` and pulled, ⏳ queued for auto-merge, or 🔴 stopped with the reason and the PR left open. On a no-change run: no PR was opened, and what established that.
+One concise summary. <!-- include: shared/text-only-turn.md -->Deliver that report in a **text-only turn** — after the last tool call, never in the same turn as one, or the run is recorded as unfinished even though the work landed.<!-- /include --> It covers: branch and PR number/URL; what `/review` found and what was applied (or clean / skipped); whether `/mc` ran and on which files; CI green first try or the repair rounds spent; and the outcome — ✅ merged into `main` and pulled, ⏳ queued for auto-merge, or 🔴 stopped with the reason and the PR left open. On a no-change run: no PR was opened, and what established that.
 
 ## Notes
 
 - **No human in the loop is the point.** Never stop to confirm anything you have a defined path for — including the merge. Do stop for the four things with no safe automatic answer: an unresolvable `/mc` conflict, CI still red after the repair budget, a diverged local `main`, and a PR that isn't this run's.
 - **`/task` owns the branch, the commits, the PR, and the teardown.** This command adds only the last mile — never implement, commit, or clean up here.
 - Never commit or push to `main` directly, never use `--admin`, never force-push.
+- <!-- include: shared/approval-own-call.md -->**A command that may need approval goes in its own Bash call** — `git fetch`, `git config`, and, as a narrow exception to the general rule to chain dependent mutations, branch-lifecycle operations such as checkout/switch, pull, remote-branch inspection, and local branch deletion. Folding one into an `&&` chain escalates approval to the whole compound command and costs a turn plus a retry. Put status output, pipes, and follow-up verification in separate read-only calls.<!-- /include -->
+- <!-- include: shared/classifier-refusal.md -->A classifier refusal is not evidence that repository protections should be weakened. Inspect the refused command first; when the intended operation is safe and the refusal looks incidental to the command's shape — an over-broad chain, pipe, or extra flag — retry only the smallest exact command, never an allowlisted Bash pattern or a permission-settings change.<!-- /include -->
+- <!-- include: shared/refusal-final.md -->A refusal of a **PR merge or a remote-ref deletion is final.** Surface it to the human and carry on with the rest of the work. Re-expressing the same operation is refused for the same reason and costs a second turn: `gh api -X PUT .../pulls/N/merge` is `gh pr merge`, and `gh api --method DELETE .../git/refs/heads/...` is `git push origin --delete`, so neither is a narrow retry — nor is re-running one under `GH_TOKEN=...`.<!-- /include --> Steps 6 and 7 are where this fires: `gh pr merge --delete-branch` and `git branch -d`.

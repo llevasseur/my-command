@@ -21,23 +21,17 @@ Parse `--draft` / `-d`; treat remaining text as optional title or context.
 3. Do not create commits. If the owning workflow asks this skill not to tear down
    its worktree, leave it intact. Otherwise remove a linked worktree only after
    confirming it is clean and its HEAD exists on the remote branch.
+   - Remove a worktree through the same mechanism that created it. One this
+     session merely entered is not owned by the session worktree tool; step back
+     out, then remove it through the repository helper from outside the worktree,
+     which re-verifies the branch reached origin. If another live session still
+     holds it, stop and report the path as left in place.
 4. Report the PR number and URL.
 
 ## Git call shape
 
-- As a narrow exception to the general rule to chain dependent mutations, issue
-  branch-lifecycle operations such as checkout/switch, pull, remote-branch
-  inspection, and local branch deletion as individual shell calls. Put status
-  output, pipes, and follow-up verification in separate read-only calls.
 - A classifier refusal is not evidence that repository protections should be
   weakened. Inspect the refused command first; when the intended operation is
   safe and the refusal looks incidental to the command's shape — an over-broad
   chain, pipe, or extra flag — retry only the smallest exact command, never an
   allowlisted Bash pattern or a permission-settings change.
-- A refusal of a PR merge or a remote-ref deletion is final. Surface it to the
-  human and carry on with the rest of the work. Re-expressing the same operation
-  is refused for the same reason and costs a second turn:
-  `gh api -X PUT .../pulls/N/merge` is `gh pr merge`, and
-  `gh api --method DELETE .../git/refs/heads/...` is `git push origin --delete`,
-  so neither is the narrow retry the bullet above permits — nor is re-running one
-  under `GH_TOKEN=...`.

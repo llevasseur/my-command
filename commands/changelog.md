@@ -19,4 +19,4 @@ The `<command-args>` block above, if non-empty, is a summary or area tag to reco
 ## Finish
 
 - Apply the edit directly. Don't commit unless the repo's flow expects the changelog committed with the work.
-- Report the entry you added and where, in a **text-only turn** — after the last tool call, never in the same turn as one, or the run reads as unfinished even though the entry landed.
+- Report the entry you added and where. <!-- include: shared/text-only-turn.md -->Deliver that report in a **text-only turn** — after the last tool call, never in the same turn as one, or the run is recorded as unfinished even though the work landed.<!-- /include -->

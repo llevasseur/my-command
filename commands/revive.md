@@ -114,7 +114,7 @@ Finishing the edits is not finishing the run. Go back to the workflow you identi
 - A run that was never inside `/my-command:task` ends wherever its own instructions say. If that is just "report", report.
 - Do **not** wrap the resumption in a new `/my-command:task` invocation: the branch and workspace already exist, and a nested run would create a second worktree for work that is already checked out.
 
-Report at the end: which transcript and store you used, where the session stopped, what you finished, what you deliberately left alone, and the PR number/URL if the workflow ended at one. Make that report a **text-only turn** — after the last tool call, never in the same turn as one. A run that ends on a tool call records no `done:` and reads as interrupted to the next `/my-command:revive`.
+Report at the end: which transcript and store you used, where the session stopped, what you finished, what you deliberately left alone, and the PR number/URL if the workflow ended at one. <!-- include: shared/text-only-turn.md -->Deliver that report in a **text-only turn** — after the last tool call, never in the same turn as one, or the run is recorded as unfinished even though the work landed.<!-- /include --> A run that ends on a tool call records no `done:` and reads as interrupted to the next `/my-command:revive`.
 
 ## Notes
 

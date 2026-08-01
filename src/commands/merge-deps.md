@@ -44,9 +44,7 @@ Parse leading flags off `$ARGUMENTS`:
    abort the user's work. Tell them to commit or stash and stop.
 4. Update and fast-forward local main: `git fetch --all --prune`, then
    `git checkout main && git pull --ff-only origin main`. If the fast-forward fails, stop
-   and report — local `main` diverged and needs a human. Keep the `git fetch` in its **own**
-   Bash call: it may require approval, and folding it into an `&&` chain escalates approval
-   to the whole compound command and costs a turn plus a retry.
+   and report — local `main` diverged and needs a human.
 
 ## Select the PRs
 
@@ -129,8 +127,7 @@ For each PR (number `N`, branch `B`):
    - 🔴 left for a human — with the reason (fork/cross-repo, unresolved conflict, or failed
      verification)
 4. Never mark the run complete if anything is 🔴 without saying so explicitly.
-5. Deliver that summary in a **text-only turn** — after the last tool call, never in the same
-   turn as one, or the run is recorded as unfinished even though every PR was handled.
+5. <!-- include: shared/text-only-turn.md -->Deliver that report in a **text-only turn** — after the last tool call, never in the same turn as one, or the run is recorded as unfinished even though the work landed.<!-- /include -->
 
 ## Notes
 
@@ -142,3 +139,6 @@ For each PR (number `N`, branch `B`):
 - Respect branch protection: merge via `gh pr merge`, never a direct push to `main`.
 - Worktrees live under `.claude/worktrees/`; remove each when its PR is done.
 - `$ARGUMENTS` holds only the flags — this command takes no free-text criteria.
+- <!-- include: shared/approval-own-call.md -->**A command that may need approval goes in its own Bash call** — `git fetch`, `git config`, and, as a narrow exception to the general rule to chain dependent mutations, branch-lifecycle operations such as checkout/switch, pull, remote-branch inspection, and local branch deletion. Folding one into an `&&` chain escalates approval to the whole compound command and costs a turn plus a retry. Put status output, pipes, and follow-up verification in separate read-only calls.<!-- /include -->
+- <!-- include: shared/classifier-refusal.md -->A classifier refusal is not evidence that repository protections should be weakened. Inspect the refused command first; when the intended operation is safe and the refusal looks incidental to the command's shape — an over-broad chain, pipe, or extra flag — retry only the smallest exact command, never an allowlisted Bash pattern or a permission-settings change.<!-- /include -->
+- <!-- include: shared/refusal-final.md -->A refusal of a **PR merge or a remote-ref deletion is final.** Surface it to the human and carry on with the rest of the work. Re-expressing the same operation is refused for the same reason and costs a second turn: `gh api -X PUT .../pulls/N/merge` is `gh pr merge`, and `gh api --method DELETE .../git/refs/heads/...` is `git push origin --delete`, so neither is a narrow retry — nor is re-running one under `GH_TOKEN=...`.<!-- /include --> Step 3's `gh pr merge N --<method> --delete-branch` is where this fires.

@@ -104,8 +104,7 @@ human — collect it and move on; never leave a branch mid-merge.
    - 🟡 branches that had conflicts you resolved and pushed (name the files you touched)
    - 🔴 branches left for a human (fork PRs, diverged, or unresolved conflicts) + the reason
 3. Never mark the task complete if any branch is in the 🔴 list without saying so explicitly.
-4. Deliver that summary in a **text-only turn** — after the last git call, never in the same
-   turn as one, or the run is recorded as unfinished even though every branch was handled.
+4. <!-- include: shared/text-only-turn.md -->Deliver that report in a **text-only turn** — after the last tool call, never in the same turn as one, or the run is recorded as unfinished even though the work landed.<!-- /include -->
 
 ## Rules
 
@@ -119,3 +118,5 @@ human — collect it and move on; never leave a branch mid-merge.
 - Never stash, reset --hard, or delete the user's uncommitted work.
 - One branch failing must not abort the others (ALL mode processes every branch).
 - `$ARGUMENTS` holds the flags; treat anything after `-t`/`--target` as the branch name.
+- <!-- include: shared/approval-own-call.md -->**A command that may need approval goes in its own Bash call** — `git fetch`, `git config`, and, as a narrow exception to the general rule to chain dependent mutations, branch-lifecycle operations such as checkout/switch, pull, remote-branch inspection, and local branch deletion. Folding one into an `&&` chain escalates approval to the whole compound command and costs a turn plus a retry. Put status output, pipes, and follow-up verification in separate read-only calls.<!-- /include -->
+- <!-- include: shared/classifier-refusal.md -->A classifier refusal is not evidence that repository protections should be weakened. Inspect the refused command first; when the intended operation is safe and the refusal looks incidental to the command's shape — an over-broad chain, pipe, or extra flag — retry only the smallest exact command, never an allowlisted Bash pattern or a permission-settings change.<!-- /include -->

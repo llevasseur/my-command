@@ -37,15 +37,13 @@ Parse `--here`, `--base <branch>`, `--draft`, `--sub`, and `--add <skill prompt,
    way. After the PR exists, confirm the worktree is clean and its HEAD is on the
    remote branch, remove it from outside the worktree, and report branch, checks,
    commits, PR, and teardown.
-   - Record how each task worktree was created and remove it through the same
-     mechanism. A worktree created by `git worktree add` or a repository helper is
-     not owned by a session worktree tool merely because the session later entered
-     it. Before removal, inspect `git worktree list --porcelain`, locked state,
-     uncommitted changes, and unpushed commits. Run cleanup from outside the
-     target worktree. If a tool reports that the session does not own a worktree,
-     do not retry that tool: reconfirm the safety checks, then use the repository
-     helper or `git worktree remove <exact-path>` that matches how the worktree
-     was created.
+   - Remove a worktree through the same mechanism that created it. One created by
+     `git worktree add` or a repository helper is not owned by a session worktree
+     tool merely because the session later entered it. If a tool reports the
+     session does not own it, do not retry that tool: step back out and remove it
+     through the repository helper from outside the worktree, which re-verifies
+     the branch reached origin. If another live session still holds it, stop and
+     report the path as left in place.
 
 Validation limitations do not stop PR creation when useful in-scope recovery is exhausted; document them in the PR. Never force-remove dirty or unpushed work.
 
@@ -65,10 +63,3 @@ Validation limitations do not stop PR creation when useful in-scope recovery is 
   safe and the refusal looks incidental to the command's shape — an over-broad
   chain, pipe, or extra flag — retry only the smallest exact command, never an
   allowlisted Bash pattern or a permission-settings change.
-- A refusal of a PR merge or a remote-ref deletion is final. Surface it to the
-  human and carry on with the rest of the work. Re-expressing the same operation
-  is refused for the same reason and costs a second turn:
-  `gh api -X PUT .../pulls/N/merge` is `gh pr merge`, and
-  `gh api --method DELETE .../git/refs/heads/...` is `git push origin --delete`,
-  so neither is the narrow retry the bullet above permits — nor is re-running one
-  under `GH_TOKEN=...`.
