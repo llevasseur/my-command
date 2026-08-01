@@ -5,19 +5,40 @@ description: Merge the latest default branch into one or more pull-request branc
 
 # Merge Default Branch
 
-Parse `--here` / `-h`, `--target <branch>` / `-t <branch>`, or default to all same-repository open PRs based on the default branch. Announce the mode.
+Parse `--here` / `-h`, `--target <branch>` / `-t <branch>`, or default to all same-repository open PRs based on the default branch. Announce the mode. Target mode does its merge in an isolated worktree; the other two modes work in the current checkout.
 
 1. Use `my-command-tools doctor` and `state` when available to confirm the
-   repository and record the starting branch. Require a clean worktree after
-   first checking for an in-progress merge; finish only a pending merge that
-   exactly matches this invocation.
-2. Discover the remote default branch, fetch all remotes, and fast-forward its local branch. Stop if local history diverged.
-3. Resolve the branch list. Exclude forks and create a local tracking branch when only the target remote branch exists.
-4. For each branch, pull it with `--ff-only`, merge the local default branch with a merge commit, and resolve conflicts one file at a time. Preserve both sides' intent; regenerate lockfiles, generated indexes, and snapshots instead of hand-merging them.
+   repository and record the starting branch. For the current-branch and all-PRs
+   modes, require a clean working tree after first checking for an in-progress
+   merge; finish only a pending merge that exactly matches this invocation.
+   Target mode skips that requirement — it never touches this checkout, so
+   uncommitted work here stays exactly as it is.
+2. Discover the remote default branch and fetch all remotes. Fast-forward the local default branch for the current-branch and all-PRs modes only, and stop if local history diverged; target mode merges the remote-tracking default branch directly and leaves the local one alone.
+3. Resolve the branch list. Exclude forks. In target mode, confirm the branch exists locally or on the remote and stop if it does not — do not create a tracking branch by hand, since step 3a checks it out for you.
+   - 3a. **Target mode only.** Check the branch out into its own worktree —
+     `my-command-tools worktree begin --branch <branch> --existing --bootstrap`
+     when the toolkit is available, otherwise `git worktree add`. Checking out an
+     **existing** branch is the safe part: creating a new one would abandon the
+     work you are merging into. Do not move the session into the worktree; run
+     every git call against it (`git -C <path>`) and read and edit conflicted
+     files under that path, because this workflow is often a step inside another
+     one and relocating would move the ground under its caller. If the branch is
+     already held by another worktree, inspect the registered list and use that
+     checkout rather than forcing or removing it. If a previous run left a merge
+     in progress there, finish it rather than aborting.
+4. For each branch, pull it with `--ff-only` (target mode is already checked out, so skip the pull), merge the default branch with a merge commit, and resolve conflicts one file at a time. Preserve both sides' intent; regenerate lockfiles, generated indexes, and snapshots instead of hand-merging them.
 5. If a conflict is genuinely ambiguous, abort that branch's merge and report it for a human. Never leave a branch mid-merge.
-6. Run `my-command-tools verify --fast` when available, push without force,
-   return to the starting branch, and report clean merges, resolved conflicts
-   with file names, and human-blocked branches.
+6. Run `my-command-tools verify --fast` when available — in target mode with the
+   worktree as the working directory, or it grades the wrong checkout, and treat
+   a failure caused by an uninstalled dependency there as environment rather than
+   as your resolution. Then push without force.
+7. Finish. The current-branch and all-PRs modes return to the starting branch.
+   Target mode has nothing to return to and instead removes its worktree from
+   outside it (`my-command-tools worktree end --branch <branch>`), on every exit
+   path including the aborted one. That removal is refused while the branch has
+   commits the remote lacks: push them, or if they predate this run leave the
+   worktree in place and report its path — never force it away. Report clean
+   merges, resolved conflicts with file names, and human-blocked branches.
 
 Use `git merge-tree --write-tree` for conflict prechecks rather than GitHub's lazy mergeability state. Never rewrite history, stash user work, or discard a side merely to compile.
 

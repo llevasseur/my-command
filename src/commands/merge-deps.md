@@ -82,7 +82,8 @@ For each PR (number `N`, branch `B`):
    next PR.
 
 2. **Verify in an isolated worktree.** After `/mc`, `B` is up to date with `main` and
-   checked out nowhere (mc returns to `main`). Check it out in a throwaway worktree and
+   checked out nowhere — `/mc -t` does its merge in its own worktree and tears that worktree
+   down before returning. Check `B` out in a throwaway worktree and
    confirm the dependency bump is green before it touches `main`:
    - `my-command-tools worktree begin --branch B --existing --bootstrap`. `--existing`
      checks `B` out rather than creating it — creating it would throw away the bump `/mc`

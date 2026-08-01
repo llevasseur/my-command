@@ -55,7 +55,7 @@ skill syntax—for example, `$task -h ...`, `$review -t 42`, or `$mc -t feat/sea
 | `review` | `/review -t 42` | `--target` / `-t <PR-number-or-branch>` — review PR #42 (or a named branch) instead of the current branch's PR. |
 | `mc` | `/mc` | Default — merge latest `main` into **every** open PR branch, resolve conflicts, push. |
 | `mc` | `/mc -h` | `--here` / `-h` — only the **current branch**. |
-| `mc` | `/mc -t feat/search` | `--target` / `-t <branch>` — only the named branch `feat/search`. |
+| `mc` | `/mc -t feat/search` | `--target` / `-t <branch>` — only the named branch `feat/search`, merged in an **isolated worktree** so the current checkout is never touched. |
 | `merge-deps` | `/merge-deps` | Default — merge every open non-draft `dependencies`-labeled PR into `main`, one by one (`/mc` first, verify, `gh pr merge --squash`, clean the worktree). |
 | `merge-deps` | `/merge-deps --auto -n` | `--auto` enables GitHub auto-merge instead of waiting on CI; `--dry-run` / `-n` just lists the PRs. `--label <name>` narrows the filter, `--merge`/`--rebase` change the method. |
 | `docs` | `/docs` | Default — audit every doc for staleness, add missing docs, prune obsolete docs, then truncate the resulting dirty queue without losing claims. Runs both phases in one `/task`: fresh worktree off `main`, then `/clean` + `/pr`. |
