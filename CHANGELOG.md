@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-08-02
+
+### Added
+
+- **`/cp <command> <prompt>` — compose another command's invocation and copy it to the clipboard instead of running it.** The use case is handing a prompt to a *different* agent: you want `/task <criteria>` on the clipboard, not a task run. The cost of that today is a full round trip where the agent prints the command back and you copy it out of the transcript. `/cp` writes it straight to the clipboard in one heredoc-quoted `pbcopy` call (`wl-copy`, `xclip -selection clipboard`, or `clip.exe` off macOS) and replies `Done!` plus at most one line naming the direction it took — the composed text is never printed, because printing it is the cost the command exists to avoid. Minimizing tokens is the feature, so the constraints are all negative: it never invokes the target command, never loads its instructions, never checks that it exists (an unrecognized name is copied as typed and the receiving agent reports it), and never reads files, greps, or touches git to enrich the prompt. What it *does* do is shape the prompt to stand alone for an agent that cannot see this conversation — pronouns resolved, files, branches, and PR numbers named, stated constraints kept, the user's own flags preserved as typed. `--verbatim` / `-v` skips that shaping. Arguments too vague to compose get one focused question and no clipboard write. Ships with the Codex skill (`$cp`, composing `$<skill>` invocations) and a feature doc.
+
 ## 2026-08-01
 
 ### Added
