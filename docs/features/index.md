@@ -13,6 +13,7 @@ Add one with `okq new feature "<title>"`.
 |-------|------|
 | changelog | [changelog.md](changelog.md) |
 | clean | [clean.md](clean.md) |
+| cp | [cp.md](cp.md) |
 | docs | [docs.md](docs.md) |
 | fb | [fb.md](fb.md) |
 | god | [god.md](god.md) |

@@ -29,6 +29,7 @@
 | `revive` | Resume an interrupted session from its recorded transcript — reconstruct what it was doing, recover its branch/worktree, finish only what's outstanding, and complete the original workflow. |
 | `improve` | Turn claude-proxy's session suggestions into an implemented improvement — read the pending findings for a range of session buckets, hand them to `task` as criteria, and flag what shipped as done. |
 | `trim` | Decide whether the current conversation is safe to compact, then provide focused instructions for Claude Code's built-in `/compact`. |
+| `cp` | Compose another command's invocation from a prompt and copy it to the clipboard, ready to paste into another agent — without running it or printing it. |
 
 ## Use cases
 
@@ -75,6 +76,8 @@ skill syntax—for example, `$task -h ...`, `$review -t 42`, or `$mc -t feat/sea
 | `improve` | `/improve -n -r 9` | `--dry-run` / `-n` — report the pending suggestions and the criteria they compose into; no subagent, no PR, nothing marked. |
 | `improve` | `/improve -d -r 9 only the serial-discovery findings` | `--here` / `-h`, `--base <branch>`, `--draft` / `-d`, `--add` / `-a` pass straight through to `/task`; trailing text narrows which pending suggestions to act on. |
 | `trim` | `/trim` | Evaluate six evidence-backed safety gates; recommend continuing or emit a tailored `/compact` command. |
+| `cp` | `/cp task add a dark-mode toggle to settings` | Default — shape the prompt to stand alone for an agent that can't see this conversation, copy `/task add a dark-mode toggle to settings` to the clipboard, and reply `Done!`. The named command is never run, loaded, or printed. |
+| `cp` | `/cp -v review 42` | `--verbatim` / `-v` — copy the prompt exactly as typed, no shaping. |
 
 `revive`'s default proxy source is location-agnostic: export **`CLAUDE_PROXY_STORE`**
 (the directory holding `<id>.md` transcripts) and optionally **`CLAUDE_PROXY_ARCHIVE`**
