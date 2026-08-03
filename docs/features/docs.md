@@ -86,8 +86,11 @@ A sentence it shortens comes out against the same vocabulary standard
 concept; the warning before the step it guards; active voice and imperative for
 an action; literal wording over idiom; at most three nouns in a row; explicit
 conjunction scope; and uppercase MUST / MUST NOT / SHOULD / MAY (RFC 2119) at
-the doc's existing force. Step 6 carries its own copy of that list rather than
-loading `/truncate`, since it never invokes it—the two are kept in sync by hand.
+the doc's existing force. Step 6 never invokes `/truncate` and never loads its
+file, so it carries the list physically—but as a `<!-- include-block: -->` of
+`src/shared/rewrite-toward.md`, the same snippet `/truncate` includes. The two
+cannot drift: `check-commands.sh` runs `expand-includes.mjs --check` before the
+build, and asserts the directive is present in both.
 
 The add pass uses `_template.md` or `okq new`, source actually read, existing
 tags, and cross-links. The prune pass repoints renames, never deletes an ADR or

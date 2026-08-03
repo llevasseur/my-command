@@ -4,7 +4,7 @@ title: Adding a command
 description: The checklist an agent follows to add a MyCommand slash command so the suite, the install wizard, and the docs stay in sync.
 tags: [process, commands, wizard]
 timestamp: 2026-07-15
-updated: 2026-08-01
+updated: 2026-08-02
 dirty: true
 ---
 
@@ -32,22 +32,38 @@ build step namespaces them for the published plugin.
 
 Each installed command file is loaded standalone, so there is no runtime include —
 shared text must be physically present in every copy. `src/shared/<name>.md` holds
-one line of canonical text (no frontmatter), and a command pulls it in with:
+the canonical text (no frontmatter), and a command pulls it in with one of two
+directives, chosen by whether the body is one line or many.
+
+**Inline**, for a one-line snippet — the body lands on the directive's own line, so
+it keeps whatever bullet prefix and list indentation it was written under:
 
 ```markdown
 - <!-- include: shared/text-only-turn.md -->
 ```
 
-`scripts/expand-includes.mjs` rewrites that directive **in place** in
-`src/commands/`, inline on its own line so it survives inside a nested bullet, and
-wraps the body in `<!-- /include -->`. Re-running replaces the body rather than
-nesting a copy. `build-plugin.sh` expands before copying, so no installer changes;
+**Block**, for a multi-line snippet — the body lands between the markers on its own
+lines:
+
+```markdown
+<!-- include-block: shared/rewrite-toward.md -->
+<!-- /include-block -->
+```
+
+A block directive MUST start at column 0, and the expander refuses an indented one:
+a multi-line body inserted under a bullet would break out of the list. An inline
+directive MUST resolve to a single line, for the same reason — the expander refuses
+a multi-line snippet there and names the block form. Re-running either replaces the
+body it already owns rather than nesting a copy.
+
+`scripts/expand-includes.mjs` rewrites both **in place** in `src/commands/`.
+`build-plugin.sh` expands before copying, so no installer changes;
 `check-commands.sh` runs `expand-includes.mjs --check` **before** the build, so a
 hand-edit between the markers fails CI instead of being silently repaired.
+`scripts/expand-includes.test.mjs` covers the parsing, and `pnpm test` runs it.
 
-Edit `src/shared/`; never the text between the markers. A snippet must be a single
-line — the expander refuses a multi-line one. Codex skills do **not** use the
-mechanism: they are translations, not copies.
+Edit `src/shared/`; never the text between the markers. Codex skills do **not** use
+the mechanism: they are translations, not copies.
 
 ## Checklist
 

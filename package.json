@@ -28,7 +28,7 @@
     "check": "biome check .",
     "check:commands": "./scripts/check-commands.sh",
     "check:toolkit": "tsc -p tsconfig.toolkit.json",
-    "test": "node --test \"src/toolkit/**/*.test.mjs\""
+    "test": "node --test \"src/toolkit/**/*.test.mjs\" \"scripts/**/*.test.mjs\""
   },
   "license": "MIT",
   "author": "Leevon Levasseur",

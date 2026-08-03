@@ -134,10 +134,26 @@ Run the density pass **inside the existing `/task` workflow**. Do not invoke `/t
 
 1. Build the queue with `okq --bundle <dir> find --where dirty=true --json` after reconciliation. This intentionally includes dirty docs from earlier hand edits or interrupted runs as well as docs updated or added above. Exclude generated indexes and anything the bundle marks generated. Record each queued doc's body lines and characters. An empty queue is a successful clean result.
 2. Evaluate each doc independently, in parallel subagents where allowed. Inventory every actionable claim first: commands, flags, defaults, exit codes, paths, environment variables, behavior, ordering, guardrails, non-obvious constraints, links, and the **force** of an instruction — must, should, and may are three different obligations, and flattening one into another changes the doc as surely as deleting a flag.
-3. Cut narration, ceremony, unactionable justification, repetition, linked-doc duplication, hedging, filler, and redundant examples. Preserve every inventoried claim, required section, ADR rationale, frontmatter `description`, command line, code block, and table. Never add claims, fix suspected drift, rewrite voice, or bump `updated` / `timestamp`.
-   - **Rewrite toward** — how a sentence you are already shortening comes out; never a license for the voice rewrite this step forbids, and never a reason to touch a sentence that was staying. One instruction per sentence. One term per concept, reused rather than varied. The warning before the step it guards. Active voice and imperative for an action. Literal wording over idiom. At most three nouns in a row. Explicit conjunction scope. Uppercase MUST / MUST NOT / SHOULD / MAY ([RFC 2119](https://www.rfc-editor.org/rfc/rfc2119)) where the obligation is the point, at the doc's existing force. These mirror [truncate](truncate.md)'s list — keep the two in sync, since this step deliberately does not load that file. Do **not** adopt [ASD-STE100](https://asd-ste100.org)'s closed dictionary, sentence-length caps, or tense restrictions; they serve a limited-vocabulary human reader and cost precision here.
+3. Cut narration, ceremony, unactionable justification, repetition, linked-doc duplication, hedging, filler, and redundant examples. Preserve every inventoried claim, required section, ADR rationale, frontmatter `description`, command line, code block, and table. Never add claims, fix suspected drift, rewrite voice, or bump `updated` / `timestamp`. Shape each surviving sentence by the **Rewrite toward** rules below.
 4. Re-derive the claim inventory after each edit and restore anything missing. A missing claim is a bug, not a successful truncation. Confirm a cut over 40% of the body unless `--yes` / `-y` was given.
 5. Remove `dirty` from every evaluated doc, including one already lean enough to receive a `reviewed` verdict. If a doc cannot be evaluated safely, defer it, keep it dirty, and report why rather than silently declaring the queue clean.
+
+<!-- include-block: shared/rewrite-toward.md -->
+### Rewrite toward
+
+These govern **how a sentence you are already shortening comes out**. They are not a license to rewrite voice — the `Never rewrite for voice` rule still holds — and they are not a reason to touch a sentence you were not otherwise cutting.
+
+- **One instruction per sentence.** Split a sentence carrying two.
+- **One term per concept.** Reuse the doc's existing word every time it appears. A synonym introduced for variety reads as a second thing.
+- **The warning before the step it guards.** A caveat trailing its instruction arrives after the reader has acted.
+- **Active voice, imperative for an action.** "Run the gate", not "the gate should be run" — the passive drops the actor, and the actor is usually the claim.
+- **Literal over idiomatic.** Replace "paper over", "silently under-check", "fakes a pass" with what they actually mean.
+- **At most three nouns in a row.** Break a longer cluster with `of` or `for`.
+- **Explicit conjunction scope.** "Never do A or B" leaves how far the negation reaches ambiguous. Name each side.
+- **Uppercase MUST / MUST NOT / SHOULD / MAY** where the obligation is the point ([RFC 2119](https://www.rfc-editor.org/rfc/rfc2119)). Preserve the doc's existing force; never soften or strengthen it to fit the form.
+
+Deliberately **not** adopted from [ASD-STE100](https://asd-ste100.org) Simplified Technical English, which these rules are drawn from: its closed ~900-word dictionary, its sentence-length caps, and its restriction to simple tenses. Those serve a human reader with a limited English vocabulary. Here they cost precision and buy nothing.
+<!-- /include-block -->
 
 ## Step 7 — Reconcile, verify, report
 
