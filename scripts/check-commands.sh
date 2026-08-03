@@ -136,11 +136,10 @@ if ! grep -Fq 'Run the `$truncate` density rules inline' skills/docs/SKILL.md; t
   fail=1
 fi
 
-# 6. The closing turn is a step of every command, not a note at the end of one. It
-# regressed twice: first as advisory prose, then as a step /task alone carried while the
-# other commands kept it as a tail sentence. Both halves are asserted here — the terminal
-# step that states the contract, and the opening anchor that survives a compaction, since a
-# rule only in the prompt is gone the moment the run is summarized.
+# 6. The closing turn is a step of every command, not a note at the end of one, and is
+# anchored in the todo list up front — a rule that lives only in the prompt is gone once the
+# run is summarized. It regressed twice: first as advisory prose, then as a step /task alone
+# carried while every other command kept it as a tail sentence.
 for f in src/commands/*.md; do
   name="$(basename "$f")"
   if ! grep -Fq 'include: shared/closing-turn-anchor.md' "$f"; then
@@ -161,8 +160,7 @@ for f in skills/*/SKILL.md; do
     echo "::error::$f no longer states the text-only closing turn; its runs would record no outcome."
     fail=1
   fi
-  # The skills are hard-wrapped prose, so the phrase can straddle a line break. Flatten
-  # whitespace before matching rather than asserting a fragment short enough to survive wrapping.
+  # Hard-wrapped prose, so the phrase can straddle a line break — flatten whitespace first.
   if ! tr '\n' ' ' <"$f" | tr -s ' ' | grep -Fq 'A compaction boundary is a checkpoint'; then
     echo "::error::$f no longer mirrors the compaction-boundary rule; a run compacted mid-flight would record no outcome."
     fail=1
