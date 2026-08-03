@@ -4,7 +4,7 @@ title: clean
 description: Clean up comments across a branch's changes — lean and to the point, comments only, never code.
 tags: [command, comments]
 timestamp: 2026-07-15
-updated: 2026-07-31
+updated: 2026-08-02
 ---
 
 # clean
@@ -33,11 +33,15 @@ are left for whoever invoked `/clean` to own: uncommitted is the deliverable for
 direct run, while an invoking workflow ([task](task.md) Step 3,
 [task-bootstrap](task-bootstrap.md) Step 7) commits them and isn't finished until it
 has. Nested runs hand back and continue the invoker rather than stopping at
-uncommitted cleanup.
+uncommitted cleanup. Teardown is never `/clean`'s either — it removes a worktree by
+no route at all; the invoker owns that workspace.
 
 Prose in Markdown docs is out of scope even when the branch diff touches it —
 that is [truncate](truncate.md)'s pass, which has claim-preservation rules this
 one doesn't. Comments inside a doc's fenced code blocks are still in scope here.
+
+Reports how many comments were removed versus tightened, grouped by file, in a
+text-only closing turn.
 
 ## Related
 

@@ -4,6 +4,7 @@ title: Install wizard
 description: The npx wizard that installs the command suite as a Claude Code plugin, bare personal commands, or Codex Skills, with per-item overwrite.
 tags: [process, wizard, install, codex]
 timestamp: 2026-07-28
+updated: 2026-08-02
 ---
 
 # Install wizard
@@ -91,6 +92,7 @@ overwrite prompt.
 
 - Spec: [Adding a command](adding-a-command.md)
 - Spec: [Command toolkit](command-toolkit.md)
+- Feature: [sync](../features/sync.md) — updates an already-installed device.
 - `scripts/install-codex-personal.sh` provides the git-synced Codex device install.
 - ADR: [0002 Command docs as okq specs](../adrs/0002-command-docs-as-okq-specs.md)
 - Command specs live in `features/` — list them with

@@ -4,8 +4,7 @@ title: review
 description: Independently review an open PR against the codebase, then apply its findings via fb.
 tags: [command, workflow, git]
 timestamp: 2026-07-22
-updated: 2026-07-30
-dirty: true
+updated: 2026-08-02
 ---
 
 # review
@@ -30,13 +29,18 @@ and `/pr` — updating the same PR.
 - `--here` / `-h` — review the current branch's PR directly in the current
   checkout: no worktree and no new review agent. This expects the command to
   already be running inside a fresh, independent agent. Ignored (with a note)
-  if `--target` is also given.
+  if `--target` is also given. Requires the current checkout to already be on the
+  PR's `headRefName` with no unrelated uncommitted changes — either mismatch is a
+  stop, not a checkout.
 - Anything left after flags is extra review context/focus passed to the reviewer.
 
 ## Behavior
 
-Resolves the target PR via `gh pr view`. By default it checks the branch out in a
-fresh worktree with `worktree begin --existing` and dispatches a **fresh**
+Resolves the target PR via `gh pr view`; an unresolvable `--target` or a current
+branch with no open PR is a stop, never a guessed branch or a newly opened PR. By
+default it checks the branch out in a
+fresh worktree with `worktree begin --branch <headRefName> --existing --bootstrap`
+and dispatches a **fresh**
 (non-fork) agent to review it. With `--here`, it stays in the current checkout and
 the current agent runs the same review rubric directly, without spawning another
 agent. The review reads the diff, checks it against the PR's own description, runs
@@ -47,15 +51,16 @@ findings — runs it via the `fb` skill in the same worktree/checkout, so `fb`'s
 default (current branch, no `--target`) applies the fix directly onto the PR's
 branch. That `fb` run is always **inline**, never handed to another agent: the
 independence a spawned agent buys belongs to the review itself and was already
-spent, while applying known findings is ordinary work on the branch and keeps the
-findings in the context that just read them. It never merges or approves the PR, and never posts a GitHub PR
+spent, while applying known findings is ordinary work on the branch. It never merges or approves the PR, and never posts a GitHub PR
 review/comment — its only output is the `/fb`-ready feedback, shown and applied.
 
 In default mode `/review` removes its own worktree at the end, clean PR or not:
 [pr](pr.md) tears down only worktrees its own session created, and one entered via
 `EnterWorktree({path})` can only be left with `action: "keep"` — so `/review` steps back
 out and removes it with `worktree end --branch <headRefName>`. Under `--here` there is no
-worktree to remove and the checkout is left alone.
+worktree to remove and the checkout is left alone. Either way the run closes with a
+text-only turn carrying the verdict, what `/fb` applied or that the PR was clean, and
+the PR.
 
 ## Related
 

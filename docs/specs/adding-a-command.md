@@ -5,7 +5,6 @@ description: The checklist an agent follows to add a MyCommand slash command so 
 tags: [process, commands, wizard]
 timestamp: 2026-07-15
 updated: 2026-08-02
-dirty: true
 ---
 
 # Adding a command
@@ -17,13 +16,27 @@ keeps bare source, generated plugin, install wizard, and docs aligned.
 
 ## A command is agent instructions
 
-`src/commands/<name>.md` is a prompt: frontmatter (`description`, optional
-`argument-hint`, `allowed-tools`) plus an imperative body. Match the shape of the
-existing commands:
+`src/commands/<name>.md` is a prompt: frontmatter (`description`, plus
+`argument-hint` and `allowed-tools` where they apply) and an imperative body.
+Match the shape of the existing commands:
 
-- a `## Flags` section when the command parses leading flags off `$ARGUMENTS`,
-- numbered `## Steps` for the procedure,
-- a `## Notes` section for guardrails (what never to do).
+- a `## Flags` section when the command takes leading flags. The input arrives in
+  one of two holders. Most commands now read the `<command-args>` block; `clean`,
+  `cp`, `mc`, `merge-deps`, and `sync` still read `$ARGUMENTS`. Either way the
+  convention is the same — parse leading flags off the front, the remainder is
+  free text. Prefer `<command-args>` for a new command. A command that takes no
+  input (`trim`) omits both and has no `argument-hint`.
+- the procedure as steps — one `## Step N — <title>` heading per step for a
+  multi-phase command, or a single numbered `## Steps` list for a short one,
+- a closing guardrail section: `## Notes`, or `## Finish` / `## Rules` where the
+  command ends on an action.
+- the shared closing-turn rule, verbatim as a directive:
+  `- <!-- include: shared/text-only-turn.md -->`. It states that a run's outcome
+  is recorded only from a message carrying text and zero tool calls, so every
+  ending — shipped, blocked, or nothing-to-do — owes one final text-only turn
+  sent after the last tool call returns. `check-commands.sh` fails any command
+  missing the include, and the matching Codex skill MUST state the same rule in
+  its own words.
 
 Bare is canonical: sibling commands are referenced bare (`/clean`, `/pr`); the
 build step namespaces them for the published plugin.
@@ -86,8 +99,13 @@ the mechanism: they are translations, not copies.
 6. **README + CHANGELOG** — add the command to both README tables (What's inside,
    Use cases) and add a CHANGELOG `### Added` entry.
 7. **Verify** — run `pnpm run check:commands` (or `./scripts/check-commands.sh`):
-   it fails unless Claude commands, Codex skills, and feature docs are in
-   one-to-one sync and the wizard still globs both source directories. Also
+   it fails unless the shared includes are unedited (`expand-includes --check`,
+   run before the build), `commands/` is byte-identical to a fresh build, Claude
+   commands / Codex skills / feature docs are one-to-one, the wizard still globs
+   both source directories and still installs the toolkit on PATH
+   ([Command toolkit](command-toolkit.md)), every command carries the
+   `shared/text-only-turn.md` include and every skill states the rule, and the
+   two density paths keep `shared/rewrite-toward.md`. Also
    confirm `okq --bundle docs validate` passes. This check runs in PR CI, so a
    missed step blocks the merge rather than shipping silently.
 
@@ -122,6 +140,7 @@ hand-edit has to set the flag or it silently misses both workflows. Do not bump
 ## Related
 
 - Spec: [Install wizard](install-wizard.md)
+- Spec: [Command toolkit](command-toolkit.md)
 - ADR: [0002 Command docs as okq specs](../adrs/0002-command-docs-as-okq-specs.md)
 - All command specs live in `features/` — list them with
   `okq --bundle docs find --type feature`.

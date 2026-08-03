@@ -4,6 +4,7 @@ title: merge-deps
 description: Batch-merge open non-draft Dependabot PRs into main, resolving conflicts with /mc, verifying in a worktree, and cleaning up after each.
 tags: [command, git, merge, dependabot]
 timestamp: 2026-07-18
+updated: 2026-08-02
 ---
 
 # merge-deps
@@ -36,7 +37,8 @@ cross-repo/fork PRs, whose resolution can't be pushed), then processes them
 sequentially in ascending PR number. Per PR: `git fetch origin <branch>` to refresh
 the branch first (Dependabot force-pushes after the up-front fetch, so a stale ref
 would make `/mc`'s push get rejected as non-fast-forward), `/mc -t <branch>` to merge
-`main` in and resolve conflicts, then `worktree begin --existing --bootstrap` plus
+`main` in and resolve conflicts, then `worktree begin --branch <branch> --existing
+--bootstrap` plus
 `verify` to confirm the bump is green in an isolated worktree, `gh pr merge`
 into `main`, `worktree end --force` to drop the throwaway worktree (the one place
 forcing is right — these hold install artifacts, never authored work), and refresh
