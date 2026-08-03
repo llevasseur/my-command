@@ -9,10 +9,10 @@
 //            <!-- /include-block -->
 //
 // Inline expansion stays on the directive's own line, so the directive keeps whatever list
-// indentation and bullet prefix it was written under — hence the single-line rule for an
-// inline snippet: a multi-line body would land at column 0 and break out of a nested bullet.
-// The block form is the affordance for a multi-line body. It must start at column 0 for the
-// same reason, and the expander refuses an indented one rather than emitting broken Markdown.
+// indentation and bullet prefix it was written under — hence the single-line rule: a
+// multi-line body there would break out of a nested bullet. The block form carries a
+// multi-line body and must start at column 0 for the same reason; an indented one is refused
+// rather than emitting broken Markdown.
 // `--check` reports drift instead of writing, so a hand-edit inside either form fails CI
 // rather than being silently repaired by the next build.
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -33,7 +33,7 @@ const INLINE_RE = /<!-- include: shared\/([\w.-]+)\.md -->(?:[^\n]*?<!-- \/inclu
 const BLOCK_OPEN_RE = /^([ \t]*)<!-- include-block: shared\/([\w.-]+)\.md -->[ \t]*$/;
 const BLOCK_CLOSE = '<!-- /include-block -->';
 
-/** Read a snippet body by name. Throws when the snippet does not exist. */
+/** A snippet's body, trimmed. Throws when it does not exist. */
 export const readSnippet = (sharedDir, name) => {
   const path = join(sharedDir, `${name}.md`);
   if (!existsSync(path)) throw new Error(`no such snippet: src/shared/${name}.md`);
@@ -76,9 +76,9 @@ export const expandBlock = (source, read) => {
 
     out.push(`<!-- include-block: shared/${name}.md -->`, read(name), BLOCK_CLOSE);
 
-    // Drop the body this directive already owns so a re-run replaces it rather than stacking a
-    // second copy. Stop at the next directive: an unclosed one must not swallow the following
-    // block's body the way a greedy match would.
+    // Drop the body this directive already owns, so a re-run replaces it rather than stacking
+    // a copy. Stop at the next directive: an unclosed one must not swallow the following
+    // block's body.
     for (let j = i + 1; j < lines.length; j += 1) {
       if (BLOCK_OPEN_RE.test(lines[j])) break;
       if (lines[j] === BLOCK_CLOSE) {

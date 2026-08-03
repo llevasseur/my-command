@@ -154,11 +154,9 @@ for f in src/commands/*.md; do
   fi
 done
 
-# 7. The Rewrite toward vocabulary rules reach both density paths. /docs Step 6 runs the pass
-# inline and never loads truncate.md, so the two used to hold hand-mirrored copies and drifted
-# by construction. The block include makes check 0 (expand-includes --check) the drift guard;
-# these assertions stop the directive itself being deleted, and hold the Codex skills — which
-# are translations, not includes — to carrying the rules in their own words.
+# 7. Both density paths keep the Rewrite toward vocabulary rules. Check 0 catches an edit
+# between the markers but not a deleted directive, which is what these assert. The Codex
+# skills are translations, not includes, so they are held to the rules in their own words.
 for f in src/commands/truncate.md src/commands/docs.md; do
   if ! grep -Fq 'include-block: shared/rewrite-toward.md' "$f"; then
     echo "::error::$f dropped the shared/rewrite-toward.md include; its density pass has no vocabulary standard."
