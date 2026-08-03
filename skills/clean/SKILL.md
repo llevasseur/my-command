@@ -14,3 +14,12 @@ Only touch comments—never code, logic, formatting, or behavior.
 5. Never add comments. Report removed and tightened counts by file.
 6. Do not commit — a rule scoped to this skill, not to whatever invoked it. The edits are left for the invoking workflow to commit as part of its own run; when one invoked you, hand back and continue it at its next step instead of stopping at uncommitted cleanup. If the invoker never says who commits, flag the uncommitted edits in the summary.
 7. Teardown is never yours. Never remove a worktree here, by any route — whoever invoked this skill owns that workspace and its teardown.
+
+## Closing turn
+
+Close the run in a text-only turn: one final message carrying text and zero tool
+calls, sent after the last tool call returns rather than alongside it. A run's
+outcome is recorded only from a message with no tool call in it, so ending on one
+— or bundling the report into one — records no outcome at all. Every ending owes
+that turn, including one that stops early, is blocked or refused, or hands work
+back to an invoking workflow.

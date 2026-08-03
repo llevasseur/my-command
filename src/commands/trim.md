@@ -47,6 +47,6 @@ If every gate passes, finish with `TRIM`, followed by a single copyable command:
 
 The instructions must tell `/compact` to preserve the original goal, user constraints and decisions, current implementation and repository state, changed files, verification evidence, unresolved work, and exact next action. Tell it to discard superseded plans, repetitive tool output, completed narration, and failed approaches except for concise negative knowledge needed to prevent retries.
 
-Emit the six lines and the verdict. <!-- include: shared/text-only-turn.md -->Deliver that report in a **text-only turn** — after the last tool call, never in the same turn as one, or the run is recorded as unfinished even though the work landed.<!-- /include -->
+Emit the six lines and the verdict. <!-- include: shared/text-only-turn.md -->Deliver that report in a **text-only turn** — a final message carrying text and **zero tool calls**, sent after the last tool call returns rather than alongside it, because a run's outcome is recorded only from a message with no tool call in it: end on (or bundle the report into) a tool call and the run reads as unfinished even though the work landed. Every ending owes that turn — shipped, nothing-to-do, blocked, failed, refused, cut short, or a question back to me — and a subagent's report is never it, because the outcome belongs to the session the run started in.<!-- /include -->
 
 Never claim that `/trim` performed compaction. `/compact` is a Claude Code built-in that only the user can invoke.

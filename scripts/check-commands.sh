@@ -13,6 +13,8 @@
 #      shim present and runnable, every verb registered, and the wizard still installing
 #      it device-wide (docs/specs/command-toolkit.md).
 #   5. the Claude and Codex docs workflows both retain their integrated density phase.
+#   6. every command and skill still requires the text-only closing turn, and /task keeps
+#      it as a pipeline step, so a run cannot end without recording an outcome.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -132,6 +134,25 @@ if ! grep -Fq 'Run the `$truncate` density rules inline' skills/docs/SKILL.md; t
   echo "::error::skills/docs/SKILL.md no longer contains its integrated truncate phase."
   fail=1
 fi
+
+# 6. The closing turn stays a step of /task's pipeline, every command keeps the shared
+# include, and every Codex skill keeps the mirrored rule. It regressed once as advisory prose.
+if ! grep -Fq '## Step 4 — Close the run in a text-only turn' src/commands/task.md; then
+  echo "::error::src/commands/task.md no longer contains its terminal closing-turn step; a run that ends on a tool call records no outcome."
+  fail=1
+fi
+for f in skills/*/SKILL.md; do
+  if ! grep -Fq 'text-only turn' "$f"; then
+    echo "::error::$f no longer states the text-only closing turn; its runs would record no outcome."
+    fail=1
+  fi
+done
+for f in src/commands/*.md; do
+  if ! grep -Fq 'include: shared/text-only-turn.md' "$f"; then
+    echo "::error::$(basename "$f") dropped the shared/text-only-turn.md include; its runs would record no outcome."
+    fail=1
+  fi
+done
 
 if [ "$fail" -eq 0 ]; then
   echo "check-commands: all command invariants satisfied ($(ls src/commands/*.md | wc -l | tr -d ' ') commands)."

@@ -17,3 +17,12 @@ Parse `--here`, `--base <branch>`, `--draft`, and stack notes. Follow `$task` wo
      out, then remove it through the repository helper from outside the worktree,
      which re-verifies the branch reached origin. If another live session still
      holds it, stop and report the path as left in place.
+
+## Closing turn
+
+Close the run in a text-only turn: one final message carrying text and zero tool
+calls, sent after the last tool call returns rather than alongside it. A run's
+outcome is recorded only from a message with no tool call in it, so ending on one
+— or bundling the report into one — records no outcome at all. Every ending owes
+that turn, including one that stops early, is blocked or refused, or hands work
+back to an invoking workflow.

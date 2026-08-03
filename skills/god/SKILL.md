@@ -36,3 +36,12 @@ Use `my-command-tools doctor`, `state`, and `verify` for deterministic repositor
   through a raw API call or a different credential is refused for the same reason
   and costs a second turn. Steps 4 and 5 are where this fires: the branch-deleting
   merge and the local branch cleanup that follows it.
+
+## Closing turn
+
+Close the run in a text-only turn: one final message carrying text and zero tool
+calls, sent after the last tool call returns rather than alongside it. A run's
+outcome is recorded only from a message with no tool call in it, so ending on one
+— or bundling the report into one — records no outcome at all. Every ending owes
+that turn, including one that stops early, is blocked or refused, or hands work
+back to an invoking workflow.
