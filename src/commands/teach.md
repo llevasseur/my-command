@@ -29,6 +29,8 @@ Resolve the description to the term a practitioner would use. Take the first sou
 
 Ambiguous between two terms is not a failure — carry both into Step 3 and let the first question settle it. **Never invent a term to sound authoritative.** An invented term is worse than the user's own words, because it survives into every later prompt and the agent builds against it. Nothing recognizable → say so plainly and treat the user's own description as the vocabulary.
 
+**Keep track of what you load and what you read.** The skills you actually load here are the run's *applied* skills, and Step 7 records them as `skills`. What you consulted to get there — the page you read, the spec you cited, the repo path under `--here` — is the run's `sources`.
+
 ## Step 3 — Grill toward the root
 
 **One question per turn. Never more.** Each question carries your recommended answer.
@@ -57,6 +59,10 @@ Write one sentence in [ASD-STE100](https://asd-ste100.org) Simplified Technical 
 
 Invoke the `find-skills` skill for public skills that already encode this field. The point is inheritance: a skill someone else already tuned beats relearning the field one term at a time. List what it finds, or say plainly that nothing public covers this. **Never install anything** — surface the options and stop.
 
+**Keep the names it surfaces.** Step 7 records them as `surfacedSkills` — the skills this run *discovered*, as against the `skills` it applied. A `shadcn/ui` concept that turns up `radix-primitives` and `tailwind-tokens` surfaced both; it applied neither. A later turn that uncovers more skills adds to the same list.
+
+**`find-skills` is never one of them, and never goes in `skills`.** It is a meta-skill about finding skills, not a skill this concept applied — recording it says the concept is about skill discovery, which no concept taught here is.
+
 ## Step 6 — Print it and copy it
 
 Print the sentence in the reply **and** put it on the clipboard. One Bash call, heredoc-quoted so the shell expands and escapes nothing:
@@ -79,12 +85,48 @@ Resolve the path exactly as [improve](improve.md) Step 1 does — read `CLAUDE_P
 
 **Unlike `/improve`, an unresolvable store is not fatal here.** `/improve` cannot run without the proxy because the suggestions *are* the input; `/teach`'s input is the user. So when `CLAUDE_PROXY_STORE` is unset or its path is missing, the teaching still happened: keep the sentence, keep the clipboard, skip only the save, and say which of the two failed and that the concept was not recorded. Never stop the run over it.
 
-Append with `node` and pass every value as an argument, so no shell quoting or JSON escaping can corrupt a sentence containing quotes, backslashes, or newlines:
+### The record
+
+One JSON object per line. Five fields are **required** and always written:
+
+| Field | Type | What it holds |
+| --- | --- | --- |
+| `term` | string | The term Step 2 landed on. |
+| `sentence` | string | The Step 4 sentence, exactly as printed and copied. |
+| `field` | string | The field Step 1 placed it in. |
+| `skills` | string[] | The skills this run **applied** — the ones Step 2 loaded. Never `find-skills`. |
+| `savedAt` | string | ISO timestamp of the append. |
+
+Four more are **optional**, and claude-proxy's detail page renders each one it finds:
+
+| Field | Type | What it holds |
+| --- | --- | --- |
+| `notes` | string (Markdown) | The research the run did: which source named the term, what the grill settled, what the concept is *not*. |
+| `tips` | string[] | Short practical pointers the run produced — how to use the term, what it is confused with, what to say instead. |
+| `sources` | string[] | What you consulted: URLs, spec names, skill names, repo paths under `--here`. An entry starting with `http`/`https` is rendered as a link. |
+| `surfacedSkills` | string[] | The skills Step 5 **discovered**, as against the `skills` this run applied. Never `find-skills`. |
+
+**Omit an optional field entirely when there is nothing to record.** Never write `""` or `[]` for one: the detail page distinguishes absent from empty, and an absent field is what makes it show its "nothing more to show" fallback. Records written before these fields existed carry none of them and stay valid — nothing in `concepts.jsonl` is ever rewritten or migrated.
+
+Append with `node` and pass every value as an argument, so no shell quoting or JSON escaping can corrupt a sentence containing quotes, backslashes, or newlines. Lists are **newline-separated**, one entry per line, because a tip or a note reliably contains a comma and never contains a newline:
 
 ```bash
-node -e 'const fs=require("fs"),[f,term,sentence,field,skills]=process.argv.slice(1);fs.appendFileSync(f,JSON.stringify({term,sentence,field,skills:skills?skills.split(","):[],savedAt:new Date().toISOString()})+"\n")' \
-  "<logDir>/concepts.jsonl" "<term>" "<sentence>" "<field>" "<comma-separated skills>"
+node -e '
+const fs = require("fs");
+const [f, term, sentence, field, skills, notes, tips, sources, surfaced] = process.argv.slice(1);
+const list = (v) => (v ? v.split("\n").map((s) => s.trim()).filter(Boolean) : []);
+const rec = { term, sentence, field, skills: list(skills), savedAt: new Date().toISOString() };
+const put = (k, v) => { if (typeof v === "string" ? v.trim() : v.length) rec[k] = v; };
+put("notes", notes ?? "");
+put("tips", list(tips));
+put("sources", list(sources));
+put("surfacedSkills", list(surfaced));
+fs.appendFileSync(f, JSON.stringify(rec) + "\n");
+' "<logDir>/concepts.jsonl" "<term>" "<sentence>" "<field>" "<applied skills, one per line>" \
+  "<notes as Markdown>" "<tips, one per line>" "<sources, one per line>" "<surfaced skills, one per line>"
 ```
+
+`put` is what enforces the omit rule — an empty string and an empty list both fall through and the key is never written. Pass `""` for anything the run did not produce; do not drop the argument, or the values after it shift.
 
 The file is append-only and one object per line, so a concurrent run can never truncate another's record.
 

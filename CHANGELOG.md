@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-08-03
+
+### Changed
+
+- **`/teach` now records the whole run in `concepts.jsonl`, not just the sentence — and stops writing `find-skills` as a skill the concept applied.** The reading side shipped in claude-proxy (PR #111) renders a detail page per concept, and `/teach` was feeding it five fields when the run had produced far more: the research behind the term, the pointers that came out of the questions, the pages and specs consulted, and — the loss that motivated this — the skills Step 5's discovery actually turned up. A `shadcn/ui` concept that surfaced `radix-primitives` and `tailwind-tokens` recorded neither, because there was nowhere to put a skill the run *discovered* as against one it *applied*. So `skills` now means applied-only and four optional fields join it: `notes` (Markdown), `tips`, `sources` (an `http`/`https` entry renders as a link), and `surfacedSkills`. `find-skills` goes in neither list — it is a meta-skill about finding skills, and recording it says the concept is about skill discovery, which no concept taught here is; claude-proxy filters it on the read side too, so this is belt and braces rather than a behavior change there. **An optional field with nothing in it is omitted entirely**, never written as `""` or `[]`, because the detail page distinguishes absent from empty and shows a "nothing more to show" fallback for the older records that predate the fields — which stay valid, and which nothing rewrites or migrates. The documented `node -e` append snippet is rewritten to match: a `put` helper drops any key whose value is an empty string or an empty list, so the omit rule is enforced by the snippet rather than left to the run's judgement, and lists are passed newline-separated rather than comma-separated because a tip reliably contains a comma and never contains a newline. Every value is still passed as an argument, so a sentence carrying quotes or backslashes cannot corrupt the record. The Codex skill carries the same contract in translation, and the feature doc names `packages/core/src/concepts.ts` as the reading side's half of it.
+
 ## 2026-08-02
 
 ### Fixed
