@@ -103,9 +103,10 @@ That inventory is the contract for Step 4: it must survive the edit unchanged, o
 - **Never bump `updated` / `timestamp`.** No claim changed, and those dates feed `/my-command:docs`' staleness ranking: bumping them would make a doc *look* freshly reconciled and push it down the audit queue on the strength of a style edit. Truncating is not reconciling.
 - **Never rewrite for voice.** Match the doc's existing tone and the surrounding docs. The output should read like the same author with less to say, not like a different author.
 
+<!-- include-block: shared/rewrite-toward.md -->
 ### Rewrite toward
 
-These govern **how a sentence you are already shortening comes out**. They are not a license to rewrite voice — the rule directly above still holds — and they are not a reason to touch a sentence you were not otherwise cutting.
+These govern **how a sentence you are already shortening comes out**. They are not a license to rewrite voice — the `Never rewrite for voice` rule still holds — and they are not a reason to touch a sentence you were not otherwise cutting.
 
 - **One instruction per sentence.** Split a sentence carrying two.
 - **One term per concept.** Reuse the doc's existing word every time it appears. A synonym introduced for variety reads as a second thing.
@@ -117,8 +118,7 @@ These govern **how a sentence you are already shortening comes out**. They are n
 - **Uppercase MUST / MUST NOT / SHOULD / MAY** where the obligation is the point ([RFC 2119](https://www.rfc-editor.org/rfc/rfc2119)). Preserve the doc's existing force; never soften or strengthen it to fit the form.
 
 Deliberately **not** adopted from [ASD-STE100](https://asd-ste100.org) Simplified Technical English, which these rules are drawn from: its closed ~900-word dictionary, its sentence-length caps, and its restriction to simple tenses. Those serve a human reader with a limited English vocabulary. Here they cost precision and buy nothing.
-
-[docs](docs.md) Step 6 carries a mirror of this list, because it runs the density pass inline and never loads this file. Change one, change both.
+<!-- /include-block -->
 
 ## Step 4 — Apply, with a size guard
 
