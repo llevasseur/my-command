@@ -1,16 +1,19 @@
-// `worktree begin|end|list` — the isolated-workspace lifecycle.
+// `worktree begin|end|reap|list` — the isolated-workspace lifecycle.
 //
 // This verb does not move the caller's working directory: in Claude Code that is
 // EnterWorktree/ExitWorktree's job. `begin` prepares the checkout and hands back the
 // path to enter; `end` verifies the work is on origin before removing the local copy.
+// `end` also stops the processes still running out of the worktree; `reap` is that
+// step alone, for the teardowns ExitWorktree owns.
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { bool, str } from '../lib/flags.mjs';
 import { run as exec, lines, must, ToolkitError, UsageError } from '../lib/proc.mjs';
 import { defaultBranch, repoRoot, resolveBase } from '../lib/repo.mjs';
 
 export const usage = `worktree begin --branch <name> [--base <ref>] [--existing] [--bootstrap]
-worktree end --branch <name> [--force]
+worktree end --branch <name> [--force] [--no-reap]
+worktree reap [--branch <name> | --path <dir>]
 worktree list
 
   begin   Fetch, then create a worktree for <name> under .claude/worktrees/.
@@ -20,6 +23,9 @@ worktree list
           --bootstrap    Run the repo's scripts/bootstrap-worktree.sh if it has one.
   end     Remove the worktree for <name>, refusing unless HEAD is on origin.
           --force        Remove even with unpushed commits or a dirty tree.
+          --no-reap      Leave processes rooted in the worktree running.
+  reap    Stop processes rooted in a worktree without removing it — the step
+          ExitWorktree does not take. Names it by --branch or by --path.
   list    Report every registered worktree.`;
 
 const BOOTSTRAP = join('scripts', 'bootstrap-worktree.sh');
@@ -45,14 +51,105 @@ function listWorktrees(cwd) {
   return trees;
 }
 
+/**
+ * Every process whose command line names `dir`, minus this process and its ancestors.
+ * Matches on the command line rather than the working directory: a watcher's reloaded
+ * child still carries the worktree path in argv, and `ps` is portable where a cwd scan
+ * needs lsof.
+ * @param {string} dir @returns {{pid: number, command: string}[]}
+ */
+function processesUnder(dir) {
+  const listing = exec('ps', ['-eo', 'pid=,ppid=,command=']);
+  if (!listing.ok) return [];
+  /** @type {Map<number, number>} */
+  const parents = new Map();
+  /** @type {{pid: number, ppid: number, command: string}[]} */
+  const rows = [];
+  for (const line of lines(listing.stdout)) {
+    const m = line.match(/^\s*(\d+)\s+(\d+)\s+(.+)$/);
+    if (!m) continue;
+    const row = { pid: Number(m[1]), ppid: Number(m[2]), command: m[3] };
+    parents.set(row.pid, row.ppid);
+    rows.push(row);
+  }
+  const own = new Set();
+  for (let pid = process.pid; pid && !own.has(pid); pid = parents.get(pid) ?? 0) own.add(pid);
+  return rows
+    .filter((r) => !own.has(r.pid) && r.command.includes(dir))
+    .map((r) => ({ pid: r.pid, command: r.command }));
+}
+
+/** @param {number} pid @returns {boolean} */
+function alive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Blocking sleep; the verb is synchronous throughout. @param {number} ms */
+function sleep(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * Stop everything still running out of `dir`. SIGTERM first, then SIGKILL after two
+ * seconds for whatever ignored it.
+ * @param {string} dir @returns {{pid: number, command: string, signal: string}[]}
+ */
+function reapProcesses(dir) {
+  const found = processesUnder(dir);
+  /** @type {{pid: number, command: string, signal: string}[]} */
+  const reaped = [];
+  for (const p of found) {
+    try {
+      process.kill(p.pid, 'SIGTERM');
+      reaped.push({ ...p, signal: 'SIGTERM' });
+    } catch {
+      // Already gone, or not ours to signal.
+    }
+  }
+  for (let waited = 0; waited < 2000 && reaped.some((p) => alive(p.pid)); waited += 100) sleep(100);
+  for (const p of reaped) {
+    if (!alive(p.pid)) continue;
+    try {
+      process.kill(p.pid, 'SIGKILL');
+      p.signal = 'SIGKILL';
+    } catch {
+      // Exited between the liveness check and the signal.
+    }
+  }
+  return reaped;
+}
+
 /** @param {import('../cli.mjs').Ctx} ctx */
 export function run(ctx) {
   const sub = ctx.positionals[0];
   const cwd = repoRoot(ctx.cwd);
   if (sub === 'begin') return begin(ctx, cwd);
   if (sub === 'end') return end(ctx, cwd);
+  if (sub === 'reap') return reap(ctx, cwd);
   if (sub === 'list') return { root: cwd, worktrees: listWorktrees(cwd) };
-  throw new UsageError(`unknown subcommand \`${sub ?? ''}\` — expected begin, end, or list`, { usage });
+  throw new UsageError(`unknown subcommand \`${sub ?? ''}\` — expected begin, end, reap, or list`, { usage });
+}
+
+/**
+ * Reap without removing the checkout — the step ExitWorktree's teardown lacks.
+ * Targets `--path`, else the worktree registered for `--branch`.
+ * @param {import('../cli.mjs').Ctx} ctx @param {string} cwd
+ */
+function reap(ctx, cwd) {
+  const explicit = str(ctx.flags.path);
+  let target = explicit ? resolve(explicit) : null;
+  if (!target) {
+    const branch = requireBranch(ctx, cwd);
+    const tree = listWorktrees(cwd).find((w) => w.branch === branch);
+    if (!tree) throw new ToolkitError(`no worktree checked out for branch ${branch}`, { branch });
+    target = tree.path;
+  }
+  return { path: target, reaped: reapProcesses(target) };
 }
 
 /** @param {import('../cli.mjs').Ctx} ctx @param {string} cwd */
@@ -141,13 +238,16 @@ function end(ctx, cwd) {
     });
   }
 
+  // Before the removal, not after — a survivor outlives the directory silently.
+  const reaped = bool(ctx.flags['no-reap']) ? [] : reapProcesses(tree.path);
+
   const args = ['worktree', 'remove', tree.path];
   if (force || dirty) args.push('--force');
   const removed = exec('git', args, { cwd });
   if (!removed.ok) throw new ToolkitError('git worktree remove failed', { code: removed.code, stderr: removed.stderr });
   exec('git', ['worktree', 'prune'], { cwd });
 
-  return { removed: true, branch, path: tree.path, pushed, wasDirty: dirty };
+  return { removed: true, branch, path: tree.path, pushed, wasDirty: dirty, reaped };
 }
 
 /** @param {import('../cli.mjs').Ctx} ctx @param {string} cwd @returns {string} */
