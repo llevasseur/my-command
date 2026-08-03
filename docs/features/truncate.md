@@ -4,7 +4,7 @@ title: truncate
 description: Rewrite-for-style pass over an okq doc bundle via /task — cut docs to high-signal tokens without losing a claim, driven by the dirty frontmatter flag.
 tags: [command, docs, process]
 timestamp: 2026-07-28
-updated: 2026-07-29
+updated: 2026-08-02
 ---
 
 # truncate
@@ -79,7 +79,8 @@ indexes are excluded; an empty queue is a reported clean result.
 Each doc is evaluated in a fresh subagent, in parallel batches of about four, so
 only its proposed edit returns to the main context. Evaluation starts with a
 claim inventory: commands, flags, defaults, exit codes, paths, environment
-variables, behavior, ordering, guardrails, and links.
+variables, behavior, ordering, guardrails, links, and the force of an
+instruction (must, should, or may).
 
 It cuts narration, ceremony, unactionable justification, repetition, linked-doc
 duplication (replaced by its link), hedging, filler, redundant examples, and
@@ -93,9 +94,24 @@ It never adds anything, never rewrites for voice, and never fixes a claim it
 believes is wrong: drift is reported as a `/docs` finding and the words are left
 alone.
 
+A sentence it does shorten comes out against a stated vocabulary standard: one
+instruction per sentence; one term per concept; the warning before the step it
+guards; active voice and imperative for an action; literal wording over idiom;
+at most three nouns in a row; explicit conjunction scope; and uppercase
+MUST / MUST NOT / SHOULD / MAY ([RFC 2119](https://www.rfc-editor.org/rfc/rfc2119))
+where the obligation is the point. These govern how an already-cut sentence
+comes out and do not license a voice rewrite. Force is part of the claim, so
+`must`, `should`, and `may` survive at their original strength. The rules come
+from [ASD-STE100](https://asd-ste100.org) Simplified Technical English; its
+closed ~900-word dictionary, sentence-length caps, and tense restrictions are
+deliberately not adopted, because they serve a human reader with a limited
+English vocabulary and cost precision here. That list lives once, in
+`src/shared/rewrite-toward.md`; this command and [docs](docs.md) Step 6 both take
+it as a `<!-- include-block: -->`, so neither can drift from the other.
+
 After editing it re-derives and compares the inventory; a missing claim is a
 bug. Cuts over 40% require confirmation unless `--yes`. Every evaluated doc
-loses `dirty`, whether cut or merely reviewed.
+loses `dirty`, whether cut or merely reviewed; `--dry-run` clears nothing.
 
 Finally it regenerates `okq index`; runs `validate`, `deadlinks --check`,
 `orphans`, and repository doc gates until clean; and reports each doc's verdict

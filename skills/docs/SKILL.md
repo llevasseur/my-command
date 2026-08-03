@@ -12,7 +12,16 @@ Parse `--here`, `--base <branch>`, `--dry-run`, `--bundle <dir>`, pass filters, 
 3. Refresh docs by comparing claims to current code. Use git history only to rank suspicion; verify flags, defaults, paths, behavior, and neighboring references directly. Edit prose only where a claim changed, then set top-level `dirty: true` for the final density phase. Preserve an existing dirty flag during reconciliation.
 4. Add missing docs using bundle templates and start each new doc with `dirty: true`. Treat ADRs as immutable decisions: supersede rather than rewrite. Audited-but-unchanged docs are not dirty, and dry runs set nothing.
 5. Prune only with evidence that the documented concept is gone; repoint renames instead of deleting them.
-6. Run the `$truncate` density rules inline over the resulting dirty queue, including dirty docs that predated this run. Exclude generated indexes. Inventory every actionable claim before cutting narration, repetition, filler, and redundant examples; preserve all claims, required sections, ADR reasoning, frontmatter descriptions, commands, code blocks, and tables. Re-derive the inventory after editing. Use `--yes` for the existing over-40% size guard. Do not fix suspected drift or bump claim timestamps. Remove `dirty` from every evaluated doc, including an already-lean doc.
+6. Run the `$truncate` density rules inline over the resulting dirty queue, including dirty docs that predated this run. Exclude generated indexes. Inventory every actionable claim before cutting narration, repetition, filler, and redundant examples; preserve all claims, required sections, ADR reasoning, frontmatter descriptions, commands, code blocks, and tables. Re-derive the inventory after editing. Use `--yes` for the existing over-40% size guard. Do not fix suspected drift or bump claim timestamps. Remove `dirty` from every evaluated doc, including an already-lean doc. Treat an instruction's force as part of its claim, and shorten a surviving sentence toward the `$truncate` forms: one instruction per sentence; one term per concept; the warning before the step it guards; active voice and imperative for an action; literal wording over idiom; at most three nouns in a row; explicit conjunction scope; uppercase MUST, MUST NOT, SHOULD, and MAY (RFC 2119) at the doc's existing force. These govern only a sentence already being cut and never license a voice rewrite. Do not adopt ASD-STE100's closed dictionary, sentence-length caps, or tense restrictions.
 7. Regenerate indexes, run bundle validation and repository doc gates, and report reconciliation verdicts plus density verdicts and before/after sizes. Report any deferred dirty docs as incomplete work; a successful run leaves the dirty queue empty. Dry run reports the reconciliation plan and projected density queue without mutation.
 
 The bundle's own contract wins if it uses a different density-work-queue key.
+
+## Closing turn
+
+Close the run in a text-only turn: one final message carrying text and zero tool
+calls, sent after the last tool call returns rather than alongside it. A run's
+outcome is recorded only from a message with no tool call in it, so ending on one
+— or bundling the report into one — records no outcome at all. Every ending owes
+that turn, including one that stops early, is blocked or refused, or hands work
+back to an invoking workflow.

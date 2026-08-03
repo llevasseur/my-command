@@ -4,7 +4,7 @@ title: Command toolkit
 description: The device-wide `my-command-tools` CLI that commands call for the deterministic git/gh plumbing of a workflow run, and how it ships with every install mode.
 tags: [process, toolkit, install, cli]
 timestamp: 2026-07-25
-updated: 2026-07-28
+updated: 2026-08-02
 ---
 
 # Command toolkit
@@ -62,21 +62,26 @@ failure a workflow run has actually hit:
 
 ## Device-wide resolution
 
-A command or skill must reach the toolkit no matter how MyCommand was installed. Four
-roots are tried in order, first hit wins:
+A command or skill must reach the toolkit no matter how MyCommand was installed.
+Roots are tried in order, first hit wins:
 
 1. `$MY_COMMAND_TOOLKIT` — explicit override (development, testing).
 2. `$CLAUDE_PLUGIN_ROOT/src/toolkit` — set by Claude Code when a plugin command
    runs, so a plugin install needs no separate step.
-3. `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/my-command/toolkit` — the device install
+3. `<shim dir>/../toolkit` — the payload beside the shim itself. Shim-only: it is
+   what lets an install under a relocated `CLAUDE_CONFIG_DIR`/`CODEX_HOME` run
+   *its own* toolkit rather than falling through to another root's copy.
+4. `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/my-command/toolkit` — the device install
    the npx wizard writes, which is what personal-copy commands use.
-4. `${CODEX_HOME:-$HOME/.codex}/my-command/toolkit` — the device install written
+5. `${CODEX_HOME:-$HOME/.codex}/my-command/toolkit` — the device install written
    with Codex Skills, which is what native `$skill` workflows use.
 
-The order lives in exactly three places, each cross-referenced by comment:
+Root 3 is resolvable only from the shim's own location, so `paths.mjs` — and
+therefore `doctor` — knows the four location-independent roots. The order lives in
+exactly three places, each cross-referenced by comment:
 `src/toolkit/bin/my-command-tools` (the shim), `src/toolkit/lib/paths.mjs` (what
-`doctor` reports), and `installToolkit()` in `src/my-command.ts` (what writes root
-3 and 4). Changing one means changing all three.
+`doctor` reports), and `installToolkit()` in `src/my-command.ts` (what writes roots
+4 and 5). Changing one means changing all three.
 
 ## Reachable by name
 
@@ -150,7 +155,7 @@ with `allowJs` + `checkJs` + `noEmit`, run as `pnpm run check:toolkit`.
 
 ## Acceptance criteria
 
-- [ ] `my-command-tools doctor` resolves from all four roots, reporting which won.
+- [ ] `my-command-tools doctor` resolves from all four location-independent roots, reporting which won.
 - [ ] `doctor` reports `onPath.reachable`, and on a device with no link reports
       `reachable: false` with the exact `ln -s` fix rather than looking healthy.
 - [ ] Every verb returns parseable JSON on stdout and nothing else, on both its success

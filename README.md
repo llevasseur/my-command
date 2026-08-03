@@ -25,11 +25,12 @@
 | `sync` | Update this device's installed commands to the latest version from GitHub. |
 | `changelog` | Add a concise entry to the current repo's `CHANGELOG.md`, matching its existing format. |
 | `docs` | Reconcile a repo's [okq](https://github.com/mikevalstar/okq) doc bundle with the code, then truncate dirty docs to high-signal prose in the same `/task` run. |
-| `truncate` | Cut a doc bundle down to high-signal tokens without losing a claim — standalone density cleanup for hand edits, explicit scopes, and full sweeps. |
+| `truncate` | Cut a doc bundle down to high-signal tokens without losing a claim — standalone density cleanup for hand edits, explicit scopes, and full sweeps, with surviving prose rewritten toward a stated vocabulary standard. |
 | `revive` | Resume an interrupted session from its recorded transcript — reconstruct what it was doing, recover its branch/worktree, finish only what's outstanding, and complete the original workflow. |
 | `improve` | Turn claude-proxy's session suggestions into an implemented improvement — read the pending findings for a range of session buckets, hand them to `task` as criteria, and flag what shipped as done. |
 | `trim` | Decide whether the current conversation is safe to compact, then provide focused instructions for Claude Code's built-in `/compact`. |
 | `cp` | Compose another command's invocation from a prompt and copy it to the clipboard, ready to paste into another agent — without running it or printing it. |
+| `teach` | Learn the real name for something you can only describe — one question at a time, until you can say it back as a single Simplified Technical English sentence, printed and copied. |
 
 ## Use cases
 
@@ -78,6 +79,8 @@ skill syntax—for example, `$task -h ...`, `$review -t 42`, or `$mc -t feat/sea
 | `trim` | `/trim` | Evaluate six evidence-backed safety gates; recommend continuing or emit a tailored `/compact` command. |
 | `cp` | `/cp task add a dark-mode toggle to settings` | Default — shape the prompt to stand alone for an agent that can't see this conversation, copy `/task add a dark-mode toggle to settings` to the clipboard, and reply `Done!`. The named command is never run, loaded, or printed. |
 | `cp` | `/cp -v review 42` | `--verbatim` / `-v` — copy the prompt exactly as typed, no shaping. |
+| `teach` | `/teach the thing where scroll goes past the end and springs back` | Default — name the technique from a matching glossary skill, ask one question at a time until you can say it back, then print **and** copy one ≤25-word Simplified Technical English sentence. Reads no files. |
+| `teach` | `/teach -h the bouncy thing our modal does` | `--here` / `-h` — read the current repo so the sentence can name the real component and the pattern already in use. |
 
 `revive`'s default proxy source is location-agnostic: export **`CLAUDE_PROXY_STORE`**
 (the directory holding `<id>.md` transcripts) and optionally **`CLAUDE_PROXY_ARCHIVE`**

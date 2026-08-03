@@ -54,3 +54,12 @@ Use `git merge-tree --write-tree` for conflict prechecks rather than GitHub's la
   safe and the refusal looks incidental to the command's shape — an over-broad
   chain, pipe, or extra flag — retry only the smallest exact command, never a
   permission-settings change.
+
+## Closing turn
+
+Close the run in a text-only turn: one final message carrying text and zero tool
+calls, sent after the last tool call returns rather than alongside it. A run's
+outcome is recorded only from a message with no tool call in it, so ending on one
+— or bundling the report into one — records no outcome at all. Every ending owes
+that turn, including one that stops early, is blocked or refused, or hands work
+back to an invoking workflow.

@@ -31,6 +31,26 @@ Do not forward selection flags as `$task` flags.
    doc gates. Report verdict and before/after size per doc, plus suspected drift
    left for `$docs`.
 
+When a surviving sentence gets shorter, shorten it toward these forms. They
+govern how a sentence already being cut comes out; they never license a voice
+rewrite. One instruction per sentence. One term per concept, reused rather than
+varied. The warning before the step it guards. Active voice and imperative for
+an action. Literal wording over idiom. At most three nouns in a row. Explicit
+conjunction scope. Uppercase MUST, MUST NOT, SHOULD, and MAY (RFC 2119) where
+the obligation is the point, preserving the doc's existing force. An
+instruction's force is part of its claim. Do not adopt ASD-STE100's closed
+dictionary, sentence-length caps, or tense restrictions: they serve a
+limited-vocabulary human reader and cost precision here.
+
 Use `okq` for bundle queries rather than text grep. Quote glob-bearing arguments
 for zsh. The bundle's own contract wins. The goal is higher signal per token,
 not shorter text at any cost.
+
+## Closing turn
+
+Close the run in a text-only turn: one final message carrying text and zero tool
+calls, sent after the last tool call returns rather than alongside it. A run's
+outcome is recorded only from a message with no tool call in it, so ending on one
+— or bundling the report into one — records no outcome at all. Every ending owes
+that turn, including one that stops early, is blocked or refused, or hands work
+back to an invoking workflow.

@@ -83,7 +83,7 @@ LOG_DIR="<logDir>" pnpm --filter server suggestions mark -r <bucket> -i <id>[,<i
 - A suggestion the subagent dropped, deferred, or couldn't act on stays `pending` — it should come back on the next `/my-command:improve`. Flagging it now is how real work gets lost.
 - Use `-s skipped -n "<why>"` only for a suggestion deliberately passed over for a stated reason, so it stops resurfacing without pretending it was applied.
 - If the subagent opened no PR, mark nothing.
-- Report at the end: the range read, how many suggestions were pending, the criteria that shipped, the PR number/URL, what was marked `done` or `skipped`, and what stays `pending` with why. <!-- include: shared/text-only-turn.md -->Deliver that report in a **text-only turn** — after the last tool call, never in the same turn as one, or the run is recorded as unfinished even though the work landed.<!-- /include -->
+- Report at the end: the range read, how many suggestions were pending, the criteria that shipped, the PR number/URL, what was marked `done` or `skipped`, and what stays `pending` with why. <!-- include: shared/text-only-turn.md -->Deliver that report in a **text-only turn** — a final message carrying text and **zero tool calls**, sent after the last tool call returns rather than alongside it, because a run's outcome is recorded only from a message with no tool call in it: end on (or bundle the report into) a tool call and the run reads as unfinished even though the work landed. Every ending owes that turn — shipped, nothing-to-do, blocked, failed, refused, cut short, or a question back to me — and a subagent's report is never it, because the outcome belongs to the session the run started in.<!-- /include -->
 
 ## Notes
 

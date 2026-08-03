@@ -4,6 +4,7 @@ title: sync
 description: Update this device's installed MyCommand commands to the latest version from GitHub.
 tags: [command, install, update]
 timestamp: 2026-07-15
+updated: 2026-08-02
 ---
 
 # sync
@@ -16,20 +17,29 @@ copy, or plugin) and updates accordingly.
 
 ## Flags / Parameters
 
-- `--check` — report whether the local copy is behind, but change nothing.
+- `--check` — report whether the local copy is behind, but change nothing. On the
+  marketplace path, if the CLI cannot check without updating, it reports that
+  limitation and stops.
 - No argument: perform the update.
 
 ## Behavior
 
-For the symlinked install it locates the clone, fetches, fast-forwards (never
-force/reset/stash), and re-links newly added commands. For a marketplace copy it
-updates the marketplace and re-runs the personal install script. For the plugin it
-updates the marketplace and reminds you to `/reload-plugins`. Consumes updates
-only — publishing is the maintainer flow.
+For the symlinked install it locates the clone from the symlink, fetches (as its
+own call, never chained — a chained fetch escalates approval to the whole command),
+compares `HEAD` to `origin/<default-branch>`, refuses to proceed unless
+`my-command-tools state` reports no tracked and no untracked changes, pulls
+`--ff-only` (stopping rather than merging if the branch diverged), and re-links
+newly added commands. For a marketplace copy it registers the marketplace if it is
+missing, updates it, stops if that version ships no `install-marketplace-personal.sh`,
+then runs it. For the plugin it updates the marketplace and reminds you to
+`/reload-plugins`. Never force, reset, or stash. Consumes updates only — publishing
+is the maintainer flow.
 
-Both personal paths finish with `my-command-tools doctor`, since a sync that refreshed
-the command Markdown but left the shared toolkit stale or unresolvable is only half
-applied — the commands call it for their git plumbing.
+Both personal paths run `my-command-tools doctor` before their closing report —
+the commands call it for their git plumbing.
+The report names `resolvedBy` and `version`, the commits pulled, and the commands
+added, changed, or removed. A command already invoked this session may be cached,
+so restart the session if it still looks stale.
 
 ## Related
 

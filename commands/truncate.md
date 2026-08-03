@@ -72,6 +72,7 @@ Every evaluation starts by taking a **claim inventory** — the list of things t
 - defaults, exit codes, thresholds, file paths, env vars
 - described behavior and ordering ("X runs before Y")
 - guardrails — what never to do, and any non-obvious constraint or gotcha
+- an instruction's **force** — must, should, and may are three different obligations, and flattening one into another changes the doc as surely as deleting a flag
 - links to other concepts
 
 That inventory is the contract for Step 4: it must survive the edit unchanged, one for one.
@@ -102,6 +103,23 @@ That inventory is the contract for Step 4: it must survive the edit unchanged, o
 - **Never bump `updated` / `timestamp`.** No claim changed, and those dates feed `/my-command:docs`' staleness ranking: bumping them would make a doc *look* freshly reconciled and push it down the audit queue on the strength of a style edit. Truncating is not reconciling.
 - **Never rewrite for voice.** Match the doc's existing tone and the surrounding docs. The output should read like the same author with less to say, not like a different author.
 
+<!-- include-block: shared/rewrite-toward.md -->
+### Rewrite toward
+
+These govern **how a sentence you are already shortening comes out**. They are not a license to rewrite voice — the `Never rewrite for voice` rule still holds — and they are not a reason to touch a sentence you were not otherwise cutting.
+
+- **One instruction per sentence.** Split a sentence carrying two.
+- **One term per concept.** Reuse the doc's existing word every time it appears. A synonym introduced for variety reads as a second thing.
+- **The warning before the step it guards.** A caveat trailing its instruction arrives after the reader has acted.
+- **Active voice, imperative for an action.** "Run the gate", not "the gate should be run" — the passive drops the actor, and the actor is usually the claim.
+- **Literal over idiomatic.** Replace "paper over", "silently under-check", "fakes a pass" with what they actually mean.
+- **At most three nouns in a row.** Break a longer cluster with `of` or `for`.
+- **Explicit conjunction scope.** "Never do A or B" leaves how far the negation reaches ambiguous. Name each side.
+- **Uppercase MUST / MUST NOT / SHOULD / MAY** where the obligation is the point ([RFC 2119](https://www.rfc-editor.org/rfc/rfc2119)). Preserve the doc's existing force; never soften or strengthen it to fit the form.
+
+Deliberately **not** adopted from [ASD-STE100](https://asd-ste100.org) Simplified Technical English, which these rules are drawn from: its closed ~900-word dictionary, its sentence-length caps, and its restriction to simple tenses. Those serve a human reader with a limited English vocabulary. Here they cost precision and buy nothing.
+<!-- /include-block -->
+
 ## Step 4 — Apply, with a size guard
 
 1. Apply the accepted cuts directly with `Edit`.
@@ -116,7 +134,7 @@ That inventory is the contract for Step 4: it must survive the edit unchanged, o
 2. Re-run the health checks until clean: `okq --bundle <dir> validate`, `deadlinks --check`, `orphans` (exit code 3 means the gate tripped — branch on `$?`, not the text). A cut that removed the last link to a doc shows up here as a new orphan; restore the link.
 3. Run the repo's own doc gate if it has one (e.g. `pnpm run check:commands`, the `docs` CI job's command). Report exactly what you ran.
 4. Report a table: doc | verdict (`truncated` / `reviewed` / `deferred`) | lines before → after | what was cut. `reviewed` means it was evaluated and already lean — a real outcome, not a miss. Then, separately, the **claims that looked wrong** — drift you noticed but deliberately left alone — since those are a `/my-command:docs` run, not this one.
-5. Apply edits directly, then let the surrounding `/my-command:task` run take it from here — its Step 2 commits the changes, and its Step 3 runs `/my-command:clean`, `/my-command:pr`, and worktree teardown. Report the table above as this pass's result rather than opening the PR yourself. <!-- include: shared/text-only-turn.md -->Deliver that report in a **text-only turn** — after the last tool call, never in the same turn as one, or the run is recorded as unfinished even though the work landed.<!-- /include --> Under `--dry-run` there is nothing to hand off.
+5. Apply edits directly, then let the surrounding `/my-command:task` run take it from here — its Step 2 commits the changes, and its Step 3 runs `/my-command:clean`, `/my-command:pr`, and worktree teardown. Report the table above as this pass's result rather than opening the PR yourself. <!-- include: shared/text-only-turn.md -->Deliver that report in a **text-only turn** — a final message carrying text and **zero tool calls**, sent after the last tool call returns rather than alongside it, because a run's outcome is recorded only from a message with no tool call in it: end on (or bundle the report into) a tool call and the run reads as unfinished even though the work landed. Every ending owes that turn — shipped, nothing-to-do, blocked, failed, refused, cut short, or a question back to me — and a subagent's report is never it, because the outcome belongs to the session the run started in.<!-- /include --> Under `--dry-run` there is nothing to hand off.
 
 ## Notes
 

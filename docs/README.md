@@ -25,6 +25,9 @@ Folders:
   [install wizard](specs/install-wizard.md), and the shared
   [command toolkit](specs/command-toolkit.md).
 - `features/` — one feature doc per command (its flags, params, and behavior).
+  Most commands act on the repository; [cp](features/cp.md) and
+  [trim](features/trim.md) act only on the session, so they link to no sibling
+  command.
 - `adrs/` — decisions.
 - `research/` — supporting investigations, including the
   [Claude/Codex adapter](research/2026-07-19-claude-codex-support-patterns.md).

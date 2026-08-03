@@ -1,9 +1,10 @@
 ---
 type: feature
 title: revive
-description: Resume an interrupted Claude Code session from its recorded transcript — locate where it stopped, finish only what's outstanding, and complete the original workflow.
+description: Resume an interrupted Claude Code session from its recorded transcript — find where it stopped, finish only what's outstanding, and carry the original workflow to its documented end.
 tags: [command, workflow, git]
 timestamp: 2026-07-24
+updated: 2026-08-02
 ---
 
 # revive
@@ -66,6 +67,11 @@ command walk between the two stores in either direction — and one session id c
 own several thread ids, because each subagent gets its own conversation root and
 therefore its own transcript.
 
+Three resolutions end the run instead of continuing it: `CLAUDE_PROXY_STORE` unset
+or missing; no transcript for the id, reported with the exact paths and globs
+searched and never swapped for a similar-looking session; and an id naming the live
+session, since a transcript still being appended has nothing interrupted in it.
+
 **A digest, not a replay log.** Reasoning lines and tool arguments are truncated,
 so the transcript is read for the ask, the workflow that was running (often a
 nested slash-command pipeline), the human's already-settled mid-run decisions, the
@@ -74,7 +80,8 @@ the interruption signal.
 
 **Workspace recovery.** The CLI transcript's `cwd`/`gitBranch` identify the
 directory and branch the run was in. An existing directory is resumed in place; a
-missing one is recreated with `worktree begin --existing`, which checks that branch
+missing one is recreated with `worktree begin --branch <branch> --existing
+--bootstrap`, which checks that branch
 out rather than starting a fresh one off `main` — starting fresh would abandon the
 work. A vanished branch is reported rather than reconstructed.
 
@@ -94,10 +101,17 @@ left with `ExitWorktree` (`action: "keep"`) and then removed with `worktree end`
 resumption is never wrapped in a new `/task` run, since the branch and workspace already
 exist.
 
+The closing report — the transcript and store used, where the session stopped, what
+was finished, what was deliberately left alone, and the PR — is itself a step: a
+text-only turn with zero tool calls, sent after the last tool call returns. A run
+that ends on a tool call records no outcome and reads as interrupted to the next
+`/revive`.
+
 ## Related
 
 - Command source: `src/commands/revive.md`
 - Completes runs started by: [task](task.md), and the commands that delegate to it
   — [docs](docs.md), [fb](fb.md), [review](review.md)
 - Ends via: [clean](clean.md) then [pr](pr.md)
+- Shares the `CLAUDE_PROXY_STORE` dependency pattern with: [improve](improve.md)
 - Spec: [Adding a command](../specs/adding-a-command.md)

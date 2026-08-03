@@ -4,6 +4,7 @@ title: fb
 description: Implement a feedback request — a thin wrapper around task, current branch by default or a worktree of an existing branch.
 tags: [command, workflow, git]
 timestamp: 2026-07-15
+updated: 2026-08-02
 ---
 
 # fb
@@ -22,17 +23,23 @@ existing branch in a fresh worktree.
 
 ## Behavior
 
-No flag: feedback is applied on the current branch through `/task --here`. With
-`--target`, `worktree begin --existing` checks that branch out in a worktree — the
-`--existing` flag is what keeps it from creating a new branch over work that already
-exists — and the feedback is applied there, then cleaned and PR'd like a normal task run.
+No flag: feedback is applied on the current branch through `/task --here`; if that
+branch is the default branch, `/task` creates a feature branch in place. With
+`--target`, `worktree begin --branch <branch> --existing --bootstrap` checks that
+branch out in a worktree — the `--existing` flag is what keeps it from creating a new
+branch over work that already exists, and a `branch does not exist locally or on
+origin` error is a stop, never a reason to create one — and the feedback is applied
+there, then cleaned and PR'd like a normal task run.
 If Git reports that the branch is already owned by a worktree, `fb` does not retry the same
 creation or force-remove the owner: it resolves the existing worktree list, validates that
 checkout when it is the target, and stops when another live session owns it.
 That worktree is `/fb`'s to remove once `/task` reports the PR: [pr](pr.md) skips teardown
-for any worktree its session didn't create, so `/fb` steps out with `ExitWorktree`
-(`action: "keep"`, the only action allowed for a worktree entered by path) and finishes
-with `worktree end --branch <branch>`, which re-verifies the branch reached origin first.
+for any worktree its session didn't create. Same-repo runs step out with `ExitWorktree`
+(`action: "keep"`, the only action allowed for a worktree entered by path) and finish
+with `worktree end --branch <branch>`. Cross-repo runs never enter it — a new session in
+the target repo is preferred, and otherwise all work goes through absolute paths under
+the reported `path` and teardown runs from outside. Either way `worktree end` re-verifies
+the branch reached origin first.
 
 ## Related
 

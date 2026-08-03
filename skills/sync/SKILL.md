@@ -13,3 +13,12 @@ Parse `--check` as read-only. Detect whether the active workflow is a symlinked 
 Never reset, stash, force, or overwrite local work. Explain whether a new Codex session is needed to pick up already-loaded skill changes.
 Finish with `my-command-tools doctor` when available so command, skill, toolkit,
 and PATH state are reported together.
+
+## Closing turn
+
+Close the run in a text-only turn: one final message carrying text and zero tool
+calls, sent after the last tool call returns rather than alongside it. A run's
+outcome is recorded only from a message with no tool call in it, so ending on one
+— or bundling the report into one — records no outcome at all. Every ending owes
+that turn, including one that stops early, is blocked or refused, or hands work
+back to an invoking workflow.

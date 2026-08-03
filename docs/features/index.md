@@ -26,6 +26,7 @@ Add one with `okq new feature "<title>"`.
 | sync | [sync.md](sync.md) |
 | task-bootstrap | [task-bootstrap.md](task-bootstrap.md) |
 | task | [task.md](task.md) |
+| teach | [teach.md](teach.md) |
 | trim | [trim.md](trim.md) |
 | truncate | [truncate.md](truncate.md) |
 <!-- okq:index:end -->

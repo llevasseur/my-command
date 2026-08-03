@@ -4,8 +4,7 @@ title: Adding a command
 description: The checklist an agent follows to add a MyCommand slash command so the suite, the install wizard, and the docs stay in sync.
 tags: [process, commands, wizard]
 timestamp: 2026-07-15
-updated: 2026-08-01
-dirty: true
+updated: 2026-08-02
 ---
 
 # Adding a command
@@ -17,13 +16,27 @@ keeps bare source, generated plugin, install wizard, and docs aligned.
 
 ## A command is agent instructions
 
-`src/commands/<name>.md` is a prompt: frontmatter (`description`, optional
-`argument-hint`, `allowed-tools`) plus an imperative body. Match the shape of the
-existing commands:
+`src/commands/<name>.md` is a prompt: frontmatter (`description`, plus
+`argument-hint` and `allowed-tools` where they apply) and an imperative body.
+Match the shape of the existing commands:
 
-- a `## Flags` section when the command parses leading flags off `$ARGUMENTS`,
-- numbered `## Steps` for the procedure,
-- a `## Notes` section for guardrails (what never to do).
+- a `## Flags` section when the command takes leading flags. The input arrives in
+  one of two holders. Most commands now read the `<command-args>` block; `clean`,
+  `cp`, `mc`, `merge-deps`, and `sync` still read `$ARGUMENTS`. Either way the
+  convention is the same — parse leading flags off the front, the remainder is
+  free text. Prefer `<command-args>` for a new command. A command that takes no
+  input (`trim`) omits both and has no `argument-hint`.
+- the procedure as steps — one `## Step N — <title>` heading per step for a
+  multi-phase command, or a single numbered `## Steps` list for a short one,
+- a closing guardrail section: `## Notes`, or `## Finish` / `## Rules` where the
+  command ends on an action.
+- the shared closing-turn rule, verbatim as a directive:
+  `- <!-- include: shared/text-only-turn.md -->`. It states that a run's outcome
+  is recorded only from a message carrying text and zero tool calls, so every
+  ending — shipped, blocked, or nothing-to-do — owes one final text-only turn
+  sent after the last tool call returns. `check-commands.sh` fails any command
+  missing the include, and the matching Codex skill MUST state the same rule in
+  its own words.
 
 Bare is canonical: sibling commands are referenced bare (`/clean`, `/pr`); the
 build step namespaces them for the published plugin.
@@ -32,22 +45,38 @@ build step namespaces them for the published plugin.
 
 Each installed command file is loaded standalone, so there is no runtime include —
 shared text must be physically present in every copy. `src/shared/<name>.md` holds
-one line of canonical text (no frontmatter), and a command pulls it in with:
+the canonical text (no frontmatter), and a command pulls it in with one of two
+directives, chosen by whether the body is one line or many.
+
+**Inline**, for a one-line snippet — the body lands on the directive's own line, so
+it keeps whatever bullet prefix and list indentation it was written under:
 
 ```markdown
 - <!-- include: shared/text-only-turn.md -->
 ```
 
-`scripts/expand-includes.mjs` rewrites that directive **in place** in
-`src/commands/`, inline on its own line so it survives inside a nested bullet, and
-wraps the body in `<!-- /include -->`. Re-running replaces the body rather than
-nesting a copy. `build-plugin.sh` expands before copying, so no installer changes;
+**Block**, for a multi-line snippet — the body lands between the markers on its own
+lines:
+
+```markdown
+<!-- include-block: shared/rewrite-toward.md -->
+<!-- /include-block -->
+```
+
+A block directive MUST start at column 0, and the expander refuses an indented one:
+a multi-line body inserted under a bullet would break out of the list. An inline
+directive MUST resolve to a single line, for the same reason — the expander refuses
+a multi-line snippet there and names the block form. Re-running either replaces the
+body it already owns rather than nesting a copy.
+
+`scripts/expand-includes.mjs` rewrites both **in place** in `src/commands/`.
+`build-plugin.sh` expands before copying, so no installer changes;
 `check-commands.sh` runs `expand-includes.mjs --check` **before** the build, so a
 hand-edit between the markers fails CI instead of being silently repaired.
+`scripts/expand-includes.test.mjs` covers the parsing, and `pnpm test` runs it.
 
-Edit `src/shared/`; never the text between the markers. A snippet must be a single
-line — the expander refuses a multi-line one. Codex skills do **not** use the
-mechanism: they are translations, not copies.
+Edit `src/shared/`; never the text between the markers. Codex skills do **not** use
+the mechanism: they are translations, not copies.
 
 ## Checklist
 
@@ -70,8 +99,13 @@ mechanism: they are translations, not copies.
 6. **README + CHANGELOG** — add the command to both README tables (What's inside,
    Use cases) and add a CHANGELOG `### Added` entry.
 7. **Verify** — run `pnpm run check:commands` (or `./scripts/check-commands.sh`):
-   it fails unless Claude commands, Codex skills, and feature docs are in
-   one-to-one sync and the wizard still globs both source directories. Also
+   it fails unless the shared includes are unedited (`expand-includes --check`,
+   run before the build), `commands/` is byte-identical to a fresh build, Claude
+   commands / Codex skills / feature docs are one-to-one, the wizard still globs
+   both source directories and still installs the toolkit on PATH
+   ([Command toolkit](command-toolkit.md)), every command carries the
+   `shared/text-only-turn.md` include and every skill states the rule, and the
+   two density paths keep `shared/rewrite-toward.md`. Also
    confirm `okq --bundle docs validate` passes. This check runs in PR CI, so a
    missed step blocks the merge rather than shipping silently.
 
@@ -106,6 +140,7 @@ hand-edit has to set the flag or it silently misses both workflows. Do not bump
 ## Related
 
 - Spec: [Install wizard](install-wizard.md)
+- Spec: [Command toolkit](command-toolkit.md)
 - ADR: [0002 Command docs as okq specs](../adrs/0002-command-docs-as-okq-specs.md)
 - All command specs live in `features/` — list them with
   `okq --bundle docs find --type feature`.

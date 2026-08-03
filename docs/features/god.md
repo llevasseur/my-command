@@ -4,8 +4,7 @@ title: god
 description: Carry a plain-language task all the way to merged — /task with /review woven in, /mc on conflict, wait for CI, merge the PR into main, pull main. No human in the loop.
 tags: [command, workflow, git, merge]
 timestamp: 2026-07-24
-updated: 2026-07-30
-dirty: true
+updated: 2026-08-02
 ---
 
 # god
@@ -30,7 +29,7 @@ Set unconditionally on the `/task` invocation:
 
 - `--sub` — `/task` runs `/clean` + `/pr` inline by default; `god` always asks for
   the subagent form, because that subagent is where the woven-in `review` entry
-  lands. Passing it yourself is accepted and redundant.
+  lands. Passing `--sub` / `-s` yourself is accepted and redundant.
 
 Owned by `god`:
 
@@ -49,9 +48,6 @@ Owned by `god`:
 Preconditions come from the toolkit: `doctor` confirms `git` and `gh` are present, and
 `state` records the starting branch and the **main checkout path** up front, because
 `/task` tears down the worktree it creates before the merge stage runs.
-For work in a different repository, `god` prefers a session started there; if the
-same session must continue, `/task` uses toolkit-managed worktrees and absolute paths
-instead of `EnterWorktree`.
 
 `/task` is then invoked with `--sub`, the forwarded flags and, unless `--no-review`, an
 appended `--add review …` entry. `--sub` is what makes `/task`'s `/clean` + `/pr` stage a
@@ -77,8 +73,9 @@ and fast-forward pulled in the main checkout, and the merged local branch pruned
 
 Four situations stop the run rather than being driven through: an unresolvable
 `/mc` conflict, CI still red after the repair budget, a diverged local `main`, and
-a PR that isn't this run's. Nothing is ever merged with `--admin`, and `main` is
-never pushed to directly.
+a PR that isn't this run's. Nothing is ever merged with `--admin`, `main` is never
+pushed to directly, and nothing is force-pushed. A refused merge or remote-ref
+deletion is final — it is surfaced, not re-expressed through `gh api`.
 
 ## Related
 

@@ -13,3 +13,12 @@ Parse `--dry-run`, `--source proxy|claude|codex|<path>`, a session ID, and optio
 4. Reconcile transcript claims with `my-command-tools state`, git diff/log, repository gates, and source. Report evidence-backed outstanding work and stop for dry run.
 5. Finish only outstanding work, then complete the original workflow's ending. For a task-wrapped run, commit scoped work, run `$clean`, update the PR with `$pr`, and safely tear down the worktree.
 6. Report source, recovery point, completed and untouched work, verification, and PR in a final text-only outcome.
+
+## Closing turn
+
+Close the run in a text-only turn: one final message carrying text and zero tool
+calls, sent after the last tool call returns rather than alongside it. A run's
+outcome is recorded only from a message with no tool call in it, so ending on one
+— or bundling the report into one — records no outcome at all. Every ending owes
+that turn, including one that stops early, is blocked or refused, or hands work
+back to an invoking workflow.

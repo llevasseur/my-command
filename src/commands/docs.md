@@ -133,10 +133,27 @@ After removing anything, fix what pointed at it: `okq --bundle <dir> deadlinks` 
 Run the density pass **inside the existing `/task` workflow**. Do not invoke `/truncate` and do not create another worktree, commit sequence, or PR.
 
 1. Build the queue with `okq --bundle <dir> find --where dirty=true --json` after reconciliation. This intentionally includes dirty docs from earlier hand edits or interrupted runs as well as docs updated or added above. Exclude generated indexes and anything the bundle marks generated. Record each queued doc's body lines and characters. An empty queue is a successful clean result.
-2. Evaluate each doc independently, in parallel subagents where allowed. Inventory every actionable claim first: commands, flags, defaults, exit codes, paths, environment variables, behavior, ordering, guardrails, non-obvious constraints, and links.
-3. Cut narration, ceremony, unactionable justification, repetition, linked-doc duplication, hedging, filler, and redundant examples. Preserve every inventoried claim, required section, ADR rationale, frontmatter `description`, command line, code block, and table. Never add claims, fix suspected drift, rewrite voice, or bump `updated` / `timestamp`.
+2. Evaluate each doc independently, in parallel subagents where allowed. Inventory every actionable claim first: commands, flags, defaults, exit codes, paths, environment variables, behavior, ordering, guardrails, non-obvious constraints, links, and the **force** of an instruction — must, should, and may are three different obligations, and flattening one into another changes the doc as surely as deleting a flag.
+3. Cut narration, ceremony, unactionable justification, repetition, linked-doc duplication, hedging, filler, and redundant examples. Preserve every inventoried claim, required section, ADR rationale, frontmatter `description`, command line, code block, and table. Never add claims, fix suspected drift, rewrite voice, or bump `updated` / `timestamp`. Shape each surviving sentence by the **Rewrite toward** rules below.
 4. Re-derive the claim inventory after each edit and restore anything missing. A missing claim is a bug, not a successful truncation. Confirm a cut over 40% of the body unless `--yes` / `-y` was given.
 5. Remove `dirty` from every evaluated doc, including one already lean enough to receive a `reviewed` verdict. If a doc cannot be evaluated safely, defer it, keep it dirty, and report why rather than silently declaring the queue clean.
+
+<!-- include-block: shared/rewrite-toward.md -->
+### Rewrite toward
+
+These govern **how a sentence you are already shortening comes out**. They are not a license to rewrite voice — the `Never rewrite for voice` rule still holds — and they are not a reason to touch a sentence you were not otherwise cutting.
+
+- **One instruction per sentence.** Split a sentence carrying two.
+- **One term per concept.** Reuse the doc's existing word every time it appears. A synonym introduced for variety reads as a second thing.
+- **The warning before the step it guards.** A caveat trailing its instruction arrives after the reader has acted.
+- **Active voice, imperative for an action.** "Run the gate", not "the gate should be run" — the passive drops the actor, and the actor is usually the claim.
+- **Literal over idiomatic.** Replace "paper over", "silently under-check", "fakes a pass" with what they actually mean.
+- **At most three nouns in a row.** Break a longer cluster with `of` or `for`.
+- **Explicit conjunction scope.** "Never do A or B" leaves how far the negation reaches ambiguous. Name each side.
+- **Uppercase MUST / MUST NOT / SHOULD / MAY** where the obligation is the point ([RFC 2119](https://www.rfc-editor.org/rfc/rfc2119)). Preserve the doc's existing force; never soften or strengthen it to fit the form.
+
+Deliberately **not** adopted from [ASD-STE100](https://asd-ste100.org) Simplified Technical English, which these rules are drawn from: its closed ~900-word dictionary, its sentence-length caps, and its restriction to simple tenses. Those serve a human reader with a limited English vocabulary. Here they cost precision and buy nothing.
+<!-- /include-block -->
 
 ## Step 7 — Reconcile, verify, report
 
@@ -144,7 +161,7 @@ Run the density pass **inside the existing `/task` workflow**. Do not invoke `/t
 2. Re-run the health checks until clean: `okq --bundle <dir> validate`, `deadlinks --check`, `orphans` (exit code 3 means the gate tripped — branch on `$?`, not the text).
 3. Run the repo's own doc gate if it has one (e.g. `pnpm run check:commands`, the `docs` CI job's command). Report exactly what you ran.
 4. Report the reconciliation table — doc | verdict (`fresh` / `updated` / `added` / `pruned` / `flagged`) | what changed — then the density table — doc | verdict (`truncated` / `reviewed` / `deferred`) | lines before → after | what was cut. Then, separately, the **code-side findings** — places the code, not the doc, looked wrong — since those need my decision. Close with the remaining dirty count. A successful run leaves the queue empty; report every deferred dirty doc as incomplete work with its reason.
-5. Apply edits directly, then let the surrounding `/task` run take it from here — its Step 2 commits the complete reconciliation-and-density change, and its Step 3 runs `/clean`, `/pr`, and worktree teardown. Report the tables above as this pass's result rather than opening the PR yourself. <!-- include: shared/text-only-turn.md -->Deliver that report in a **text-only turn** — after the last tool call, never in the same turn as one, or the run is recorded as unfinished even though the work landed.<!-- /include --> Under `--dry-run` there is nothing to hand off.
+5. Apply edits directly, then let the surrounding `/task` run take it from here — its Step 2 commits the complete reconciliation-and-density change, and its Step 3 runs `/clean`, `/pr`, and worktree teardown. Report the tables above as this pass's result rather than opening the PR yourself. <!-- include: shared/text-only-turn.md -->Deliver that report in a **text-only turn** — a final message carrying text and **zero tool calls**, sent after the last tool call returns rather than alongside it, because a run's outcome is recorded only from a message with no tool call in it: end on (or bundle the report into) a tool call and the run reads as unfinished even though the work landed. Every ending owes that turn — shipped, nothing-to-do, blocked, failed, refused, cut short, or a question back to me — and a subagent's report is never it, because the outcome belongs to the session the run started in.<!-- /include --> Under `--dry-run` there is nothing to hand off.
 
 ## Notes
 
