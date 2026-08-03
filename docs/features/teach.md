@@ -62,11 +62,34 @@ exclusion clause is right for a command file and wrong here.
 ### Saving a concept
 
 On yes, one JSON object is appended to `concepts.jsonl` in claude-proxy's log
-directory — term, sentence, field, skills, ISO timestamp — resolved from
-`CLAUDE_PROXY_STORE` exactly as [improve](improve.md) does. The append runs
-through `node` with every value passed as an argument, so a sentence containing
-quotes or backslashes cannot corrupt the record, and the file is append-only so
-concurrent runs cannot truncate each other.
+directory, resolved from `CLAUDE_PROXY_STORE` exactly as [improve](improve.md)
+does. The append runs through `node` with every value passed as an argument, so a
+sentence containing quotes or backslashes cannot corrupt the record, and the file
+is append-only so concurrent runs cannot truncate each other.
+
+Five fields are always written: `term`, `sentence`, `field`, `skills` (the skills
+the run **applied**), and `savedAt`. Four are optional and written only when the
+run produced them:
+
+- `notes` — Markdown of the research behind the term.
+- `tips` — short practical pointers.
+- `sources` — URLs, specs, skill names, repo paths; an `http`/`https` entry is
+  rendered as a link.
+- `surfacedSkills` — the skills the run **discovered** rather than applied. A
+  `shadcn/ui` concept that turns up `radix-primitives` and `tailwind-tokens`
+  surfaced both and applied neither; those names used to be dropped on the floor.
+
+**`find-skills` is never recorded in either list.** It is a meta-skill about
+finding skills, not a skill the concept applied; recording it says the concept is
+about skill discovery. claude-proxy filters it out on the read side too, so this
+is belt and braces.
+
+**An optional field with nothing in it is omitted, never written as `""` or
+`[]`.** claude-proxy's detail page distinguishes absent from empty, and absence is
+what makes it show its "nothing more to show" fallback. Records written before
+these fields existed carry none of them and stay valid; nothing in
+`concepts.jsonl` is rewritten or migrated. Lists are passed newline-separated
+because a tip reliably contains a comma and never contains a newline.
 
 **An unresolvable store is not fatal.** `/improve` hard-stops without the proxy
 because the suggestions are its input; `/teach`'s input is you. With
@@ -80,11 +103,12 @@ is why `suggestion-status.json` is also a file. The precedent for authored data
 that stays queryable is `command_run`: its source of truth is
 `commands/runs.jsonl` and its table is rebuilt from that file under a watermark.
 
-**Follow-up, in the claude-proxy repo:** a `concept` table ingested from
-`concepts.jsonl` under a watermark, modeled on `ingest-commands.ts`, which is what
-turns saved concepts into a browsable index. `/teach` writes the file today; the
-file format is the contract between the two repos, so neither change blocks the
-other.
+**The reading side lives in the claude-proxy repo**, which parses the file into a
+browsable index and a per-concept detail page; its record contract is
+`packages/core/src/concepts.ts`. The file format is the contract between the two
+repos, so a field added on one side does not block the other — an older record
+missing the optional fields still reads, and a newer record carrying them still
+appends.
 
 ## Related
 
