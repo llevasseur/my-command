@@ -11,7 +11,9 @@ Before the first tool call, record this pipeline as a task list whose **last ite
 is step 8's closing turn**, kept as its own item and left open until nothing else
 remains. A compaction carries that list forward; it does not carry these
 instructions, so the item is the only surviving record that the run owes an
-outcome.
+outcome. Once nothing else remains, resolve it rather than leaving it open: mark
+it completed with the run's final tool call, then send the closing message, so
+the list ends clean while that message still carries no tool call.
 
 1. Resolve requested add-on skills from the skills installed on this device, read their complete instructions, and place them in the pipeline according to their prompts.
 2. Set up the workspace before editing. Unless `--here`, use
@@ -65,7 +67,9 @@ outcome.
    Anchor that turn before the first tool call: put "close the run in a
    text-only turn" in the todo list as its own final item, because the todo
    list is live session state that a compaction carries forward and this prompt
-   is not. A compaction boundary is a checkpoint, not an ending — a recap
+   is not. Being the only item left is the cue to resolve it, not to leave it
+   open: mark it done with the run's final tool call, then send the closing
+   message. A compaction boundary is a checkpoint, not an ending — a recap
    prompt, a background-task notification, or a session-continuation preamble
    each mean the run is still owed its turn, so answer in text alone, say where
    the run stands, and restore the todo item if it did not survive.
