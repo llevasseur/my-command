@@ -106,7 +106,9 @@ comes out and do not license a voice rewrite. Force is part of the claim, so
 from [ASD-STE100](https://asd-ste100.org) Simplified Technical English; its
 closed ~900-word dictionary, sentence-length caps, and tense restrictions are
 deliberately not adopted, because they serve a human reader with a limited
-English vocabulary and cost precision here.
+English vocabulary and cost precision here. That list lives once, in
+`src/shared/rewrite-toward.md`; this command and [docs](docs.md) Step 6 both take
+it as a `<!-- include-block: -->`, so neither can drift from the other.
 
 After editing it re-derives and compares the inventory; a missing claim is a
 bug. Cuts over 40% require confirmation unless `--yes`. Every evaluated doc
