@@ -7,6 +7,12 @@ description: Take a plain-language task from criteria through implementation, ve
 
 Parse `--here`, `--base <branch>`, `--draft`, `--sub`, and `--add <skill prompt,...>`; remaining text is the task criteria.
 
+Before the first tool call, record this pipeline as a task list whose **last item
+is step 8's closing turn**, kept as its own item and left open until nothing else
+remains. A compaction carries that list forward; it does not carry these
+instructions, so the item is the only surviving record that the run owes an
+outcome.
+
 1. Resolve requested add-on skills from the skills installed on this device, read their complete instructions, and place them in the pipeline according to their prompts.
 2. Set up the workspace before editing. Unless `--here`, use
    `my-command-tools worktree begin --bootstrap` when available to fetch and
@@ -44,6 +50,17 @@ Parse `--here`, `--base <branch>`, `--draft`, `--sub`, and `--add <skill prompt,
      through the repository helper from outside the worktree, which re-verifies
      the branch reached origin. If another live session still holds it, stop and
      report the path as left in place.
+8. Close the run in a text-only turn: one final message carrying text and zero
+   tool calls, sent after the last tool call returns rather than alongside it. A
+   run's outcome is recorded only from a message with no tool call in it, so
+   ending on one — or bundling the report into one — records no outcome at all.
+   This step is never skipped and never delegated. Every exit routes through it:
+   PR opened, nothing to do, verification still failing, blocked, refused,
+   abandoned, or waiting on an answer. Lead with one self-contained line naming
+   what shipped and the PR, or what stopped the run and where the work sits. Under
+   `--sub` the subagent's report is not this turn; close the run in this session
+   after its result returns. If a compaction dropped the task list, close the run
+   anyway.
 
 Validation limitations do not stop PR creation when useful in-scope recovery is exhausted; document them in the PR. Never force-remove dirty or unpushed work.
 

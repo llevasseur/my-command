@@ -28,3 +28,12 @@ Parse `--label <name>` (default `dependencies`), one merge method (default squas
   human and carry on with the remaining PRs; re-expressing the same operation
   through a raw API call or a different credential is refused for the same reason
   and costs a second turn. Step 5's branch-deleting merge is where this fires.
+
+## Closing turn
+
+Close the run in a text-only turn: one final message carrying text and zero tool
+calls, sent after the last tool call returns rather than alongside it. A run's
+outcome is recorded only from a message with no tool call in it, so ending on one
+— or bundling the report into one — records no outcome at all. Every ending owes
+that turn, including one that stops early, is blocked or refused, or hands work
+back to an invoking workflow.
