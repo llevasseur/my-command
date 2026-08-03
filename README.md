@@ -30,6 +30,7 @@
 | `improve` | Turn claude-proxy's session suggestions into an implemented improvement — read the pending findings for a range of session buckets, hand them to `task` as criteria, and flag what shipped as done. |
 | `trim` | Decide whether the current conversation is safe to compact, then provide focused instructions for Claude Code's built-in `/compact`. |
 | `cp` | Compose another command's invocation from a prompt and copy it to the clipboard, ready to paste into another agent — without running it or printing it. |
+| `teach` | Learn the real terminology for a technique you can only describe, grill the plan into a spec, then get a `god` invocation written in that vocabulary on the clipboard. |
 
 ## Use cases
 
@@ -78,6 +79,9 @@ skill syntax—for example, `$task -h ...`, `$review -t 42`, or `$mc -t feat/sea
 | `trim` | `/trim` | Evaluate six evidence-backed safety gates; recommend continuing or emit a tailored `/compact` command. |
 | `cp` | `/cp task add a dark-mode toggle to settings` | Default — shape the prompt to stand alone for an agent that can't see this conversation, copy `/task add a dark-mode toggle to settings` to the clipboard, and reply `Done!`. The named command is never run, loaded, or printed. |
 | `cp` | `/cp -v review 42` | `--verbatim` / `-v` — copy the prompt exactly as typed, no shaping. |
+| `teach` | `/teach the bouncy thing when a popover opens` | Default — name the technique, grill the plan one question at a time, teach the terms back, then `/cp god <criteria in that vocabulary>`. Nothing is implemented and `/god` is never run. |
+| `teach` | `/teach --to task --no-grill rubber-band scrolling on the feed` | `--to <command>` picks the hand-off target (default `god`); `--no-grill` skips the interview and composes from the description as given. |
+| `teach` | `/teach -g what's the term for a sheet that follows your finger` | `--glossary` / `-g` — teach only. No interview, no hand-off, nothing copied. |
 
 `revive`'s default proxy source is location-agnostic: export **`CLAUDE_PROXY_STORE`**
 (the directory holding `<id>.md` transcripts) and optionally **`CLAUDE_PROXY_ARCHIVE`**
