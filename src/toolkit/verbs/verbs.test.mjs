@@ -3,7 +3,7 @@
 // than assumed.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
@@ -144,6 +144,103 @@ test('worktree begin --existing checks out a branch instead of creating one', ()
   // The checkout is the branch's own tip, not main's.
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: r.path, encoding: 'utf8' }).trim();
   assert.equal(head, execFileSync('git', ['rev-parse', 'feat/existing'], { cwd: dir, encoding: 'utf8' }).trim());
+});
+
+/**
+ * A process carrying `marker` in its argv, orphaned so this test run is not its
+ * parent — a reaped child of the test process would linger as a zombie and read
+ * back as alive, which is exactly what the reaper is being asked about.
+ * @param {string} marker @returns {number} pid
+ */
+function stray(marker) {
+  const script = `${process.execPath} -e 'setTimeout(() => {}, 60000)' "$1" >/dev/null 2>&1 & echo $!`;
+  const pid = Number(execFileSync('sh', ['-c', script, 'sh', marker], { encoding: 'utf8' }).trim());
+  strays.push(pid);
+  for (let waited = 0; waited < 5000; waited += 50) {
+    if (execFileSync('ps', ['-eo', 'command='], { encoding: 'utf8' }).includes(marker)) return pid;
+    execFileSync('sleep', ['0.05']);
+  }
+  throw new Error(`stray carrying ${marker} never appeared in ps`);
+}
+
+/** @type {number[]} */
+const strays = [];
+
+/** @param {number} pid @returns {boolean} */
+function alive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+after(() => {
+  for (const pid of strays) {
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      // Already reaped by the test that was meant to reap it.
+    }
+  }
+});
+
+test('worktree reap stops a process still rooted in the worktree', () => {
+  const { dir, git } = repo();
+  git(['branch', 'feat/stale']);
+  const tree = /** @type {{ path: string }} */ (
+    worktree(ctx(dir, ['begin'], { branch: 'feat/stale', existing: true }))
+  );
+  const pid = stray(tree.path);
+
+  const r = /** @type {{ path: string; reaped: { pid: number }[] }} */ (
+    worktree(ctx(dir, ['reap'], { branch: 'feat/stale' }))
+  );
+  assert.equal(r.path, tree.path);
+  assert.deepEqual(
+    r.reaped.map((p) => p.pid),
+    [pid],
+  );
+  assert.equal(alive(pid), false);
+  // Reaping does not remove the checkout — that is `end`'s job.
+  assert.equal(existsSync(tree.path), true);
+});
+
+test('worktree reap leaves processes rooted elsewhere alone', () => {
+  const { dir, git } = repo();
+  git(['branch', 'feat/stale']);
+  const tree = /** @type {{ path: string }} */ (
+    worktree(ctx(dir, ['begin'], { branch: 'feat/stale', existing: true }))
+  );
+  const bystander = stray(join(dir, 'some-other-place'));
+
+  const r = /** @type {{ reaped: { pid: number }[] }} */ (worktree(ctx(dir, ['reap'], { path: tree.path })));
+  assert.deepEqual(r.reaped, []);
+  assert.equal(alive(bystander), true);
+});
+
+test('worktree end reaps by default and --no-reap opts out', () => {
+  const { dir, git } = repo();
+  git(['branch', 'feat/kept']);
+  const kept = /** @type {{ path: string }} */ (worktree(ctx(dir, ['begin'], { branch: 'feat/kept', existing: true })));
+  const survivor = stray(kept.path);
+  worktree(ctx(dir, ['end'], { branch: 'feat/kept', force: true, 'no-reap': true }));
+  assert.equal(alive(survivor), true);
+
+  git(['branch', 'feat/reaped']);
+  const gone = /** @type {{ path: string }} */ (
+    worktree(ctx(dir, ['begin'], { branch: 'feat/reaped', existing: true }))
+  );
+  const doomed = stray(gone.path);
+  const r = /** @type {{ reaped: { pid: number }[] }} */ (
+    worktree(ctx(dir, ['end'], { branch: 'feat/reaped', force: true }))
+  );
+  assert.deepEqual(
+    r.reaped.map((p) => p.pid),
+    [doomed],
+  );
+  assert.equal(alive(doomed), false);
 });
 
 /**
