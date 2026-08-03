@@ -4,7 +4,6 @@ title: cp
 description: Compose another command's invocation from a prompt and copy it to the clipboard, ready to paste into another agent.
 tags: [command, clipboard, cheap]
 timestamp: 2026-08-02
-dirty: true
 ---
 
 # cp
@@ -14,7 +13,7 @@ dirty: true
 Turns `<command> <prompt>` into a single ready-to-paste invocation on the system
 clipboard, for handing to another agent. It never runs the named command, loads
 its instructions, or prints what it copied — the reply is `Done!` plus at most one
-line of context. Minimizing tokens is the feature, not a side effect.
+line of context.
 
 ## Flags / Parameters
 

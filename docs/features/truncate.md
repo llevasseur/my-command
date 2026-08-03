@@ -5,7 +5,6 @@ description: Rewrite-for-style pass over an okq doc bundle via /task — cut doc
 tags: [command, docs, process]
 timestamp: 2026-07-28
 updated: 2026-08-02
-dirty: true
 ---
 
 # truncate
@@ -112,7 +111,7 @@ it as a `<!-- include-block: -->`, so neither can drift from the other.
 
 After editing it re-derives and compares the inventory; a missing claim is a
 bug. Cuts over 40% require confirmation unless `--yes`. Every evaluated doc
-loses `dirty`, whether cut or merely reviewed.
+loses `dirty`, whether cut or merely reviewed; `--dry-run` clears nothing.
 
 Finally it regenerates `okq index`; runs `validate`, `deadlinks --check`,
 `orphans`, and repository doc gates until clean; and reports each doc's verdict

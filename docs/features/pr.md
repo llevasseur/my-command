@@ -4,8 +4,7 @@ title: pr
 description: Create or update the PR for the current branch with a concise bulleted description, written straight to GitHub.
 tags: [command, git, github]
 timestamp: 2026-07-15
-updated: 2026-07-30
-dirty: true
+updated: 2026-08-02
 ---
 
 # pr
@@ -14,7 +13,8 @@ dirty: true
 
 Pushes the current branch and creates or updates its pull request with a concise,
 bulleted description derived from the branch's commits and diff. Removes the local
-worktree at the end only when this session is the one that created it.
+worktree at the end only when this session created it **and** no command that invoked
+`/pr` owns its teardown.
 
 ## Flags / Parameters
 
@@ -25,25 +25,27 @@ worktree at the end only when this session is the one that created it.
 
 ## Behavior
 
-Refuses to run on `main`. The push and the create-vs-update decision are one
+Refuses to run on the repo's default branch. The push and the create-vs-update decision are one
 `my-command-tools pr` call: it pushes, finds the branch's open PR if there is one, and
 either edits it or opens a new one against the default branch. Only pushes existing
 commits and writes PR metadata — never creates commits. An existing PR keeps its title
 unless `--retitle` is passed, and `--draft` only ever moves a PR *toward* draft: an
-existing draft stays a draft, flag or not, and nothing here runs `gh pr ready`. Only
+existing draft stays a draft, flag or not, and `/pr` never promotes one — the verb runs
+`gh pr ready --undo` only to move a non-draft PR *into* draft. Only
 `/god` promotes a draft, deliberately, right before merging.
 
 ### Assets in the description are never dropped
 
 Updating a PR rewrites its body wholesale, and the replacement is authored from the
 branch's commits and diff — which know nothing about a screenshot or screen recording
-someone pasted into the PR by hand. So before editing, `my-command-tools pr` reads the
+someone pasted into the PR by hand. Before editing, `my-command-tools pr` reads the
 current body and carries its assets forward: markdown images, `<img>`/`<video>`/`<audio>`
 /`<picture>` elements, and links to GitHub-hosted attachments (`user-attachments/assets/`,
-`user-images.githubusercontent.com`), including a bare attachment URL, which GitHub embeds
-on its own.
+a repo's own `/assets/` path, `(private-)user-images.githubusercontent.com`), including a
+bare attachment URL, which GitHub embeds on its own.
 
 Each is reinserted verbatim, so alt text and sizing attributes survive the round trip.
+Assets are de-duplicated by URL, so the same image appearing twice is carried once.
 Anything the rewritten body already references — matched by URL — is left where the new
 body put it; the rest is appended under an `## Assets` heading, reusing that heading when
 the body already has one so repeated updates collect into one section instead of stacking.

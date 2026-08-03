@@ -4,6 +4,7 @@ title: improve
 description: Turn claude-proxy's session suggestions into an implemented improvement — read the pending findings for a range of session buckets, hand them to task as criteria, and flag what shipped as done.
 tags: [command, workflow, agents]
 timestamp: 2026-07-26
+updated: 2026-08-02
 ---
 
 # improve
@@ -44,6 +45,7 @@ variable [revive](revive.md) uses:
 | Variable | Required | Meaning |
 | --- | --- | --- |
 | `CLAUDE_PROXY_STORE` | yes | Directory holding the proxy's session transcripts. Its parent is the log directory the suggestion flags live in; the directory above that is the claude-proxy checkout. |
+| `CLAUDE_PROXY_API` | no | Base URL for the HTTP equivalent of the CLI. Default `http://127.0.0.1:8788`. |
 
 ```sh
 export CLAUDE_PROXY_STORE="$HOME/path/to/claude-proxy/logs/sessions"
@@ -66,9 +68,12 @@ LOG_DIR="<logDir>" pnpm --filter server suggestions list -r 2-9 -s pending -d --
 ```
 
 The CLI reads the log directory directly, so **no proxy server needs to be
-running**. `GET /api/sessions/suggestions/status?status=pending&detail=1&range=…`
-is the equivalent when one already is. Buckets in the range that don't exist yet
-are reported and skipped; an empty pending set ends the run with that answer and no
+running** — prefer it.
+`GET $CLAUDE_PROXY_API/api/sessions/suggestions/status?status=pending&detail=1&range=<spec>`
+is the equivalent when a server already is. Each row carries `bucket`, `label`,
+`id`, `severity` and `title`, and under `-d` its `detail`, `evidence` and
+`sources`; `meta.missing` names buckets in the range that don't exist yet — they
+are reported and skipped. An empty pending set ends the run with that answer and no
 task.
 
 **Composing criteria.** Rows are grouped by what would change — the same rule
@@ -88,12 +93,17 @@ point; `/improve` creates no worktree and makes no edits of its own.
 are marked:
 
 ```sh
-LOG_DIR="<logDir>" pnpm --filter server suggestions mark -r <bucket> -i <ids> -s done -n "<PR url>"
+LOG_DIR="<logDir>" pnpm --filter server suggestions mark -r <bucket> -i <id>[,<id>...] -s done -n "<PR url>"
 ```
 
-Anything dropped or deferred stays `pending` so it returns on the next run;
-`skipped` is reserved for a deliberate pass with a stated reason. If no PR was
-opened, nothing is marked.
+Marking is one call per bucket, with the PR as the note. Anything dropped or
+deferred stays `pending` so it returns on the next run; `skipped` is reserved for a
+deliberate pass with a stated reason. If no PR was opened, nothing is marked.
+
+**Closing the run.** The final report names the range read, how many suggestions
+were pending, the criteria that shipped, the PR number/URL, what was marked `done`
+or `skipped`, and what stays `pending` with why. It is delivered in a text-only
+turn; a subagent's report is never that turn.
 
 ## Related
 

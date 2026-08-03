@@ -5,7 +5,6 @@ description: Reconcile an okq doc bundle with the code via /task, then truncate 
 tags: [command, docs, process]
 timestamp: 2026-07-24
 updated: 2026-08-02
-dirty: true
 ---
 
 # docs
