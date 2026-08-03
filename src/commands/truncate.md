@@ -118,6 +118,8 @@ These govern **how a sentence you are already shortening comes out**. They are n
 
 Deliberately **not** adopted from [ASD-STE100](https://asd-ste100.org) Simplified Technical English, which these rules are drawn from: its closed ~900-word dictionary, its sentence-length caps, and its restriction to simple tenses. Those serve a human reader with a limited English vocabulary. Here they cost precision and buy nothing.
 
+[docs](docs.md) Step 6 carries a mirror of this list, because it runs the density pass inline and never loads this file. Change one, change both.
+
 ## Step 4 — Apply, with a size guard
 
 1. Apply the accepted cuts directly with `Edit`.

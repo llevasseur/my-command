@@ -4,7 +4,8 @@ title: docs
 description: Reconcile an okq doc bundle with the code via /task, then truncate dirty docs to high-signal prose without losing claims.
 tags: [command, docs, process]
 timestamp: 2026-07-24
-updated: 2026-07-29
+updated: 2026-08-02
+dirty: true
 ---
 
 # docs
@@ -73,11 +74,20 @@ instead, and wrong ADRs are superseded rather than edited.
 Every updated or added doc—not an audited-fresh one—gets `dirty: true`, meaning
 correct claims whose prose still needs [truncate](truncate.md). After
 reconciliation, `/docs` processes the complete dirty queue, including earlier
-queued hand edits or interrupted work. It inventories actionable claims, cuts
-narration and repetition, rechecks the inventory, applies the 40% size guard,
-and clears `dirty` from every evaluated doc. Suspected drift is reported rather
-than shortened or fixed; generated indexes are excluded. A successful run
-leaves the dirty queue empty; deferred entries are reported as incomplete work.
+queued hand edits or interrupted work. It inventories actionable claims—an
+instruction's force among them—cuts narration and repetition, rechecks the
+inventory, applies the 40% size guard, and clears `dirty` from every evaluated
+doc. Suspected drift is reported rather than shortened or fixed; generated
+indexes are excluded. A successful run leaves the dirty queue empty; deferred
+entries are reported as incomplete work.
+
+A sentence it shortens comes out against the same vocabulary standard
+[truncate](truncate.md) states: one instruction per sentence; one term per
+concept; the warning before the step it guards; active voice and imperative for
+an action; literal wording over idiom; at most three nouns in a row; explicit
+conjunction scope; and uppercase MUST / MUST NOT / SHOULD / MAY (RFC 2119) at
+the doc's existing force. Step 6 carries its own copy of that list rather than
+loading `/truncate`, since it never invokes it—the two are kept in sync by hand.
 
 The add pass uses `_template.md` or `okq new`, source actually read, existing
 tags, and cross-links. The prune pass repoints renames, never deletes an ADR or
