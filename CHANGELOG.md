@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-08-03
+
+### Added
+
+- **`worktree end` stops the processes still running out of a worktree before it removes the directory, and `worktree reap` exposes that step on its own.** `git worktree remove` unlinks a checkout and says nothing about the dev servers and watchers started inside it, which go on running against a path that no longer resolves. That is harmless only if the worktree owned everything it touched. Where a repo symlinks shared state into each worktree — claude-proxy links one `logs/` directory, and the SQLite view lives inside it — a survivor keeps writing to state the main checkout is also using, through a symlink that is now dangling. Measured on claude-proxy: an orphaned server whose `readdir` had begun failing took its ingest's "this directory was pruned, drop its rows" branch on every watch tick, deleting every live row from the shared database while the healthy server re-inserted them. The dashboard flapped between a full day and `No Claude activity captured for today` about once a second, and nine orphans from four worktrees were still running, two of them two days old. `end` now reaps before removing (`--no-reap` opts out) and reports what it signalled as `reaped`. `reap` names its target by `--branch` or `--path` and leaves the checkout in place, because the case it exists for is `ExitWorktree`, which removes a session-owned worktree and has no such step — the shared worktree-ownership rule now directs agents to run it immediately before. Matching is on the command line rather than the working directory: a watcher re-executes itself and both `tsx watch` and its reloaded child carry the worktree path in argv, and a `ps` scan is portable where a cwd scan needs `lsof`. The caller and its own ancestors are excluded by walking the ppid chain, so reaping never kills the agent that asked for it. SIGTERM first, SIGKILL after two seconds for anything that ignored it.
+
 ## 2026-08-02
 
 ### Added
