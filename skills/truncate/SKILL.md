@@ -34,3 +34,12 @@ Do not forward selection flags as `$task` flags.
 Use `okq` for bundle queries rather than text grep. Quote glob-bearing arguments
 for zsh. The bundle's own contract wins. The goal is higher signal per token,
 not shorter text at any cost.
+
+## Closing turn
+
+Close the run in a text-only turn: one final message carrying text and zero tool
+calls, sent after the last tool call returns rather than alongside it. A run's
+outcome is recorded only from a message with no tool call in it, so ending on one
+— or bundling the report into one — records no outcome at all. Every ending owes
+that turn, including one that stops early, is blocked or refused, or hands work
+back to an invoking workflow.

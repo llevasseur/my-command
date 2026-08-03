@@ -16,3 +16,12 @@ Parse `--here`, `--base <branch>`, `--dry-run`, `--bundle <dir>`, pass filters, 
 7. Regenerate indexes, run bundle validation and repository doc gates, and report reconciliation verdicts plus density verdicts and before/after sizes. Report any deferred dirty docs as incomplete work; a successful run leaves the dirty queue empty. Dry run reports the reconciliation plan and projected density queue without mutation.
 
 The bundle's own contract wins if it uses a different density-work-queue key.
+
+## Closing turn
+
+Close the run in a text-only turn: one final message carrying text and zero tool
+calls, sent after the last tool call returns rather than alongside it. A run's
+outcome is recorded only from a message with no tool call in it, so ending on one
+— or bundling the report into one — records no outcome at all. Every ending owes
+that turn, including one that stops early, is blocked or refused, or hands work
+back to an invoking workflow.

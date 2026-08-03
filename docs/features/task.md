@@ -71,11 +71,17 @@ tears the worktree down, and reports that the criteria were already satisfied �
 no empty PR. Conditional criteria ("do X if it isn't already the case") therefore
 terminate without inventing edits.
 
-The terminal report is a standalone text-only assistant turn. That is the form the proxy
-records as `- done: <outcome>`; a final tool call has no outcome and therefore looks
-interrupted. "Complete" is reserved for an existing PR plus finished worktree teardown.
-A run that stops earlier reports the stop accurately and points to `/revive <thread id>`
-when its proxy thread id is available.
+Step 4 is the terminal report, and it is a step rather than a note because the note form
+failed: the proxy records `- done: <outcome>` only from an assistant message that carries
+text and no tool call, so a run that ends on a tool call — or bundles its report into one —
+records no outcome and reads as interrupted. Every exit routes through Step 4, not just the
+shipped one: no-change, still-failing verification, blocked, refused, abandoned. `--sub`
+does not move it, because the subagent's report is not the calling session's message.
+Step 1 anchors it by putting the closing turn in the todo list as its own final item before
+the first tool call — the todo list survives a compaction that drops this prompt, so the
+obligation outlives the instructions that created it. "Complete" is still reserved for an
+existing PR plus finished worktree teardown; a run that stops earlier reports the stop
+accurately and points to `/revive <thread id>` when its proxy thread id is available.
 
 ## Related
 
