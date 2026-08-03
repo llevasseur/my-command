@@ -3,8 +3,8 @@
 // This verb does not move the caller's working directory: in Claude Code that is
 // EnterWorktree/ExitWorktree's job. `begin` prepares the checkout and hands back the
 // path to enter; `end` verifies the work is on origin before removing the local copy.
-// Removal is not just the directory — `end` stops the processes still running out of
-// it first, and `reap` exposes that step alone for the teardowns ExitWorktree owns.
+// `end` also stops the processes still running out of the worktree; `reap` is that
+// step alone, for the teardowns ExitWorktree owns.
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { bool, str } from '../lib/flags.mjs';
@@ -52,12 +52,10 @@ function listWorktrees(cwd) {
 }
 
 /**
- * Every process whose command line names `dir`, minus this process and its own
- * ancestors — killing those would take the caller down with the worktree.
- *
- * The command line is the signal rather than the working directory because a
- * watcher re-executes itself: `tsx watch` and its reloaded child both carry the
- * worktree path in argv, and a `ps` scan is portable where a cwd scan needs lsof.
+ * Every process whose command line names `dir`, minus this process and its ancestors.
+ * Matches on the command line rather than the working directory: a watcher's reloaded
+ * child still carries the worktree path in argv, and `ps` is portable where a cwd scan
+ * needs lsof.
  * @param {string} dir @returns {{pid: number, command: string}[]}
  */
 function processesUnder(dir) {
@@ -91,18 +89,14 @@ function alive(pid) {
   }
 }
 
-/** Block the whole verb — every other step here is synchronous too. @param {number} ms */
+/** Blocking sleep; the verb is synchronous throughout. @param {number} ms */
 function sleep(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
 /**
- * Stop everything still running out of `dir`. A worktree's dev servers and
- * watchers outlive `git worktree remove`, and a repo that symlinks shared state
- * (a log directory, a database) into each worktree leaves them writing to that
- * shared state through a path that no longer resolves — a watcher whose reads now
- * fail can reconcile the shared store down to empty. SIGTERM first, then SIGKILL
- * for whatever ignored it.
+ * Stop everything still running out of `dir`. SIGTERM first, then SIGKILL after two
+ * seconds for whatever ignored it.
  * @param {string} dir @returns {{pid: number, command: string, signal: string}[]}
  */
 function reapProcesses(dir) {
@@ -114,7 +108,7 @@ function reapProcesses(dir) {
       process.kill(p.pid, 'SIGTERM');
       reaped.push({ ...p, signal: 'SIGTERM' });
     } catch {
-      // Already gone, or not ours to signal. Either way there is nothing to stop.
+      // Already gone, or not ours to signal.
     }
   }
   for (let waited = 0; waited < 2000 && reaped.some((p) => alive(p.pid)); waited += 100) sleep(100);
@@ -142,9 +136,8 @@ export function run(ctx) {
 }
 
 /**
- * `reap` on its own, for the teardown this verb does not perform: ExitWorktree
- * removes a session-owned worktree without stopping anything started inside it,
- * so it is called just before that, by path.
+ * Reap without removing the checkout — the step ExitWorktree's teardown lacks.
+ * Targets `--path`, else the worktree registered for `--branch`.
  * @param {import('../cli.mjs').Ctx} ctx @param {string} cwd
  */
 function reap(ctx, cwd) {
@@ -245,8 +238,7 @@ function end(ctx, cwd) {
     });
   }
 
-  // Before the directory goes, not after: a survivor is left holding a path that
-  // no longer resolves, and `git worktree remove` reports nothing about it.
+  // Before the removal, not after — a survivor outlives the directory silently.
   const reaped = bool(ctx.flags['no-reap']) ? [] : reapProcesses(tree.path);
 
   const args = ['worktree', 'remove', tree.path];

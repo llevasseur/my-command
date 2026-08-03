@@ -147,9 +147,8 @@ test('worktree begin --existing checks out a branch instead of creating one', ()
 });
 
 /**
- * A process carrying `marker` in its argv, orphaned so this test run is not its
- * parent — a reaped child of the test process would linger as a zombie and read
- * back as alive, which is exactly what the reaper is being asked about.
+ * A process carrying `marker` in its argv, orphaned rather than spawned as a child:
+ * a reaped child of the test run would linger as a zombie and still read back alive.
  * @param {string} marker @returns {number} pid
  */
 function stray(marker) {
