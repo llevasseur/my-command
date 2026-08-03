@@ -1,67 +1,131 @@
 #!/usr/bin/env node
-// Expand `<!-- include: shared/<name>.md -->` directives in src/commands/*.md from the
-// canonical snippets in src/shared/, in place:
+// Expand shared-snippet directives in src/commands/*.md from the canonical snippets in
+// src/shared/, in place. Two forms, picked by whether the snippet body is one line or many:
 //
-//   <!-- include: shared/<name>.md -->…body, owned by src/shared/<name>.md…<!-- /include -->
+//   inline   <!-- include: shared/<name>.md -->…body…<!-- /include -->
 //
-// Expansion is inline on the directive's own line, so a directive keeps whatever list
-// indentation and bullet prefix it was written under — hence the single-line snippet rule: a
-// block-level expansion would land at column 0 and break out of any nested bullet.
-// `--check` reports drift instead of writing, so a hand-edit inside a block fails CI rather
-// than being silently overwritten by the next build.
+//   block    <!-- include-block: shared/<name>.md -->
+//            …body…
+//            <!-- /include-block -->
+//
+// Inline expansion stays on the directive's own line, so the directive keeps whatever list
+// indentation and bullet prefix it was written under — hence the single-line rule for an
+// inline snippet: a multi-line body would land at column 0 and break out of a nested bullet.
+// The block form is the affordance for a multi-line body. It must start at column 0 for the
+// same reason, and the expander refuses an indented one rather than emitting broken Markdown.
+// `--check` reports drift instead of writing, so a hand-edit inside either form fails CI
+// rather than being silently repaired by the next build.
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const CMD_DIR = join(REPO_ROOT, 'src', 'commands');
 const SHARED_DIR = join(REPO_ROOT, 'src', 'shared');
 
-const checkOnly = process.argv.includes('--check');
-
 // Matches a directive plus the body it already owns, so re-running replaces that body rather
 // than nesting a copy. `[^\n]*?` keeps the match on one line: an unclosed directive must not
 // swallow the file up to some later block's end marker.
-const BLOCK = /<!-- include: shared\/([\w.-]+)\.md -->(?:[^\n]*?<!-- \/include -->)?/g;
+const INLINE_RE = /<!-- include: shared\/([\w.-]+)\.md -->(?:[^\n]*?<!-- \/include -->)?/g;
 
-const snippet = (name) => {
-  const path = join(SHARED_DIR, `${name}.md`);
+// A block directive owns its own line. The capture on leading whitespace exists to reject an
+// indented directive, not to support one.
+const BLOCK_OPEN_RE = /^([ \t]*)<!-- include-block: shared\/([\w.-]+)\.md -->[ \t]*$/;
+const BLOCK_CLOSE = '<!-- /include-block -->';
+
+/** Read a snippet body by name. Throws when the snippet does not exist. */
+export const readSnippet = (sharedDir, name) => {
+  const path = join(sharedDir, `${name}.md`);
   if (!existsSync(path)) throw new Error(`no such snippet: src/shared/${name}.md`);
-  const body = readFileSync(path, 'utf8').trim();
-  if (body.includes('\n')) throw new Error(`src/shared/${name}.md must be a single line`);
-  return body;
+  return readFileSync(path, 'utf8').trim();
 };
 
-const expand = (source) =>
-  source.replace(BLOCK, (_, name) => `<!-- include: shared/${name}.md -->${snippet(name)}<!-- /include -->`);
+/** Expand inline `<!-- include: -->` directives. The snippet body must be a single line. */
+export const expandInline = (source, read) =>
+  source.replace(INLINE_RE, (_, name) => {
+    const body = read(name);
+    if (body.includes('\n')) {
+      throw new Error(
+        `src/shared/${name}.md must be a single line to be included inline; ` +
+          'use the block form <!-- include-block: --> for a multi-line snippet.',
+      );
+    }
+    return `<!-- include: shared/${name}.md -->${body}<!-- /include -->`;
+  });
 
-const drifted = [];
-let expanded = 0;
+/** Expand block `<!-- include-block: -->` directives. The body may span lines. */
+export const expandBlock = (source, read) => {
+  const lines = source.split('\n');
+  const out = [];
 
-for (const file of readdirSync(CMD_DIR).filter((f) => f.endsWith('.md'))) {
-  const path = join(CMD_DIR, file);
-  const before = readFileSync(path, 'utf8');
-  const after = expand(before);
-  if (before === after) continue;
-  drifted.push(file);
-  if (!checkOnly) {
-    writeFileSync(path, after);
-    expanded += 1;
+  for (let i = 0; i < lines.length; i += 1) {
+    const match = BLOCK_OPEN_RE.exec(lines[i]);
+    if (!match) {
+      out.push(lines[i]);
+      continue;
+    }
+
+    const [, indent, name] = match;
+    if (indent.length > 0) {
+      throw new Error(
+        `<!-- include-block: shared/${name}.md --> is indented. A block directive must start at ` +
+          'column 0 so its body cannot break out of a surrounding list; use the inline ' +
+          '<!-- include: --> form at that position instead.',
+      );
+    }
+
+    out.push(`<!-- include-block: shared/${name}.md -->`, read(name), BLOCK_CLOSE);
+
+    // Drop the body this directive already owns so a re-run replaces it rather than stacking a
+    // second copy. Stop at the next directive: an unclosed one must not swallow the following
+    // block's body the way a greedy match would.
+    for (let j = i + 1; j < lines.length; j += 1) {
+      if (BLOCK_OPEN_RE.test(lines[j])) break;
+      if (lines[j] === BLOCK_CLOSE) {
+        i = j;
+        break;
+      }
+    }
   }
-}
 
-if (checkOnly && drifted.length > 0) {
-  console.error(
-    `::error::src/commands/ is out of sync with src/shared/: ${drifted.join(', ')}. ` +
-      'Edit the snippet in src/shared/, then run ./scripts/build-plugin.sh and commit the result. ' +
-      'Never hand-edit between <!-- include: --> and <!-- /include -->.',
+  return out.join('\n');
+};
+
+export const expand = (source, read) => expandBlock(expandInline(source, read), read);
+
+const main = () => {
+  const checkOnly = process.argv.includes('--check');
+  const read = (name) => readSnippet(SHARED_DIR, name);
+  const drifted = [];
+  let expanded = 0;
+
+  for (const file of readdirSync(CMD_DIR).filter((f) => f.endsWith('.md'))) {
+    const path = join(CMD_DIR, file);
+    const before = readFileSync(path, 'utf8');
+    const after = expand(before, read);
+    if (before === after) continue;
+    drifted.push(file);
+    if (!checkOnly) {
+      writeFileSync(path, after);
+      expanded += 1;
+    }
+  }
+
+  if (checkOnly && drifted.length > 0) {
+    console.error(
+      `::error::src/commands/ is out of sync with src/shared/: ${drifted.join(', ')}. ` +
+        'Edit the snippet in src/shared/, then run ./scripts/build-plugin.sh and commit the result. ' +
+        'Never hand-edit between an <!-- include --> or <!-- include-block --> marker pair.',
+    );
+    process.exit(1);
+  }
+
+  const total = readdirSync(SHARED_DIR).filter((f) => f.endsWith('.md')).length;
+  console.log(
+    checkOnly
+      ? `expand-includes: src/commands/ is in sync with ${total} shared snippet(s).`
+      : `expand-includes: refreshed ${expanded} command file(s) from ${total} shared snippet(s).`,
   );
-  process.exit(1);
-}
+};
 
-const total = readdirSync(SHARED_DIR).filter((f) => f.endsWith('.md')).length;
-console.log(
-  checkOnly
-    ? `expand-includes: src/commands/ is in sync with ${total} shared snippet(s).`
-    : `expand-includes: refreshed ${expanded} command file(s) from ${total} shared snippet(s).`,
-);
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
