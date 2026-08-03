@@ -46,8 +46,9 @@ pnpm run check:commands   # or ./scripts/check-commands.sh
 
 It fails unless: `src/commands/` is in sync with `src/shared/`, `commands/` is
 byte-in-sync with `src/commands/`, every command has a
-feature doc, generated Claude command, and Codex-native skill, and the wizard still
-globs both source directories. This is why the wizard "auto-updates" is safe to rely
+feature doc, generated Claude command, and Codex-native skill, every command carries
+the closing-turn anchor and its terminal step (and every skill mirrors both), and the
+wizard still globs both source directories. This is why the wizard "auto-updates" is safe to rely
 on—if someone replaces a glob with a hardcoded list, the check fails. The `commands` job in
 `.github/workflows/ci-pr.yml` blocks the PR on it.
 
