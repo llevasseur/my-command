@@ -15,6 +15,8 @@ The bundle is an [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/
 
 Your input is the text in the `<command-args>` block above. Parse leading flags off the front; anything left over **scopes** the run (see Flags).
 
+<!-- include: shared/closing-turn-anchor.md -->**Before the first tool call, anchor the closing turn.** Put "close the run in a text-only turn" in the harness todo/task list as its own final item — worded on its own, never folded into the work it follows — and leave it open until it is the only item left. The todo list is live session state that a compaction carries forward; this prompt is not. Once this run is summarized, that item is the only surviving record that an outcome is still owed.<!-- /include -->
+
 ## Flags
 
 **Workspace** — where the pass happens. Passed through to `/my-command:task` in Step 0; they mean exactly what they mean there.
@@ -134,7 +136,7 @@ Deliberately **not** adopted from [ASD-STE100](https://asd-ste100.org) Simplifie
 2. Re-run the health checks until clean: `okq --bundle <dir> validate`, `deadlinks --check`, `orphans` (exit code 3 means the gate tripped — branch on `$?`, not the text). A cut that removed the last link to a doc shows up here as a new orphan; restore the link.
 3. Run the repo's own doc gate if it has one (e.g. `pnpm run check:commands`, the `docs` CI job's command). Report exactly what you ran.
 4. Report a table: doc | verdict (`truncated` / `reviewed` / `deferred`) | lines before → after | what was cut. `reviewed` means it was evaluated and already lean — a real outcome, not a miss. Then, separately, the **claims that looked wrong** — drift you noticed but deliberately left alone — since those are a `/my-command:docs` run, not this one.
-5. Apply edits directly, then let the surrounding `/my-command:task` run take it from here — its Step 2 commits the changes, and its Step 3 runs `/my-command:clean`, `/my-command:pr`, and worktree teardown. Report the table above as this pass's result rather than opening the PR yourself. <!-- include: shared/text-only-turn.md -->Deliver that report in a **text-only turn** — a final message carrying text and **zero tool calls**, sent after the last tool call returns rather than alongside it, because a run's outcome is recorded only from a message with no tool call in it: end on (or bundle the report into) a tool call and the run reads as unfinished even though the work landed. Every ending owes that turn — shipped, nothing-to-do, blocked, failed, refused, cut short, or a question back to me — and a subagent's report is never it, because the outcome belongs to the session the run started in.<!-- /include --> Under `--dry-run` there is nothing to hand off.
+5. Apply edits directly, then let the surrounding `/my-command:task` run take it from here — its Step 2 commits the changes, and its Step 3 runs `/my-command:clean`, `/my-command:pr`, and worktree teardown. Report the table above as this pass's result rather than opening the PR yourself. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include --> Under `--dry-run` there is nothing to hand off.
 
 ## Notes
 
@@ -146,3 +148,15 @@ Deliberately **not** adopted from [ASD-STE100](https://asd-ste100.org) Simplifie
 - Delegating to `/my-command:task` means `/my-command:task`'s own rules apply. `--yes` / `-y` governs the size-guard confirmations, not whether a PR gets opened.
 - `--dry-run` writes nothing at all — no edits, no `dirty` clearing, and no worktree, commit, or PR either.
 - If the queue is empty, say so plainly and stop. Nothing to truncate is a real result.
+
+## Close the run in a text-only turn
+
+<!-- include-block: shared/closing-turn.md -->
+**This step is never skipped and never delegated.** The run is over when this session sends **one message carrying text and zero tool calls** — not when the work lands. That is the mechanic, not a style preference: a run's outcome is recorded only from a message with no tool call in it, so a message carrying the report *and* a tool call is recorded as a decision mid-run, and a run whose last message is a tool call records no outcome at all. Make the last tool call, let it return, then reply with text alone.
+
+- **Every exit routes here, not just the shipped one.** Finished; nothing to do; a gate still failing; a step blocked, refused, or awaiting my answer; the request abandoned as wrong. The wording changes, the closing turn does not. A run that stopped early says where it stopped and what is on the branch, and leaves `/my-command:revive <thread id>` as the recovery path when the proxy thread id is available.
+- **Say it in one self-contained line first**, then any detail. Someone who never saw the request should be able to read that line alone.
+- **A compaction boundary is a checkpoint, not an ending.** A recap prompt ("The user stepped away and is coming back…"), a `[SYSTEM NOTIFICATION - NOT USER INPUT]` event, or a session-continuation preamble each mean the run is still owed its turn: answer that prompt in text alone, say where the run actually stands, and restore the anchor todo item if it did not survive. A session is likeliest to die just after a compaction, so that answer is often the only outcome the run ever records.
+- **A subagent's report is never this turn.** The outcome belongs to the session the run started in, so after an `Agent` call returns, close the run here, in a message of your own.
+- **Do not tack the report onto the tool call before it.** `ExitWorktree`, `worktree end`, `verify`, and a closing `gh` call are exactly the calls that sit at the end of a run and swallow the outcome.
+<!-- /include-block -->

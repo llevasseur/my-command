@@ -30,13 +30,22 @@ Match the shape of the existing commands:
   multi-phase command, or a single numbered `## Steps` list for a short one,
 - a closing guardrail section: `## Notes`, or `## Finish` / `## Rules` where the
   command ends on an action.
-- the shared closing-turn rule, verbatim as a directive:
-  `- <!-- include: shared/text-only-turn.md -->`. It states that a run's outcome
-  is recorded only from a message carrying text and zero tool calls, so every
-  ending — shipped, blocked, or nothing-to-do — owes one final text-only turn
-  sent after the last tool call returns. `check-commands.sh` fails any command
-  missing the include, and the matching Codex skill MUST state the same rule in
-  its own words.
+- the closing turn, as **two** directives rather than one sentence. A run's
+  outcome is recorded only from a message carrying text and zero tool calls, so
+  every ending — shipped, blocked, or nothing-to-do — owes one final text-only
+  turn sent after the last tool call returns.
+  - `<!-- include: shared/closing-turn-anchor.md -->`, as its own paragraph
+    before the first `## ` heading. It puts the closing turn in the todo list up
+    front, which is the only part of the contract that survives a compaction —
+    the prompt does not.
+  - a terminal `## Close the run in a text-only turn` section (or
+    `## Step N — Close the run in a text-only turn` in a numbered pipeline)
+    holding `<!-- include-block: shared/closing-turn.md -->`. It has to be a step
+    of the command, not a note about it: the rule regressed twice while it lived
+    as a tail sentence.
+
+  `check-commands.sh` fails any command missing either directive or the heading,
+  and the matching Codex skill MUST state both rules in its own words.
 
 Bare is canonical: sibling commands are referenced bare (`/clean`, `/pr`); the
 build step namespaces them for the published plugin.
@@ -103,8 +112,8 @@ the mechanism: they are translations, not copies.
    run before the build), `commands/` is byte-identical to a fresh build, Claude
    commands / Codex skills / feature docs are one-to-one, the wizard still globs
    both source directories and still installs the toolkit on PATH
-   ([Command toolkit](command-toolkit.md)), every command carries the
-   `shared/text-only-turn.md` include and every skill states the rule, and the
+   ([Command toolkit](command-toolkit.md)), every command carries both
+   closing-turn directives plus the heading and every skill mirrors them, and the
    two density paths keep `shared/rewrite-toward.md`. Also
    confirm `okq --bundle docs validate` passes. This check runs in PR CI, so a
    missed step blocks the merge rather than shipping silently.

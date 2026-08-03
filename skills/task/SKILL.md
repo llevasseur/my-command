@@ -62,6 +62,14 @@ outcome.
    after its result returns. If a compaction dropped the task list, close the run
    anyway.
 
+   Anchor that turn before the first tool call: put "close the run in a
+   text-only turn" in the todo list as its own final item, because the todo
+   list is live session state that a compaction carries forward and this prompt
+   is not. A compaction boundary is a checkpoint, not an ending — a recap
+   prompt, a background-task notification, or a session-continuation preamble
+   each mean the run is still owed its turn, so answer in text alone, say where
+   the run stands, and restore the todo item if it did not survive.
+
 Validation limitations do not stop PR creation when useful in-scope recovery is exhausted; document them in the PR. Never force-remove dirty or unpushed work.
 
 ## Git call shape

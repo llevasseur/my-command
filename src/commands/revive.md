@@ -9,6 +9,8 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 
 **The transcript tells you intent; the repo tells you state.** Every claim about what is left to do gets re-derived from the working tree, never taken from the transcript on faith.
 
+<!-- include: shared/closing-turn-anchor.md -->**Before the first tool call, anchor the closing turn.** Put "close the run in a text-only turn" in the harness todo/task list as its own final item — worded on its own, never folded into the work it follows — and leave it open until it is the only item left. The todo list is live session state that a compaction carries forward; this prompt is not. Once this run is summarized, that item is the only surviving record that an outcome is still owed.<!-- /include -->
+
 ## Flags
 
 - `--dry-run` / `-n` — report where the session stopped and what remains, and change nothing: no edits, no worktree created, no commit, no PR. Stop after Step 4.
@@ -114,7 +116,7 @@ Finishing the edits is not finishing the run. Go back to the workflow you identi
 - A run that was never inside `/task` ends wherever its own instructions say. If that is just "report", report.
 - Do **not** wrap the resumption in a new `/task` invocation: the branch and workspace already exist, and a nested run would create a second worktree for work that is already checked out.
 
-Report at the end: which transcript and store you used, where the session stopped, what you finished, what you deliberately left alone, and the PR number/URL if the workflow ended at one. <!-- include: shared/text-only-turn.md -->Deliver that report in a **text-only turn** — a final message carrying text and **zero tool calls**, sent after the last tool call returns rather than alongside it, because a run's outcome is recorded only from a message with no tool call in it: end on (or bundle the report into) a tool call and the run reads as unfinished even though the work landed. Every ending owes that turn — shipped, nothing-to-do, blocked, failed, refused, cut short, or a question back to me — and a subagent's report is never it, because the outcome belongs to the session the run started in.<!-- /include --> A run that ends on a tool call records no `done:` and reads as interrupted to the next `/revive`.
+Report at the end: which transcript and store you used, where the session stopped, what you finished, what you deliberately left alone, and the PR number/URL if the workflow ended at one. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include --> A run that ends on a tool call records no `done:` and reads as interrupted to the next `/revive`.
 
 ## Notes
 
@@ -124,3 +126,15 @@ Report at the end: which transcript and store you used, where the session stoppe
 - The store is device-local and on a retention window: an id that resolved yesterday may not resolve today. That's the store's lifecycle, not a bug to work around.
 - A transcript can be long. Read the header and task headings first, then the tail where it stopped; pull the middle only when you need a specific decision — pass numeric `offset` and `limit` values, never strings, for a targeted slice instead of the whole file.
 - **Batch the reconnaissance, and read each file once.** Reconstructing a run means many independent reads and greps — the transcript, the sibling transcripts, the files it touched. Issue them in a single turn rather than one per turn. A file already read this session is already in context: re-read it only after it changed.
+
+## Close the run in a text-only turn
+
+<!-- include-block: shared/closing-turn.md -->
+**This step is never skipped and never delegated.** The run is over when this session sends **one message carrying text and zero tool calls** — not when the work lands. That is the mechanic, not a style preference: a run's outcome is recorded only from a message with no tool call in it, so a message carrying the report *and* a tool call is recorded as a decision mid-run, and a run whose last message is a tool call records no outcome at all. Make the last tool call, let it return, then reply with text alone.
+
+- **Every exit routes here, not just the shipped one.** Finished; nothing to do; a gate still failing; a step blocked, refused, or awaiting my answer; the request abandoned as wrong. The wording changes, the closing turn does not. A run that stopped early says where it stopped and what is on the branch, and leaves `/revive <thread id>` as the recovery path when the proxy thread id is available.
+- **Say it in one self-contained line first**, then any detail. Someone who never saw the request should be able to read that line alone.
+- **A compaction boundary is a checkpoint, not an ending.** A recap prompt ("The user stepped away and is coming back…"), a `[SYSTEM NOTIFICATION - NOT USER INPUT]` event, or a session-continuation preamble each mean the run is still owed its turn: answer that prompt in text alone, say where the run actually stands, and restore the anchor todo item if it did not survive. A session is likeliest to die just after a compaction, so that answer is often the only outcome the run ever records.
+- **A subagent's report is never this turn.** The outcome belongs to the session the run started in, so after an `Agent` call returns, close the run here, in a message of your own.
+- **Do not tack the report onto the tool call before it.** `ExitWorktree`, `worktree end`, `verify`, and a closing `gh` call are exactly the calls that sit at the end of a run and swallow the outcome.
+<!-- /include-block -->
