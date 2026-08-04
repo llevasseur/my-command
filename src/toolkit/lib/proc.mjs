@@ -15,7 +15,7 @@ import { spawnSync } from 'node:child_process';
 /**
  * @param {string} cmd
  * @param {string[]} args
- * @param {{cwd?: string, input?: string, raw?: boolean}} [opts]
+ * @param {{cwd?: string, input?: string, raw?: boolean, env?: Record<string, string>}} [opts]
  * @returns {RunResult}
  */
 export function run(cmd, args, opts = {}) {
@@ -24,6 +24,9 @@ export function run(cmd, args, opts = {}) {
     input: opts.input,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
+    // Merged rather than replaced: a verb overrides one variable (an owner-scoped
+    // GH_TOKEN) and still needs PATH, HOME, and the rest of the caller's environment.
+    ...(opts.env ? { env: { ...process.env, ...opts.env } } : {}),
   });
   const missing = Boolean(r.error && /** @type {NodeJS.ErrnoException} */ (r.error).code === 'ENOENT');
   // `raw` keeps significant leading whitespace — git's porcelain status codes are
@@ -43,7 +46,7 @@ export function run(cmd, args, opts = {}) {
  * so the caller never has to re-run it to find out why it failed.
  * @param {string} cmd
  * @param {string[]} args
- * @param {{cwd?: string, input?: string, raw?: boolean}} [opts]
+ * @param {{cwd?: string, input?: string, raw?: boolean, env?: Record<string, string>}} [opts]
  * @returns {string} stdout
  */
 export function must(cmd, args, opts = {}) {

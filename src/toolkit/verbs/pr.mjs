@@ -3,6 +3,7 @@
 // every time: push, detect an existing PR, pick create-vs-edit, report number and URL.
 import { readFileSync } from 'node:fs';
 import { bool, str } from '../lib/flags.mjs';
+import { ghWrite, originSlug } from '../lib/gh.mjs';
 import { run as exec, ToolkitError, UsageError } from '../lib/proc.mjs';
 import { currentBranch, defaultBranch, repoRoot } from '../lib/repo.mjs';
 
@@ -18,7 +19,21 @@ Push the current branch and create or update its PR.
   --retitle        Also update the title of an existing PR.
 
 Assets already in an existing PR's description — images, videos, GitHub attachment
-links — are always carried over into the new body. They are never dropped.`;
+links — are always carried over into the new body. They are never dropped.
+
+A \`must be a collaborator\` rejection is resolved here — by retrying under a token
+belonging to the repository owner, then over REST — and never returned as an error.`;
+
+/**
+ * The REST equivalent of a `gh pr` write, as a JSON body on stdin.
+ * REST accepts the credential the GraphQL API rejects for a repo owned by another of the
+ * user's accounts, so it is the fallback that needs no second login present.
+ * @param {string} cwd @param {string} method @param {string} path @param {unknown} body
+ * @returns {() => import('../lib/proc.mjs').RunResult}
+ */
+function restCall(cwd, method, path, body) {
+  return () => exec('gh', ['api', '--method', method, path, '--input', '-'], { cwd, input: JSON.stringify(body) });
+}
 
 /** @param {import('../cli.mjs').Ctx} ctx */
 export function run(ctx) {
@@ -37,14 +52,30 @@ export function run(ctx) {
   const push = exec('git', ['push', '-u', 'origin', 'HEAD'], { cwd });
   if (!push.ok) throw new ToolkitError('git push failed', { code: push.code, stderr: push.stderr });
 
+  const slug = originSlug(cwd);
   const existing = findExisting(cwd);
 
   if (existing) {
     const merged = preserveAssets(body, existing.body ?? '');
+    const retitle = bool(ctx.flags.retitle);
     const args = ['pr', 'edit', String(existing.number), '--body', merged.body];
-    if (bool(ctx.flags.retitle)) args.push('--title', title);
-    const edited = exec('gh', args, { cwd });
-    if (!edited.ok) throw new ToolkitError('gh pr edit failed', { code: edited.code, stderr: edited.stderr });
+    if (retitle) args.push('--title', title);
+    const attempt = ghWrite(cwd, args, {
+      restFallback: slug
+        ? restCall(cwd, 'PATCH', `repos/${slug.owner}/${slug.repo}/pulls/${existing.number}`, {
+            body: merged.body,
+            ...(retitle ? { title } : {}),
+          })
+        : undefined,
+    });
+    const edited = attempt.result;
+    if (!edited.ok) {
+      throw new ToolkitError('gh pr edit failed', {
+        code: edited.code,
+        stderr: edited.stderr,
+        identity: attempt.identity,
+      });
+    }
     // Only ever move a PR toward draft on request; never silently flip an existing
     // draft to ready, which would put it in front of reviewers early.
     if (draft && !existing.isDraft) exec('gh', ['pr', 'ready', String(existing.number), '--undo'], { cwd });
@@ -55,13 +86,31 @@ export function run(ctx) {
       branch,
       draft: draft || existing.isDraft,
       assetsPreserved: merged.preserved,
+      identity: attempt.identity,
     };
   }
 
   const args = ['pr', 'create', '--base', base, '--title', title, '--body', body];
   if (draft) args.push('--draft');
-  const created = exec('gh', args, { cwd });
-  if (!created.ok) throw new ToolkitError('gh pr create failed', { code: created.code, stderr: created.stderr });
+  const attempt = ghWrite(cwd, args, {
+    restFallback: slug
+      ? restCall(cwd, 'POST', `repos/${slug.owner}/${slug.repo}/pulls`, {
+          title,
+          body,
+          head: branch,
+          base,
+          draft,
+        })
+      : undefined,
+  });
+  const created = attempt.result;
+  if (!created.ok) {
+    throw new ToolkitError('gh pr create failed', {
+      code: created.code,
+      stderr: created.stderr,
+      identity: attempt.identity,
+    });
+  }
 
   const now = findExisting(cwd);
   return {
@@ -71,6 +120,7 @@ export function run(ctx) {
     branch,
     base,
     draft,
+    identity: attempt.identity,
   };
 }
 
