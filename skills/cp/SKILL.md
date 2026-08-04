@@ -9,23 +9,59 @@ Hand the user a ready-to-paste invocation of another workflow. Never run that
 workflow, load its `SKILL.md`, or print the composed text. Spend as few tokens as
 possible.
 
-1. **Compose.** The first argument token names the target skill (`$name` or a bare
+1. **Restore, with `--again` / `-a`.** This flag short-circuits everything below:
+   no composing, no reading, no enrichment, and no target skill or prompt
+   arguments. One shell call puts the last copy back on the clipboard without
+   spending tokens on its text:
+
+   ```bash
+   pbcopy < ~/.claude/cp-last.txt
+   ```
+
+   An optional slot number reaches an older ring entry — `--again 2` restores
+   `~/.claude/cp-last.2.txt`, valid through slot 4. Substitute the platform's
+   clipboard sink as in step 3. If the stash file is missing, say so plainly and
+   write nothing rather than copying an empty clipboard. Then stop.
+2. **Compose.** The first argument token names the target skill (`$name` or a bare
    name); the rest is the prompt. Rewrite it to stand alone for an agent that
    cannot see this conversation — resolve pronouns, name files, branches, and PR
    numbers, keep every stated constraint, and add no scope. Keep the user's flags
    as typed. With `--verbatim` / `-v`, copy the prompt unchanged.
-2. **Copy.** One shell call, heredoc-quoted so nothing expands:
+3. **Copy.** One shell call. It rotates the stash ring, writes the composed line
+   to `~/.claude/cp-last.txt`, then feeds the clipboard from that file, so both
+   carry identical bytes and a later copy can be undone with step 1. The heredoc
+   is single-quoted so nothing expands:
 
    ```bash
-   pbcopy <<'CPEOF'
+   mkdir -p ~/.claude
+   rm -f ~/.claude/cp-last.4.txt
+   for i in 3 2 1; do
+     [ -f ~/.claude/cp-last.$i.txt ] && mv ~/.claude/cp-last.$i.txt ~/.claude/cp-last.$((i + 1)).txt
+   done
+   [ -f ~/.claude/cp-last.txt ] && mv ~/.claude/cp-last.txt ~/.claude/cp-last.1.txt
+   cat > ~/.claude/cp-last.txt <<'CPEOF'
    $<skill> <composed prompt>
    CPEOF
+   pbcopy < ~/.claude/cp-last.txt
    ```
 
-   Use `wl-copy`, `xclip -selection clipboard`, or `clip.exe` where `pbcopy` does
-   not exist. With no clipboard sink, print the composed line and say why.
-3. **Report.** `Done!`, then at most one short line naming the direction taken.
+   The stash write happens on every platform; only the last line is
+   platform-detected. Use `wl-copy`, `xclip -selection clipboard`, or `clip.exe`
+   where `pbcopy` does not exist. With no clipboard sink the stash is written
+   anyway: print the composed line and say why.
+4. **Report.** `Done!`, then at most one short line naming the direction taken.
    Nothing else.
+
+The stash is plain text under `~/.claude` only — never markdown, a doc artifact,
+or anything inside the repository. The ring is five deep: `cp-last.txt` plus
+`cp-last.1.txt` through `cp-last.4.txt`, oldest dropped on each copy. For
+recovery with no agent at all, add to `~/.zshrc`:
+
+```bash
+cpagain() { pbcopy < ~/.claude/cp-last.txt; }
+```
+
+or the slot-aware variant, `cpagain() { pbcopy < "$HOME/.claude/cp-last${1:+.$1}.txt"; }`.
 
 Never read files, search, or inspect git to enrich the prompt, and never verify
 the target skill exists — an unknown name goes to the clipboard as typed. If the

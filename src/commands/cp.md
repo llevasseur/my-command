@@ -1,6 +1,6 @@
 ---
 description: Compose another command's invocation and copy it to the clipboard, ready to paste into another agent
-argument-hint: [--verbatim] <command> <prompt>
+argument-hint: [--verbatim] [--again [slot]] <command> <prompt>
 allowed-tools: Bash
 ---
 
@@ -10,25 +10,58 @@ Put a ready-to-paste invocation of another command on the clipboard. **Never run
 
 ## Flags
 
-- `--verbatim` / `-v` — copy the prompt exactly as typed; skip the shaping in step 1.
+- `--verbatim` / `-v` — copy the prompt exactly as typed; skip the shaping in step 2.
+- `--again` / `-a` `[slot]` — restore the last copy to the clipboard from the stash instead of composing anything. Takes no command and no prompt. An optional slot number reaches an older ring entry (`/cp --again 2`).
 
 ## Steps
 
-1. **Compose.** The first token of `$ARGUMENTS` is the target command (a leading `/` is optional); everything after it is the prompt. Rewrite the prompt so it stands alone for an agent that cannot see this conversation — resolve `this`/`that`/`it`, name files, branches, and PR numbers explicitly, and keep every constraint the user stated. Add no scope. Preserve any flags the user typed for the target command as typed. With `--verbatim`, use the prompt as given.
-2. **Copy.** One Bash call, heredoc-quoted so the shell expands and escapes nothing:
+1. **Restore, with `--again` / `-a`.** This flag short-circuits the whole command: do not compose, do not read anything, do not enrich anything, and ignore any command or prompt tokens rather than acting on them. One Bash call, which spends no tokens on the text it restores:
 
    ```bash
-   pbcopy <<'CPEOF'
-   /<command> <composed prompt>
-   CPEOF
+   pbcopy < ~/.claude/cp-last.txt
    ```
 
-   Off macOS, substitute the platform's clipboard sink (`wl-copy`, `xclip -selection clipboard`, `clip.exe`). If none is available, say so and print the composed line — that is the only case where printing it is correct.
+   A slot number reads an older ring entry instead — `/cp --again 2` restores `~/.claude/cp-last.2.txt`, valid through slot 4. Off macOS, substitute the platform's clipboard sink exactly as in step 3. If the stash file does not exist, say so plainly and write nothing: an empty clipboard is worse than whatever is on it now. Then stop — steps 2 and 3 do not run.
+2. **Compose.** The first token of `$ARGUMENTS` is the target command (a leading `/` is optional); everything after it is the prompt. Rewrite the prompt so it stands alone for an agent that cannot see this conversation — resolve `this`/`that`/`it`, name files, branches, and PR numbers explicitly, and keep every constraint the user stated. Add no scope. Preserve any flags the user typed for the target command as typed. With `--verbatim`, use the prompt as given.
+3. **Copy.** One Bash call. It rotates the stash ring, writes the composed line to `~/.claude/cp-last.txt`, and then feeds the clipboard *from that file* — so the clipboard and the stash carry identical bytes, and a later copy from anywhere else can be undone with step 1. The heredoc is single-quoted so the shell expands and escapes nothing:
+
+   ```bash
+   mkdir -p ~/.claude
+   rm -f ~/.claude/cp-last.4.txt
+   for i in 3 2 1; do
+     [ -f ~/.claude/cp-last.$i.txt ] && mv ~/.claude/cp-last.$i.txt ~/.claude/cp-last.$((i + 1)).txt
+   done
+   [ -f ~/.claude/cp-last.txt ] && mv ~/.claude/cp-last.txt ~/.claude/cp-last.1.txt
+   cat > ~/.claude/cp-last.txt <<'CPEOF'
+   /<command> <composed prompt>
+   CPEOF
+   pbcopy < ~/.claude/cp-last.txt
+   ```
+
+   The stash write happens on **every** platform; only the last line is platform-detected. Off macOS, substitute the platform's clipboard sink (`wl-copy`, `xclip -selection clipboard`, `clip.exe`). If none is available, the stash is already written either way: say so and print the composed line — that is the only case where printing it is correct.
+
+## Recovering without an agent
+
+The stash is a plain file, so the cheapest recovery spends no tokens at all. Add to `~/.zshrc`:
+
+```bash
+cpagain() { pbcopy < ~/.claude/cp-last.txt; }
+```
+
+Or the variant that takes an optional slot number matching the ring:
+
+```bash
+cpagain() { pbcopy < "$HOME/.claude/cp-last${1:+.$1}.txt"; }
+```
+
+`cpagain` restores the most recent copy, `cpagain 2` the entry two copies back.
 
 ## Notes
 
 - Never read files, grep, or touch git to enrich the prompt. Whatever is already in context is all you get; a prompt needing research is the receiving agent's job, not yours.
 - Never verify the target command exists. An unrecognized name lands on the clipboard as typed and the receiving agent reports it.
+- The stash is plain text and lives under `~/.claude` only — no markdown, no doc artifact, and nothing written into the repository you happen to be in. The ring is five deep: `cp-last.txt` plus `cp-last.1.txt` through `cp-last.4.txt`, the oldest dropped on each copy.
+- `--again` is a restore and nothing else: no compose step, no target command, no reads, no enrichment, no tokens spent on the text it puts back. A missing stash file is reported plainly — never copied as an empty clipboard.
 - If the arguments are too vague to compose, ask one focused question instead of guessing — no clipboard write.
 - The whole reply is `Done!` on its own line, then at most one short line naming the direction taken (what you resolved, assumed, or preserved verbatim). Nothing else — no preamble, no composed command, no next steps. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
 
