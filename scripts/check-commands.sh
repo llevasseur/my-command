@@ -16,6 +16,9 @@
 #   6. every command carries the closing turn as its own step and anchors it in the todo
 #      list up front, and every Codex skill mirrors both, so a run cannot end — or be
 #      compacted mid-flight — without recording an outcome.
+#   7. both density paths keep the Rewrite toward vocabulary rules.
+#   8. every command that sweeps files carries the batched discovery step.
+#   9. every merge command carries the working merge command forms.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -182,6 +185,33 @@ for f in skills/truncate/SKILL.md skills/docs/SKILL.md; do
     fail=1
   fi
 done
+
+# 8. Every command that sweeps files before acting triggers the batched discovery pass from its
+# own workflow. Serial reads and re-reads regressed twice against a prose rule in the consuming
+# repo's AGENTS.md — a rule an agent has to recall is not a mechanism, so the step lives in the
+# commands and this gate keeps it there.
+for f in src/commands/task.md src/commands/fb.md src/commands/review.md src/commands/god.md \
+  src/commands/docs.md src/commands/clean.md src/commands/truncate.md src/commands/revive.md \
+  src/commands/improve.md; do
+  if ! grep -Fq 'include-block: shared/batched-discovery.md' "$f"; then
+    echo "::error::$f dropped the shared/batched-discovery.md include; its discovery phase would go back to one read per turn and to re-reading files already in context."
+    fail=1
+  fi
+done
+
+# 9. The merge commands state the working command forms at the step that runs them. Bash
+# supplied over 90% of this pipeline's failed calls, concentrated in a rejected merge re-issued
+# verbatim and in `cd <path> &&` where the toolkit takes a `--cwd` flag.
+for f in src/commands/mc.md src/commands/god.md src/commands/merge-deps.md; do
+  if ! grep -Fq 'include-block: shared/merge-command-forms.md' "$f"; then
+    echo "::error::$f dropped the shared/merge-command-forms.md include; its merge step would have no working command forms and a rejected merge would be re-issued verbatim."
+    fail=1
+  fi
+done
+if grep -RFq 'cd <path> && my-command-tools' src/commands/; then
+  echo "::error::a command still tells agents to 'cd <path> && my-command-tools …'; the toolkit takes the checkout as 'my-command-tools <verb> --cwd <path>'."
+  fail=1
+fi
 
 if [ "$fail" -eq 0 ]; then
   echo "check-commands: all command invariants satisfied ($(ls src/commands/*.md | wc -l | tr -d ' ') commands)."
