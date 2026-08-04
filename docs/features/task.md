@@ -91,7 +91,15 @@ ending: a recap prompt, a background-task notification, or a continuation preamb
 get answered in text alone, saying where the run stands, because a session is likeliest to
 die just after a compaction and that answer is often the only outcome it ever records.
 Both halves are shared snippets (`src/shared/closing-turn-anchor.md` and
-`src/shared/closing-turn.md`) that every command carries. "Complete" is still reserved for an
+`src/shared/closing-turn.md`) that every command carries.
+
+Those two rules meet in one place, and `/task` says where. The anchor is kept open until
+nothing else remains; the closing turn makes no tool calls and so cannot mark it done. The
+resolution is that the **last tool call of the run closes every open task, the anchor item
+included**, and the text-only message follows it. Left implicit, the anchor survives the run
+it was meant to guard and the pipeline reads as abandoned partway through however complete it
+is — a task that did not happen is therefore resolved as skipped and named in the report,
+rather than left pending to imply it is still coming. "Complete" is still reserved for an
 existing PR plus finished worktree teardown; a run that stops earlier reports the stop
 accurately and points to `/revive <thread id>` when its proxy thread id is available.
 

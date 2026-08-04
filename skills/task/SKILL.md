@@ -70,6 +70,14 @@ outcome.
    each mean the run is still owed its turn, so answer in text alone, say where
    the run stands, and restore the todo item if it did not survive.
 
+   Close every open task in the last tool call, including that anchor item. A
+   message with no tool calls cannot mark anything done, so an item left open
+   when the report goes out stays open and the run reads as abandoned partway
+   through however complete it is. The anchor is kept open until nothing else
+   remains and is resolved here, by the final tool call, before the text-only
+   message is sent. Resolve a task that did not happen as skipped and say so in
+   the report rather than leaving it pending.
+
 Validation limitations do not stop PR creation when useful in-scope recovery is exhausted; document them in the PR. Never force-remove dirty or unpushed work.
 
 ## Git call shape

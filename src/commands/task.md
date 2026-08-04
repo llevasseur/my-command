@@ -39,7 +39,7 @@ Honor any condition implied by an associated prompt at the relevant point. If it
 
 ## Step 1 — Set up the workspace
 
-Put this run's steps in the harness's todo/task list first, before `state`, before the worktree, before anything. <!-- include: shared/closing-turn-anchor.md -->**Before the first tool call, anchor the closing turn.** Put "close the run in a text-only turn" in the harness todo/task list as its own final item — worded on its own, never folded into the work it follows — and leave it open until it is the only item left. The todo list is live session state that a compaction carries forward; this prompt is not. Once this run is summarized, that item is the only surviving record that an outcome is still owed.<!-- /include --> Here that item is Step 4, never folded into "open the PR" or "tear down the worktree".
+Put this run's steps in the harness's todo/task list first, before `state`, before the worktree, before anything. <!-- include: shared/closing-turn-anchor.md -->**Before the first tool call, anchor the closing turn.** Put "close the run in a text-only turn" in the harness todo/task list as its own final item — worded on its own, never folded into the work it follows — and leave it open until it is the only item left. The todo list is live session state that a compaction carries forward; this prompt is not. Once this run is summarized, that item is the only surviving record that an outcome is still owed.<!-- /include --> Here that item is Step 4, never folded into "open the PR" or "tear down the worktree" — and it is resolved by the last tool call of Step 4, never by the closing message, which makes no tool calls at all.
 
 Decide where the work happens **before** touching any code. Base every workspace decision on **live** git state — `my-command-tools state` — never the session's startup snapshot, which can be stale. It reports `branch`, `defaultBranch`, `onDefaultBranch`, `worktree`, and the `base` it resolved.
 
@@ -127,6 +127,8 @@ Either way it is one continuous stage: a Step 0 added command scheduled at this 
 <!-- /include-block -->
 
 For this pipeline: the run is not over when the PR opens or the worktree is removed. Lead with what shipped, the branch, and the PR number/URL — or what stopped the run. `--sub` does not move this step: the subagent runs `/clean` + `/pr` and reports back here, and its report is not this turn. If the Step 1 todo item went with a compaction, close the run anyway — any run that reached this far owes a closing turn, and a redundant one costs nothing while a skipped one loses the record.
+
+**Close every open task in the last tool call — including the closing-turn item itself.** The closing turn carries zero tool calls, so it cannot mark anything done: whatever is still open when the report goes out stays open, and the run reads as abandoned partway through however complete it actually is. Step 1 says to leave the anchor item open until it is the only one left; **this is where it is closed**, and the two rules only meet here. So the final tool call of the run is the one that resolves the anchor item and every other item still outstanding — let it return, then send the text-only message. Resolve a task that genuinely did not happen as skipped and say so in the report; leaving it pending claims it is still coming.
 
 ## Notes
 
