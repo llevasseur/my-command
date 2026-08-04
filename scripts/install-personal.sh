@@ -7,6 +7,23 @@
 # matter where the repo is cloned.
 set -euo pipefail
 
+INSTALL_HOOKS=1
+for arg in "$@"; do
+  case "$arg" in
+    --no-hooks) INSTALL_HOOKS=0 ;;
+    -h|--help)
+      echo "usage: install-personal.sh [--no-hooks]"
+      echo
+      echo "  --no-hooks   Link commands and the toolkit, but do not register the"
+      echo "               PreToolUse/Stop gates in settings.json."
+      echo
+      echo "The gates can also be turned off after installation without uninstalling:"
+      echo "  export MY_COMMAND_HOOKS=0"
+      exit 0 ;;
+    *) echo "unknown option: $arg" >&2; exit 2 ;;
+  esac
+done
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SRC_DIR="$REPO_ROOT/src/commands"
 # One source of truth for where Claude's config lives, so the commands and the toolkit
@@ -79,4 +96,34 @@ if [ -d "$TOOLKIT_SRC" ]; then
     ln -sfn "$SHIM" "$LINK_DIR/my-command-tools"
     echo "On PATH as 'my-command-tools' via $LINK_DIR/my-command-tools (new shells only)."
   fi
+fi
+
+# The workflow gates. Symlinked like the toolkit so `git pull` updates them, and registered
+# in settings.json because a hook the harness does not know about never runs. Both halves are
+# required for the gates to exist at all.
+HOOKS_SRC="$REPO_ROOT/src/hooks"
+if [ "$INSTALL_HOOKS" -eq 1 ] && [ -d "$HOOKS_SRC" ]; then
+  HOOKS_ROOT="$CLAUDE_DIR/my-command"
+  mkdir -p "$HOOKS_ROOT"
+  # Same reason as the toolkit above: a prior npx run can leave a real directory here, and
+  # `ln -sfn` against one would nest inside it instead of replacing it.
+  rm -rf "$HOOKS_ROOT/hooks"
+  ln -s "$HOOKS_SRC" "$HOOKS_ROOT/hooks"
+
+  if [ "$(readlink "$HOOKS_ROOT/hooks")" != "$HOOKS_SRC" ]; then
+    echo "failed to point $HOOKS_ROOT/hooks at $HOOKS_SRC" >&2
+    exit 1
+  fi
+
+  if node "$HOOKS_SRC/install-hooks.mjs" --hooks-dir "$HOOKS_ROOT/hooks" >/dev/null; then
+    echo "Registered the PreToolUse and Stop gates in $CLAUDE_DIR/settings.json."
+    echo "  Off switch (no uninstall needed):  export MY_COMMAND_HOOKS=0"
+    echo "  Remove the registration entirely:  node $HOOKS_ROOT/hooks/install-hooks.mjs --uninstall"
+  else
+    echo "note: could not register the gates in $CLAUDE_DIR/settings.json — the hook scripts are" >&2
+    echo "      linked but inert until they are registered. Re-run:" >&2
+    echo "      node $HOOKS_ROOT/hooks/install-hooks.mjs" >&2
+  fi
+elif [ "$INSTALL_HOOKS" -eq 0 ]; then
+  echo "Skipped the workflow gates (--no-hooks)."
 fi

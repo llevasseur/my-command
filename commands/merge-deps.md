@@ -53,11 +53,13 @@ Parse leading flags off `$ARGUMENTS`:
 List open, non-draft PRs carrying the label, based on main:
 
 ```
-gh pr list --state open --draft=false --base main --label <label> \
-  --json number,headRefName,title,isDraft,isCrossRepository,author,labels --limit 200
+my-command-tools prs list --base main --label <label> --draft false --limit 200
 ```
 
-- Keep only PRs where `isDraft == false` (belt-and-suspenders alongside `--draft=false`).
+One read-only call, JSON on stdout, with every field below already in it — no `--json` list to
+name and no `| jq` to pipe it through.
+
+- Keep only PRs where `isDraft == false` (belt-and-suspenders alongside `--draft false`).
 - **Skip cross-repo / fork PRs** (`isCrossRepository == true`) — you cannot push the `/my-command:mc`
   conflict resolution to a fork. Collect them and report as skipped.
 - Process in **ascending PR number** (oldest first) for a deterministic order.
@@ -72,7 +74,7 @@ gh pr list --state open --draft=false --base main --label <label> \
 The merge steps are where this pipeline's failed shell calls concentrate, and almost every one is a rejected merge re-issued verbatim. Read the error text and branch on it; never send the same call twice.
 
 - **Merging a PR into the default branch** is `gh pr merge <number> --<method> --delete-branch`, issued **once**. Its rejections are states, not usage errors:
-  - `Merge already in progress`, or a failing `mergePullRequest` GraphQL call — GitHub accepted a merge and is still processing it. **Do not re-issue it.** Read the outcome instead: `gh pr view <number> --json state,mergedAt,mergeStateStatus`. `MERGED` is success, and the run continues at its next step. Only a PR that settles back to `OPEN` is merged again, and then once.
+  - `Merge already in progress`, or a failing `mergePullRequest` GraphQL call — GitHub accepted a merge and is still processing it. **Do not re-issue it.** Read the outcome instead: `my-command-tools prs view <number>`, whose result already carries `state`, `mergedAt`, and `mergeStateStatus`. `MERGED` is success, and the run continues at its next step. Only a PR that settles back to `OPEN` is merged again, and then once.
   - Pending required checks — a wait, not a refusal. Re-issue the identical command **with `--auto`** and record the PR as queued.
   - `not mergeable`, `BLOCKED`, or `BEHIND` — the default branch moved. Run `/my-command:mc -t <branch>`, then retry the merge once.
   - Never reach for `--admin`, `gh api -X PUT .../merge`, or a `GH_TOKEN=` re-run to get past any of these.

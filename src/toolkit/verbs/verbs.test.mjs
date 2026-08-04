@@ -10,6 +10,7 @@ import { after, test } from 'node:test';
 import { porcelain } from '../lib/repo.mjs';
 import { run as commit } from './commit.mjs';
 import { run as pr } from './pr.mjs';
+import { run as scope } from './scope.mjs';
 import { run as state } from './state.mjs';
 import { run as worktree } from './worktree.mjs';
 
@@ -402,4 +403,124 @@ test('worktree begin rejects --base together with --existing', () => {
     () => worktree(ctx(dir, ['begin'], { branch: 'feat/existing', existing: true, base: 'main' })),
     /--base cannot apply/,
   );
+});
+
+test('commit retries an unapproved signing prompt exactly once', () => {
+  const { dir, git } = repo();
+  git(['checkout', '-qb', 'feat/signed']);
+  writeFileSync(join(dir, 'a.ts'), 'export const a = 11;\n');
+
+  // A signer that always fails the way an unapproved 1Password prompt does, counting its
+  // invocations so the retry is proven bounded rather than merely present.
+  const attempts = join(dir, 'sign-attempts');
+  const signer = join(dir, 'fake-gpg');
+  writeFileSync(
+    signer,
+    `#!/bin/sh\necho x >> ${JSON.stringify(attempts)}\necho "1Password: failed to fill whole buffer" >&2\nexit 1\n`,
+  );
+  chmodSync(signer, 0o755);
+  git(['config', 'commit.gpgsign', 'true']);
+  // The format is pinned because the developer's global config may select ssh signing,
+  // which would route around `gpg.program` and never reach the stub.
+  git(['config', 'gpg.format', 'openpgp']);
+  git(['config', 'gpg.program', signer]);
+  git(['config', 'user.signingkey', 'ABCD1234']);
+
+  assert.throws(() => commit(ctx(dir, ['a.ts'], { message: 'feat: signed' })), /twice on an unapproved signing prompt/);
+  // Two attempts, never three: a third would only stack another prompt.
+  assert.equal(readFileSync(attempts, 'utf8').split('\n').filter(Boolean).length, 2);
+  // The failed attempts wrote nothing, so the tree is exactly as it was.
+  assert.equal(
+    execFileSync('git', ['log', '--oneline'], { cwd: dir, encoding: 'utf8' }).split('\n').filter(Boolean).length,
+    1,
+  );
+});
+
+test('commit does not retry an ordinary failure', () => {
+  const { dir, git } = repo();
+  git(['checkout', '-qb', 'feat/x']);
+  writeFileSync(join(dir, 'a.ts'), 'export const a = 12;\n');
+  const r = commit(ctx(dir, ['a.ts'], { message: 'feat: fine' }));
+  assert.equal(r.committed, true);
+  assert.equal(r.signingRetried, false);
+});
+
+test('scope reports a branch’s own commits and files without checking anything out', () => {
+  const { dir, git } = repo();
+  git(['checkout', '-qb', 'feat/scoped']);
+  writeFileSync(join(dir, 'b.ts'), 'export const b = 1;\n');
+  git(['add', 'b.ts']);
+  git(['commit', '-qm', 'feat: add b']);
+  writeFileSync(join(dir, 'c.ts'), 'export const c = 1;\n');
+
+  const s = scope(ctx(dir, [], { base: 'main' }));
+  assert.equal(s.branch, 'feat/scoped');
+  assert.equal(s.isCurrentBranch, true);
+  assert.deepEqual(
+    s.commits.map((c) => c.subject),
+    ['feat: add b'],
+  );
+  assert.deepEqual(
+    s.files.map((f) => f.path),
+    ['b.ts'],
+  );
+  // One ref to hand a single `git diff`, rather than a merge-base captured into a
+  // command substitution.
+  assert.match(s.diffRef, /^[0-9a-f]{40}\.\.\.feat\/scoped$/);
+  // The current branch also has a working tree, and it is reported apart from the commits.
+  assert.equal(s.workingTree, true);
+  const stillOnMain = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+  assert.equal(stillOnMain, 'feat/scoped');
+});
+
+test('scope refuses a branch that is not there', () => {
+  const { dir } = repo();
+  assert.throws(() => scope(ctx(dir, [], { branch: 'feat/nope' })), /no such branch/);
+});
+
+test('pr resolves a wrong-identity rejection itself instead of returning it', () => {
+  const { dir, git } = repo();
+  const remote = mkdtempSync(join(tmpdir(), 'mct-origin-'));
+  made.push(remote);
+  execFileSync('git', ['init', '-q', '--bare', remote]);
+  git(['remote', 'add', 'origin', remote]);
+  git(['push', '-q', '-u', 'origin', 'main']);
+  git(['checkout', '-qb', 'feat/identity']);
+
+  // GraphQL refuses the active account, no owner login exists on the device, and REST
+  // accepts the same credential — the recorded shape of this failure.
+  const bin = join(dir, '.fakebin');
+  mkdirSync(bin);
+  const log = join(dir, 'gh.log');
+  writeFileSync(
+    join(bin, 'gh'),
+    [
+      '#!/bin/sh',
+      `echo "$@" >> ${JSON.stringify(log)}`,
+      'case "$1 $2" in',
+      '  "pr view") exit 1 ;;',
+      '  "auth token") exit 1 ;;',
+      '  "pr create")',
+      '    echo "pull request create failed: GraphQL: must be a collaborator" >&2; exit 1 ;;',
+      '  "api --method")',
+      '    echo \'{"number": 42, "html_url": "https://example.test/pr/42"}\'; exit 0 ;;',
+      'esac',
+      'exit 0',
+    ].join('\n'),
+  );
+  chmodSync(join(bin, 'gh'), 0o755);
+
+  const previous = process.env.PATH;
+  process.env.PATH = `${bin}:${previous}`;
+  try {
+    const r = pr(ctx(dir, [], { title: 'T', body: '- body' }));
+    assert.equal(r.action, 'created');
+    // Resolved, and it says how — the condition never reaches the caller as an error.
+    assert.equal(r.identity, 'REST');
+    const calls = readFileSync(log, 'utf8');
+    assert.match(calls, /pr create/);
+    assert.match(calls, /api --method POST/);
+  } finally {
+    process.env.PATH = previous;
+  }
 });

@@ -17,8 +17,8 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 
 ## Step 1 — Resolve the target PR
 
-- `--target` given: `gh pr view <target> --json number,headRefName,baseRefName,url,title,body` to resolve it. If `gh` can't find it, stop and tell me — do not guess a branch name.
-- No `--target`: `gh pr view --json number,headRefName,baseRefName,url,title,body` for the current branch. If there's no open PR for the current branch, stop and tell me (this command reviews existing PRs, it doesn't open one).
+- `--target` given: `my-command-tools prs view <target>` to resolve it. It is read-only and already asks for every field this command needs — number, title, body, `headRefName`, `baseRefName`, url — so nothing has to name a `--json` field list. It exits 1 when the PR does not exist; on that, stop and tell me rather than guessing a branch name.
+- No `--target`: `my-command-tools prs view` for the current branch. If there's no open PR for the current branch, stop and tell me (this command reviews existing PRs, it doesn't open one).
 
 ## Step 2 — Set up the workspace
 

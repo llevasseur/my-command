@@ -165,9 +165,14 @@ skills/             Codex-native workflow skills — one semantic counterpart pe
 src/my-command.ts   The npx install wizard, in TypeScript (compiled to dist/, ships dependency-free)
 src/toolkit/        Shared CLI every command calls — raw .mjs, shipped as-is (see docs/specs/command-toolkit.md)
   cli.mjs              Entrypoint and verb registry; JSON on stdout
-  verbs/               state, verify, commit, pr, worktree, doctor
-  lib/                 git/process/path helpers
+  verbs/               state, scope, verify, commit, pr, prs, worktree, doctor
+  lib/                 git/process/path/gh helpers
   bin/my-command-tools The shim that resolves the toolkit device-wide
+src/hooks/          Workflow gates the harness runs (see docs/specs/workflow-gates.md)
+  pre-tool-use.mjs     Refuses serial discovery, redundant reads, and an unresolvable relative cd
+  stop.mjs             Refuses to end a run that recorded no outcome
+  settings-fragment.json  What gets merged into settings.json (hooks + read-only allowlist)
+  install-hooks.mjs    The idempotent merge; --uninstall removes it again
 dist/               GENERATED wizard build (tsc output; gitignored, built on install via `prepare`)
 commands/           GENERATED namespaced commands the plugin ships (do not edit by hand)
 scripts/
@@ -204,6 +209,10 @@ bundle under [`docs/`](./docs) — process specs plus one feature doc per comman
 - **[Command toolkit](./docs/specs/command-toolkit.md)** — the device-wide
   `my-command-tools` CLI, its verbs and guards, and how it reaches every install
   mode.
+- **[Workflow gates](./docs/specs/workflow-gates.md)** — the `PreToolUse` and
+  `Stop` hooks and the toolkit recoveries that enforce the workflow rules
+  mechanically, how they fail open, and how to turn them off
+  (`MY_COMMAND_HOOKS=0`).
 - **`docs/features/<cmd>.md`** — the flags, parameters, and behavior of each
   command.
 - **[Claude and Codex support patterns](./docs/research/2026-07-19-claude-codex-support-patterns.md)** —
@@ -252,8 +261,16 @@ cd my-command
 ```
 
 The symlinks point back into the clone, so `git pull` updates every Claude
-command, Codex skill, and the toolkit. Run the relevant script once per machine;
-both are path-agnostic.
+command, Codex skill, the toolkit, and the workflow gates. Run the relevant
+script once per machine; both are path-agnostic.
+
+`install-personal.sh` also registers the [workflow gates](./docs/specs/workflow-gates.md)
+in `~/.claude/settings.json` — the hooks that refuse serial discovery, a redundant
+whole-file re-read, a relative `cd` that cannot resolve, and a run that ends with no
+outcome. They fail open, never refuse the same thing twice, and always name the faster
+form. Skip registering them with `./scripts/install-personal.sh --no-hooks`, silence
+them at any time with `export MY_COMMAND_HOOKS=0`, or remove the registration with
+`node ~/.claude/my-command/hooks/install-hooks.mjs --uninstall`.
 
 Once set up, pull updates from any session with **`/sync`** — it finds the clone,
 fast-forwards it, and re-links any newly added commands, without hardcoding where

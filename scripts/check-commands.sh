@@ -19,6 +19,8 @@
 #   7. both density paths keep the Rewrite toward vocabulary rules.
 #   8. every command that sweeps files carries the batched discovery step.
 #   9. every merge command carries the working merge command forms.
+#  10. the workflow gates ship whole: hook scripts present and executable, both events
+#      registered in the settings fragment, the installer wiring them, and an off switch.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -210,6 +212,61 @@ for f in src/commands/mc.md src/commands/god.md src/commands/merge-deps.md; do
 done
 if grep -RFq 'cd <path> && my-command-tools' src/commands/; then
   echo "::error::a command still tells agents to 'cd <path> && my-command-tools …'; the toolkit takes the checkout as 'my-command-tools <verb> --cwd <path>'."
+  fail=1
+fi
+
+# 10. The workflow gates are wired end to end. A hook script does nothing until settings.json
+# registers it, and the installer is the only thing that registers it — so a missing script, a
+# lost mode bit, an unregistered event, or an installer that stopped calling the registration
+# all reduce the gates to files nobody executes.
+for required in src/hooks/pre-tool-use.mjs src/hooks/stop.mjs src/hooks/install-hooks.mjs \
+  src/hooks/settings-fragment.json; do
+  if [ ! -f "$required" ]; then
+    echo "::error::missing $required — the workflow gates only exist if all of them ship (docs/specs/workflow-gates.md)."
+    fail=1
+  fi
+done
+
+# A lost mode bit fails only at hook time, and silently: a failing hook allows the call.
+for script in src/hooks/pre-tool-use.mjs src/hooks/stop.mjs; do
+  if [ -f "$script" ] && [ ! -x "$script" ]; then
+    echo "::error::$script is not executable — run chmod +x and commit the mode bit."
+    fail=1
+  fi
+done
+
+# An unparseable fragment, or one missing an event, turns a gate off without saying so.
+if [ -f src/hooks/settings-fragment.json ]; then
+  if ! node -e 'JSON.parse(require("node:fs").readFileSync("src/hooks/settings-fragment.json","utf8"))' 2>/dev/null; then
+    echo "::error::src/hooks/settings-fragment.json is not valid JSON; the installer would refuse to register the gates."
+    fail=1
+  else
+    for event in PreToolUse Stop; do
+      if ! node -e "
+        const f = JSON.parse(require('node:fs').readFileSync('src/hooks/settings-fragment.json','utf8'));
+        const entries = f.hooks?.['$event'] ?? [];
+        const ok = Array.isArray(entries) && entries.length > 0 &&
+          entries.every((e) => (e.hooks ?? []).every((h) => String(h.command).includes('{{HOOKS_DIR}}')));
+        process.exit(ok ? 0 : 1);
+      " 2>/dev/null; then
+        echo "::error::src/hooks/settings-fragment.json no longer registers a $event hook against {{HOOKS_DIR}}; that gate would never fire."
+        fail=1
+      fi
+    done
+  fi
+fi
+
+# Every gate must be reachable from a fresh device, and switchable off without uninstalling.
+if ! grep -q 'install-hooks.mjs' scripts/install-personal.sh; then
+  echo "::error::scripts/install-personal.sh no longer runs src/hooks/install-hooks.mjs; the gates would ship unregistered and inert."
+  fail=1
+fi
+if ! grep -q 'MY_COMMAND_HOOKS' src/hooks/lib/io.mjs; then
+  echo "::error::src/hooks/lib/io.mjs no longer honors MY_COMMAND_HOOKS; the gates would have no off switch."
+  fail=1
+fi
+if ! grep -q 'MY_COMMAND_HOOKS' scripts/install-personal.sh; then
+  echo "::error::scripts/install-personal.sh no longer tells the user how to turn the gates off."
   fail=1
 fi
 

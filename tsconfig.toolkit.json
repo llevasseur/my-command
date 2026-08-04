@@ -15,5 +15,5 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["src/toolkit/**/*.mjs"]
+  "include": ["src/toolkit/**/*.mjs", "src/hooks/**/*.mjs"]
 }

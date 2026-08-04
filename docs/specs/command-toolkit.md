@@ -24,14 +24,23 @@ noise, what a PR description should say, or whether a failure is worth fixing.
 | Verb | Answers |
 |------|---------|
 | `state` | branch, base, commits, tracked vs untracked changes, `hasWork` |
+| `scope` | what a branch changed: the ref to diff, its commits, its files |
 | `verify` | which of the repo's gates ran and passed; bounded output only on failure |
 | `commit` | stage an explicit path list and commit, with guards |
 | `pr` | push, then create or update the branch's PR |
-| `worktree begin\|end\|list` | the isolated-workspace lifecycle |
-| `doctor` | where the toolkit resolved from, and what's on PATH |
+| `prs view\|list\|checks` | read-only pull-request lookups; never writes |
+| `worktree begin\|end\|reap\|list` | the isolated-workspace lifecycle |
+| `doctor` | where the toolkit resolved from, what's on PATH, and which clone it tracks |
 
 `state` collapses the rev-parse / status / log / diff opening volley into one call
 and settles `/task`'s no-change gate with a single `hasWork` boolean.
+
+`scope`, `prs`, and `doctor.checkout` exist for a second reason beyond call count: a
+probe with a name is never composed as the shell shape that gets refused. `scope`
+replaces `$(git merge-base origin/main HEAD)`, `prs` replaces
+`gh pr list … | jq …`, and `doctor.checkout` replaces the nest of three command
+substitutions `/sync` used to derive its clone path with. See
+[Workflow gates](workflow-gates.md).
 
 There is deliberately no comment-scoping verb. `/clean` needs the surrounding
 branch diff to judge comments; pre-filtering would remove that context.
@@ -59,6 +68,15 @@ failure a workflow run has actually hit:
 - `verify` returns no log at all for a passing gate and a bounded tail for a
   failing one, so callers stop hand-rolling `2>&1 | tail -12` and stop re-running a
   whole build because they guessed the window too small.
+- `commit` retries **once** on an unapproved signing prompt. The failed attempt wrote
+  nothing, so re-issuing the same commit is the entire fix — and it is a fix nobody has
+  to recall. Never a rewrite, never `--no-gpg-sign`, never a config change.
+- `pr` resolves a `must be a collaborator` rejection itself: the same write under a
+  token belonging to the repository owner, then over REST, whose endpoints accept the
+  credential GraphQL refused. It reports the `identity` that worked. A wrong-identity
+  condition with one known answer is not a caller's problem.
+- `prs` has no write path at all, so a read-only lookup can never be the thing that
+  changes a PR.
 
 ## Device-wide resolution
 

@@ -13,7 +13,11 @@ export const usage = `doctor
 
 Report where the toolkit resolved from, which install roots exist, whether a bare
 ${TOOLKIT_BIN} call resolves on PATH, and whether the external tools the verbs shell
-out to are available.`;
+out to are available.
+
+\`checkout\` names the MyCommand clone this install is symlinked to, and how far its
+branch is from origin — the answer /sync needs, so nothing has to derive it by nesting
+\`readlink\` and \`dirname\` inside a command substitution.`;
 
 const HERE = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -52,6 +56,32 @@ function pathReachability(device) {
   };
 }
 
+/**
+ * The MyCommand clone behind this install, if it is a checkout rather than a copied
+ * payload. A personal install symlinks the toolkit back into the clone, so resolving this
+ * file's real path and asking git for its root is the whole derivation — composed in the
+ * shell it took `$(cd "$(dirname "$(readlink -f …)")/../.." && pwd)`, three nested
+ * substitutions the harness refuses.
+ * @returns {{root: string, branch: string, head: string, behind: number, ahead: number, dirty: boolean} | null}
+ */
+function checkout() {
+  const root = exec('git', ['rev-parse', '--show-toplevel'], { cwd: real(HERE) });
+  if (!root.ok) return null;
+  const cwd = root.stdout;
+  const branch = exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd });
+  // Counted without fetching: doctor is read-only and must not mutate refs.
+  const counts = exec('git', ['rev-list', '--left-right', '--count', `HEAD...@{upstream}`], { cwd });
+  const [ahead, behind] = counts.ok ? counts.stdout.split(/\s+/).map(Number) : [0, 0];
+  return {
+    root: cwd,
+    branch: branch.ok ? branch.stdout : 'unknown',
+    head: exec('git', ['rev-parse', 'HEAD'], { cwd }).stdout,
+    behind: Number.isFinite(behind) ? behind : 0,
+    ahead: Number.isFinite(ahead) ? ahead : 0,
+    dirty: exec('git', ['status', '--porcelain'], { cwd }).stdout.length > 0,
+  };
+}
+
 export function run() {
   const roots = candidateRoots().map((c) => ({ ...c, exists: existsSync(join(c.path, 'cli.mjs')) }));
 
@@ -71,6 +101,7 @@ export function run() {
     deviceRoot: device,
     installed: existsSync(join(device, 'toolkit', 'cli.mjs')),
     onPath: pathReachability(device),
+    checkout: checkout(),
     version: existsSync(stamp) ? readFileSync(stamp, 'utf8').trim() : null,
     node: process.version,
     git: probe('git', ['--version']),

@@ -32,12 +32,20 @@ Read this instead of guessing a path. Every path below is real; nothing else is.
 - `src/my-command.ts` — the `npx` install wizard. `src/toolkit/cli.mjs` is the
   `my-command-tools` CLI, `src/toolkit/verbs/<verb>.mjs` its verbs, and
   `src/toolkit/bin/my-command-tools` the shim that lands on PATH.
+- `src/hooks/` — the workflow gates the harness runs: `pre-tool-use.mjs`, `stop.mjs`,
+  their shared `lib/`, the `settings-fragment.json` that registers them, and
+  `install-hooks.mjs` which merges that fragment into the device `settings.json`.
+  `install-personal.sh` symlinks the directory and runs the merge; the gates do nothing
+  until it does. `MY_COMMAND_HOOKS=0` silences all of them. See
+  [`docs/specs/workflow-gates.md`](docs/specs/workflow-gates.md) — **a gate must fail
+  open and must never refuse the same subject twice**, and both properties are gated by
+  `check-commands.sh`.
 - `scripts/` — `build-plugin.sh` (regenerates `commands/`), `expand-includes.mjs` (expands
   `src/shared/` snippets in place; `--check` reports drift), `check-commands.sh` (the
   invariant gate), `install-codex-personal.sh`.
 - `docs/` — an okq bundle: `docs/features/<name>.md` per command, plus `docs/specs/`.
-- Tests sit beside their subject: `scripts/*.test.mjs` and `src/toolkit/**/*.test.mjs`, both
-  run by `pnpm test`. There is no top-level `test/`.
+- Tests sit beside their subject: `scripts/*.test.mjs`, `src/toolkit/**/*.test.mjs`, and
+  `src/hooks/**/*.test.mjs`, all run by `pnpm test`. There is no top-level `test/`.
 
 The shared snippets a new command usually needs: `shared/closing-turn-anchor.md` plus
 `shared/closing-turn.md` (the outcome contract, required in every command by invariant 6),
