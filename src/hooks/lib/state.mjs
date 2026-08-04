@@ -1,10 +1,6 @@
-// Per-session scratch state, which exists for exactly one reason: a gate must never be
-// able to wedge a session.
-//
-// Every denial below is recorded, and a recorded denial is not repeated for the same
-// subject. So the worst a gate can cost is one corrected turn — it cannot refuse the same
-// call twice and leave the agent with no way forward. That property is worth more than
-// catching every instance, because a gate that can deadlock a run gets switched off.
+// Per-session scratch state, which exists so a gate can never wedge a session: a recorded
+// denial is not repeated for the same subject, so the worst a gate costs is one corrected
+// turn.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -16,8 +12,7 @@ function stateDir() {
 
 /** @param {string} sessionId @returns {string} */
 function stateFile(sessionId) {
-  // Session ids are uuids from the harness; the replace is belt-and-braces against one
-  // ever carrying a path separator.
+  // The replace guards against a session id ever carrying a path separator.
   return join(stateDir(), `${String(sessionId || 'unknown').replace(/[^\w.-]/g, '_')}.json`);
 }
 
@@ -36,17 +31,14 @@ export function save(sessionId, state) {
     mkdirSync(stateDir(), { recursive: true });
     writeFileSync(stateFile(sessionId), JSON.stringify(state));
   } catch {
-    // Unwritable scratch means the guard degrades to "deny each time it sees the same
-    // subject". Still bounded, since the agent's next call differs — and not worth
-    // failing a hook over.
+    // Unwritable scratch degrades the guard to "deny each time it sees the same subject".
   }
 }
 
 /**
- * Record a denial and report whether this subject was already denied.
- *
- * `subject` identifies what is being refused — a file path, a discovery run — so the
- * second identical refusal is suppressed and the call goes through.
+ * Record a denial and report whether this subject was already denied. `subject` is what is
+ * being refused — a file path, a discovery run — so the second identical refusal is
+ * suppressed and the call goes through.
  * @param {string} sessionId @param {string} gate @param {string} subject
  * @returns {boolean} true when this gate has already refused this subject
  */

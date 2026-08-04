@@ -215,11 +215,10 @@ if grep -RFq 'cd <path> && my-command-tools' src/commands/; then
   fail=1
 fi
 
-# 10. The workflow gates are wired end to end. A hook script in the repo does nothing until
-# settings.json registers it, and the installer is the only thing that registers it — so a
-# missing script, a lost mode bit, an unregistered event, or an installer that stopped calling
-# the registration all reduce the gates to files nobody executes. Each of these gates a defect
-# that had already been written down as prose and as a workflow step, and regressed anyway.
+# 10. The workflow gates are wired end to end. A hook script does nothing until settings.json
+# registers it, and the installer is the only thing that registers it — so a missing script, a
+# lost mode bit, an unregistered event, or an installer that stopped calling the registration
+# all reduce the gates to files nobody executes.
 for required in src/hooks/pre-tool-use.mjs src/hooks/stop.mjs src/hooks/install-hooks.mjs \
   src/hooks/settings-fragment.json; do
   if [ ! -f "$required" ]; then
@@ -228,8 +227,7 @@ for required in src/hooks/pre-tool-use.mjs src/hooks/stop.mjs src/hooks/install-
   fi
 done
 
-# The harness executes these directly, so a lost mode bit fails only at hook time — silently,
-# because a failing hook allows the call.
+# A lost mode bit fails only at hook time, and silently: a failing hook allows the call.
 for script in src/hooks/pre-tool-use.mjs src/hooks/stop.mjs; do
   if [ -f "$script" ] && [ ! -x "$script" ]; then
     echo "::error::$script is not executable — run chmod +x and commit the mode bit."
@@ -237,8 +235,7 @@ for script in src/hooks/pre-tool-use.mjs src/hooks/stop.mjs; do
   fi
 done
 
-# The fragment must be parseable and must register both events, or the installer writes a
-# settings.json that turns a gate off without saying so.
+# An unparseable fragment, or one missing an event, turns a gate off without saying so.
 if [ -f src/hooks/settings-fragment.json ]; then
   if ! node -e 'JSON.parse(require("node:fs").readFileSync("src/hooks/settings-fragment.json","utf8"))' 2>/dev/null; then
     echo "::error::src/hooks/settings-fragment.json is not valid JSON; the installer would refuse to register the gates."

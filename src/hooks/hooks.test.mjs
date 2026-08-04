@@ -1,10 +1,10 @@
 // The gates, exercised the way the harness runs them: a real event on stdin, a real
 // decision on stdout.
 //
-// These tests carry more weight than most, because a false denial here does not fail a
-// build — it blocks a legitimate tool call in the user's daily work. So the cases that
-// matter most are the ones asserting a call is *allowed*: a parallel batch, a re-read of a
-// changed file, a `cd` that resolves, and a second refusal of the same subject.
+// A false denial here does not fail a build — it blocks a legitimate tool call in daily
+// work. So the cases that matter most are the ones asserting a call is *allowed*: a
+// parallel batch, a re-read of a changed file, a `cd` that resolves, and a second refusal
+// of the same subject.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
@@ -34,7 +34,7 @@ function scratch() {
 
 /**
  * Run a hook the way the harness does. `state` points the wedge-guard's scratch somewhere
- * disposable so one test's denial cannot suppress another's.
+ * disposable, so one test's denial cannot suppress another's.
  * @param {string} script @param {Record<string, unknown>} event @param {string} [state]
  * @returns {Record<string, any>}
  */

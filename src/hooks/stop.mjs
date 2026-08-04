@@ -1,15 +1,10 @@
 #!/usr/bin/env node
 // Stop — refuse to end a run that never recorded an outcome.
 //
-// A run's outcome is recorded only from an assistant message carrying text and zero tool
-// calls. A run whose last message is a tool call records nothing at all, and a message
-// carrying the report *alongside* a tool call is recorded as a decision mid-run rather
-// than as the ending. Both look identical to a finished run in a job list, which is why
-// they went unnoticed across every session bucket analyzed.
-//
-// The commands already say this, in a step 18 of them carry. This is the same rule with
-// nobody having to remember it: at the moment the run tries to end, the last message is
-// either a text-only turn or it is not.
+// An outcome is recorded only from an assistant message carrying text and zero tool calls.
+// A run whose last message is a tool call records nothing, and one carrying the report
+// alongside a tool call is recorded as a decision mid-run. Both look identical to a
+// finished run in a job list, which is why they went unnoticed.
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { block, guard, readEvent } from './lib/io.mjs';
@@ -19,8 +14,8 @@ import { entries, timeline, turns } from './lib/transcript.mjs';
 guard(() => {
   const event = readEvent();
   if (!event) return;
-  // The harness sets this on a stop it is re-running because a hook already blocked once.
-  // Blocking again from the same state is how a Stop hook becomes an infinite loop.
+  // Set on a stop the harness is re-running because a hook already blocked once. Blocking
+  // again from the same state is how a Stop hook becomes an infinite loop.
   if (event.stop_hook_active === true) return;
 
   const session = String(event.session_id ?? '');
@@ -61,12 +56,9 @@ guard(() => {
 });
 
 /**
- * How many user prompts in this session were never answered by a text-only turn.
- *
- * Each prompt opens a task and only a text-only reply closes it, so a run that reads a
- * mid-run message and keeps working straight through leaves that task — and every task
- * before it — with no outcome. Counted for the record; only the current one can still be
- * closed.
+ * How many user prompts in this session were never answered by a text-only turn. Each
+ * prompt opens a task and only a text-only reply closes it. Counted for the record; only
+ * the current one can still be closed.
  * @param {(import('./lib/transcript.mjs').Turn | null)[]} line
  * @returns {number}
  */
@@ -85,8 +77,8 @@ function unclosedPrompts(line) {
 }
 
 /**
- * Leave a line for the human outside the transcript. The block above tells the agent; this
- * is what makes a pattern of misses visible later without reading transcripts.
+ * Leave a line for the human outside the transcript, so a pattern of misses is visible
+ * later without reading transcripts.
  * @param {string} line
  */
 function note(line) {

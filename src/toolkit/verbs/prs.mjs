@@ -1,13 +1,10 @@
 // `prs view|list|checks` — the read-only GitHub lookups, named.
 //
-// Commands were composing these by hand as `gh pr view --json a,b,c`, as a
-// `gh pr list … | jq …` pipe, and as `gh pr view N --json state,mergedAt` after a merge.
-// Each is a probe, and each is a shape the harness refuses once it is piped or captured
-// into a `$(...)`. Named here, the field list stops being the caller's problem, the pipe
-// disappears, and the answer arrives as JSON on stdout like every other verb.
+// Commands composed these by hand as `gh pr view --json a,b,c` and `gh pr list … | jq …`,
+// each a probe the harness refuses once it is piped or captured into a `$(...)`. Named
+// here, the field list stops being the caller's problem and the pipe disappears.
 //
-// Writes are deliberately absent: `pr` owns those, with the identity recovery a write
-// needs. Nothing in this verb can change a PR.
+// Writes are absent: `pr` owns those, with the identity recovery a write needs.
 import { list, str } from '../lib/flags.mjs';
 import { ghJson } from '../lib/gh.mjs';
 import { ToolkitError, UsageError } from '../lib/proc.mjs';
@@ -27,8 +24,8 @@ Read-only pull-request lookups. JSON on stdout; never writes.
 
 Exits 1 when the PR does not exist, so a caller can branch on that without parsing.`;
 
-// Everything a workflow command has been observed asking for, so no caller has to name
-// fields again — and so adding a field is a change here rather than in nine prompts.
+// Everything a workflow command asks for, so adding a field is a change here rather than
+// in nine prompts.
 const VIEW_FIELDS = [
   'number',
   'url',
@@ -54,8 +51,7 @@ const LIST_FIELDS = [
   'headRefName',
   'baseRefName',
   'isDraft',
-  // A fork PR cannot be pushed to, so a caller that resolves conflicts has to skip it —
-  // which it can only do if the field is here.
+  // A fork PR cannot be pushed to, so a caller that resolves conflicts has to skip it.
   'isCrossRepository',
   'state',
   'author',
@@ -111,9 +107,9 @@ function listPrs(ctx, cwd) {
 /** @param {import('../cli.mjs').Ctx} ctx @param {string} cwd */
 function checks(ctx, cwd) {
   const target = ctx.positionals[1];
-  // `gh pr checks` exits non-zero while checks are pending or failing, which would make
-  // ghJson report "no answer" for a perfectly good answer — so read the same data through
-  // `pr view`, whose exit code reflects only whether the PR exists.
+  // `gh pr checks` exits non-zero while checks are pending or failing, which ghJson would
+  // read as no answer at all — so take the same data from `pr view`, whose exit code
+  // reflects only whether the PR exists.
   const pr = /** @type {{number: number, statusCheckRollup?: unknown[]} | null} */ (
     ghJson(cwd, ['pr', 'view', ...(target ? [target] : []), '--json', 'number,statusCheckRollup'])
   );
@@ -142,8 +138,7 @@ function checks(ctx, cwd) {
   return {
     number: pr.number,
     runs,
-    // The three booleans a caller actually branches on, so it never re-derives them from
-    // the list — and never sleep-polls to find out.
+    // The booleans a caller branches on, so it never re-derives them from the list.
     settled: pending.length === 0,
     passing: pending.length === 0 && failed.length === 0,
     failing: failed.map((r) => r.name),

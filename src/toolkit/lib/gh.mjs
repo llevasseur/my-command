@@ -1,11 +1,9 @@
 // GitHub access, with the identity resolved here rather than reported as an error.
 //
-// `gh`'s GraphQL-backed writes (`pr create`, `pr edit`) authenticate as whichever account
-// is currently active, and on a repo owned by another of the user's accounts GitHub
-// answers `must be a collaborator`. That is a wrong-identity condition with exactly one
-// right answer, not a permission to request — so the recovery belongs in the tool that
-// hit it. A caller never sees the condition: it sees a PR, plus how the identity was
-// resolved.
+// `gh`'s GraphQL-backed writes authenticate as whichever account is active, and on a repo
+// owned by another of the user's accounts GitHub answers `must be a collaborator`. That is
+// a wrong-identity condition with one right answer, not a permission to request, so a
+// caller sees a PR and how the identity resolved rather than the condition.
 import { run as exec } from './proc.mjs';
 
 // GitHub's answer when the authenticated account cannot write to the repo. GraphQL-only:
@@ -14,10 +12,8 @@ import { run as exec } from './proc.mjs';
 const WRONG_IDENTITY = /must be a collaborator|HTTP 403|Resource not accessible/i;
 
 /**
- * The `owner/repo` the checkout pushes to, read from the origin remote.
- *
- * Parsed from the remote URL rather than asked of `gh repo view`, so resolving an
- * identity never itself depends on an authenticated call.
+ * The `owner/repo` the checkout pushes to. Parsed from the remote URL rather than asked of
+ * `gh repo view`, so resolving an identity never depends on an authenticated call.
  * @param {string} cwd
  * @returns {{owner: string, repo: string} | null}
  */
@@ -75,8 +71,8 @@ export function ghWrite(cwd, args, opts = {}) {
   if (opts.restFallback) {
     const rest = opts.restFallback();
     if (rest.ok) return { result: rest, identity: 'REST', owner };
-    // Report the REST failure, not the GraphQL one: it is the attempt that had the
-    // credential GraphQL refused, so its error is the one that says something new.
+    // Report the REST failure over the GraphQL one: REST had the credential GraphQL
+    // refused, so its error is the one that says something new.
     return { result: rest, identity: 'REST', owner };
   }
 
@@ -85,8 +81,8 @@ export function ghWrite(cwd, args, opts = {}) {
 
 /**
  * Read-only `gh` call returning parsed JSON, or null when the call failed or answered
- * something unparseable. Reads authenticate fine as any account with visibility, so they
- * need none of the recovery above.
+ * something unparseable. Reads authenticate as any account with visibility, so they need
+ * none of the recovery above.
  * @param {string} cwd @param {string[]} args
  * @returns {unknown}
  */

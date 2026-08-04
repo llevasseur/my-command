@@ -98,9 +98,9 @@ if [ -d "$TOOLKIT_SRC" ]; then
   fi
 fi
 
-# The workflow gates. Symlinked like the toolkit, so `git pull` in this clone updates them;
-# registered in settings.json, because a hook script the harness does not know about never
-# runs. Both halves are required for the gates to exist at all.
+# The workflow gates. Symlinked like the toolkit so `git pull` updates them, and registered
+# in settings.json because a hook the harness does not know about never runs. Both halves are
+# required for the gates to exist at all.
 HOOKS_SRC="$REPO_ROOT/src/hooks"
 if [ "$INSTALL_HOOKS" -eq 1 ] && [ -d "$HOOKS_SRC" ]; then
   HOOKS_ROOT="$CLAUDE_DIR/my-command"

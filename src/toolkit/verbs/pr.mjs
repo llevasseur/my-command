@@ -25,9 +25,9 @@ A \`must be a collaborator\` rejection is resolved here — by retrying under a 
 belonging to the repository owner, then over REST — and never returned as an error.`;
 
 /**
- * The REST equivalent of a `gh pr` write, as a JSON body on stdin.
- * REST accepts the credential the GraphQL API rejects for a repo owned by another of the
- * user's accounts, so it is the fallback that needs no second login present.
+ * The REST equivalent of a `gh pr` write, as a JSON body on stdin. REST accepts the
+ * credential GraphQL rejects for a repo owned by another of the user's accounts, so it is
+ * the fallback that needs no second login present.
  * @param {string} cwd @param {string} method @param {string} path @param {unknown} body
  * @returns {() => import('../lib/proc.mjs').RunResult}
  */

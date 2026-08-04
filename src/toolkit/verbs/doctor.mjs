@@ -59,9 +59,9 @@ function pathReachability(device) {
 /**
  * The MyCommand clone behind this install, if it is a checkout rather than a copied
  * payload. A personal install symlinks the toolkit back into the clone, so resolving this
- * file's real path and asking git for its root is the whole derivation — where composing
- * it in the shell took `$(cd "$(dirname "$(readlink -f …)")/../.." && pwd)`, a nest of
- * three substitutions the harness refuses.
+ * file's real path and asking git for its root is the whole derivation — composed in the
+ * shell it took `$(cd "$(dirname "$(readlink -f …)")/../.." && pwd)`, three nested
+ * substitutions the harness refuses.
  * @returns {{root: string, branch: string, head: string, behind: number, ahead: number, dirty: boolean} | null}
  */
 function checkout() {
@@ -69,8 +69,7 @@ function checkout() {
   if (!root.ok) return null;
   const cwd = root.stdout;
   const branch = exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd });
-  // Counted without fetching: doctor is read-only and must not mutate refs. A caller that
-  // needs a fresh count fetches first, then asks again.
+  // Counted without fetching: doctor is read-only and must not mutate refs.
   const counts = exec('git', ['rev-list', '--left-right', '--count', `HEAD...@{upstream}`], { cwd });
   const [ahead, behind] = counts.ok ? counts.stdout.split(/\s+/).map(Number) : [0, 0];
   return {

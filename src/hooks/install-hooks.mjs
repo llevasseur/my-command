@@ -1,14 +1,11 @@
 #!/usr/bin/env node
 // Merge the hook registration and the read-only allowlist into the device's settings.json.
-//
-// Shipping a hook script in a repo does nothing on its own — the harness only runs what
-// settings.json registers. That wiring is the installer's job, which is what makes the
-// difference between a mechanism and a file nobody executes.
+// The harness only runs what settings.json registers, so without this the hook scripts are
+// files nobody executes.
 //
 // The merge is additive and identified: entries are recognized by the hooks directory in
 // their command path, so re-running replaces exactly this install's entries and touches no
-// hook the user added themselves. Every unrelated setting is preserved byte-for-byte
-// apart from reformatting.
+// hook the user added. Every unrelated setting survives.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -74,8 +71,8 @@ export function install(opts) {
   const { hooksDir, settingsPath, uninstall } = opts;
   const settings = readJson(settingsPath);
 
-  // Always clear ours first: that is what makes a re-run idempotent rather than stacking a
-  // second copy of the same hook, which would deny twice for one violation.
+  // Clearing ours first is what keeps a re-run idempotent instead of stacking a second copy
+  // of the same hook, which would deny twice for one violation.
   const removed = removeOurs(settings, hooksDir);
 
   if (uninstall) {
@@ -95,9 +92,7 @@ export function install(opts) {
     registered += incoming.length;
   }
 
-  // The allowlist is the other half of the guardrail work: the routine read-only probes
-  // that stay in the shell should not be stopping to ask. Additive and deduped, so a
-  // permission the user narrowed by hand is never widened twice.
+  // Additive and deduped, so a permission the user narrowed by hand is never widened twice.
   const incomingAllow = Array.isArray(fragment.permissions?.allow) ? fragment.permissions.allow : [];
   settings.permissions = settings.permissions && typeof settings.permissions === 'object' ? settings.permissions : {};
   const currentAllow = Array.isArray(settings.permissions.allow) ? settings.permissions.allow : [];
@@ -120,8 +115,7 @@ function write(path, settings) {
   writeFileSync(path, `${JSON.stringify(settings, null, 2)}\n`);
 }
 
-// Run only on direct invocation, so the merge is testable without touching a real
-// settings.json.
+// Direct invocation only, so the merge is testable without touching a real settings.json.
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const args = process.argv.slice(2);
   if (args.includes('--help') || args.includes('-h')) {

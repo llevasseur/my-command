@@ -1,10 +1,7 @@
 // Reading the session transcript, which is where these gates get their evidence.
-//
-// The transcript is the only record of what already happened in a session, and it is
-// authoritative in a way a sidecar state file is not: it survives the hook being installed
-// mid-session, it is per-session without any keying of our own, and it distinguishes one
-// turn carrying six parallel tool calls from six turns carrying one each — which is
-// exactly the distinction the discovery gate is about.
+// It distinguishes one turn carrying six parallel tool calls from six turns carrying one
+// each, which is the distinction the discovery gate is about, and it survives the hooks
+// being installed mid-session where a sidecar state file would not.
 import { readFileSync } from 'node:fs';
 
 /**
@@ -35,7 +32,7 @@ export function entries(path) {
     try {
       out.push(JSON.parse(line));
     } catch {
-      // A torn final line, or a record shape we do not read. Neither is worth failing on.
+      // A torn final line, or a record shape we do not read.
     }
   }
   return out;
@@ -88,12 +85,10 @@ export function turns(line) {
 }
 
 /**
- * Whether `turn` is the one that issued the tool call now being judged.
- *
- * PreToolUse fires while the assistant message is being written, so the current call may
- * or may not already be in the transcript. Matching on name plus a deep compare of the
- * input is what tells "this turn is me" from "this turn was the previous read", and it is
- * what stops a batch of parallel calls being counted once per call.
+ * Whether `turn` is the one that issued the tool call now being judged. PreToolUse fires
+ * while the assistant message is being written, so the current call may or may not be in
+ * the transcript yet; matching on name plus a deep compare of the input is what stops a
+ * batch of parallel calls being counted once per call.
  * @param {Turn} turn @param {string} name @param {Record<string, any>} input
  * @returns {boolean}
  */
@@ -104,11 +99,8 @@ export function issued(turn, name, input) {
 
 /**
  * The most recent time this session read `path` in full — no `offset`, no `limit` — or 0
- * when it never did.
- *
- * Full reads only, deliberately: re-reading a file after having seen a narrow slice of it
- * is new information, so only a second *whole-file* read of an unchanged file is the
- * unambiguous case a gate may refuse.
+ * when it never did. Full reads only: re-reading a file after seeing a narrow slice is new
+ * information, so only a second whole-file read is unambiguous enough to refuse.
  * @param {(Turn | null)[]} line @param {string} path @param {string} [exceptTurnUuid]
  * @returns {number}
  */

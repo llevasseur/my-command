@@ -1,13 +1,10 @@
 // `scope` — the review scope of a branch, in one read-only call.
 //
-// Every command that reads a branch's own changes opened with the same volley:
-// `git branch --show-current`, then `git symbolic-ref refs/remotes/origin/HEAD` or a
-// `main`/`master` probe, then `git merge-base`, then `git diff --name-only`. Composed by
-// hand that is four calls, and the merge-base step is the one recorded as
-// `BASE=$(git merge-base origin/main HEAD)` — a read-only probe captured into a command
-// substitution, which is a shape the harness refuses. Named here, there is nothing to
-// compose: the verb reports the resolved refs and the file list, and the caller asks for
-// the diff itself once, for every path at once.
+// Replaces the four-call volley every command that reads a branch's own changes opened
+// with: `git branch --show-current`, a default-branch probe, `git merge-base`, then
+// `git diff --name-only`. The merge-base step is the one recorded as
+// `BASE=$(git merge-base origin/main HEAD)` — a probe captured into a command
+// substitution, a shape the harness refuses. Named here, there is nothing to compose.
 import { str } from '../lib/flags.mjs';
 import { run as exec, lines, ToolkitError } from '../lib/proc.mjs';
 import { currentBranch, defaultBranch, diffStat, porcelain, repoRoot, resolveBase } from '../lib/repo.mjs';
@@ -25,8 +22,8 @@ argument to pass to a single \`git diff\`; \`workingTree\` is true when uncommit
 changes are in scope as well, which is only ever the case for the current branch.`;
 
 /**
- * The branch's upstream, when it has one. Preferred over origin/<default> as a base:
- * a branch tracking something other than the default branch was based on that instead.
+ * The branch's upstream, when it has one. Preferred over origin/<default> as a base: a
+ * branch tracking something else was based on that instead.
  * @param {string} cwd @param {string} branch
  * @returns {string | null}
  */
@@ -46,9 +43,8 @@ export function run(ctx) {
     throw new ToolkitError(`no such branch: ${branch}`, { branch });
   }
 
-  // An explicit base wins; then the branch's own upstream; then origin/<default>. The
-  // upstream step is what keeps a stacked branch from being diffed against the default
-  // branch and reporting the parent branch's commits as its own.
+  // An explicit base wins, then the branch's own upstream, then origin/<default>. The
+  // upstream step keeps a stacked branch from reporting its parent's commits as its own.
   const explicit = str(ctx.flags.base);
   const upstream = explicit ? null : upstreamOf(cwd, branch);
   const base = resolveBase(cwd, explicit ?? upstream ?? `origin/${def}`);
@@ -79,8 +75,8 @@ export function run(ctx) {
     defaultBranch: def,
     base: { ...base, viaUpstream: upstream !== null },
     mergeBase,
-    // The single argument a caller hands `git diff`. Three dots on purpose: it is the
-    // branch's own work, not everything the base moved on by since.
+    // The single argument a caller hands `git diff`. Three dots: the branch's own work,
+    // not everything the base moved on by since.
     diffRef: `${mergeBase}...${branch}`,
     commits,
     files: committed,

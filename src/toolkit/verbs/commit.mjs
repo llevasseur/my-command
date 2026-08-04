@@ -19,16 +19,15 @@ error to interpret. The signing configuration is never touched.`;
 
 const WHOLE_TREE = new Set(['.', '-A', '--all', '-a', '*', './']);
 
-// An unapproved signing prompt: the agent's credential helper asked for approval and
-// timed out, so git never wrote the commit object and the tree is untouched. It is a
-// prompt to approve, not a repository problem — which is why the same commit succeeds
-// verbatim once approval lands. Matched on the helper's own message plus git's, so a
-// different helper that fails the same way is still recognized.
+// An unapproved signing prompt: the credential helper timed out waiting for approval, so
+// git never wrote the commit object and the tree is untouched — which is why the same
+// commit succeeds verbatim once approval lands. Matched on the helper's message plus git's,
+// so a different helper failing the same way is still recognized.
 const SIGNING_PROMPT =
   /1Password: failed to fill whole buffer|failed to write commit object|gpg failed to sign the data|error: cannot run gpg|secret key not available/i;
 
-// One retry, and the wait before it. Bounded on purpose: a second failure means the
-// prompt was never approved, and a third attempt would only stack another prompt.
+// Bounded to one retry: a second failure means the prompt was never approved, and a third
+// attempt would only stack another.
 const SIGNING_RETRY_WAIT_MS = 3000;
 
 /** Blocking sleep; the verb is synchronous throughout. @param {number} ms */
@@ -89,8 +88,7 @@ export function run(ctx) {
 
   return {
     committed: true,
-    // Reported so a caller can see the retry happened rather than inferring it from a
-    // delay. False on the ordinary path, where nothing needed recovering.
+    // So a caller sees the retry happened rather than inferring it from a delay.
     signingRetried,
     branch,
     sha: must('git', ['rev-parse', 'HEAD'], { cwd }),
@@ -104,14 +102,9 @@ export function run(ctx) {
 
 /**
  * Commit the staged pathspec, retrying once when the only thing that failed was an
- * unapproved signing prompt.
- *
- * The retry lives here rather than in the calling prompt because the recovery is
- * mechanical and identical every time: the failed attempt wrote nothing, so re-issuing
- * the *same* commit is the whole fix. It is deliberately not a rewrite, not
- * `--no-gpg-sign`, and not a change to the repo's signing configuration — those would
- * trade a paused prompt for an unsigned or rewritten commit.
- *
+ * unapproved signing prompt. The failed attempt wrote nothing, so re-issuing the *same*
+ * commit is the whole fix — never a rewrite, `--no-gpg-sign`, or a signing-config change,
+ * each of which trades a paused prompt for an unsigned or rewritten commit.
  * @param {string} cwd @param {string} message @param {string[]} paths
  * @returns {{result: import('../lib/proc.mjs').RunResult, signingRetried: boolean}}
  */
@@ -122,7 +115,7 @@ function commitOnce(cwd, message, paths) {
   const first = exec('git', args, { cwd, input: message });
   if (first.ok || !SIGNING_PROMPT.test(first.stderr)) return { result: first, signingRetried: false };
 
-  // Give the pending approval a moment to land before spending the one retry on it.
+  // Let a pending approval land before spending the one retry on it.
   sleep(SIGNING_RETRY_WAIT_MS);
   return { result: exec('git', args, { cwd, input: message }), signingRetried: true };
 }

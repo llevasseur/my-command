@@ -1,9 +1,8 @@
 // Deciding whether a tool call is a read-only probe.
 //
-// The bias here is asymmetric and deliberate. Calling a mutation "read-only" inflates the
-// discovery run and can deny a legitimate call; calling a probe "not read-only" merely
-// resets the counter and under-enforces. So anything not recognized is not read-only, and
-// every widening of these lists has to be an exact command that reads and nothing else.
+// Anything not recognized is not read-only. The bias is asymmetric on purpose: calling a
+// mutation read-only inflates the discovery run and can deny a legitimate call, while
+// calling a probe not-read-only only resets the counter.
 
 /** Tools whose whole purpose is reading. Bash is decided by its command, below. */
 const READ_ONLY_TOOLS = new Set(['Read', 'Grep', 'Glob']);
@@ -101,9 +100,8 @@ const READ_ONLY_TOOLKIT = new Set(['state', 'scope', 'doctor', 'prs']);
 const OPAQUE = /[`$><]|\bsudo\b/;
 
 /**
- * Split a command into the segments a shell would run, on the operators that separate
- * them. A pipeline counts as several segments: `git log | head` is read-only only because
- * both halves are.
+ * Split a command into the segments a shell would run. A pipeline counts as several:
+ * `git log | head` is read-only only because both halves are.
  * @param {string} command
  * @returns {string[]}
  */
@@ -119,15 +117,14 @@ function segments(command) {
  * @returns {boolean}
  */
 function segmentReadsOnly(segment) {
-  // A substitution, a redirection, or an elevation makes the real command something other
-  // than what is written here.
+  // A substitution, redirection, or elevation makes the real command something other than
+  // what is written here.
   if (OPAQUE.test(segment)) return false;
 
   const words = segment.split(/\s+/).filter(Boolean);
   const bin = words[0];
   if (!bin) return false;
-  // A trailing `&` backgrounds the segment, which is a process to manage rather than a
-  // probe that answers and exits.
+  // A trailing `&` backgrounds it: a process to manage, not a probe that answers and exits.
   if (words[words.length - 1] === '&') return false;
 
   if (bin === 'git') {

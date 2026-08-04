@@ -24,8 +24,8 @@ export function run(cmd, args, opts = {}) {
     input: opts.input,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
-    // Merged rather than replaced: a verb overrides one variable (an owner-scoped
-    // GH_TOKEN) and still needs PATH, HOME, and the rest of the caller's environment.
+    // Merged rather than replaced: a verb overriding one variable (an owner-scoped
+    // GH_TOKEN) still needs PATH, HOME, and the rest of the caller's environment.
     ...(opts.env ? { env: { ...process.env, ...opts.env } } : {}),
   });
   const missing = Boolean(r.error && /** @type {NodeJS.ErrnoException} */ (r.error).code === 'ENOENT');
