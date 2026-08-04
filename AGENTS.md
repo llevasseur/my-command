@@ -20,6 +20,32 @@ runs the expansion before copying, so no installer changes; `check-commands.sh`
 runs it with `--check` first, so a hand-edit between the markers fails CI.
 **Edit `src/shared/`, never the text between a directive and its closing marker.**
 
+## Repository map
+
+Read this instead of guessing a path. Every path below is real; nothing else is.
+
+- `src/commands/<name>.md` — the Claude command sources. **`src/commands/shared/` does not
+  exist**; shared snippets live one level up in `src/shared/<name>.md`, a flat directory of
+  snippet files with no frontmatter and no subdirectories.
+- `commands/<name>.md` — generated, namespaced plugin copies. Never hand-edited.
+- `skills/<name>/SKILL.md` — the Codex translation of each command, one directory per command.
+- `src/my-command.ts` — the `npx` install wizard. `src/toolkit/cli.mjs` is the
+  `my-command-tools` CLI, `src/toolkit/verbs/<verb>.mjs` its verbs, and
+  `src/toolkit/bin/my-command-tools` the shim that lands on PATH.
+- `scripts/` — `build-plugin.sh` (regenerates `commands/`), `expand-includes.mjs` (expands
+  `src/shared/` snippets in place; `--check` reports drift), `check-commands.sh` (the
+  invariant gate), `install-codex-personal.sh`.
+- `docs/` — an okq bundle: `docs/features/<name>.md` per command, plus `docs/specs/`.
+- Tests sit beside their subject: `scripts/*.test.mjs` and `src/toolkit/**/*.test.mjs`, both
+  run by `pnpm test`. There is no top-level `test/`.
+
+The shared snippets a new command usually needs: `shared/closing-turn-anchor.md` plus
+`shared/closing-turn.md` (the outcome contract, required in every command by invariant 6),
+`shared/batched-discovery.md` (the batched read-only discovery pass, required in every command
+that sweeps files before acting — invariant 8), `shared/merge-command-forms.md` (the working
+`gh pr merge` and `git -C <path>` forms, required in every command that merges — invariant 9),
+and `shared/rewrite-toward.md` (the density vocabulary rules — invariant 7).
+
 ## Adding or changing a command — non-negotiable checklist
 
 Follow **[`docs/specs/adding-a-command.md`](docs/specs/adding-a-command.md)** in full. The
@@ -47,8 +73,9 @@ pnpm run check:commands   # or ./scripts/check-commands.sh
 It fails unless: `src/commands/` is in sync with `src/shared/`, `commands/` is
 byte-in-sync with `src/commands/`, every command has a
 feature doc, generated Claude command, and Codex-native skill, every command carries
-the closing-turn anchor and its terminal step (and every skill mirrors both), and the
-wizard still globs both source directories. This is why the wizard "auto-updates" is safe to rely
+the closing-turn anchor and its terminal step (and every skill mirrors both), every
+file-sweeping command carries the batched-discovery step, every merging command carries the
+merge command forms, and the wizard still globs both source directories. This is why the wizard "auto-updates" is safe to rely
 on—if someone replaces a glob with a hardcoded list, the check fails. The `commands` job in
 `.github/workflows/ci-pr.yml` blocks the PR on it.
 

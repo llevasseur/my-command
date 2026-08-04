@@ -98,6 +98,20 @@ untouched, and `HEAD` here never moves.
 
 ## Per-branch merge loop
 
+<!-- include-block: shared/merge-command-forms.md -->
+### Merge command forms
+
+The merge steps are where this pipeline's failed shell calls concentrate, and almost every one is a rejected merge re-issued verbatim. Read the error text and branch on it; never send the same call twice.
+
+- **Merging a PR into the default branch** is `gh pr merge <number> --<method> --delete-branch`, issued **once**. Its rejections are states, not usage errors:
+  - `Merge already in progress`, or a failing `mergePullRequest` GraphQL call — GitHub accepted a merge and is still processing it. **Do not re-issue it.** Read the outcome instead: `gh pr view <number> --json state,mergedAt,mergeStateStatus`. `MERGED` is success, and the run continues at its next step. Only a PR that settles back to `OPEN` is merged again, and then once.
+  - Pending required checks — a wait, not a refusal. Re-issue the identical command **with `--auto`** and record the PR as queued.
+  - `not mergeable`, `BLOCKED`, or `BEHIND` — the default branch moved. Run `/mc -t <branch>`, then retry the merge once.
+  - Never reach for `--admin`, `gh api -X PUT .../merge`, or a `GH_TOKEN=` re-run to get past any of these.
+- **Merging the default branch into a branch** addresses a worktree by path rather than by changing directory: `git -C <path> merge --no-edit origin/main`, `git -C <path> diff --name-only --diff-filter=U`, `git -C <path> push origin HEAD`. `cd <dir> && git …` is the recorded failure, because a worktree session is rarely where that path resolves. The toolkit takes the path as a flag for the same reason: `my-command-tools verify --cwd <path>`.
+- A refusal that comes from the harness rather than from `gh` is final. Surface it and carry on with the rest of the run.
+<!-- /include-block -->
+
 For **each** branch in the list, do the following. Keep going even if one branch needs a
 human — collect it and move on; never leave a branch mid-merge.
 
@@ -141,10 +155,11 @@ steps as written, in the current checkout.
 6. **Sanity check before pushing** (best effort): `my-command-tools verify --only check,typecheck`
    — or whatever subset of the repo's gates is fast. It reports a bounded log for each
    failure, and `missing` for any gate this repo doesn't have. Don't block on a
-   pre-existing failure — only bail if *your* merge resolution introduced it. `verify` has no
-   path flag: in TARGET mode run it **with the worktree as the working directory**
-   (`cd <path> && my-command-tools verify --only check,typecheck`), or it grades the wrong
-   checkout. A fresh worktree has no `node_modules`, so treat a gate that fails on missing
+   pre-existing failure — only bail if *your* merge resolution introduced it. In TARGET mode
+   name the checkout with the flag rather than changing directory —
+   `my-command-tools verify --cwd <path> --only check,typecheck` — because `cd <path> && …`
+   resolves against wherever this session actually is and grades the wrong checkout, or fails
+   outright. A fresh worktree has no `node_modules`, so treat a gate that fails on missing
    dependencies or generated modules as un-bootstrapped environment, not as your conflict
    resolution — the sanity check is best effort, so record it as skipped rather than
    installing a whole toolchain to satisfy it.
@@ -198,6 +213,7 @@ steps as written, in the current checkout.
 - **Every exit routes here, not just the shipped one.** Finished; nothing to do; a gate still failing; a step blocked, refused, or awaiting my answer; the request abandoned as wrong. The wording changes, the closing turn does not. A run that stopped early says where it stopped and what is on the branch, and leaves `/revive <thread id>` as the recovery path when the proxy thread id is available.
 - **Say it in one self-contained line first**, then any detail. Someone who never saw the request should be able to read that line alone.
 - **A compaction boundary is a checkpoint, not an ending.** A recap prompt ("The user stepped away and is coming back…"), a `[SYSTEM NOTIFICATION - NOT USER INPUT]` event, or a session-continuation preamble each mean the run is still owed its turn: answer that prompt in text alone, say where the run actually stands, and restore the anchor todo item if it did not survive. A session is likeliest to die just after a compaction, so that answer is often the only outcome the run ever records.
+- **Every prompt from me opens a task, and only a text-only reply closes it.** The transcript starts a new `## Task:` at each of my messages — a mid-run question, a correction, a recap prompt, a change of direction — and writes `- done:` only when a reply carries text and no tool call. So answer my message in text alone *before* returning to tool calls. A run that reads the message and keeps working straight through leaves that task, and every task before it, with no outcome line. There is no marker to type: the `- done:` line is written for you from any text-only turn, and skipped entirely from a turn that carries a tool call.
 - **A subagent's report is never this turn.** The outcome belongs to the session the run started in, so after an `Agent` call returns, close the run here, in a message of your own.
 - **Resolve the anchor item as the last tool call.** The todo item that held this turn open is the one thing still owed once the work lands: mark it completed, let that call return, then send the message. It is the natural final call, and it keeps the closing message free of tool calls exactly as this step requires. Handing back with it still open makes a finished run read as abandoned.
 - **Do not tack the report onto the tool call before it.** `ExitWorktree`, `worktree end`, `verify`, and a closing `gh` call are exactly the calls that sit at the end of a run and swallow the outcome.

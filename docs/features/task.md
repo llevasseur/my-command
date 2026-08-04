@@ -4,7 +4,7 @@ title: task
 description: Carry a plain-language task from criteria to an open PR — isolated worktree, bootstrap, implement, verify, then clean + PR.
 tags: [command, workflow, git]
 timestamp: 2026-07-15
-updated: 2026-08-02
+updated: 2026-08-03
 ---
 
 # task
@@ -49,9 +49,13 @@ rather than ad-hoc `git` calls, which is also where the guards live: staging is 
 explicit path list, so carryover files from a shared worktree or dirty checkout stay put
 instead of riding along.
 
-Reconnaissance is batched when no result depends on another, files are read once at the
-targeted region and only re-read after something can have changed them, and pagination uses
-numeric offsets and limits. Read-only probes that can legitimately miss handle that one
+Discovery is a step of Step 2 rather than a habit the agent has to recall: the shared
+`batched-discovery` snippet makes every implement phase enumerate its paths first, send the
+whole enumeration as parallel read-only calls in one turn, read each file once at the targeted
+region, and — after a compaction or continuation — re-`Read` the files the next edit pass will
+write, because `Edit` rejects a file the *session* has not read no matter what the summary
+carries. `check-commands.sh` invariant 8 keeps the snippet in every command that sweeps files.
+Read-only probes that can legitimately miss handle that one
 nonzero exit explicitly and quote program-owned globs for zsh. Relative commands are rooted
 in the latest toolkit state/worktree result; missing paths trigger one cwd/worktree
 re-resolution rather than a blind retry. Dev servers and watchers run in the background with

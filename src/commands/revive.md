@@ -54,6 +54,18 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 
 ## Step 2 — Read the transcript and reconstruct what it was doing
 
+<!-- include-block: shared/batched-discovery.md -->
+### Discovery runs as one batched pass
+
+This is a step of the workflow, not a habit to recall. Run it whenever a phase of this command has to look at more than one file.
+
+1. **Enumerate before reading.** Name every path, pattern, and read-only probe the phase needs. Where naming them takes a search — `rg --files`, `git diff --name-only`, a PR's file list — that search is the phase's first call, and its output *is* the enumeration.
+2. **Send the whole enumeration in one turn.** Every `Read`, `rg`, `ls`, and read-only `git` call on that list goes out as parallel tool calls in a single assistant turn. Only a call whose arguments depend on another call's result may wait for the next turn. "I will decide what to read after this one" is not a dependency when the path was already on the list, and four or more consecutive read-only calls with no decision between them means the enumeration was skipped.
+3. **Never loop per file.** One `Read` per entry of a list you already hold, or one `git diff <base> -- <path>` per path, is the shape this step exists to stop. Pass every path to a single `git diff <base>...HEAD -- <path> <path> …`, and send every `Read` as one block. Reviews and doc audits are where the loop reappears, because there the file list arrives complete and then gets walked.
+4. **Read each file once.** A file already in this session's transcript is already in context, and wanting a *different* symbol from it is not a reason to read it again. Locate every symbol you now want with one `rg -n 'foo|bar' <file>`, then pull only the range you still need with numeric `offset`/`limit`. The one legitimate re-read is after the file actually changed — your own `Edit`, a hook, a formatter, a generator, or another agent — and then only the changed range.
+5. **Re-establish the read-before-write precondition after a compaction.** `Edit` and `Write` reject a file this *session* has not read. Inherited context, a continuation summary, and shell output do not satisfy that precondition, even though the summary reads as though they do. So after any compaction boundary, session continuation, or hand-off into this command, treat the precondition as unmet: enumerate the files the next edit pass will write, `Read` them in one batch (a targeted `offset`/`limit` slice counts), and edit only once that batch returns. Re-running the rejected `Edit` cannot clear the error — the batched `Read` is the fix, and doing it for the whole pass at once is what stops the same rejection repeating file after file.
+<!-- /include-block -->
+
 A proxy transcript is a **lossy digest, not a replay log**. Its shape:
 
 ```
@@ -125,7 +137,7 @@ Report at the end: which transcript and store you used, where the session stoppe
 - **Report a miss plainly.** No transcript, a dead branch, a session still running, work already merged — each is a real answer. Say which, with what you checked, and stop.
 - The store is device-local and on a retention window: an id that resolved yesterday may not resolve today. That's the store's lifecycle, not a bug to work around.
 - A transcript can be long. Read the header and task headings first, then the tail where it stopped; pull the middle only when you need a specific decision — pass numeric `offset` and `limit` values, never strings, for a targeted slice instead of the whole file.
-- **Batch the reconnaissance, and read each file once.** Reconstructing a run means many independent reads and greps — the transcript, the sibling transcripts, the files it touched. Issue them in a single turn rather than one per turn. A file already read this session is already in context: re-read it only after it changed.
+- Reconstructing a run is exactly the enumerable sweep Step 2's batched-discovery step governs — the transcript, the sibling transcripts, and the files it touched go out in one turn.
 
 ## Close the run in a text-only turn
 
@@ -135,6 +147,7 @@ Report at the end: which transcript and store you used, where the session stoppe
 - **Every exit routes here, not just the shipped one.** Finished; nothing to do; a gate still failing; a step blocked, refused, or awaiting my answer; the request abandoned as wrong. The wording changes, the closing turn does not. A run that stopped early says where it stopped and what is on the branch, and leaves `/revive <thread id>` as the recovery path when the proxy thread id is available.
 - **Say it in one self-contained line first**, then any detail. Someone who never saw the request should be able to read that line alone.
 - **A compaction boundary is a checkpoint, not an ending.** A recap prompt ("The user stepped away and is coming back…"), a `[SYSTEM NOTIFICATION - NOT USER INPUT]` event, or a session-continuation preamble each mean the run is still owed its turn: answer that prompt in text alone, say where the run actually stands, and restore the anchor todo item if it did not survive. A session is likeliest to die just after a compaction, so that answer is often the only outcome the run ever records.
+- **Every prompt from me opens a task, and only a text-only reply closes it.** The transcript starts a new `## Task:` at each of my messages — a mid-run question, a correction, a recap prompt, a change of direction — and writes `- done:` only when a reply carries text and no tool call. So answer my message in text alone *before* returning to tool calls. A run that reads the message and keeps working straight through leaves that task, and every task before it, with no outcome line. There is no marker to type: the `- done:` line is written for you from any text-only turn, and skipped entirely from a turn that carries a tool call.
 - **A subagent's report is never this turn.** The outcome belongs to the session the run started in, so after an `Agent` call returns, close the run here, in a message of your own.
 - **Resolve the anchor item as the last tool call.** The todo item that held this turn open is the one thing still owed once the work lands: mark it completed, let that call return, then send the message. It is the natural final call, and it keeps the closing message free of tool calls exactly as this step requires. Handing back with it still open makes a finished run read as abandoned.
 - **Do not tack the report onto the tool call before it.** `ExitWorktree`, `worktree end`, `verify`, and a closing `gh` call are exactly the calls that sit at the end of a run and swallow the outcome.

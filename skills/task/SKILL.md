@@ -72,7 +72,10 @@ the list ends clean while that message still carries no tool call.
    message. A compaction boundary is a checkpoint, not an ending — a recap
    prompt, a background-task notification, or a session-continuation preamble
    each mean the run is still owed its turn, so answer in text alone, say where
-   the run stands, and restore the todo item if it did not survive.
+   the run stands, and restore the todo item if it did not survive. Every
+   message from the user opens a task in the same transcript, and only a
+   reply carrying text and no tool call closes it, so answer a mid-run
+   question, correction, or recap in text before returning to tool calls.
 
 Validation limitations do not stop PR creation when useful in-scope recovery is exhausted; document them in the PR. Never force-remove dirty or unpushed work.
 
