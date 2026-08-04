@@ -27,7 +27,7 @@
 | `docs` | Reconcile a repo's [okq](https://github.com/mikevalstar/okq) doc bundle with the code, then truncate dirty docs to high-signal prose in the same `/task` run. |
 | `truncate` | Cut a doc bundle down to high-signal tokens without losing a claim — standalone density cleanup for hand edits, explicit scopes, and full sweeps, with surviving prose rewritten toward a stated vocabulary standard. |
 | `revive` | Resume an interrupted session from its recorded transcript — reconstruct what it was doing, recover its branch/worktree, finish only what's outstanding, and complete the original workflow. |
-| `improve` | Turn claude-proxy's session suggestions into an implemented improvement — read the pending findings for a range of session buckets, hand them to `task` as criteria, and flag what shipped as done. |
+| `improve` | Turn claude-proxy's session suggestions into an implemented improvement — read the pending findings for a range of session buckets, escalate the ones whose last fix didn't hold, hand them to `task` as criteria, and flag what shipped as done. |
 | `trim` | Decide whether the current conversation is safe to compact, then provide focused instructions for Claude Code's built-in `/compact`. |
 | `cp` | Compose another command's invocation from a prompt and copy it to the clipboard, ready to paste into another agent — without running it or printing it. |
 | `teach` | Learn the real name for something you can only describe — one question at a time, until you can say it back as a single Simplified Technical English sentence, printed and copied. |
@@ -72,8 +72,9 @@ skill syntax—for example, `$task -h ...`, `$review -t 42`, or `$mc -t feat/sea
 | `revive` | `/revive 59da5fc97e6b9465` | Default — resolve the id in claude-proxy's transcript store (`$CLAUDE_PROXY_STORE`), recover the branch/worktree the session was in, finish what's outstanding, then complete its workflow (usually `/clean` + `/pr`). |
 | `revive` | `/revive -n 59da5fc97e6b9465` | `--dry-run` / `-n` — report where the session stopped and what remains; change nothing. |
 | `revive` | `/revive --source cli 70c65b5b-ceda-4764-89f0-d68f1db6fff6` | `--source proxy` (default), `cli`, or a `<path>` — pick the transcript store; a 36-char UUID is a CLI session id, a 16-hex id a proxy thread id. |
-| `improve` | `/improve` | Default — read **every** session bucket's pending suggestions from claude-proxy (`$CLAUDE_PROXY_STORE`), compose them into criteria, run `/task` on them in a subagent, then mark what shipped as `done`. |
+| `improve` | `/improve` | Default — read **every** session bucket's pending suggestions from claude-proxy (`$CLAUDE_PROXY_STORE`), compose them into criteria (regressions first), run `/task` on them in a subagent per target repo, then mark what shipped as `done`. |
 | `improve` | `/improve -r 2-9` | `--range` / `-r <spec>` — only those buckets. One (`9`), a list (`2,3,9`), a span (`2-9`), or a mix (`2-4,9`). |
+| `improve` | `/improve -g` | `--regressed` / `-g` — only rules whose dated fix already failed. Reads the prior fix back from its PR and requires the new one to climb the escalation ladder rather than restate it. |
 | `improve` | `/improve -n -r 9` | `--dry-run` / `-n` — report the pending suggestions and the criteria they compose into; no subagent, no PR, nothing marked. |
 | `improve` | `/improve -d -r 9 only the serial-discovery findings` | `--here` / `-h`, `--base <branch>`, `--draft` / `-d`, `--add` / `-a` pass straight through to `/task`; trailing text narrows which pending suggestions to act on. |
 | `trim` | `/trim` | Evaluate six evidence-backed safety gates; recommend continuing or emit a tailored `/compact` command. |
