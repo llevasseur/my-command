@@ -1,7 +1,7 @@
 ---
 description: Clean up comments across a branch's committed changes (plus any uncommitted changes on top) — make them lean and to the point
 argument-hint: "[optional branch name] [optional path or scope to limit cleanup]"
-allowed-tools: Bash(git:*), Read, Edit
+allowed-tools: Bash(git:*), Bash(my-command-tools:*), Read, Edit
 ---
 
 Clean up the comments in my changes. Only touch comments — never change code, logic, formatting, or behavior.
@@ -22,13 +22,11 @@ This is a step of the workflow, not a habit to recall. Run it whenever a phase o
 5. **Re-establish the read-before-write precondition after a compaction.** `Edit` and `Write` reject a file this *session* has not read. Inherited context, a continuation summary, and shell output do not satisfy that precondition, even though the summary reads as though they do. So after any compaction boundary, session continuation, or hand-off into this command, treat the precondition as unmet: enumerate the files the next edit pass will write, `Read` them in one batch (a targeted `offset`/`limit` slice counts), and edit only once that batch returns. Re-running the rejected `Edit` cannot clear the error — the batched `Read` is the fix, and doing it for the whole pass at once is what stops the same rejection repeating file after file.
 <!-- /include-block -->
 
-1. Target branch: if $ARGUMENTS names a branch, use it; otherwise use the current branch (`git branch --show-current`). Never check out or switch branches — diff the target ref in place with the current checkout untouched.
-2. Determine the base to diff against:
-   - If the target branch has an upstream tracking branch, use `git merge-base <upstream> <branch>`.
-   - Otherwise, detect the repo's default branch (`git symbolic-ref refs/remotes/origin/HEAD` or fall back to `main`/`master`, whichever exists) and use `git merge-base origin/<default> <branch>`.
-3. Full diff = `git diff <merge-base>...<branch>` (every commit made on the branch) plus, if the target branch is the current branch, any current staged/unstaged changes on top (`git diff HEAD`). If targeting a different branch, only its committed changes are in scope — there's no working tree to inspect.
+1. Resolve the scope in **one** call: `my-command-tools scope` for the current branch, or `my-command-tools scope --branch <name>` when $ARGUMENTS names one. It is read-only and never checks out or switches a branch, so the current checkout stays untouched. Read the fields rather than re-deriving any of them — it already resolved the upstream-or-default base, the merge-base, the commits, and the changed-file list, and it hands back the single `diffRef` to diff against.
+2. Full diff = `git diff <diffRef>` from that result — every commit made on the branch — plus, when `workingTree` is true, the staged/unstaged changes on top (`git diff HEAD`). `workingTree` is false for any branch other than the current one, because there is no working tree of its own to inspect.
+3. `files` is the enumeration the batched-discovery step above asks for: hand every path to a single `git diff <diffRef> -- <path> <path> …` rather than one call per path.
 4. Only consider comments on lines added or modified anywhere in that combined diff. Do NOT clean comments in untouched code, even if they're bad. Ignore generated files.
-   - On a long-lived/shared branch, the branch-wide diff resurfaces earlier commits' code — including comments a prior clean pass already handled. If the branch shows evidence of an earlier clean (e.g. a `chore: clean ... comments` commit), scope to the current task's commits (`git diff <task-base>...HEAD`) and report the older code as out-of-scope instead of re-litigating it.
+   - On a long-lived/shared branch, the branch-wide diff resurfaces earlier commits' code — including comments a prior clean pass already handled. If `commits` shows evidence of an earlier clean (e.g. a `chore: clean ... comments` subject), narrow with `my-command-tools scope --base <that commit>` and report the older code as out-of-scope instead of re-litigating it.
 5. If $ARGUMENTS also names a path or scope (beyond the branch name), limit to that.
    - Prose in Markdown docs is out of scope even when the diff touches it — tightening a doc is [truncate](truncate.md)'s pass, and it has claim-preservation rules this one doesn't. Only comments inside fenced code blocks in a doc are fair game here.
 6. If the combined diff is empty, say so and stop.

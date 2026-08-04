@@ -10,6 +10,8 @@ import { ToolkitError } from './lib/proc.mjs';
 import * as commit from './verbs/commit.mjs';
 import * as doctor from './verbs/doctor.mjs';
 import * as pr from './verbs/pr.mjs';
+import * as prs from './verbs/prs.mjs';
+import * as scope from './verbs/scope.mjs';
 import * as state from './verbs/state.mjs';
 import * as verify from './verbs/verify.mjs';
 import * as worktree from './verbs/worktree.mjs';
@@ -25,9 +27,11 @@ import * as worktree from './verbs/worktree.mjs';
 /** @type {Record<string, {usage: string, run: (ctx: Ctx) => unknown}>} */
 const VERBS = {
   state,
+  scope,
   verify,
   commit,
   pr,
+  prs,
   worktree,
   doctor,
 };

@@ -20,9 +20,7 @@ These commands are installed one of three ways; detect which and act accordingly
 
 ## Steps (symlink / git-synced install)
 
-1. Locate the clone from the symlink, so this works regardless of where the repo was cloned:
-   `REPO="$(cd "$(dirname "$(readlink -f ~/.claude/commands/sync.md)")/../.." && pwd)"`
-   (the resolved path is `<clone>/src/commands/sync.md`, so the clone root is two directories up).
+1. Locate the clone with `my-command-tools doctor` and read `checkout.root` — the verb resolves it from its own installed path, so this works regardless of where the repo was cloned. Take `REPO` to be that value and spell it literally in the calls below. Do **not** derive it in the shell: `$(cd "$(dirname "$(readlink -f …)")/../.." && pwd)` nests three command substitutions around a read-only probe, which is a shape the harness refuses. The same result also carries `checkout.behind`, so step 2's comparison is already answered if a fetch has happened recently.
 2. `git -C "$REPO" fetch origin` — as its **own** Bash call, not chained with `&&` into the
    comparison: a fetch may require approval, and folding it into a compound command escalates
    approval to the whole chain and costs a turn plus a retry. Then compare local `HEAD` to
@@ -31,7 +29,7 @@ These commands are installed one of three ways; detect which and act accordingly
    - For `--check`, report how many commits behind (with `git -C "$REPO" log HEAD..origin/<branch> --oneline`) and stop without pulling.
 3. Before pulling, check the clone is clean: `my-command-tools state --cwd "$REPO"` — both `changes.tracked` and `changes.untracked` must be empty. If there are local edits (you may be the author mid-change), report them and stop — never discard local work.
 4. `git -C "$REPO" pull --ff-only`. If it can't fast-forward (diverged), report and stop rather than merging.
-5. Re-link so any newly added commands get picked up: `bash "$REPO/scripts/install-personal.sh"`. Existing commands are symlinks, so they already reflect the pulled files.
+5. Re-link so any newly added commands get picked up, and so the workflow gates are registered against the pulled versions: `bash "$REPO/scripts/install-personal.sh"`. Existing commands are symlinks, so they already reflect the pulled files; the hook registration is re-applied idempotently. Pass `--no-hooks` only if I ask you to leave `settings.json` alone.
 6. Confirm the shared toolkit came along: `my-command-tools doctor`. The commands call it for their git plumbing, so a sync that updated the Markdown but left the toolkit stale or unresolvable is a half-sync. Report `resolvedBy` and `version`.
 7. Report: the commits pulled (`git log <old>..<new> --oneline`) and which commands were added, changed, or removed. Note that a command you already invoked this session may be cached — restart the session if it still looks stale.
 
