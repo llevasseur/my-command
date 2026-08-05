@@ -33,6 +33,7 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
   ```
 
   Do not search the filesystem for a claude-proxy checkout yourself, and do not fall back to a hardcoded path.
+- **Where a command declares claude-proxy an _optional_ dependency, those three failures mean it is *absent* rather than that the run is over.** Only a command that says so at its own step, and names what it falls back to, may read them that way; anything that does not say otherwise takes the stop above. **An error is still a stop even then.** A store that exists and fails to read or write is not absence — continuing past it writes a second copy of something that already has one, and two stores that each look complete is worse than no store.
 <!-- /include-block -->
 
 ## Step 2 — Find the dirty buckets
