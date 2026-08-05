@@ -3,13 +3,15 @@ description: Turn claude-proxy's session suggestions into an implemented improve
 argument-hint: "[--range|-r <spec>] [--regressed|-g] [--dry-run|-n] [--here|-h] [--base <branch>] [--draft|-d] [--add|-a <list>] [extra context]"
 ---
 
-Improve the agentic workflow using evidence instead of intuition. claude-proxy reads every ten recorded sessions and reports what would have reached the same outcome in fewer steps. This command collects those findings, turns the pending ones into task criteria, runs `/task` on them in a subagent per target repo, and records which suggestions were actually applied so the next run doesn't re-propose them.
+Improve the agentic workflow using evidence instead of intuition. claude-proxy reads every ten recorded sessions and reports what would have reached the same outcome in fewer steps. This command collects those findings, has [judge](judge.md) check them against the raw transcripts, turns the confirmed ones into task criteria, runs `/task` on them in a subagent per target repo, and records which suggestions were actually applied so the next run doesn't re-propose them.
+
+**A rule firing is not the same as something having gone wrong.** So nothing composed here comes from unjudged rule output: Step 3 judges every dirty bucket in the range first, and criteria are built from **confirmed** suggestions only. A judge run that fails stops the command rather than degrading into the intuition this whole pipeline exists to replace.
 
 Your input is the text in the `<command-args>` block above. Parse leading flags off the front; anything left over is extra context that steers which pending suggestions to act on (it narrows the work, it never invents work the suggestions don't support).
 
 **The suggestions are the criteria.** Every change this run proposes traces back to a suggestion with its own evidence and its own source sessions. Do not pad the task with improvements you thought of yourself.
 
-**A suggestion whose last fix didn't hold is not a fresh finding.** claude-proxy dates every `done` and reports a suggestion as `regressed` when the rule tripped again across a window recorded entirely after that claim. Those rows get their own track through this command — Step 3's regression block, an escalation ladder that forbids restating the fix that already failed, and a mark in Step 5 that records the attempt chain. Handing a regression to `/task` as if nobody had tried yet is how the same paragraph gets written into the same file twice.
+**A suggestion whose last fix didn't hold is not a fresh finding.** claude-proxy dates every `done` and reports a suggestion as `regressed` when the rule tripped again across a window recorded entirely after that claim. Those rows get their own track through this command — Step 4's regression block, an escalation ladder that forbids restating the fix that already failed, and a mark in Step 6 that records the attempt chain. Handing a regression to `/task` as if nobody had tried yet is how the same paragraph gets written into the same file twice.
 
 <!-- include: shared/closing-turn-anchor.md -->**Before the first tool call, anchor the closing turn.** Put "close the run in a text-only turn" in the harness todo/task list as its own final item — worded on its own, never folded into the work it follows — and leave it open until it is the only item left. The todo list is live session state that a compaction carries forward; this prompt is not. Once this run is summarized, that item is the only surviving record that an outcome is still owed. **Then close it out:** "until it is the only item left" is the trigger to resolve it, not a reason to leave it open forever — once it is the last item and the work is done, mark it completed with the run's **final tool call**, and send the text-only message after that call returns. Both constraints hold at once that way: the task list ends clean and the closing message still carries zero tool calls. Never hand back with the anchor still open — a finished run reads as abandoned in the job list.<!-- /include -->
 
@@ -17,23 +19,25 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 
 - `--range <spec>` / `-r <spec>` — which session buckets to read. One bucket (`9`), a list (`2,3,9`), a span (`2-9`), or a mix (`2-4,9`). **Default: every bucket.**
 - `--regressed` / `-g` — narrow the run to the **regression track only**: suggestions whose rule already shipped a dated fix and tripped again anyway. Fresh findings are not read and not composed. It composes with `--range` (narrow to regressions inside those buckets) and with `--dry-run` (report the regression criteria and stop). Without it, regressions and fresh findings both run, regressions first.
-- `--dry-run` / `-n` — report the pending suggestions and the task criteria they compose into, then stop. No subagent, no branch, no PR, and nothing marked.
-- Anything not listed above that `/task` recognizes is **passed straight through** to every `/task` invocation in Step 4 — currently `--here` / `-h`, `--base <branch>`, `--draft` / `-d`, and `--add` / `-a <list>`. Read `/task`'s own Flags section rather than duplicating its list here; this command does not interpret them itself.
+- `--dry-run` / `-n` — report the suggestions and the task criteria they compose into, then stop. No subagent, no branch, no PR, and nothing marked. **It still judges** — see Step 3: the criteria are only worth reporting if they came from confirmed findings, and judging records verdicts about transcripts rather than claims that a fix shipped.
+- Anything not listed above that `/task` recognizes is **passed straight through** to every `/task` invocation in Step 5 — currently `--here` / `-h`, `--base <branch>`, `--draft` / `-d`, and `--add` / `-a <list>`. Read `/task`'s own Flags section rather than duplicating its list here; this command does not interpret them itself.
 - Anything not a recognized flag is extra context.
 
 ## Step 1 — Resolve the claude-proxy dependency
 
+<!-- include-block: shared/claude-proxy-checkout.md -->
 **This command cannot run without claude-proxy**, and its location is not hardcoded — it comes from the environment, exactly as [revive](revive.md) resolves the transcript store.
 
 - **`CLAUDE_PROXY_STORE` (required)** — the directory the proxy writes session transcripts into. Read it from the environment (`printenv CLAUDE_PROXY_STORE`); never guess a path and never derive one from a repo checkout or clone location.
 - Derive the two paths the suggestion tooling needs from it: the **log directory** is its parent (the store is `<logDir>/sessions`), and the **claude-proxy checkout** is the directory above that. Confirm the checkout by looking for its `server/package.json`.
-- **If `CLAUDE_PROXY_STORE` is unset, or its path is missing, or the derived checkout has no `server/package.json`, stop.** Say which of the three failed, that `/improve` has no suggestions to read without it, and that it must be exported in the shell environment — e.g. in `~/.zshrc`:
+- **If `CLAUDE_PROXY_STORE` is unset, or its path is missing, or the derived checkout has no `server/package.json`, stop.** Say which of the three failed, that this command has no suggestions to read without it, and that it must be exported in the shell environment — e.g. in `~/.zshrc`:
 
   ```sh
   export CLAUDE_PROXY_STORE="$HOME/path/to/claude-proxy/logs/sessions"
   ```
 
   Do not search the filesystem for a claude-proxy checkout yourself, and do not fall back to a hardcoded path.
+<!-- /include-block -->
 
 ## Step 2 — Read the pending suggestions
 
@@ -49,7 +53,7 @@ This is a step of the workflow, not a habit to recall. Run it whenever a phase o
 5. **Re-establish the read-before-write precondition after a compaction.** `Edit` and `Write` reject a file this *session* has not read. Inherited context, a continuation summary, and shell output do not satisfy that precondition, even though the summary reads as though they do. So after any compaction boundary, session continuation, or hand-off into this command, treat the precondition as unmet: enumerate the files the next edit pass will write, `Read` them in one batch (a targeted `offset`/`limit` slice counts), and edit only once that batch returns. Re-running the rejected `Edit` cannot clear the error — the batched `Read` is the fix, and doing it for the whole pass at once is what stops the same rejection repeating file after file.
 <!-- /include-block -->
 
-Suggestions carry a status flag: `pending` by default, `done` once applied, `skipped` when deliberately passed over. **Read only the pending ones** — that is what keeps a later `/improve` over the same range from re-proposing work that already shipped.
+Suggestions carry a status flag: `pending` by default, `done` once applied, `skipped` when deliberately passed over, and `dismissed` once a judge verdict found the rule had misread the session. **Read only the pending ones** — that is what keeps a later `/improve` over the same range from re-proposing work that already shipped, and it is also what keeps a dismissed misread from coming back as a fresh finding. `-s pending` already excludes all three.
 
 Run the claude-proxy CLI from the checkout you derived, with `LOG_DIR` pinned to the derived log directory so it reads the same store `CLAUDE_PROXY_STORE` points at:
 
@@ -81,9 +85,48 @@ LOG_DIR="<logDir>" pnpm --filter server suggestions list -s pending --recurrence
 
 `--recurrence` accepts a comma-separated subset of the four states. If `--regressed` was given and nothing is regressed in the range, stop and say so — that is a good outcome, not a failure.
 
-## Step 3 — Compose the task criteria
+## Step 3 — Judge the dirty buckets before composing anything
 
-Turn the pending rows into criteria a `/task` run can implement without going back to the proxy.
+**A rule firing is not evidence that anything went wrong.** A rule counts calls and node positions; it cannot see what the agent was doing, so it reports a genuine slowdown and a misread with identical confidence. [judge](judge.md) is what tells them apart: it reads the raw transcripts behind each fired suggestion and records **CONFIRMED** with a note written from what the session was actually doing, or **DISMISSED** with the reason the rule misread it.
+
+So the criteria in Step 4 are composed from **judged** suggestions, and this step is what makes them judged. Find the dirty buckets in the range — complete and unjudged — and judge them first:
+
+```sh
+LOG_DIR="<logDir>" pnpm --filter server suggestions buckets --dirty --json          # every bucket
+LOG_DIR="<logDir>" pnpm --filter server suggestions buckets --dirty -r 2-9 --json   # with --range
+```
+
+- **If nothing in the range is dirty, this step is already done.** Every bucket has verdicts; go straight to Step 4. That is the ordinary case once the history is caught up.
+- Otherwise run `/judge -r <the dirty buckets>` and let it do the reading, the verdicts, and the recording. Do not read transcripts or compose verdicts here — `/judge` owns that pipeline, and duplicating it produces two sets of verdicts for one bucket.
+- Re-read the suggestions after judging, so Step 4 composes from rows that carry their verdicts and notes rather than from the pre-judgement read in Step 2.
+
+### A failed judge run stops the command
+
+**If judging fails on a bucket — the call errored, a bucket recorded fewer verdicts than it had fired suggestions, or `/judge` reports it could not finish — stop and bring me in.** Say which bucket, what failed, and what is still unjudged.
+
+**Never fall back to composing criteria from unjudged rule output.** That fallback is the one failure mode this whole step exists to prevent: the dirty flag is the record that nobody has checked these findings against reality, and a silent fallback makes a failed judge run indistinguishable from a clean bill of health. A run that proceeds anyway produces a PR that looks exactly like a well-evidenced one and is not.
+
+### Cap the judging at five buckets
+
+**If more than 5 buckets in the range are dirty, stop.** Tell me to narrow `--range`, or to draw a line under the history with an explicit backfill:
+
+```sh
+LOG_DIR="<logDir>" pnpm --filter server suggestions judge --amnesty
+```
+
+`/improve`'s default range is **every bucket**, and the unjudged backlog runs to dozens of buckets — at roughly 55 KB of transcripts per bucket typically and about 180 KB worst case, an uncapped first run sits there reading megabytes of transcript before it composes a single criterion. Name the dirty bucket count and the rough read cost when you stop, so the choice between narrowing and amnesty is an informed one.
+
+**`--dry-run` / `-n` does not skip this step.** Judging is not marking — it records verdicts about transcripts, not claims that a fix shipped — and the criteria a dry run reports are only worth reporting if they came from confirmed findings. A dry run that skipped judging would report exactly the unjudged criteria this step exists to refuse. The cap and the failure stop apply to a dry run unchanged.
+
+## Step 4 — Compose the task criteria
+
+Turn the judged rows into criteria a `/task` run can implement without going back to the proxy.
+
+### Confirmed suggestions only
+
+- **A dismissed row is excluded entirely.** It is not a criterion, not a weaker criterion, and not a note on someone else's criterion. A dismissal is a verdict that the finding was never true, so there is nothing to fix and nothing to report as deferred.
+- **Where a confirmed row carries a judge enrichment note, that note is the criterion's reason.** It was written from the transcripts by an agent that read the nodes the rule pointed at, which makes it better evidence than the rule's generated `detail` — `detail` is arithmetic, the note is what was happening. Keep the `detail` alongside it as the count, but the note is what the criterion argues from.
+- Where a confirmed row's note says there was nothing to add beyond the rule's own `detail`, use the `detail`. That is an honest note, not a missing one.
 
 **Split the rows into two tracks first.** A row with `recurrence: "regressed"` goes to the regression track below; everything else composes as an ordinary finding. The regression block leads the brief — a fix that already failed is the more expensive problem, and the subagent should read it before it reads anything else.
 
@@ -91,12 +134,14 @@ Turn the pending rows into criteria a `/task` run can implement without going ba
 
 1. **Group by what would change.** Several buckets often trip the same rule; that is one improvement with more evidence behind it, not several. Group within a track, never across one — a regressed row and a fresh row for the same rule are two different asks, and merging them loses the instruction not to repeat the prior fix.
 2. **Keep the evidence attached.** Each criterion states the behavior to change, the suggestion's own `detail`/`evidence` as the reason, and the `bucket/id` pairs it came from. The subagent has no access to this conversation, so anything unstated is lost.
-3. **Say where the change lands.** These suggestions describe how an *agent* works, so the fix is nearly always in instructions — a command in `src/commands/`, an `AGENTS.md` rule, a repo convention — rather than application code. Name the target file when the evidence supports one and say it's undetermined when it doesn't. **Name the repo, too**, not just the path: Step 4 groups by repo, and a bare `AGENTS.md` names a different file in every checkout.
+3. **Say where the change lands.** These suggestions describe how an *agent* works, so the fix is nearly always in instructions — a command in `src/commands/`, an `AGENTS.md` rule, a repo convention — rather than application code. Name the target file when the evidence supports one and say it's undetermined when it doesn't. **Name the repo, too**, not just the path: Step 5 groups by repo, and a bare `AGENTS.md` names a different file in every checkout.
 4. **Honor the extra context** as a filter on the pending set: it can narrow which suggestions to act on, and it cannot add criteria the suggestions don't support.
-5. **Drop what no instruction change can reach.** A suggestion whose fix belongs to claude-proxy's own *code* — the rule that produced it, the dashboard, the recurrence model — stays `pending` and is reported as out of scope; do not mark it `done`. A fix that belongs to a different *checkout* is no longer out of scope: Step 4 dispatches it there.
+5. **A fix that belongs to a different *checkout* is not out of scope** — Step 5 dispatches it there. Neither is a fix that belongs to claude-proxy's own rule code: that is a defective rule, and the section below gives it a criterion rather than leaving it to circle forever.
 6. Report the criteria and the `bucket/id` pairs behind each before going further, with the regression block called out as such.
 
 ### The regression track
+
+**Only a `regressed` row enters this track, and a dismissed row never does.** `regressed` means a dated fix did not hold; `dismissed` means the finding was never true in the first place. They are different records with opposite consequences, and conflating them escalates the ladder against a finding nobody ever needed to fix — writing a mechanical gate to prevent something that did not happen. A dismissed row was already excluded above and does not reappear here.
 
 For each `regressed` row, before composing its criterion:
 
@@ -119,9 +164,27 @@ For each `regressed` row, before composing its criterion:
    The criterion names the rung the prior fix sat on (a PR that only edited `AGENTS.md` is rung 1) and requires the new fix to **climb at least one rung**. Restating the prior rule at the same rung is forbidden — including a longer, firmer, better-worded version of it. **This is about mechanism class, not wording.** A rule that was already written down and still not followed does not need to be written down more emphatically; it needs to stop depending on being remembered.
 4. **Say what a rung-4 answer would be, even when proposing rung 2 or 3.** If the honest reading is that the rule itself is measuring the wrong thing, the criterion may propose that instead — but it has to say so explicitly rather than quietly implementing nothing.
 
-**`--dry-run` / `-n` stops here**, having reported the pending suggestions — regression track first, with each prior fix and its rung — and the criteria, and having marked nothing.
+### A defective rule gets a criterion, not a shrug
 
-## Step 4 — Run the task, one subagent per repo
+A rule that keeps firing on things the transcripts don't support is not noise to be dismissed bucket after bucket forever — it is a **defect in claude-proxy's rule code**, and the dismissal record is the evidence for it. Ask for it:
+
+```sh
+LOG_DIR="<logDir>" pnpm --filter server suggestions defects --json
+```
+
+When a rule comes back reported defective, **compose it as an ordinary criterion against claude-proxy** — the same shape as every other criterion, just landing in a different checkout:
+
+- **Target** — the claude-proxy checkout derived in Step 1, at `packages/core/src/suggestions.ts`. Name the absolute path, as every criterion does.
+- **Evidence** — the buckets the rule was dismissed in and **the dismissal reasons themselves**. Those reasons were written from the transcripts and say exactly what the rule counted versus what was happening; that gap *is* the specification for the fix. A criterion that says "this rule is too noisy" without them is a complaint.
+- **The ask** — narrow what the rule matches so the dismissed cases stop firing, without silencing the confirmed ones in the same buckets. Name both sides: a rule that stops reporting a real slowdown is not fixed.
+
+This needs no new dispatch machinery. Step 5 already runs one subagent per repo, and claude-proxy is simply one of those repos.
+
+**This is the exit path a defective rule previously had none of.** Left as "out of scope and still `pending`", a systematically-wrong rule bills attention on every future `/improve` run and can never be resolved, because nothing in this command was allowed to touch the thing that was actually broken. A suggestion whose fix belongs to claude-proxy's dashboard or recurrence model rather than its rule code still stays `pending` and is reported as out of scope — that part is unchanged, and `defects` is the narrow case with an answer.
+
+**`--dry-run` / `-n` stops here**, having judged the dirty buckets in Step 3 and reported the confirmed suggestions — regression track first, with each prior fix and its rung — the dismissals it excluded, any defective rule it would dispatch, and the criteria, and having marked nothing.
+
+## Step 5 — Run the task, one subagent per repo
 
 **Group the criteria by the repo they land in**, then dispatch **one fresh subagent per repo** via the `Agent` tool, each running `/task` with the composed criteria for that repo and the pass-through flags exactly as given:
 
@@ -129,15 +192,15 @@ For each `regressed` row, before composing its criterion:
 /task <pass-through flags> <composed criteria for that repo>
 ```
 
-- **One subagent per repo, not one per suggestion.** The criteria were grouped in Step 3 so each repo gets a single coherent PR. Most runs are one repo and therefore one subagent, exactly as before; more than one is the exception the regression track makes possible.
+- **One subagent per repo, not one per suggestion.** The criteria were grouped in Step 4 so each repo gets a single coherent PR. Most runs are one repo and therefore one subagent, exactly as before; more than one is the exception the regression track makes possible.
 - **Why more than one repo at all:** the escalation ladder moves work *between* checkouts. A rung-1 prose rule that failed in one repo's `AGENTS.md` is often answered by a rung-2 step in a command that lives in a different repo, or the reverse. Refusing to leave the invoking repo would cap every regression at the rung that already failed.
 - **Name the repo explicitly in each subagent's brief** — its absolute checkout path, and that `/task` is to run with that path as its working directory. Never let a subagent infer which checkout it should edit; an unnamed repo is edited wherever the subagent happens to start.
 - **Run them one at a time and read each result before dispatching the next.** They open separate PRs in separate repos, but a later one's criteria may reference what an earlier one actually did.
 - Give each subagent everything it needs to act alone — the source sessions each criterion rests on, and for a regression criterion the prior PR, the files it touched, and the rung it must climb past. It has the criteria and the evidence, not this run's proxy reads.
 - `/task` owns the workspace, the verification, the commits and the PR from here. Do not create a worktree, edit files, or commit in this command — that is `/task`'s pipeline and duplicating it produces two workspaces for one change.
-- When each subagent returns, record what it reports: the repo, the branch, the PR number/URL, and **which criteria it actually implemented** versus dropped. That distinction is what Step 5 writes down.
+- When each subagent returns, record what it reports: the repo, the branch, the PR number/URL, and **which criteria it actually implemented** versus dropped. That distinction is what Step 6 writes down.
 
-## Step 5 — Flag what shipped
+## Step 6 — Flag what shipped
 
 Mark **only** the suggestions the run actually implemented, one call per bucket, with the PR as the note:
 
@@ -147,6 +210,7 @@ LOG_DIR="<logDir>" pnpm --filter server suggestions mark -r <bucket> -i <id>[,<i
 
 - A suggestion the subagent dropped, deferred, or couldn't act on stays `pending` — it should come back on the next `/improve`. Flagging it now is how real work gets lost.
 - Use `-s skipped -n "<why>"` only for a suggestion deliberately passed over for a stated reason, so it stops resurfacing without pretending it was applied.
+- **Never mark a dismissed suggestion.** `/judge` already recorded it as `dismissed`, which is a verdict that the finding was false. Marking it `done` claims a fix that does not exist, and marking it `skipped` records a real finding deliberately deferred. Neither is true, and both are dated claims that later sessions get read against.
 - If the subagent opened no PR, mark nothing.
 - **A criterion whose fix spanned two repos is marked only once every one of those repos has landed a PR.** If one run lands and another doesn't, the suggestion stays `pending`: half a fix is not a fix, and marking it now resets the dated claim on evidence that doesn't support it.
 
@@ -162,7 +226,7 @@ LOG_DIR="<logDir>" pnpm --filter server suggestions mark -r <bucket> -i <id> -s 
 - **Mark it `done` as normal.** That is what re-dates the claim, so a *third* failure surfaces as a fresh `regressed` row against this attempt rather than staying pinned to the one that already failed.
 - **The note carries the chain:** which attempt this is, the rung it climbed from and to, the new PR, and the prior PR it supersedes. Without it the next `/improve` can see that a fix failed but not that two already have.
 
-Report at the end: the range read, how many suggestions were pending, how many were regressed, the criteria that shipped, the PR number/URL for each repo, what was marked `done` or `skipped`, and what stays `pending` with why. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
+Report at the end: the range read, which buckets were judged and how many suggestions were confirmed versus dismissed, how many suggestions were pending, how many were regressed, any defective rule dispatched to claude-proxy, the criteria that shipped, the PR number/URL for each repo, what was marked `done` or `skipped`, and what stays `pending` with why. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
 
 ## Notes
 
@@ -170,8 +234,11 @@ Report at the end: the range read, how many suggestions were pending, how many w
 - **Marking is a claim about reality.** `done` means the change is in the PR the note points at, in every repo that change needed. Mark after the subagents return, never before they run — and a `done` is *dated*, so marking early doesn't just misreport this suggestion, it makes every session recorded afterwards read as evidence against a fix that wasn't there.
 - **Never fall back to a guessed claude-proxy path.** An unset `CLAUDE_PROXY_STORE` is a stop with an explanation, not a search.
 - The suggestions are recomputed from every transcript on each read, and buckets are fixed windows of ten numbered oldest-first — so a bucket number means the same sessions tomorrow, and the flags survive the recomputation.
-- **A suggestion that keeps tripping after being marked `done` is a `regressed` row, and it has a track of its own** — Step 3's regression block and the escalation ladder. Do not treat it as a new finding and do not treat it as noise. There are only two honest readings, and the criterion has to pick one: the fix didn't hold at the rung it was written at, or the rule is measuring something no change to this repo will address. The first escalates a rung; the second is reported as out of scope and left `pending`.
+- **A suggestion that keeps tripping after being marked `done` is a `regressed` row, and it has a track of its own** — Step 4's regression block and the escalation ladder. Do not treat it as a new finding and do not treat it as noise. There are only two honest readings, and the criterion has to pick one: the fix didn't hold at the rung it was written at, or the rule is measuring something no change to this repo will address. The first escalates a rung; the second is reported as out of scope and left `pending`.
 - **`mixed` is not a weak `regressed`.** A window straddling the claim contains pre-fix sessions, so it proves nothing about whether the fix held — `regressed` deliberately waits for a window recorded entirely afterwards. Treating `mixed` as a regression means escalating against evidence that predates the thing being escalated.
+- **`dismissed` and `regressed` are not neighbours on a scale.** `regressed` says a fix was tried and did not hold; `dismissed` says there was never anything to fix. A dismissed row leaves the pipeline at Step 4 and never reaches the ladder, because escalating a rung against a finding that was never true builds a mechanical gate to prevent something that did not happen.
+- **An unjudged bucket is not a bucket with nothing wrong in it.** The dirty flag records that nobody has checked, and the two states look identical from the outside — which is exactly why a failed judge run stops the command instead of composing anyway.
+- **A defective rule now has an exit.** `suggestions defects` is what turns a pattern of dismissals into one criterion against `packages/core/src/suggestions.ts`, so a systematically-wrong rule gets fixed rather than dismissed again on every future run.
 
 ## Close the run in a text-only turn
 
