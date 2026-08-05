@@ -109,9 +109,9 @@ if [ "$INSTALL_HOOKS" -eq 1 ] && [ -d "$HOOKS_SRC" ]; then
 
   # A prior npx run can leave a real directory here, and `ln -sfn` against one nests inside
   # it instead of replacing it. But that directory may also hold a hook the user installed
-  # themselves — one settings.json points at independently of MyCommand — and `rm -rf` would
-  # delete it while leaving that registration aimed at a path the new symlink cannot provide.
-  # So a real directory is never clobbered: only files this repo also ships may be replaced.
+  # themselves, which settings.json points at independently — deleting it would aim that
+  # registration at a path the new symlink cannot provide. So only files this repo also
+  # ships may be replaced.
   if [ -L "$HOOKS_DEST" ]; then
     # Already a link — repoint it, which handles the clone moving.
     ln -sfn "$HOOKS_SRC" "$HOOKS_DEST"
@@ -152,8 +152,7 @@ if [ "$INSTALL_HOOKS" -eq 1 ] && [ -d "$HOOKS_SRC" ]; then
     echo "Registered the PreToolUse and Stop gates in $CLAUDE_DIR/settings.json."
     echo "  Off switch (no uninstall needed):  export MY_COMMAND_HOOKS=0"
     echo "  Remove the registration entirely:  node $HOOKS_DEST/install-hooks.mjs --uninstall"
-    # Report what settings.json actually says, not what was attempted: a registration that
-    # silently did not land is the failure this whole install exists to prevent.
+    # Report what settings.json actually says, not what was attempted.
     if node "$REPO_ROOT/src/toolkit/cli.mjs" doctor --compact \
       | node -e 'let s="";process.stdin.on("data",d=>{s+=d}).on("end",()=>{try{process.exit(JSON.parse(s).hooks?.armed===true?0:1)}catch{process.exit(1)}})'; then
       echo "Verified: the gates are armed (my-command-tools doctor reports hooks.armed: true)."

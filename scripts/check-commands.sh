@@ -272,7 +272,7 @@ fi
 
 # Registering the gates is a separate step from installing the commands, and command files
 # reach a device by paths that never run the installer — so the gates can ship, be pulled, and
-# still never execute. They did, for a week. Something on the device has to say so.
+# still never execute. Something on the device has to say so.
 if ! grep -q 'hooksStatus' src/toolkit/verbs/doctor.mjs; then
   echo "::error::src/toolkit/verbs/doctor.mjs no longer reports hook registration; nothing on the device would report the gates as unarmed."
   fail=1

@@ -106,7 +106,6 @@ function hooks() {
       settingsPath: join(claudeDir, 'settings.json'),
     });
   } catch (err) {
-    // doctor reporting nothing is worse than doctor reporting it could not tell.
     return { armed: null, error: err instanceof Error ? err.message : String(err), hooksSrc };
   }
 }

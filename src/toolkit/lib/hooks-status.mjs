@@ -103,8 +103,8 @@ export function hooksStatus(opts) {
     }
   }
 
-  // The link is what makes `git pull` update the gates. A real directory there is a stale
-  // copy that no longer tracks the checkout, which is worth reporting as loudly as a miss.
+  // The link is what makes `git pull` update the gates; a real directory there is a stale
+  // copy that no longer tracks the checkout.
   let linkTarget = null;
   let linkKind = 'missing';
   if (existsSync(hooksDir)) {

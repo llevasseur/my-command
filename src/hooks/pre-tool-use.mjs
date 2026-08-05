@@ -62,7 +62,7 @@ guard(() => {
     // Cheapest gates first, and the only ones that need no transcript: a command whose own
     // shape makes it fail is going to fail whatever the session did before it.
     if (badShape(event, input, session)) return;
-    // These need the transcript but not read-only status: `sed -n '1,50p' <file>` is not
+    // These need the transcript but not read-only status: a dumper like `sed` is not
     // classified read-only, and dumping a file already in context is the shape regardless.
     const line = timeline(entries(event.transcript_path ?? ''));
     if (staleProbe(event, input, line, session, readOnly)) return;
@@ -247,7 +247,7 @@ function staleProbe(event, input, line, session, readOnly) {
   }
 
   // The same probe, with nothing since that could have changed its answer. Read-only only:
-  // re-running a build or a test suite is a legitimate thing to do twice.
+  // a build or a test suite is legitimately re-run.
   if (readOnly && repeatedProbe(line, command, currentUuid, isReadOnly)) {
     const key = basename(command.slice(0, 120));
     if (!alreadyDenied(session, 'repeat', key)) {

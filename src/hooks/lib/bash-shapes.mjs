@@ -3,8 +3,7 @@
 // Each function here answers about the command's *shape*, from evidence on this device —
 // a glob that matches nothing, a `sleep` in the foreground, a heredoc composing a file,
 // a path that belongs to another directory tree. None of them guesses at intent: every
-// shape below either fails outright when it runs or is refused by the harness, so the
-// gate trades a wasted turn for the form that works.
+// shape below either fails outright when it runs or is refused by the harness.
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 
@@ -122,9 +121,8 @@ export function unmatchedGlob(command, cwd) {
 }
 
 /**
- * The `sleep` invocation in a foreground command, or null. The harness blocks a foreground
- * `sleep`, and a poll loop built on one is refused whole — so the wait never happens and
- * the probe chained after it never runs either.
+ * The `sleep` invocation in a foreground command, or null. The harness blocks it, and blocks
+ * the whole call with it, so a probe chained after the wait never runs either.
  * @param {string} command @param {boolean} background
  * @returns {string | null}
  */
@@ -158,9 +156,7 @@ export function jobDirFromWorktree(command, cwd) {
 }
 
 /**
- * Absolute paths of existing files this command would dump in full or in part. Used to catch
- * a shell probe re-reading a file the session already has in context; `grep`/`rg` are
- * deliberately not dumpers, so the locate-first form stays available.
+ * Absolute paths of existing files this command would dump in full or in part.
  * @param {string} command @param {string} cwd
  * @returns {string[]}
  */
