@@ -25,7 +25,9 @@ that, and both are required:
    citing none of these does not get written down.
 2. **A recorded human sign-off** — the `accepted` status. That sign-off *is* an accepted idea's
    trace, which is why `/improve` may act on an `accepted` row and never on a `proposed` or
-   `rejected` one.
+   `rejected` one. `/ideate` writes `proposed` and nothing else; a person moves a row on from
+   there. On tier 1 that happens on claude-proxy's dashboard Advice page, and on this file it is
+   an edit to the Status column.
 
 ## Why there are three tiers
 
@@ -55,6 +57,10 @@ Three rules keep a waterfall safe for something used as a dedupe key:
   failure this key prevents, and the rejection reason is the most valuable row in the file.
 - **Rejected rows are never deleted.** They are the record of what was already considered and turned
   down. A ledger holding only the accepted ideas cannot dedupe.
+- **A `rejected` row carries its reason.** Tier 1 refuses the mark without one, because that reason
+  is what a later run dedupes against; this file's `Note` column is the same record.
+- **A `proposed` row is the adjudication queue**, not an unanswered question. It blocks its own slug
+  from being re-proposed, so it can sit here until somebody gets to it.
 - **`shipped` is set by whoever landed the PR**, with the url. An idea whose PR did not land stays
   `accepted` and comes back next run.
 - **Statuses** are `proposed` → `accepted` / `rejected`, and `accepted` → `shipped`.
@@ -71,5 +77,6 @@ One row per idea. `Evidence` cites the file paths behind it, or `bucket/id` for 
 
 ## Related
 
-- [ideate](features/ideate.md) — writes this ledger and takes the sign-off.
+- [ideate](features/ideate.md) — writes this ledger as `proposed` and exits; the sign-off happens
+  after the run.
 - [improve](features/improve.md) — reads the `accepted` rows and marks what shipped.

@@ -1,11 +1,13 @@
 ---
-description: Survey a repo and propose features or commands worth building — cite evidence a person already wrote down, record every proposal in a ledger, and get one human sign-off that turns the accepted ones into advice /my-command:improve can pick up
+description: Survey a repo and propose features or commands worth building — cite evidence a person already wrote down, record every proposal in the ledger, and exit pointing at the dashboard's Advice page, where a human accepts the ones /my-command:improve may pick up
 argument-hint: "[--range|-r <spec>] [--dry-run|-n]"
 ---
 
 Propose what is worth building. [improve](improve.md) reads what the agent keeps doing slowly and fixes it; this command asks a different question — what is **missing** — and answers it as advice rather than as a change.
 
-**This command proposes and nothing else.** It never implements, never opens a branch, never commits, and never calls `/my-command:task`. Its whole output is a ranked set of proposals recorded in a ledger and gated on one human sign-off. Turning an accepted proposal into a PR is `/my-command:improve`'s job, not this one's.
+**This command proposes and nothing else.** It never implements, never opens a branch, never commits, and never calls `/my-command:task`. Its whole output is a ranked set of proposals recorded in a ledger, left at `proposed` for a human to adjudicate on claude-proxy's dashboard. Turning an accepted proposal into a PR is `/my-command:improve`'s job, not this one's.
+
+**It also asks nothing.** There is no in-session sign-off: the run records its proposals and exits, naming where they get accepted or rejected. That is a change of *venue*, not of standard — the sign-off is still required and `/my-command:improve` still acts only on an `accepted` idea.
 
 Your input is the text in the `<command-args>` block above. Parse leading flags off the front; there is no free-text argument — anything left over is something you meant as a flag, so say so rather than interpreting it.
 
@@ -16,14 +18,15 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 Two boundaries follow, and neither bends:
 
 - **Never write `suggestion-status.json`.** That store belongs to findings with source sessions behind them. An idea has a different evidence standard and gets its own store — a separate file in a separate namespace.
-- **An idea becomes actionable only when a human accepts it.** That sign-off *is* an accepted idea's trace, which is the amendment `/my-command:improve` carries. A `proposed` or `rejected` idea is still invention, and `/my-command:improve` never reads one.
+- **An idea becomes actionable only when a human accepts it.** That sign-off *is* an accepted idea's trace, which is the amendment `/my-command:improve` carries. A `proposed` or `rejected` idea is still invention, and `/my-command:improve` never reads one. Where the accepting happens is a UI question; that it happened is not.
+- **Never accept your own proposal.** This command writes `proposed` and no other status. An agent marking its own idea `accepted` manufactures the trace instead of earning it, and hands `/my-command:improve` a criterion nobody signed off on.
 
 <!-- include: shared/closing-turn-anchor.md -->**Before the first tool call, anchor the closing turn.** Put "close the run in a text-only turn" in the harness todo/task list as its own final item — worded on its own, never folded into the work it follows — and leave it open until it is the only item left. The todo list is live session state that a compaction carries forward; this prompt is not. Once this run is summarized, that item is the only surviving record that an outcome is still owed. **Then close it out:** "until it is the only item left" is the trigger to resolve it, not a reason to leave it open forever — once it is the last item and the work is done, mark it completed with the run's **final tool call**, and send the text-only message after that call returns. Both constraints hold at once that way: the task list ends clean and the closing message still carries zero tool calls. Never hand back with the anchor still open — a finished run reads as abandoned in the job list.<!-- /include -->
 
 ## Flags
 
 - `--range <spec>` / `-r <spec>` — the bucket window for **evidence source 2 (judge notes) only**. One bucket (`9`), a list (`2,3,9`), a span (`2-9`), or a mix (`2-4,9`). **Default: every bucket.** The other three sources are not bucketed and this flag does not narrow them; say so if you report a narrowed run.
-- `--dry-run` / `-n` — report the proposals and **write nothing at all**, not even the `proposed` rows, and skip the approval question entirely. A dry run resolves the ledger tier and reads every tier for dedupe, because a proposal that collides with an existing slug is not worth reporting either.
+- `--dry-run` / `-n` — report the proposals and **write nothing at all**, not even the `proposed` rows. A dry run resolves the ledger tier and reads every tier for dedupe, because a proposal that collides with an existing slug is not worth reporting either.
 - Anything else is not a flag this command takes. Report it rather than interpreting it.
 
 ## Step 1 — Resolve the ledger, and read every tier that exists
@@ -73,7 +76,7 @@ Read `pnpm --filter server ideas --help` before composing a write; do not guess 
 - **Write to the highest available tier, and name the tier used in the report.** A silently-different tier between two runs is exactly how a rejected idea comes back.
 - **Dedupe reads every tier that exists, not just the winning one.** A machine that gains claude-proxy later must not forget what `docs/ideas.md` already recorded. Read them all, every run.
 - **Fall through on absence only, never on error.** An unset `CLAUDE_PROXY_STORE`, a missing store path, a checkout with no `server/package.json`, or an `ideas` CLI that is not there yet all mean tier 1 is **absent** — fall to tier 2 and say so in the report. A tier-1 store that exists and fails to read or write is a **stop**: writing tier 2 behind a broken tier 1 forks the ledger into two ledgers that each look complete.
-- **Never propose a slug already present in any tier in any status — `rejected` included.** Also refuse a near-duplicate: the same idea under a different slug defeats the key just as completely. Name the entry it collides with and drop it. A rejected idea returning on every run is the specific failure this key exists to prevent, and the rejection reason is the most valuable row in the file.
+- **Never propose a slug already present in any tier in any status — `rejected` included.** Also refuse a near-duplicate: the same idea under a different slug defeats the key just as completely. On tier 1 the store reports the near matches for a candidate as **`similarIdeaSlugs`**, so a non-empty list is a collision even when the exact slug is free; on a markdown tier the same check is yours to make by reading the rows. Either way, name the entry it collides with and drop the proposal. A rejected idea returning on every run is the specific failure this key exists to prevent, and the rejection reason is the most valuable row in the file.
 
 **The repo an idea lands in is recorded as its git remote slug** (`llevasseur/claude-proxy`), read from `git remote get-url origin`, never as an absolute checkout path. The tier-1 store is device-wide and shared across every repo on the machine, so a path names a different thing — or nothing — on the next one.
 
@@ -118,7 +121,7 @@ Rank them and say what the ranking is on.
 
 ## Step 4 — Write every proposal to the ledger as `proposed`
 
-Write **all** of them, including the ones you expect to be rejected, before asking anything.
+Write **all** of them, including the ones you expect to be rejected. This is the run's only write, and `proposed` is the only status it sets.
 
 ```sh
 LOG_DIR="<logDir>" pnpm --filter server ideas add --json '[{ … }]'
@@ -127,34 +130,30 @@ LOG_DIR="<logDir>" pnpm --filter server ideas add --json '[{ … }]'
 - **Dedupe only works if the ledger records what was considered, not just what was liked.** An idea that never reaches the file can be re-proposed next run with a straight face; that is the whole failure this step prevents.
 - Each entry carries its stable kebab-case slug, title, one-paragraph rationale, evidence with paths, and the repo slug. Status is `proposed`.
 - On tier 2 or 3, append the rows to the markdown ledger in the shape its header defines.
-- If `add` refuses a slug, dedupe missed a collision in Step 1. Say which, and drop that proposal rather than renaming it to get past the refusal — a rename is exactly the near-duplicate the key exists to catch.
+- If `add` refuses a slug, or answers with a non-empty `similarIdeaSlugs`, dedupe missed a collision in Step 1. Say which, and drop that proposal rather than renaming it to get past the refusal — a rename is exactly the near-duplicate the key exists to catch.
 
 **`--dry-run` / `-n` stops here**, having reported the proposals it would write and the tier it would write them to, and having written nothing.
 
-## Step 5 — Ask once which to accept
+## Step 5 — Exit, and say where the proposals get adjudicated
 
-**This is the only interaction in the run.** Ask nothing before it, and implement nothing after it.
+**The run ends here, with nothing asked.** The proposals are recorded; deciding on them is a human's job, done in claude-proxy's dashboard rather than in this session.
 
-Present the ranked proposals and ask which to accept. Then record the answer:
+The in-session question existed for one reason: `pnpm --filter server ideas mark` was the only way to reach a status, so a proposing run could not end without a person at a terminal. The dashboard's **Advice page** now carries the ledger as approve/deny cards — `GET /api/ideas` lists them, `/api/ideas/stream` streams them over SSE so a row this run just wrote appears without a reload, and `POST /api/ideas/status` sets `accepted`, `rejected`, or `proposed` (the undo). A person can adjudicate on their own schedule, so blocking a run to wait for them buys nothing.
 
-```sh
-LOG_DIR="<logDir>" pnpm --filter server ideas mark --slug <slug> -s accepted
-LOG_DIR="<logDir>" pnpm --filter server ideas mark --slug <slug> -s rejected -n "<the stated reason>"
-```
+- **Leave every row at `proposed`, and set no other status.** Do not ask which to accept, and do not decide it yourself — see the boundary above.
+- **A `proposed` row is the adjudication queue, not an unanswered question.** It is also what dedupe reads, so an idea sitting there is not re-proposed next run: Step 1 refuses a slug present in any tier in **any** status, `proposed` included.
+- **A rejection still carries its reason, written by whoever rejects it.** `POST /api/ideas/status` refuses a `rejected` mark with 400 unless a note comes with it, because that reason is the ledger's dedupe record. Nothing here invents one.
+- **Never mark anything `shipped`.** That status carries the PR url and stays CLI-only; this command opens no PR.
 
-- Accepted ideas move to `accepted`; **every one not accepted moves to `rejected` with the reason given.** Nothing is left sitting at `proposed` — a `proposed` row is a question nobody answered, and it will be re-proposed forever.
-- Record the reason as stated. A rejection with no reason is the row a later run most needs, and inventing a reason is worse than quoting a short one.
-- **Never mark anything `shipped`.** That status belongs to whoever lands the PR, and this command opens none.
+Then stop, naming the Advice page as where the accepting happens. `/my-command:improve` picks an idea up once it is `accepted`, and only then — unchanged.
 
-Then stop. `/my-command:improve` is what picks up `accepted` ideas.
-
-Report at the end: the ledger tier used and which tiers were read for dedupe, whether judge notes were available, how many proposals were composed, what collided and with what, what was accepted and what was rejected with its reason, and that no branch or PR was opened. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
+Report at the end: the ledger tier used and which tiers were read for dedupe, whether judge notes were available, how many proposals were composed, what collided and with what, that every proposal is recorded as `proposed` and awaits sign-off on the dashboard's Advice page, and that no branch or PR was opened. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
 
 ## Notes
 
 - **Do not restate an Open Question as a proposal.** The question is already written down; the proposal has to add a design — a mechanism, a shape, a decision. "Should we offer a rolling last-10 view?" is not a proposal. "Add a rolling window alongside the fixed one, sharing the rule engine, with the fixed buckets keeping the flag store" is. If the honest answer is that you have nothing to add to the question, that is a run with fewer proposals, not a proposal.
 - **Never propose work `/my-command:improve` would find.** If the evidence is a suggestion rule tripping, that belongs to `/my-command:improve` and its source sessions. This command covers what the rules structurally *cannot* see: a missing feature, a missing command, a workflow with no tooling at all. Nothing counts a command that was never written, which is exactly why proposing one needs a different command and a different store.
-- **Proposal only.** No branch, no commit, no PR, no `/my-command:task`. An idea that seems obviously right is still an idea, and the sign-off is what makes it advice.
+- **Proposal only.** No branch, no commit, no PR, no `/my-command:task`. An idea that seems obviously right is still an idea, and the sign-off is what makes it advice — which is why this run records it and leaves, rather than accepting it on the human's behalf.
 - **The two stores never merge.** `suggestions list` must never return an idea and `ideas list` must never return a suggestion. Two evidence standards, one file each.
 - **`--range` narrows one source, not the run.** Only judge notes are bucketed. A report that implies the whole survey was scoped to a range is wrong about three of its four sources.
 - **A missing judge layer is an ordinary run.** Working from three sources and saying which one was unavailable is the correct behavior; failing because a CLI verb is absent is not.
