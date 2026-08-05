@@ -26,4 +26,5 @@ Folders: `adrs/` (decisions), `features/` (specs).
 | Title | File |
 |-------|------|
 | MyCommand specs | [README.md](README.md) |
+| Ideas ledger (tier 2) | [ideas.md](ideas.md) |
 <!-- okq:index:end -->
