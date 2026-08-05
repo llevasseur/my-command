@@ -1,5 +1,5 @@
 ---
-description: Turn claude-proxy's session suggestions into an implemented improvement — read what the agent keeps doing the slow way, hand it to /my-command:task as criteria, escalate the ones whose last fix didn't hold, and flag the suggestions that shipped as done
+description: Turn claude-proxy's session suggestions and the ideas a human accepted into an implemented improvement — read what the agent keeps doing the slow way, hand it to /my-command:task as criteria, escalate the ones whose last fix didn't hold, and flag what shipped as done
 argument-hint: "[--range|-r <spec>] [--regressed|-g] [--dry-run|-n] [--here|-h] [--base <branch>] [--draft|-d] [--add|-a <list>] [extra context]"
 ---
 
@@ -9,7 +9,7 @@ Improve the agentic workflow using evidence instead of intuition. claude-proxy r
 
 Your input is the text in the `<command-args>` block above. Parse leading flags off the front; anything left over is extra context that steers which pending suggestions to act on (it narrows the work, it never invents work the suggestions don't support).
 
-**The suggestions are the criteria.** Every change this run proposes traces back to a suggestion with its own evidence and its own source sessions. Do not pad the task with improvements you thought of yourself.
+**The suggestions are the criteria — and so are the ideas a human accepted.** Every change this run proposes traces back to something somebody else produced: a suggestion with its own evidence and source sessions, or an idea [ideate](ideate.md) proposed and a human signed off on. Do not pad the task with improvements you thought of yourself, and never act on an idea still `proposed` or already `rejected`.
 
 **A suggestion whose last fix didn't hold is not a fresh finding.** claude-proxy dates every `done` and reports a suggestion as `regressed` when the rule tripped again across a window recorded entirely after that claim. Those rows get their own track through this command — Step 4's regression block, an escalation ladder that forbids restating the fix that already failed, and a mark in Step 6 that records the attempt chain. Handing a regression to `/my-command:task` as if nobody had tried yet is how the same paragraph gets written into the same file twice.
 
@@ -19,7 +19,7 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 
 - `--range <spec>` / `-r <spec>` — which session buckets to read. One bucket (`9`), a list (`2,3,9`), a span (`2-9`), or a mix (`2-4,9`). **Default: every bucket.**
 - `--regressed` / `-g` — narrow the run to the **regression track only**: suggestions whose rule already shipped a dated fix and tripped again anyway. Fresh findings are not read and not composed. It composes with `--range` (narrow to regressions inside those buckets) and with `--dry-run` (report the regression criteria and stop). Without it, regressions and fresh findings both run, regressions first.
-- `--dry-run` / `-n` — report the suggestions and the task criteria they compose into, then stop. No subagent, no branch, no PR, and nothing marked. **It still judges** — see Step 3: the criteria are only worth reporting if they came from confirmed findings, and judging records verdicts about transcripts rather than claims that a fix shipped.
+- `--dry-run` / `-n` — report the suggestions, the accepted ideas, and the task criteria they compose into, then stop. No subagent, no branch, no PR, and nothing marked in either store. **It still judges** — see Step 3: the criteria are only worth reporting if they came from confirmed findings, and judging records verdicts about transcripts rather than claims that a fix shipped.
 - Anything not listed above that `/my-command:task` recognizes is **passed straight through** to every `/my-command:task` invocation in Step 5 — currently `--here` / `-h`, `--base <branch>`, `--draft` / `-d`, and `--add` / `-a <list>`. Read `/my-command:task`'s own Flags section rather than duplicating its list here; this command does not interpret them itself.
 - Anything not a recognized flag is extra context.
 
@@ -37,9 +37,10 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
   ```
 
   Do not search the filesystem for a claude-proxy checkout yourself, and do not fall back to a hardcoded path.
+- **Where a command declares claude-proxy an _optional_ dependency, those three failures mean it is *absent* rather than that the run is over.** Only a command that says so at its own step, and names what it falls back to, may read them that way; anything that does not say otherwise takes the stop above. **An error is still a stop even then.** A store that exists and fails to read or write is not absence — continuing past it writes a second copy of something that already has one, and two stores that each look complete is worse than no store.
 <!-- /include-block -->
 
-## Step 2 — Read the pending suggestions
+## Step 2 — Read the pending suggestions and the accepted ideas
 
 <!-- include-block: shared/batched-discovery.md -->
 ### Discovery runs as one batched pass
@@ -84,6 +85,22 @@ LOG_DIR="<logDir>" pnpm --filter server suggestions list -s pending --recurrence
 ```
 
 `--recurrence` accepts a comma-separated subset of the four states. If `--regressed` was given and nothing is regressed in the range, stop and say so — that is a good outcome, not a failure.
+
+### The accepted ideas are a second input, with a second evidence standard
+
+A suggestion is counted from transcripts. An **idea** is invented — [ideate](ideate.md) proposes what is *missing*, which no rule can measure, since nothing counts a command that was never written. What makes an idea actionable is not source sessions but a recorded human sign-off, and `accepted` is that sign-off.
+
+Read the ones signed off for this repo:
+
+```sh
+LOG_DIR="<logDir>" pnpm --filter server ideas list -s accepted --repo <slug> --json
+```
+
+- `<slug>` is the repo's git remote slug (`git remote get-url origin`), never a checkout path — the ideas store is device-wide and shared across every repo on the machine.
+- **Resolve the store through the same waterfall `/my-command:ideate` uses**, and read every tier that exists: tier 1 is `<logDir>/ideas.json` through the CLI above, tier 2 the repo's own `docs/ideas.md`, tier 3 `~/.claude/ideas/<repo-slug>.md`. An absent `ideas` CLI means tier 1 is absent, not that the run is over — fall through and say so. A tier that exists and fails to read is a stop.
+- **Only `accepted` is read.** A `proposed` idea is invention nobody signed off on, and a `rejected` one is invention that was turned down; reading either would be exactly the padding this command forbids. `shipped` is already done.
+- **`--range` does not apply.** Ideas are not bucketed, so a narrowed range narrows the suggestions and leaves the accepted ideas alone. Say that in the report rather than implying the whole run was scoped.
+- If nothing is accepted, this half of the input is simply empty. That is ordinary, not a failure — and a run with no pending suggestions *and* no accepted ideas is the "nothing to do" stop in Step 2 above.
 
 ## Step 3 — Judge the dirty buckets before composing anything
 
@@ -164,6 +181,15 @@ For each `regressed` row, before composing its criterion:
    The criterion names the rung the prior fix sat on (a PR that only edited `AGENTS.md` is rung 1) and requires the new fix to **climb at least one rung**. Restating the prior rule at the same rung is forbidden — including a longer, firmer, better-worded version of it. **This is about mechanism class, not wording.** A rule that was already written down and still not followed does not need to be written down more emphatically; it needs to stop depending on being remembered.
 4. **Say what a rung-4 answer would be, even when proposing rung 2 or 3.** If the honest reading is that the rule itself is measuring the wrong thing, the criterion may propose that instead — but it has to say so explicitly rather than quietly implementing nothing.
 
+### Idea-sourced criteria sit alongside the suggestion ones, never inside them
+
+Each accepted idea from Step 2 becomes its own criterion, **labelled as idea-sourced**, in its own group.
+
+- **Never merge an idea into a suggestion's criterion group.** They argue from different evidence — one from counted sessions, one from a human sign-off — and a merged group can defend itself with only one of them. The subagent has to be able to tell which is which, because the two are answerable to different standards.
+- **State the sign-off as the evidence**, since it is: name the idea's slug, its rationale, and the evidence the idea itself cited with paths. The subagent cannot read the ledger, so an idea whose citation you did not write down is an idea it has to take on faith.
+- **An idea is a proposal, not a spec.** Where it names a mechanism, pass the mechanism through. Where it does not, say what is undetermined rather than inventing the design here — that invention would be yours, not the human's, and the sign-off does not cover it.
+- Group ideas by the repo they land in, exactly as suggestions are grouped; Step 5 dispatches per repo and an idea is simply one more criterion in that repo's brief.
+
 ### A defective rule gets a criterion, not a shrug
 
 A rule that keeps firing on things the transcripts don't support is not noise to be dismissed bucket after bucket forever — it is a **defect in claude-proxy's rule code**, and the dismissal record is the evidence for it. Ask for it:
@@ -182,7 +208,7 @@ This needs no new dispatch machinery. Step 5 already runs one subagent per repo,
 
 **This is the exit path a defective rule previously had none of.** Left as "out of scope and still `pending`", a systematically-wrong rule bills attention on every future `/my-command:improve` run and can never be resolved, because nothing in this command was allowed to touch the thing that was actually broken. A suggestion whose fix belongs to claude-proxy's dashboard or recurrence model rather than its rule code still stays `pending` and is reported as out of scope — that part is unchanged, and `defects` is the narrow case with an answer.
 
-**`--dry-run` / `-n` stops here**, having judged the dirty buckets in Step 3 and reported the confirmed suggestions — regression track first, with each prior fix and its rung — the dismissals it excluded, any defective rule it would dispatch, and the criteria, and having marked nothing.
+**`--dry-run` / `-n` stops here**, having judged the dirty buckets in Step 3 and reported the confirmed suggestions — regression track first, with each prior fix and its rung — the dismissals it excluded, any defective rule it would dispatch, **the accepted ideas it would act on and the tier it read them from**, and the criteria, and having marked nothing in either store.
 
 ## Step 5 — Run the task, one subagent per repo
 
@@ -214,6 +240,18 @@ LOG_DIR="<logDir>" pnpm --filter server suggestions mark -r <bucket> -i <id>[,<i
 - If the subagent opened no PR, mark nothing.
 - **A criterion whose fix spanned two repos is marked only once every one of those repos has landed a PR.** If one run lands and another doesn't, the suggestion stays `pending`: half a fix is not a fix, and marking it now resets the dated claim on evidence that doesn't support it.
 
+### Marking an idea that shipped
+
+An accepted idea whose criterion actually landed is marked in the **ideas** store, on the same terms:
+
+```sh
+LOG_DIR="<logDir>" pnpm --filter server ideas mark --slug <slug> -s shipped -n "<PR url>"
+```
+
+- **Only what actually landed.** An idea whose PR did not land stays `accepted` and comes back on the next run — which is the correct outcome, because the sign-off is still valid and the work still is not done.
+- **Never mark an idea in the suggestion store, or a suggestion in the ideas store.** Two evidence standards, one file each; a slug is not a `bucket/id` and the stores share nothing.
+- Never move an idea back to `proposed` or `rejected` here. This command implements advice; it does not overturn a human's sign-off.
+
 ### Marking a suggestion that had already regressed
 
 A regressed suggestion is being fixed for at least the second time, and the note is the only place that history survives — `resolved` keeps just the most recent claim, so the previous PR is overwritten the moment this one is marked.
@@ -226,11 +264,12 @@ LOG_DIR="<logDir>" pnpm --filter server suggestions mark -r <bucket> -i <id> -s 
 - **Mark it `done` as normal.** That is what re-dates the claim, so a *third* failure surfaces as a fresh `regressed` row against this attempt rather than staying pinned to the one that already failed.
 - **The note carries the chain:** which attempt this is, the rung it climbed from and to, the new PR, and the prior PR it supersedes. Without it the next `/my-command:improve` can see that a fix failed but not that two already have.
 
-Report at the end: the range read, which buckets were judged and how many suggestions were confirmed versus dismissed, how many suggestions were pending, how many were regressed, any defective rule dispatched to claude-proxy, the criteria that shipped, the PR number/URL for each repo, what was marked `done` or `skipped`, and what stays `pending` with why. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
+Report at the end: the range read, which buckets were judged and how many suggestions were confirmed versus dismissed, how many suggestions were pending, how many were regressed, how many accepted ideas were read and from which ledger tier, any defective rule dispatched to claude-proxy, the criteria that shipped, the PR number/URL for each repo, what was marked `done` or `skipped` and which ideas were marked `shipped`, and what stays `pending` or `accepted` with why. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
 
 ## Notes
 
 - **Never invent an improvement.** If the pending set is thin, the run is small. Padding it with your own ideas breaks the trace from every change back to the sessions that justified it.
+  - **An `accepted` idea is not an exception to that rule — it is a second way of satisfying it.** The rule is about the *trace*, not about who first thought of something: a suggestion traces to the sessions it was counted in, and an accepted idea traces to the recorded human sign-off that accepted it. Both are evidence somebody else produced, and neither is you deciding mid-run that something would be good. What stays forbidden is unchanged and is the whole of the rule's original force: an idea you thought of during *this* run, an idea still sitting at `proposed`, and an idea a human `rejected` are all invention with no trace, and none of them may become a criterion. If you want one considered, that is [ideate](ideate.md)'s job — propose it there and let it be signed off, rather than smuggling it in here.
 - **Marking is a claim about reality.** `done` means the change is in the PR the note points at, in every repo that change needed. Mark after the subagents return, never before they run — and a `done` is *dated*, so marking early doesn't just misreport this suggestion, it makes every session recorded afterwards read as evidence against a fix that wasn't there.
 - **Never fall back to a guessed claude-proxy path.** An unset `CLAUDE_PROXY_STORE` is a stop with an explanation, not a search.
 - The suggestions are recomputed from every transcript on each read, and buckets are fixed windows of ten numbered oldest-first — so a bucket number means the same sessions tomorrow, and the flags survive the recomputation.
