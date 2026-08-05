@@ -18,6 +18,7 @@ Add one with `okq new feature "<title>"`.
 | fb | [fb.md](fb.md) |
 | god | [god.md](god.md) |
 | improve | [improve.md](improve.md) |
+| judge | [judge.md](judge.md) |
 | mc | [mc.md](mc.md) |
 | merge-deps | [merge-deps.md](merge-deps.md) |
 | pr | [pr.md](pr.md) |

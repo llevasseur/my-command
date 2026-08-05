@@ -194,7 +194,7 @@ done
 # commands and this gate keeps it there.
 for f in src/commands/task.md src/commands/fb.md src/commands/review.md src/commands/god.md \
   src/commands/docs.md src/commands/clean.md src/commands/truncate.md src/commands/revive.md \
-  src/commands/improve.md; do
+  src/commands/improve.md src/commands/judge.md; do
   if ! grep -Fq 'include-block: shared/batched-discovery.md' "$f"; then
     echo "::error::$f dropped the shared/batched-discovery.md include; its discovery phase would go back to one read per turn and to re-reading files already in context."
     fail=1
