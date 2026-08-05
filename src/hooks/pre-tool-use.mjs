@@ -1,18 +1,37 @@
 #!/usr/bin/env node
-// PreToolUse — three gates. See docs/specs/workflow-gates.md.
+// PreToolUse — the call shapes that fail, or pay twice, for a known reason.
+// See docs/specs/workflow-gates.md.
 //
 //   serial discovery  — a 4th straight turn of nothing but read-only calls (batch instead)
 //   redundant read    — a whole-file Read of a file already read whole and unchanged since
+//   unread edit       — an Edit of a path this session never read, which Edit itself rejects
+//   dumped again      — a shell probe dumping a file already read whole and unchanged
+//   repeated probe    — the same Bash probe re-issued with nothing since to change its answer
+//   polling a watch   — a probe of a file a Monitor in this session is already watching
 //   relative cd       — `cd <relative path>` that does not resolve from the current dir
+//   unmatched glob    — an unquoted glob matching nothing, which zsh aborts the command on
+//   foreground sleep  — a wait the harness refuses, taking the probe chained to it down too
+//   heredoc write     — composing a file in the shell where the Write tool does it directly
+//   job dir reach     — the job directory addressed from inside an isolated worktree
 //
-// The first two share a hook because they decide from the same transcript; parsing it
-// twice would let the two answers disagree.
+// They share a hook because they decide from the same transcript; parsing it more than once
+// would let the answers disagree.
 import { existsSync, statSync } from 'node:fs';
-import { isAbsolute, resolve } from 'node:path';
+import { basename, isAbsolute, resolve } from 'node:path';
+import { dumpedFiles, foregroundSleep, heredocWrite, jobDirFromWorktree, unmatchedGlob } from './lib/bash-shapes.mjs';
 import { deny, guard, readEvent } from './lib/io.mjs';
 import { isReadOnly } from './lib/read-only.mjs';
 import { alreadyDenied, clearGate } from './lib/state.mjs';
-import { entries, issued, lastFullReadOf, timeline, turns } from './lib/transcript.mjs';
+import {
+  entries,
+  issued,
+  lastFullReadOf,
+  repeatedProbe,
+  timeline,
+  touched,
+  turns,
+  watchedPaths,
+} from './lib/transcript.mjs';
 
 /**
  * Turns of pure discovery allowed in a row. Three batched turns is already tens of files,
@@ -27,6 +46,9 @@ const MAX_SERIAL_TURNS = 3;
  */
 const CHANGED_GRACE_MS = 2000;
 
+/** File tools whose call the harness rejects unless this session read the path first. */
+const EDITORS = new Set(['Edit', 'Write', 'NotebookEdit', 'MultiEdit']);
+
 guard(() => {
   const event = readEvent();
   if (!event) return;
@@ -34,14 +56,28 @@ guard(() => {
   const input = event.tool_input ?? {};
   const session = String(event.session_id ?? '');
 
-  // Cheapest gate first, and the only one that needs no transcript: a command that cannot
-  // resolve its own `cd` is going to fail whatever else is true.
-  if (name === 'Bash' && relativeCd(event, input)) return;
-
   const readOnly = isReadOnly(name, input);
+
+  if (name === 'Bash') {
+    // Cheapest gates first, and the only ones that need no transcript: a command whose own
+    // shape makes it fail is going to fail whatever the session did before it.
+    if (badShape(event, input, session)) return;
+    // These need the transcript but not read-only status: a dumper like `sed` is not
+    // classified read-only, and dumping a file already in context is the shape regardless.
+    const line = timeline(entries(event.transcript_path ?? ''));
+    if (staleProbe(event, input, line, session, readOnly)) return;
+    if (!readOnly) {
+      clearGate(session, 'serial');
+      return;
+    }
+    serialDiscovery(name, input, line, session);
+    return;
+  }
+
   if (!readOnly) {
     // A real action ends the discovery run, so the gate is armed again for the next one.
     clearGate(session, 'serial');
+    if (EDITORS.has(name)) unreadEdit(event, name, input, session);
     return;
   }
 
@@ -49,6 +85,184 @@ guard(() => {
   if (name === 'Read' && redundantRead(input, line, session)) return;
   serialDiscovery(name, input, line, session);
 });
+
+/**
+ * The Bash gates that need only the command and the cwd. Ordered cheapest first; each one
+ * refuses a command that either cannot run or is refused before it runs.
+ * @param {Record<string, any>} event @param {Record<string, any>} input @param {string} session
+ * @returns {boolean} true when the call was denied
+ */
+function badShape(event, input, session) {
+  const command = input?.command;
+  if (typeof command !== 'string') return false;
+  const cwd = typeof event.cwd === 'string' ? event.cwd : process.cwd();
+
+  if (relativeCd(event, input)) return true;
+
+  const glob = unmatchedGlob(command, cwd);
+  if (glob && !alreadyDenied(session, 'glob', glob)) {
+    deny(
+      `\`${glob}\` is an unquoted pattern that matches nothing from ${cwd}. This shell is zsh, ` +
+        `where that aborts the whole command with "no matches found" — nothing in it runs, ` +
+        `including the parts that would have worked.\n\n` +
+        `Quote any pattern the invoked program should expand rather than the shell:\n` +
+        `  • \`rg -g '*.ts'\` and \`rg --files -g '*.ts'\` instead of \`grep --include=*.ts\`\n` +
+        `  • \`find . -name '*.ts'\`, with the pattern quoted\n\n` +
+        `If the shell genuinely should expand it, the files it would match do not exist here — ` +
+        `check the path first.`,
+    );
+    return true;
+  }
+
+  const sleeping = foregroundSleep(command, input?.run_in_background === true);
+  if (sleeping && !alreadyDenied(session, 'sleep', 'foreground')) {
+    deny(
+      `\`${sleeping}\` waits in the foreground, which the harness refuses — and it refuses the ` +
+        `whole call, so a probe chained after the wait never runs either.\n\n` +
+        `Wait on the condition instead of on the clock:\n` +
+        `  • \`Monitor\` with a filter for the lines you would have grepped for\n` +
+        `  • Bash with \`run_in_background: true\` and \`until <check>; do sleep 1; done\` ` +
+        `inside the backgrounded script, which notifies once when it exits\n` +
+        `  • \`gh pr checks --watch\`, which blocks properly, for CI\n\n` +
+        `Start long work with \`run_in_background: true\` and a log file, then wait on that log.`,
+    );
+    return true;
+  }
+
+  if (heredocWrite(command) && !alreadyDenied(session, 'heredoc', 'write')) {
+    deny(
+      `This command composes a file from a heredoc. That shape is refused wholesale inside an ` +
+        `isolated worktree, and re-sending it is refused for the same reason.\n\n` +
+        `Write the file with the \`Write\` tool instead — no shell, no quoting, no guard — then ` +
+        `pass its path to whatever needs it:\n` +
+        `  Write({file_path: "<absolute path>", content: "…"})\n` +
+        `  … then \`my-command-tools pr --title <text> --body -\` reading that file, or run the ` +
+        `script by path.`,
+    );
+    return true;
+  }
+
+  if (jobDirFromWorktree(command, cwd) && !alreadyDenied(session, 'jobdir', 'reach')) {
+    deny(
+      `This command addresses \`$CLAUDE_JOB_DIR\` from inside the isolated worktree at ${cwd}. ` +
+        `The worktree is the only writable root here, so the guard refuses the call however the ` +
+        `path is spelled — knowing the job directory's path is not what is missing.\n\n` +
+        `Put the file inside this worktree and use the \`Write\` tool to create it. A scratch ` +
+        `script, a PR body, a note to yourself: all of them belong under ${cwd}.`,
+    );
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Refuse an `Edit`/`Write` of a path this session never read. `Edit` enforces this itself
+ * with "File has not been read yet", so the call was going to be rejected — the gate's value
+ * is saying to read *every* target of this edit pass at once, instead of hitting the same
+ * rejection file after file.
+ * @param {Record<string, any>} event @param {string} name
+ * @param {Record<string, any>} input @param {string} session
+ */
+function unreadEdit(event, name, input, session) {
+  const path = input?.file_path ?? input?.notebook_path;
+  if (typeof path !== 'string' || !isAbsolute(path)) return;
+  // Creating a file needs no prior read; only an existing one carries the precondition.
+  try {
+    if (!statSync(path).isFile()) return;
+  } catch {
+    return;
+  }
+
+  const line = timeline(entries(event.transcript_path ?? ''));
+  const all = turns(line);
+  const current = all[all.length - 1];
+  const currentUuid = current && issued(current, name, input) ? current.uuid : undefined;
+  if (touched(line, path, currentUuid)) return;
+  if (alreadyDenied(session, 'unread', path)) return;
+
+  deny(
+    `This session has not read ${path}, so \`${name}\` will reject it with "File has not been ` +
+      `read yet". Inherited context, a continuation summary, and shell output do not satisfy ` +
+      `that precondition, and re-sending this edit cannot clear it.\n\n` +
+      `Read it first — and read every *other* file this edit pass will write in the same turn, ` +
+      `as one batch of parallel \`Read\` calls. Doing it for the whole pass at once is what stops ` +
+      `this same rejection repeating file after file. A targeted \`offset\`/\`limit\` slice counts.`,
+  );
+}
+
+/**
+ * The read-only Bash gates: a probe whose answer this session already has. All three decide
+ * from evidence about *this* command and *this* path, never from how many calls a turn
+ * carried — a legitimate parallel batch is unaffected by every one of them.
+ * @param {Record<string, any>} event @param {Record<string, any>} input
+ * @param {(import('./lib/transcript.mjs').Turn | null)[]} line @param {string} session
+ * @param {boolean} readOnly
+ * @returns {boolean} true when the call was denied
+ */
+function staleProbe(event, input, line, session, readOnly) {
+  const command = input?.command;
+  if (typeof command !== 'string') return false;
+  const cwd = typeof event.cwd === 'string' ? event.cwd : process.cwd();
+  const all = turns(line);
+  const current = all[all.length - 1];
+  const currentUuid = current && issued(current, 'Bash', input) ? current.uuid : undefined;
+
+  // A watch already armed in this session delivers its events on its own.
+  const watched = watchedPaths(line, currentUuid).find((file) => command.includes(file));
+  if (watched && !alreadyDenied(session, 'watched', watched)) {
+    deny(
+      `A watch armed earlier in this session is already following ${watched}. Its events arrive ` +
+        `as notifications on their own schedule — polling the same file by hand repeats work ` +
+        `that is already happening, and a stalled condition polls forever.\n\n` +
+        `Wait for the notification. If the filter is not catching what you need, arm a new ` +
+        `\`Monitor\` with a wider one — including the failure signatures, so a crash is not ` +
+        `silence — rather than checking by hand alongside it.\n\n` +
+        `If that watch has already ended, say so and re-issue: this refusal happens once.`,
+    );
+    return true;
+  }
+
+  // A file already read whole and unchanged, being dumped again through the shell.
+  for (const path of dumpedFiles(command, cwd)) {
+    const priorAt = lastFullReadOf(line, path, currentUuid);
+    if (priorAt === 0) continue;
+    let mtime;
+    try {
+      mtime = statSync(path).mtimeMs;
+    } catch {
+      continue;
+    }
+    if (mtime > priorAt - CHANGED_GRACE_MS) continue;
+    if (alreadyDenied(session, 'dumped', path)) continue;
+
+    deny(
+      `This session already read ${path} in full and it has not changed since, so dumping it ` +
+        `through the shell returns bytes that are already in your context.\n\n` +
+        `Re-narrowing on a file already read is the shape to drop: locate what you now want in ` +
+        `one pass, then read only that range.\n` +
+        `  rg -n 'firstSymbol|secondSymbol' ${path}\n` +
+        `  Read({file_path: "${path}", offset: <line>, limit: <count>})`,
+    );
+    return true;
+  }
+
+  // The same probe, with nothing since that could have changed its answer. Read-only only:
+  // a build or a test suite is legitimately re-run.
+  if (readOnly && repeatedProbe(line, command, currentUuid, isReadOnly)) {
+    const key = basename(command.slice(0, 120));
+    if (!alreadyDenied(session, 'repeat', key)) {
+      deny(
+        `This session already ran exactly this command, and nothing since could have changed its ` +
+          `answer — no action, and no new instruction from me. Its output is in your context.\n\n` +
+          `If this is one probe per item of a list you already hold, that list is the enumeration: ` +
+          `ask for every item at once — one \`git diff <base>...HEAD -- <path> <path> …\`, one ` +
+          `\`git log --oneline <a>..<b>\`, one \`rg -n 'a|b|c'\` — instead of the same call per item.`,
+      );
+      return true;
+    }
+  }
+  return false;
+}
 
 /**
  * Refuse `cd <relative path>` when the path does not exist from here. Unambiguous by

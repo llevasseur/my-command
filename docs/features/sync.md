@@ -38,7 +38,13 @@ is the maintainer flow.
 Both personal paths run `my-command-tools doctor` before their closing report —
 the commands call it for their git plumbing.
 The report names `resolvedBy` and `version`, the commits pulled, and the commands
-added, changed, or removed. A command already invoked this session may be cached,
+added, changed, or removed. It also names `hooks.armed`, and never assumes the
+registration landed: the workflow gates are inert until `settings.json` registers
+them, command files reach a device by paths that never run the installer, and a
+sync that pulled the gates without arming them says so as a failure rather than
+reporting success. The installer may also refuse to replace an existing hooks
+directory holding files this repo does not ship; that refusal is relayed, not
+worked around. A command already invoked this session may be cached,
 so restart the session if it still looks stale.
 
 ## Related
