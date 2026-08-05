@@ -101,6 +101,10 @@ export function issued(turn, name, input) {
  * The most recent time this session read `path` in full — no `offset`, no `limit` — or 0
  * when it never did. Full reads only: re-reading a file after seeing a narrow slice is new
  * information, so only a second whole-file read is unambiguous enough to refuse.
+ *
+ * The time returned is that read's own turn, and the caller compares it against **this
+ * file's** mtime. An edit to some other file in between is therefore irrelevant, which is
+ * the whole reason the answer is per-path rather than a session-wide "something changed".
  * @param {(Turn | null)[]} line @param {string} path @param {string} [exceptTurnUuid]
  * @returns {number}
  */
@@ -116,4 +120,73 @@ export function lastFullReadOf(line, path, exceptTurnUuid) {
     }
   }
   return at;
+}
+
+/** Tools whose call satisfies the harness's read-before-write precondition for a path. */
+const TOUCHES = new Set(['Read', 'Edit', 'Write', 'NotebookEdit', 'MultiEdit']);
+
+/**
+ * Whether this session already read or wrote `path` through a file tool, in any form —
+ * a whole-file read, a narrow slice, or a write. This is the precondition `Edit` enforces
+ * itself, so the answer is not a judgement: a false means the call is going to be rejected.
+ * @param {(Turn | null)[]} line @param {string} path @param {string} [exceptTurnUuid]
+ * @returns {boolean}
+ */
+export function touched(line, path, exceptTurnUuid) {
+  for (const turn of turns(line)) {
+    if (exceptTurnUuid && turn.uuid === exceptTurnUuid) continue;
+    for (const use of turn.toolUses) {
+      if (!TOUCHES.has(use.name)) continue;
+      const target = use.input?.file_path ?? use.input?.notebook_path;
+      if (target === path) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether this exact Bash command was already issued in an earlier turn with nothing since
+ * that could have changed its answer — no non-read-only call, and no user prompt asking for
+ * a fresh look. Re-running the same probe per item of a list already in hand is the shape
+ * this catches; a re-check after an action, or after I asked, is not it.
+ * @param {(Turn | null)[]} line @param {string} command @param {string | undefined} exceptTurnUuid
+ * @param {(name: string, input: Record<string, any>) => boolean} readOnly
+ * @returns {boolean}
+ */
+export function repeatedProbe(line, command, exceptTurnUuid, readOnly) {
+  // Walked backwards, so the first thing that invalidates the earlier answer ends the search.
+  for (let i = line.length - 1; i >= 0; i--) {
+    const turn = line[i];
+    if (turn === null) return false;
+    if (exceptTurnUuid && turn.uuid === exceptTurnUuid) continue;
+    if (turn.toolUses.some((u) => !readOnly(u.name, u.input))) return false;
+    if (turn.toolUses.some((u) => u.name === 'Bash' && u.input?.command === command)) return true;
+  }
+  return false;
+}
+
+/**
+ * Path-shaped tokens named by a watch this session already armed — a `Monitor`, or a
+ * backgrounded Bash command and its log file. A watch delivers its events on its own, so
+ * polling the same file by hand is work already being done.
+ * @param {(Turn | null)[]} line @param {string} [exceptTurnUuid]
+ * @returns {string[]}
+ */
+export function watchedPaths(line, exceptTurnUuid) {
+  /** @type {Set<string>} */
+  const out = new Set();
+  for (const turn of turns(line)) {
+    if (exceptTurnUuid && turn.uuid === exceptTurnUuid) continue;
+    for (const use of turn.toolUses) {
+      const watching = use.name === 'Monitor' || (use.name === 'Bash' && use.input?.run_in_background === true);
+      if (!watching) continue;
+      const text = `${use.input?.command ?? ''} ${JSON.stringify(use.input?.ws ?? '')}`;
+      // A basename with an extension is the only token specific enough to key on; a bare
+      // word would collide with any command mentioning the same noun.
+      for (const m of text.matchAll(/[\w./-]*\/?([\w.-]+\.[A-Za-z]\w*)/g)) {
+        if (m[1].length >= 5) out.add(m[1]);
+      }
+    }
+  }
+  return [...out];
 }
