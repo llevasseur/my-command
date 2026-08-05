@@ -270,6 +270,28 @@ if ! grep -q 'MY_COMMAND_HOOKS' scripts/install-personal.sh; then
   fail=1
 fi
 
+# Registering the gates is a separate step from installing the commands, and command files
+# reach a device by paths that never run the installer — so the gates can ship, be pulled, and
+# still never execute. They did, for a week. Something on the device has to say so.
+if ! grep -q 'hooksStatus' src/toolkit/verbs/doctor.mjs; then
+  echo "::error::src/toolkit/verbs/doctor.mjs no longer reports hook registration; nothing on the device would report the gates as unarmed."
+  fail=1
+fi
+for f in src/commands/sync.md skills/sync/SKILL.md; do
+  if ! grep -Fq 'hooks.armed' "$f"; then
+    echo "::error::$f no longer reads hooks.armed from doctor; a sync that did not arm the gates would report success."
+    fail=1
+  fi
+done
+
+# The installer must not delete a hooks directory holding hooks it does not own: settings.json
+# can register a foreign hook there independently, and clobbering it aims that registration at
+# a path the new symlink cannot provide.
+if ! grep -Fq 'refusing to replace' scripts/install-personal.sh; then
+  echo "::error::scripts/install-personal.sh no longer refuses to replace a hooks directory holding foreign files; installing our gates would delete a hook the user registered independently."
+  fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then
   echo "check-commands: all command invariants satisfied ($(ls src/commands/*.md | wc -l | tr -d ' ') commands)."
 fi

@@ -105,20 +105,61 @@ HOOKS_SRC="$REPO_ROOT/src/hooks"
 if [ "$INSTALL_HOOKS" -eq 1 ] && [ -d "$HOOKS_SRC" ]; then
   HOOKS_ROOT="$CLAUDE_DIR/my-command"
   mkdir -p "$HOOKS_ROOT"
-  # Same reason as the toolkit above: a prior npx run can leave a real directory here, and
-  # `ln -sfn` against one would nest inside it instead of replacing it.
-  rm -rf "$HOOKS_ROOT/hooks"
-  ln -s "$HOOKS_SRC" "$HOOKS_ROOT/hooks"
+  HOOKS_DEST="$HOOKS_ROOT/hooks"
 
-  if [ "$(readlink "$HOOKS_ROOT/hooks")" != "$HOOKS_SRC" ]; then
-    echo "failed to point $HOOKS_ROOT/hooks at $HOOKS_SRC" >&2
+  # A prior npx run can leave a real directory here, and `ln -sfn` against one nests inside
+  # it instead of replacing it. But that directory may also hold a hook the user installed
+  # themselves — one settings.json points at independently of MyCommand — and `rm -rf` would
+  # delete it while leaving that registration aimed at a path the new symlink cannot provide.
+  # So a real directory is never clobbered: only files this repo also ships may be replaced.
+  if [ -L "$HOOKS_DEST" ]; then
+    # Already a link — repoint it, which handles the clone moving.
+    ln -sfn "$HOOKS_SRC" "$HOOKS_DEST"
+  elif [ -d "$HOOKS_DEST" ]; then
+    foreign=""
+    for existing in "$HOOKS_DEST"/* "$HOOKS_DEST"/.[!.]*; do
+      [ -e "$existing" ] || continue
+      case "$existing" in */hooks.log) continue ;; esac
+      if [ ! -e "$HOOKS_SRC/$(basename "$existing")" ]; then
+        foreign="$foreign  $existing
+"
+      fi
+    done
+    if [ -n "$foreign" ]; then
+      echo "refusing to replace $HOOKS_DEST: it is a real directory holding files this repo does not ship," >&2
+      echo "and replacing it with a symlink would delete them:" >&2
+      printf '%s' "$foreign" >&2
+      echo "Move or delete those files yourself, then re-run — or pass --no-hooks to skip the gates." >&2
+      echo "If they are registered in $CLAUDE_DIR/settings.json, update that registration first." >&2
+      exit 1
+    fi
+    # Nothing here but stale copies of files we ship; replacing them loses nothing.
+    rm -rf "$HOOKS_DEST"
+    ln -s "$HOOKS_SRC" "$HOOKS_DEST"
+  elif [ -e "$HOOKS_DEST" ]; then
+    echo "refusing to replace $HOOKS_DEST: it exists and is not a directory or symlink." >&2
+    exit 1
+  else
+    ln -s "$HOOKS_SRC" "$HOOKS_DEST"
+  fi
+
+  if [ "$(readlink "$HOOKS_DEST")" != "$HOOKS_SRC" ]; then
+    echo "failed to point $HOOKS_DEST at $HOOKS_SRC" >&2
     exit 1
   fi
 
-  if node "$HOOKS_SRC/install-hooks.mjs" --hooks-dir "$HOOKS_ROOT/hooks" >/dev/null; then
+  if node "$HOOKS_SRC/install-hooks.mjs" --hooks-dir "$HOOKS_DEST" >/dev/null; then
     echo "Registered the PreToolUse and Stop gates in $CLAUDE_DIR/settings.json."
     echo "  Off switch (no uninstall needed):  export MY_COMMAND_HOOKS=0"
-    echo "  Remove the registration entirely:  node $HOOKS_ROOT/hooks/install-hooks.mjs --uninstall"
+    echo "  Remove the registration entirely:  node $HOOKS_DEST/install-hooks.mjs --uninstall"
+    # Report what settings.json actually says, not what was attempted: a registration that
+    # silently did not land is the failure this whole install exists to prevent.
+    if node "$REPO_ROOT/src/toolkit/cli.mjs" doctor --compact \
+      | node -e 'let s="";process.stdin.on("data",d=>{s+=d}).on("end",()=>{try{process.exit(JSON.parse(s).hooks?.armed===true?0:1)}catch{process.exit(1)}})'; then
+      echo "Verified: the gates are armed (my-command-tools doctor reports hooks.armed: true)."
+    else
+      echo "note: the gates still do not read as armed — run 'my-command-tools doctor' and see hooks.reason." >&2
+    fi
   else
     echo "note: could not register the gates in $CLAUDE_DIR/settings.json — the hook scripts are" >&2
     echo "      linked but inert until they are registered. Re-run:" >&2

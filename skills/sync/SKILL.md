@@ -10,9 +10,14 @@ Parse `--check` as read-only. Detect whether the active workflow is a symlinked 
 - For a clone, resolve its root from the installed command or skill, fetch, compare with the remote default branch, and report commits behind for `--check`. Require a clean clone before `git pull --ff-only`, then rerun its supported installer so new commands, Codex skills, and device tools are discovered.
 - For a copied install or plugin, use its supported update flow. If read-only checking is unavailable, report that rather than mutating state.
 
-Never reset, stash, force, or overwrite local work. Explain whether a new Codex session is needed to pick up already-loaded skill changes.
+Never reset, stash, force, or overwrite local work. Explain whether a new Codex session is needed to pick up already-loaded skill changes. If the installer refuses to replace an existing hooks directory because it holds files the repo does not ship, relay that refusal and stop — do not delete them.
+
 Finish with `my-command-tools doctor` when available so command, skill, toolkit,
-and PATH state are reported together.
+and PATH state are reported together. Read `hooks.armed` from that same result and
+report it either way rather than assuming the registration landed: a workflow gate
+is inert until the settings file registers it, and command files reach a device by
+paths that never run the installer. `hooks.armed: false` is a failure of this sync
+— quote `hooks.reason` and run `hooks.hint`.
 
 ## Closing turn
 
