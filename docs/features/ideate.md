@@ -1,7 +1,7 @@
 ---
 type: feature
 title: ideate
-description: Surveys a repo and proposes features or commands worth building, citing only evidence a person already wrote down, recording every proposal in a ledger, and taking one human sign-off that turns accepted ideas into advice improve can act on.
+description: Surveys a repo and proposes features or commands worth building, citing only evidence a person already wrote down, recording every proposal in a ledger, and exiting with a pointer to the dashboard Advice page where a human accepts the ideas improve may act on.
 tags: [commands, advice, ideas, claude-proxy]
 timestamp: 2026-08-05
 dirty: true
@@ -11,7 +11,7 @@ dirty: true
 
 ## Summary
 
-`/ideate` surveys a repo and proposes features or commands worth building. It is **proposal only** — it never implements, never opens a branch or worktree, never commits, and never calls [task](task.md). Its output is a ranked set of proposals recorded in a ledger and gated on one human sign-off. [improve](improve.md) is what turns an accepted proposal into a PR.
+`/ideate` surveys a repo and proposes features or commands worth building. It is **proposal only** — it never implements, never opens a branch or worktree, never commits, and never calls [task](task.md). Its output is a ranked set of proposals recorded in a ledger, all at `proposed`, and it **asks nothing**: the run exits naming claude-proxy's dashboard Advice page as where a human accepts or rejects them. [improve](improve.md) is what turns an accepted proposal into a PR.
 
 ## Motivation
 
@@ -23,11 +23,12 @@ Two boundaries carry that separation:
 
 - **`/ideate` never writes `suggestion-status.json`.** That store belongs to findings with source sessions behind them.
 - **`/improve` may only act on an `accepted` idea.** That is an amendment to its "never invent" note rather than a weakening of it: the rule is about the *trace*, and an accepted idea traces to a recorded human sign-off. A `proposed` or `rejected` idea is still invention and `/improve` never reads it.
+- **`/ideate` writes `proposed` and no other status.** It never accepts its own proposal, which would manufacture the trace rather than earn it.
 
 ## Flags / Parameters
 
 - `--range <spec>` / `-r <spec>` — the bucket window for **evidence source 2 (judge notes) only**. One bucket (`9`), a list (`2,3,9`), a span (`2-9`), or a mix (`2-4,9`). Default: every bucket. The other three sources are not bucketed, so this never narrows the survey as a whole.
-- `--dry-run` / `-n` — report the proposals and write **nothing at all**, not even the `proposed` rows, and skip the approval question. It still resolves the tier and reads every tier for dedupe, since a proposal that collides is not worth reporting either.
+- `--dry-run` / `-n` — report the proposals and write **nothing at all**, not even the `proposed` rows. It still resolves the tier and reads every tier for dedupe, since a proposal that collides is not worth reporting either.
 - Anything else is not a flag this command takes and is reported rather than interpreted. There is no free-text argument.
 
 ## Behavior
@@ -60,22 +61,32 @@ Four rules make a waterfall safe for something used as a dedupe key:
 - **Write to the highest available tier, and name it in the report.** A silently-different tier between two runs is exactly how a rejected idea comes back.
 - **Dedupe reads every tier that exists**, not just the winning one. A machine that gains claude-proxy later must not forget what `docs/ideas.md` recorded.
 - **Fall through on absence only, never on error.** An unset `CLAUDE_PROXY_STORE`, a missing path, a checkout with no `server/package.json`, or an absent `ideas` CLI all mean tier 1 is *absent*. A tier-1 store that exists and fails to read or write is a **stop** — writing tier 2 behind a broken tier 1 forks the ledger into two that each look complete.
-- **Never propose a slug already present in any tier in any status, `rejected` included**, and refuse a near-duplicate under a different slug too, naming what it collides with. A rejected idea returning every run is the failure this key prevents, and the rejection reason is the most valuable row in the file.
+- **Never propose a slug already present in any tier in any status, `rejected` included**, and refuse a near-duplicate under a different slug too, naming what it collides with. Tier 1 reports the near matches for a candidate as **`similarIdeaSlugs`**, so a non-empty list is a collision even when the exact slug is free; a markdown tier means reading the rows. A rejected idea returning every run is the failure this key prevents, and the rejection reason is the most valuable row in the file.
 
 `shared/claude-proxy-checkout.md` gained an **optional-dependency** clause for this: the same derivation, but a command that declares the dependency optional reads those three failures as absence and falls through, while an error still stops. `/improve` and `/judge` do not declare it optional and keep the hard stop unchanged.
 
 ### The run
 
-No human in the loop until the advice exists — there is exactly one interaction, at the end.
+**No human in the loop at all.** The run is unattended start to finish; the sign-off happens afterwards, in a browser.
 
 1. Resolve the tier; read every existing tier for dedupe.
 2. Survey the four sources in one batched pass.
 3. Compose **at most 3** proposals, ranked. Each states what it is, its evidence with paths, the repo, a rough size, and **what it would replace or simplify** — an idea that only adds surface has to say so.
 4. Write **all** of them as `proposed`, including ones expected to be rejected. Dedupe only works if the ledger records what was considered rather than only what was liked.
-5. **Ask once** which to accept. Accepted ideas move to `accepted`; every other moves to `rejected` with the stated reason, so nothing is left at `proposed`.
-6. Stop. `/improve` picks up `accepted` ideas, and `/ideate` never marks anything `shipped`.
+5. **Exit**, naming the dashboard Advice page as where they get adjudicated. Every row stays `proposed`; nothing else is marked.
 
 If nothing survives dedupe and the evidence rule, the run **stops and says so** — a real answer, the same as `/improve` finding nothing pending.
+
+### Where the sign-off moved, and why it is not a relaxation
+
+The in-session question existed for exactly one reason: `pnpm --filter server ideas mark` was the only way to reach a status, so a proposing run could not end without a person at a terminal. claude-proxy's dashboard Advice page now carries the ledger as approve/deny cards — `GET /api/ideas` lists them, `/api/ideas/stream` streams them over SSE so a row a run just wrote appears without a reload, and `POST /api/ideas/status` sets `accepted`, `rejected`, or `proposed` (the undo). A person adjudicates on their own schedule, so blocking a run to wait for them buys nothing.
+
+What did **not** change is everything the trace rests on:
+
+- **`/improve` still acts only on an `accepted` idea.** The sign-off is still required; only its venue moved.
+- **A `proposed` row is the adjudication queue, not an unanswered question.** It is also what dedupe reads, so it is not re-proposed next run — a slug present in any tier in **any** status is refused, `proposed` included.
+- **A rejection still carries its reason.** `POST /api/ideas/status` refuses a `rejected` mark with 400 unless a note comes with it, because that reason is the ledger's dedupe record. The human writes it; nothing invents one.
+- **`shipped` stays CLI-only**, because it carries a PR url, and `/ideate` never sets it either way.
 
 ### Two rules that keep it useful
 
