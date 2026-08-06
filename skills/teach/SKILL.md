@@ -23,6 +23,33 @@ the user's behalf. The user leaves with vocabulary.
   components, files, and existing patterns. **The default reads nothing**, so
   this workflow runs from any directory, including one with no repository.
 
+## How this workflow writes
+
+Every word the run emits is ASD-STE100 Simplified Technical English
+(https://asd-ste100.org) — the step 1 field clause, each step 3 question, the
+step 4 sentence, the step 7 `notes` and `tips`, and the closing turn. A workflow
+that hands over plain vocabulary in dense prose contradicts its own deliverable.
+
+- **One word, one meaning, one part of speech.** A word doing two jobs in one
+  sentence is two sentences.
+- **One term per concept**, reused — never a synonym for variety.
+- **Active voice; imperative for an instruction.** The passive drops the actor,
+  and the actor is usually the claim.
+- **Simple tenses only.** No perfect and no progressive forms.
+- **No gerund or participle standing in for a noun.** "It springs back", not
+  "the springing back".
+- **One instruction per sentence**, and 20 words for an instruction, 25 for a
+  description.
+- **Six sentences per paragraph at most**, and one topic in each.
+- **Keep the articles.** "Press the button", not "press button".
+- **No idiom, no metaphor, no slang.** Write the literal thing.
+- **A vertical list for a set of conditions**, never one sentence stacking three
+  clauses with "and" and "or".
+
+**The taught term is the only hard word allowed anywhere in the run.** Never
+define jargon with harder jargon, and never reach for a longer word where the
+closed-dictionary one carries the same meaning.
+
 ## 1. Place the field
 
 Decide which field the description belongs to — domain modeling, UI motion,
@@ -71,20 +98,16 @@ the sentence, stop asking and write it.
 
 ## 4. Write the sentence
 
-One sentence, in ASD-STE100 Simplified Technical English (https://asd-ste100.org):
+One sentence to the STE rules above, plus three that belong to the sentence
+alone:
 
-- **One word, one meaning, one part of speech.**
-- **One term per concept**, reused — never a synonym for variety.
-- **Active voice.** The passive drops the actor, and the actor is usually the claim.
-- **Simple present tense.** No perfect or progressive forms.
-- **No gerund as a noun.** "It springs back", not "the springing back".
-- **25 words maximum.**
-- **The term being taught is the only hard word in the sentence.** It is the
-  payload; every word around it is ordinary English. Never define jargon with
-  harder jargon.
+- **Simple present tense**, not any other simple tense.
+- **25 words maximum**, counted before you print it.
+- **The taught term is the only hard word in it.** It is the payload; every word
+  around it is ordinary English.
 
 The `truncate` and `docs` workflows draw their vocabulary rules from the same
-standard and deliberately drop the last four — the length cap, the tense
+standard and deliberately drop three of them — the word caps, the tense
 restriction, and the closed dictionary — because those serve a human reader with
 a limited vocabulary in the subject. That reader is exactly who this workflow
 writes for, so here they apply. The two are not in conflict; they have different
@@ -165,7 +188,8 @@ One JSON object per line. Five fields are **required** and always written:
 Four more are **optional**, and the reading side renders each one it finds:
 
 - `notes` (string, Markdown) — the research the run did: which source named the
-  term, what the questions settled, what the concept is *not*.
+  term, what the questions settled, what the concept is *not*. Written to the
+  voice rules below.
 - `tips` (array of strings) — short practical pointers the run produced: how to
   use the term, what it is confused with, what to say instead.
 - `sources` (array of strings) — what you consulted: URLs, specification names,
@@ -173,6 +197,42 @@ Four more are **optional**, and the reading side renders each one it finds:
   or `https` is rendered as a link.
 - `surfacedSkills` (array of strings) — the skills step 5 **discovered**, as
   against the `skills` this run applied. Never the skill-discovery workflow.
+
+### How the Research reads
+
+The reading side renders `notes` under the heading **Research**, and its reader is
+a person months from now deciding whether they already know this. Write it the way
+the practitioner who owns the field writes a note to themselves. Every rule below
+is a positive instruction, and the test for all of them is that nobody reading it
+can tell whether the practitioner or the run wrote it.
+
+- **Report the finding, never the run that found it.** "Material Design calls the
+  dimmed layer behind a modal a scrim." Not "I searched for the term and
+  discovered that…". Cut every trace of the process: no `I`, no `we`, no "let's",
+  no step numbers, no tool or workflow names, no account of what you tried first.
+- **Every sentence states a claim a reader could check**, and what backs it is
+  already in `sources`. A sentence that states no claim gets deleted, not
+  shortened.
+- **Name what the concept is not.** The near-miss term the questions ruled out is
+  the half of the research the reader cannot rebuild alone — name that term and
+  say what made it lose.
+- **Never restate the term or the sentence.** Both sit above this field on the
+  same page, so a note that opens by defining the term has spent its first line on
+  nothing.
+- **Commit to one answer.** No "it is worth noting", no "while X, Y is also true",
+  no paragraph that presents two views and picks neither. Where two terms are
+  genuinely live, say which one to use and in which case.
+- **Write it flat.** No headings, no `Overview` / `Summary` / `Conclusion` label,
+  no bold word opening every line, and no closing sentence that restates the
+  paragraph that just ended.
+- **Drop the flourish.** No "not just X — it is Y", no three-item rhetorical
+  build, no rhetorical question, no exclamation, and no word that exists to sound
+  authoritative rather than to carry meaning.
+- **Three to six sentences.** Longer means the run is explaining the field instead
+  of recording what it found. Nothing found means omit the field.
+
+`tips` carry the same voice, one pointer per line, each a thing to do or a thing
+to say instead.
 
 **Omit an optional field entirely when there is nothing to record.** Never write
 an empty string or an empty array for one: the reading side distinguishes absent

@@ -17,6 +17,23 @@ Input is the text in the `<command-args>` block above — your description, howe
 - `--here` / `-h` — read the current repo (`Read`, `Grep`, `Glob`) so the sentence can name real components, files, and existing patterns. **Default is context-only**: no file reads at all, so `/teach` runs from any directory, including one with no repo in it.
 - Anything not a recognized flag is part of the description.
 
+## How this command writes
+
+Every word this command emits is [ASD-STE100](https://asd-ste100.org) Simplified Technical English — the Step 1 field clause, each Step 3 question, the Step 4 sentence, the Step 7 `notes` and `tips`, and the closing turn. A command that hands over plain vocabulary in dense prose contradicts its own deliverable.
+
+- **One word, one meaning, one part of speech.** A word doing two jobs in one sentence is two sentences.
+- **One term per concept**, reused — never a synonym for variety.
+- **Active voice; imperative for an instruction.** The actor is usually the claim; the passive drops it.
+- **Simple tenses only.** No perfect and no progressive forms.
+- **No gerund or participle standing in for a noun.** "It springs back", not "the springing back".
+- **One instruction per sentence**, and 20 words for an instruction, 25 for a description.
+- **Six sentences per paragraph at most**, and one topic in each.
+- **Keep the articles.** "Press the button", not "press button".
+- **No idiom, no metaphor, no slang.** Write the literal thing.
+- **A vertical list for a set of conditions**, never one sentence stacking three clauses with "and" and "or".
+
+**The taught term is the only hard word allowed anywhere in the run.** Never define jargon with harder jargon, and never reach for a longer word where the closed-dictionary one carries the same meaning.
+
 ## Step 1 — Place the field
 
 Decide which field the description belongs to — domain modeling, UI motion, visual design, a business term, a workflow, something else. The field selects the source in Step 2 and nothing more. Say which field you picked in one clause, so a wrong guess is correctable before the grill starts.
@@ -45,17 +62,13 @@ Each question strips a layer rather than adding detail — the run moves from th
 
 ## Step 4 — Compose the sentence
 
-Write one sentence in [ASD-STE100](https://asd-ste100.org) Simplified Technical English:
+Write one sentence to the STE rules above, plus three that belong to the sentence alone:
 
-- **One word, one meaning, one part of speech.** A word doing two jobs in one sentence is two sentences.
-- **One term per concept**, reused — never a synonym for variety.
-- **Active voice.** The actor is usually the claim; the passive drops it.
-- **Simple present tense.** No perfect or progressive forms.
-- **No gerund as a noun.** "It springs back", not "the springing back".
-- **25 words maximum.**
-- **The term being taught is the only hard word in the sentence.** It is the payload; every word around it is ordinary English. Never define jargon with harder jargon.
+- **Simple present tense**, not any other simple tense.
+- **25 words maximum**, counted before you print it.
+- **The taught term is the only hard word in it.** It is the payload; every word around it is ordinary English.
 
-`/truncate` and `/docs` draw their **Rewrite toward** rules from the same standard and deliberately drop these last four — STE's caps, its simple-tense restriction, and its closed dictionary — on the grounds that they serve a human reader with a limited vocabulary in the subject. That reader is exactly who `/teach` writes for, so `/teach` adopts them. Do not reconcile the two by loading `src/shared/rewrite-toward.md`; its exclusion clause is correct for a command file and wrong here.
+`/truncate` and `/docs` draw their **Rewrite toward** rules from the same standard and deliberately drop three of them — STE's word caps, its simple-tense restriction, and its closed dictionary — on the grounds that they serve a human reader with a limited vocabulary in the subject. That reader is exactly who `/teach` writes for, so `/teach` adopts them. Do not reconcile the two by loading `src/shared/rewrite-toward.md`; its exclusion clause is correct for a command file and wrong here.
 
 ## Step 5 — Point at public skills
 
@@ -105,10 +118,25 @@ Four more are **optional**, and claude-proxy's detail page renders each one it f
 
 | Field | Type | What it holds |
 | --- | --- | --- |
-| `notes` | string (Markdown) | The research the run did: which source named the term, what the grill settled, what the concept is *not*. |
+| `notes` | string (Markdown) | The research the run did: which source named the term, what the grill settled, what the concept is *not*. Written to the voice rules below. |
 | `tips` | string[] | Short practical pointers the run produced — how to use the term, what it is confused with, what to say instead. |
 | `sources` | string[] | What you consulted: URLs, spec names, skill names, repo paths under `--here`. An entry starting with `http`/`https` is rendered as a link. |
 | `surfacedSkills` | string[] | The skills Step 5 **discovered**, as against the `skills` this run applied. Never `find-skills`. |
+
+### How the Research reads
+
+`notes` renders under the heading **Research** on the detail page, and the reader is a person months from now deciding whether they already know this. Write it the way the practitioner who owns this field writes a note to themselves. Every rule below is a positive instruction, and the test for all of them is that nobody reading it can tell whether the practitioner or the run wrote it.
+
+- **Report the finding, never the run that found it.** "Material Design calls the dimmed layer behind a modal a scrim." Not "I searched for the term and discovered that…". Cut every trace of the process: no `I`, no `we`, no "let's", no step numbers, no tool or command names, no account of what you tried first.
+- **Every sentence states a claim a reader could check**, and what backs it is already in `sources`. A sentence that states no claim gets deleted, not shortened.
+- **Name what the concept is not.** The near-miss term the grill ruled out is the half of the research the reader cannot rebuild alone — name that term and say what made it lose.
+- **Never restate the term or the sentence.** Both sit above this field on the same page, so a note that opens by defining the term has spent its first line on nothing.
+- **Commit to one answer.** No "it is worth noting", no "while X, Y is also true", no paragraph that presents two views and picks neither. Where two terms are genuinely live, say which one to use and in which case.
+- **Write it flat.** No headings, no `Overview` / `Summary` / `Conclusion` label, no bold word opening every line, and no closing sentence that restates the paragraph that just ended.
+- **Drop the flourish.** No "not just X — it is Y", no three-item rhetorical build, no rhetorical question, no exclamation, and no word that exists to sound authoritative rather than to carry meaning.
+- **Three to six sentences.** Longer means the run is explaining the field instead of recording what it found. Nothing found means omit the field.
+
+`tips` carry the same voice, one pointer per line, each a thing to do or a thing to say instead.
 
 **Omit an optional field entirely when there is nothing to record.** Never write `""` or `[]` for one: the detail page distinguishes absent from empty, and an absent field is what makes it show its "nothing more to show" fallback. Records written before these fields existed carry none of them and stay valid — nothing in `concepts.jsonl` is ever rewritten or migrated.
 
