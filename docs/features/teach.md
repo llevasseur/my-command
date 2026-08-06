@@ -42,10 +42,16 @@ question strips a layer instead of adding detail; parameters and edge cases
 belong to whoever builds the thing. It stops as soon as you can say the sentence
 back — not at a fixed count, and not on your sign-off.
 
-The sentence follows [ASD-STE100](https://asd-ste100.org) Simplified Technical
-English: one word one meaning, one term per concept, active voice, simple present
-tense, no gerunds-as-nouns, 25 words maximum, and the term being taught as the
-only hard word in it. Finally it points at public skills via `find-skills` — you
+[ASD-STE100](https://asd-ste100.org) Simplified Technical English governs
+**everything the run emits**, not only the sentence: the field clause, each
+question, the notes and tips it saves, and the closing report. One word one
+meaning, one term per concept, active voice, simple tenses, no
+gerunds-as-nouns, one instruction per sentence at 20 words (25 for a
+description), six sentences per paragraph, articles kept, and no idiom or
+metaphor. A command that hands over plain vocabulary in dense prose contradicts
+its own deliverable. Three rules apply to the sentence alone — simple *present*
+tense, a counted 25-word cap, and the taught term as the only hard word in it.
+Finally it points at public skills via `find-skills` — you
 inherit someone's tuning rather than relearning the field one term at a time —
 and offers to save the concept.
 
@@ -76,7 +82,15 @@ Five fields are always written: `term`, `sentence`, `field`, `skills` (the skill
 the run **applied**), and `savedAt`. Four are optional and written only when the
 run produced them:
 
-- `notes` — Markdown of the research behind the term.
+- `notes` — Markdown of the research behind the term, rendered under the heading
+  **Research** on the detail page. Its voice is specified, because that heading is
+  read months later by someone deciding whether they already know the concept: the
+  finding and never the run that found it (no `I`/`we`, no process narration, no
+  tool names), one checkable claim per sentence with its backing in `sources`, the
+  near-miss term the grill ruled out and why it lost, one committed answer instead
+  of a both-sides paragraph, flat prose with no headings or `Summary` labels, no
+  rhetorical flourish, and three to six sentences. The test is that a reader cannot
+  tell whether the practitioner or the run wrote it. `tips` carry the same voice.
 - `tips` — short practical pointers.
 - `sources` — URLs, specs, skill names, repo paths; an `http`/`https` entry is
   rendered as a link.
