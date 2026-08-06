@@ -92,10 +92,20 @@ readers.
 
 ## 5. Point at public skills
 
-Use the skill-discovery workflow to find public skills that already encode this
-field, so the user can inherit someone else's tuning instead of relearning the
-field one term at a time. List what it finds, or say plainly that nothing public
-covers it. **Never install anything.**
+**Always run the skill-discovery workflow when it is available. The run does not
+reach the closing turn without it.** Look for public skills that already encode
+this field, so the user can inherit someone else's tuning instead of relearning
+the field one term at a time. List what it finds, or say plainly that nothing
+public covers it. **Never install anything.**
+
+**Step 2 already having named the term is not a reason to skip this**, and
+neither is a field that feels too narrow, too obvious, or too well understood to
+search. The two steps answer different questions: step 2 asks what this concept
+is called, this step asks who has already written the whole field down. A run
+that fell through to your own knowledge is the run that most needs the search,
+because falling through is what "nothing installed covers this field" means. The
+only skip is the discovery workflow not being available, and then say so in the
+reply.
 
 **Keep the names it surfaces.** Step 7 records them as `surfacedSkills` — the
 skills this run *discovered*, as against the `skills` it applied. A `shadcn/ui`

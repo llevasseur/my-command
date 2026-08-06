@@ -59,7 +59,9 @@ Write one sentence in [ASD-STE100](https://asd-ste100.org) Simplified Technical 
 
 ## Step 5 — Point at public skills
 
-Invoke the `find-skills` skill for public skills that already encode this field. The point is inheritance: a skill someone else already tuned beats relearning the field one term at a time. List what it finds, or say plainly that nothing public covers this. **Never install anything** — surface the options and stop.
+**Always invoke the `find-skills` skill when it is installed. The run does not reach Step 8 without it.** Look for public skills that already encode this field. The point is inheritance: a skill someone else already tuned beats relearning the field one term at a time. List what it finds, or say plainly that nothing public covers this. **Never install anything** — surface the options and stop.
+
+**Step 2 already having named the term is not a reason to skip this**, and neither is a field that feels too narrow, too obvious, or too well understood to search. The two steps answer different questions: Step 2 asks what this concept is called, Step 5 asks who has already written the whole field down. A run that fell through to model knowledge is the run that most needs the search, because falling through is what "nothing installed covers this field" means. The only skip is `find-skills` not being installed, and then say so in the reply.
 
 **Keep the names it surfaces.** Step 7 records them as `surfacedSkills` — the skills this run *discovered*, as against the `skills` it applied. A `shadcn/ui` concept that turns up `radix-primitives` and `tailwind-tokens` surfaced both; it applied neither. A later turn that uncovers more skills adds to the same list.
 
