@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-08-06
+
+### Fixed
+
+- **`/teach` step 5 was written as a step and read as a suggestion, and a live run dropped it.** The prose said "Invoke the `find-skills` skill" with nothing marking it as required, so a run that had already resolved the term in step 2 treated the public-skill search as redundant, went straight from the sentence to the save, and only performed the search after the user pointed out it was missing. The failure mode is specific to this step's position: step 2 answers *what is this called* and step 5 answers *who has already written this whole field down*, and once the first question is answered the second one reads like an optional extra. It is exactly backwards — a run that fell through step 2's skill list to model knowledge fell through *because* nothing installed covered the field, which is the case where inheriting someone else's tuning is worth the most. So the step now says it always runs when `find-skills` is installed, ties itself to the closing turn the way every other non-negotiable step in the repo does (**the run does not reach step 8 without it**), and names the three excuses that were available for skipping it — the term is already named, the field feels too narrow, the field feels too obvious. The only skip left is the skill not being installed, and the run has to say so in the reply. The Codex skill mirrors all of it, and neither side changes the two existing rules that `find-skills` is never recorded in `skills` or `surfacedSkills` and never installs anything.
+
 ## 2026-08-05
 
 ### Fixed

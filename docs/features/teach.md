@@ -49,6 +49,11 @@ only hard word in it. Finally it points at public skills via `find-skills` — y
 inherit someone's tuning rather than relearning the field one term at a time —
 and offers to save the concept.
 
+That search is not optional and not conditional on how the term got named. A run
+that fell through to model knowledge is the one that most needs it, because
+falling through is what "nothing installed covers this field" means; the only
+skip is `find-skills` not being installed, and the run says so when it skips.
+
 ### The STE overlap with `/truncate`
 
 `/truncate` and `/docs` take their **Rewrite toward** rules from the same
