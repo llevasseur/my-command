@@ -145,7 +145,7 @@ The in-session question existed for one reason: `pnpm --filter server ideas mark
 - **A rejection still carries its reason, written by whoever rejects it.** `POST /api/ideas/status` refuses a `rejected` mark with 400 unless a note comes with it, because that reason is the ledger's dedupe record. Nothing here invents one.
 - **Never mark anything `shipped`.** That status carries the PR url and stays CLI-only; this command opens no PR.
 
-Then stop, naming the Advice page as where the accepting happens. `/improve` picks an idea up once it is `accepted`, and only then — unchanged.
+Then stop, naming the Advice page as where the accepting happens. `/improve` may pick an idea up once it is `accepted`, and only then — unchanged. Acceptance is the *permission*, not the trigger: `/improve` builds an accepted idea only when asked for it by name with `--idea <slug>` (or for all of them with `--ideas`), and each one it builds gets a PR of its own.
 
 Report at the end: the ledger tier used and which tiers were read for dedupe, whether judge notes were available, how many proposals were composed, what collided and with what, that every proposal is recorded as `proposed` and awaits sign-off on the dashboard's Advice page, and that no branch or PR was opened. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
 
