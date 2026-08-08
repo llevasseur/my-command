@@ -1,15 +1,19 @@
 ---
 description: Turn claude-proxy's session suggestions and the ideas a human accepted into an implemented improvement — read what the agent keeps doing the slow way, hand it to /task as criteria, escalate the ones whose last fix didn't hold, and flag what shipped as done
-argument-hint: "[--range|-r <spec>] [--regressed|-g] [--dry-run|-n] [--here|-h] [--base <branch>] [--draft|-d] [--add|-a <list>] [extra context]"
+argument-hint: "[--range|-r <spec>] [--regressed|-g] [--idea|-i <slug>[,<slug>...]] [--ideas] [--dry-run|-n] [--here|-h] [--base <branch>] [--draft|-d] [--add|-a <list>] [extra context]"
 ---
 
-Improve the agentic workflow using evidence instead of intuition. claude-proxy reads every ten recorded sessions and reports what would have reached the same outcome in fewer steps. This command collects those findings, has [judge](judge.md) check them against the raw transcripts, turns the confirmed ones into task criteria, runs `/task` on them in a subagent per target repo, and records which suggestions were actually applied so the next run doesn't re-propose them.
+Improve the agentic workflow using evidence instead of intuition. claude-proxy reads every ten recorded sessions and reports what would have reached the same outcome in fewer steps. This command collects those findings, has [judge](judge.md) check them against the raw transcripts, turns the confirmed ones into task criteria, runs `/task` on them in a subagent per target repo, and records which suggestions were actually applied so the next run doesn't re-propose them. The ideas a human accepted are a second, **opt-in** input: `--idea <slug>` names the ones to build and `--ideas` takes them all, each in a `/task` run and a PR of its own, and without one of those flags no idea is read.
 
 **A rule firing is not the same as something having gone wrong.** So nothing composed here comes from unjudged rule output: Step 3 judges every dirty bucket in the range first, and criteria are built from **confirmed** suggestions only. A judge run that fails stops the command rather than degrading into the intuition this whole pipeline exists to replace.
 
 Your input is the text in the `<command-args>` block above. Parse leading flags off the front; anything left over is extra context that steers which pending suggestions to act on (it narrows the work, it never invents work the suggestions don't support).
 
 **The suggestions are the criteria — and so are the ideas a human accepted.** Every change this run proposes traces back to something somebody else produced: a suggestion with its own evidence and source sessions, or an idea [ideate](ideate.md) proposed and a human signed off on. Do not pad the task with improvements you thought of yourself, and never act on an idea still `proposed` or already `rejected`.
+
+**An accepted idea is read only when this run is asked for it by name.** `--idea <slug>` names the ones to build; the bare `--ideas` takes every accepted idea for the repo. With neither flag the idea track does not run at all — no ledger tier is read, no idea becomes a criterion, and the final report says so rather than leaving the omission to be inferred. A sign-off is standing permission to build something, not a queue that drains itself into whatever run happens next: the suggestion track is driven by sessions that already happened, while an idea is a discrete piece of new work whose timing is a person's call.
+
+**And an idea builds alone.** Each idea-sourced criterion gets its own subagent, its own `/task`, its own branch and its own PR — one idea, one PR — and is never folded into the suggestion brief for the repo it lands in. The two inputs answer to different evidence standards, so a single PR carrying both can only be reviewed against one of them; separating them also means an idea that turns out to be wrong is reverted on its own, without taking a well-evidenced suggestion fix with it.
 
 **A suggestion whose last fix didn't hold is not a fresh finding.** claude-proxy dates every `done` and reports a suggestion as `regressed` when the rule tripped again across a window recorded entirely after that claim. Those rows get their own track through this command — Step 4's regression block, an escalation ladder that forbids restating the fix that already failed, and a mark in Step 6 that records the attempt chain. Handing a regression to `/task` as if nobody had tried yet is how the same paragraph gets written into the same file twice.
 
@@ -19,6 +23,9 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 
 - `--range <spec>` / `-r <spec>` — which session buckets to read. One bucket (`9`), a list (`2,3,9`), a span (`2-9`), or a mix (`2-4,9`). **Default: every bucket.**
 - `--regressed` / `-g` — narrow the run to the **regression track only**: suggestions whose rule already shipped a dated fix and tripped again anyway. Fresh findings are not read and not composed. It composes with `--range` (narrow to regressions inside those buckets) and with `--dry-run` (report the regression criteria and stop). Without it, regressions and fresh findings both run, regressions first.
+- `--idea <slug>[,<slug>...]` / `-i <slug>` — build the **named** accepted ideas, one PR each. Repeatable and comma-separated; the values are idea slugs, never titles. Each named slug must be on the ledger **and** in `accepted` status — anything else is a stop, not a skip (see Step 2). Without this flag and without `--ideas`, **no ideas are read at all**.
+- `--ideas` — the escape hatch: take **every** accepted idea for this repo, with no slug list. Same one-idea-one-PR dispatch as `--idea`; it changes which ideas are selected and nothing else. Give it when you want the whole accepted backlog built and don't want to enumerate it. `--idea` and `--ideas` together is redundant, not an error — the union is every accepted idea, so `--ideas` wins and say so.
+- **Both idea flags govern the idea track only.** The suggestion track runs exactly as it always does whether or not either is given, and neither flag narrows, widens, or suppresses it. A run with `--idea` and nothing pending still reports the suggestion side as empty.
 - `--dry-run` / `-n` — report the suggestions, the accepted ideas, and the task criteria they compose into, then stop. No subagent, no branch, no PR, and nothing marked in either store. **It still judges** — see Step 3: the criteria are only worth reporting if they came from confirmed findings, and judging records verdicts about transcripts rather than claims that a fix shipped.
 - Anything not listed above that `/task` recognizes is **passed straight through** to every `/task` invocation in Step 5 — currently `--here` / `-h`, `--base <branch>`, `--draft` / `-d`, and `--add` / `-a <list>`. Read `/task`'s own Flags section rather than duplicating its list here; this command does not interpret them itself.
 - Anything not a recognized flag is extra context.
@@ -86,11 +93,13 @@ LOG_DIR="<logDir>" pnpm --filter server suggestions list -s pending --recurrence
 
 `--recurrence` accepts a comma-separated subset of the four states. If `--regressed` was given and nothing is regressed in the range, stop and say so — that is a good outcome, not a failure.
 
-### The accepted ideas are a second input, with a second evidence standard
+### The accepted ideas are a second input, with a second evidence standard — and they are opt-in
 
 A suggestion is counted from transcripts. An **idea** is invented — [ideate](ideate.md) proposes what is *missing*, which no rule can measure, since nothing counts a command that was never written. What makes an idea actionable is not source sessions but a recorded human sign-off, and `accepted` is that sign-off.
 
-Read the ones signed off for this repo:
+**Do this subsection only when `--idea` or `--ideas` was given.** With neither flag, read no ledger tier, compose no idea criterion, and carry one line to the final report: that no ideas were read because neither flag was given, and that `--idea <slug>` or `--ideas` is how to build them. Do not peek at the ledger "just to report the count" — a run that reads it anyway will end up acting on what it found, which is the behavior these flags exist to end.
+
+When one of them was given, read the ones signed off for this repo:
 
 ```sh
 LOG_DIR="<logDir>" pnpm --filter server ideas list -s accepted --repo <slug> --json
@@ -98,9 +107,24 @@ LOG_DIR="<logDir>" pnpm --filter server ideas list -s accepted --repo <slug> --j
 
 - `<slug>` is the repo's git remote slug (`git remote get-url origin`), never a checkout path — the ideas store is device-wide and shared across every repo on the machine.
 - **Resolve the store through the same waterfall `/ideate` uses**, and read every tier that exists: tier 1 is `<logDir>/ideas.json` through the CLI above, tier 2 the repo's own `docs/ideas.md`, tier 3 `~/.claude/ideas/<repo-slug>.md`. An absent `ideas` CLI means tier 1 is absent, not that the run is over — fall through and say so. A tier that exists and fails to read is a stop.
-- **Only `accepted` is read.** A `proposed` idea is invention nobody signed off on, and a `rejected` one is invention that was turned down; reading either would be exactly the padding this command forbids. `shipped` is already done.
+- **Only `accepted` is read.** A `proposed` idea is invention nobody signed off on, and a `rejected` one is invention that was turned down; reading either would be exactly the padding this command forbids. `shipped` is already done. `--idea` does not relax this: naming a slug selects from the accepted set, it does not admit anything into it.
 - **`--range` does not apply.** Ideas are not bucketed, so a narrowed range narrows the suggestions and leaves the accepted ideas alone. Say that in the report rather than implying the whole run was scoped.
-- If nothing is accepted, this half of the input is simply empty. That is ordinary, not a failure — and a run with no pending suggestions *and* no accepted ideas is the "nothing to do" stop in Step 2 above.
+
+#### Selecting the named slugs
+
+**`ideas list` has no `--slug` filter**, so the read above is the whole accepted set for the repo and the selection happens here, in this command, against what it returned.
+
+- **`--ideas`** — take every row the read returned. That is the whole selection; there is nothing to match and nothing that can fail to match.
+- **`--idea <slug>[,...]`** — for each named slug, find the row whose slug matches it exactly. Case and punctuation are compared as written; a near-miss is a miss.
+
+**A named slug that does not resolve is a stop, never a silent skip.** Report the slug and *its actual state*, then stop the run before dispatching anything:
+
+- **Not on any ledger tier** — say the slug is unknown, and which tiers were read looking for it. Offer the accepted slugs that *are* on the ledger for this repo, so a typo is one glance from being fixed.
+- **On the ledger but not `accepted`** — say the slug and the status it actually holds (`proposed`, `rejected`, or `shipped`), because each means something different and only one of them is fixable here. `proposed` needs a human sign-off on the dashboard's Advice page; `rejected` was turned down and this command does not overturn that; `shipped` already landed and its PR is in the ledger note.
+
+Stopping is the point: a silent skip turns "build these three ideas" into a run that quietly builds two, and the missing one looks identical to one that was never asked for. Stop on the **first** unresolved slug rather than dispatching the resolvable ones first — a partial run is the outcome this rule exists to prevent, and nothing has been dispatched yet at this stage, so stopping here costs nothing.
+
+If nothing is accepted, or the flag selected an empty set, this half of the input is simply empty. That is ordinary, not a failure. A run with no pending suggestions *and* no idea track — because neither flag was given, or because nothing accepted came back — is the "nothing to do" stop in Step 2 above.
 
 ## Step 3 — Judge the dirty buckets before composing anything
 
@@ -183,12 +207,13 @@ For each `regressed` row, before composing its criterion:
 
 ### Idea-sourced criteria sit alongside the suggestion ones, never inside them
 
-Each accepted idea from Step 2 becomes its own criterion, **labelled as idea-sourced**, in its own group.
+Skip this subsection when no idea flag was given — there are no ideas to compose. Otherwise each selected idea from Step 2 becomes its own criterion, **labelled as idea-sourced**, in a group of its own.
 
 - **Never merge an idea into a suggestion's criterion group.** They argue from different evidence — one from counted sessions, one from a human sign-off — and a merged group can defend itself with only one of them. The subagent has to be able to tell which is which, because the two are answerable to different standards.
 - **State the sign-off as the evidence**, since it is: name the idea's slug, its rationale, and the evidence the idea itself cited with paths. The subagent cannot read the ledger, so an idea whose citation you did not write down is an idea it has to take on faith.
 - **An idea is a proposal, not a spec.** Where it names a mechanism, pass the mechanism through. Where it does not, say what is undetermined rather than inventing the design here — that invention would be yours, not the human's, and the sign-off does not cover it.
-- Group ideas by the repo they land in, exactly as suggestions are grouped; Step 5 dispatches per repo and an idea is simply one more criterion in that repo's brief.
+- **One idea is one criterion group, and the grouping stops there.** Do not group two ideas together because they land in the same repo, touch the same file, or sound related — Step 5 dispatches each group separately, so a merged group is a merged PR. Name the repo each idea lands in and its absolute checkout path, exactly as a suggestion criterion does; here the repo tells the subagent *where* to work rather than *what to share a brief with*.
+- **Never group an idea with that repo's suggestion brief.** The suggestion track's grouping is by repo and the idea track's is by idea, and the two never meet: an idea that lands in a repo the suggestion track is already touching is still its own group, its own dispatch, and its own PR.
 
 ### A defective rule gets a criterion, not a shrug
 
@@ -208,23 +233,40 @@ This needs no new dispatch machinery. Step 5 already runs one subagent per repo,
 
 **This is the exit path a defective rule previously had none of.** Left as "out of scope and still `pending`", a systematically-wrong rule bills attention on every future `/improve` run and can never be resolved, because nothing in this command was allowed to touch the thing that was actually broken. A suggestion whose fix belongs to claude-proxy's dashboard or recurrence model rather than its rule code still stays `pending` and is reported as out of scope — that part is unchanged, and `defects` is the narrow case with an answer.
 
-**`--dry-run` / `-n` stops here**, having judged the dirty buckets in Step 3 and reported the confirmed suggestions — regression track first, with each prior fix and its rung — the dismissals it excluded, any defective rule it would dispatch, **the accepted ideas it would act on and the tier it read them from**, and the criteria, and having marked nothing in either store.
+**`--dry-run` / `-n` stops here**, having judged the dirty buckets in Step 3 and reported the confirmed suggestions — regression track first, with each prior fix and its rung — the dismissals it excluded, any defective rule it would dispatch, **the accepted ideas it would act on and the tier it read them from**, and the criteria, and having marked nothing in either store. With no idea flag it reports that it read no ideas and why, having read no tier at all; with one, it names each selected slug, the tier it came from, and that each would have opened a PR of its own. An unresolved `--idea` slug stops a dry run exactly as it stops a real one — reporting criteria composed from a slug list that was never valid is the misreport that stop exists to prevent.
 
-## Step 5 — Run the task, one subagent per repo
+## Step 5 — Run the task: one subagent per repo for suggestions, one per idea
 
-**Group the criteria by the repo they land in**, then dispatch **one fresh subagent per repo** via the `Agent` tool, each running `/task` with the composed criteria for that repo and the pass-through flags exactly as given:
+The two tracks dispatch on **different units**, and that difference is the whole of the change: a suggestion brief is grouped by repo so each repo gets one coherent PR, while an idea is dispatched alone so it gets a PR of its own. Both tracks use the same `Agent` tool, the same `/task` invocation shape, and the same pass-through flags exactly as given:
 
 ```
-/task <pass-through flags> <composed criteria for that repo>
+/task <pass-through flags> <the composed criteria for this dispatch>
 ```
+
+### The suggestion track — one subagent per repo
+
+**Group the suggestion criteria by the repo they land in**, then dispatch **one fresh subagent per repo**, each running `/task` with that repo's composed criteria.
 
 - **One subagent per repo, not one per suggestion.** The criteria were grouped in Step 4 so each repo gets a single coherent PR. Most runs are one repo and therefore one subagent, exactly as before; more than one is the exception the regression track makes possible.
 - **Why more than one repo at all:** the escalation ladder moves work *between* checkouts. A rung-1 prose rule that failed in one repo's `AGENTS.md` is often answered by a rung-2 step in a command that lives in a different repo, or the reverse. Refusing to leave the invoking repo would cap every regression at the rung that already failed.
+- The regression block leads each repo's brief, as Step 4 composed it.
+
+### The idea track — one subagent per idea
+
+Dispatch **one fresh subagent per selected idea**, each running `/task` with that single idea's criterion.
+
+- **One idea, one subagent, one branch, one PR.** Never batch two ideas into one dispatch, even when they land in the same repo — that is the merge this step exists to prevent, and it is invisible afterwards because the resulting PR looks like an ordinary multi-criterion one.
+- **Never add an idea to a repo's suggestion dispatch**, and never add a suggestion to an idea's. A repo appearing in both tracks gets a suggestion subagent *and* one subagent per idea landing there; that is the intended shape, not duplication to be tidied away.
+- **Say in the brief that the criterion is idea-sourced**, that its evidence is the recorded human sign-off rather than counted sessions, and that this `/task` run covers this idea alone. The subagent must not widen the scope to neighbouring work it notices, because the sign-off covers the idea and nothing else.
+- If a run selected no ideas — no flag, or an empty accepted set — this track dispatches nothing at all.
+
+### Rules both tracks share
+
 - **Name the repo explicitly in each subagent's brief** — its absolute checkout path, and that `/task` is to run with that path as its working directory. Never let a subagent infer which checkout it should edit; an unnamed repo is edited wherever the subagent happens to start.
-- **Run them one at a time and read each result before dispatching the next.** They open separate PRs in separate repos, but a later one's criteria may reference what an earlier one actually did.
-- Give each subagent everything it needs to act alone — the source sessions each criterion rests on, and for a regression criterion the prior PR, the files it touched, and the rung it must climb past. It has the criteria and the evidence, not this run's proxy reads.
+- **Run every dispatch one at a time, across both tracks, and read each result before dispatching the next.** This is unchanged and it now spans more subagents than it used to: they open separate PRs, but a later one's criteria may reference what an earlier one actually did, and two `/task` runs racing in the same checkout is the failure this rule has always prevented. Run the suggestion track first, then the ideas — an idea building on a suggestion fix that just landed is far likelier than the reverse.
+- Give each subagent everything it needs to act alone — the source sessions each criterion rests on, for a regression criterion the prior PR, the files it touched, and the rung it must climb past, and for an idea its slug, rationale and cited evidence. It has the criteria and the evidence, not this run's proxy reads.
 - `/task` owns the workspace, the verification, the commits and the PR from here. Do not create a worktree, edit files, or commit in this command — that is `/task`'s pipeline and duplicating it produces two workspaces for one change.
-- When each subagent returns, record what it reports: the repo, the branch, the PR number/URL, and **which criteria it actually implemented** versus dropped. That distinction is what Step 6 writes down.
+- When each subagent returns, record what it reports: the repo, the branch, the PR number/URL, and **which criteria it actually implemented** versus dropped. For an idea dispatch, record the PR against **that idea's slug** — Step 6 marks each idea against its own PR, so a PR URL attributed to the wrong slug is a false claim in the ledger.
 
 ## Step 6 — Flag what shipped
 
@@ -248,7 +290,9 @@ An accepted idea whose criterion actually landed is marked in the **ideas** stor
 LOG_DIR="<logDir>" pnpm --filter server ideas mark --slug <slug> -s shipped -n "<PR url>"
 ```
 
-- **Only what actually landed.** An idea whose PR did not land stays `accepted` and comes back on the next run — which is the correct outcome, because the sign-off is still valid and the work still is not done.
+- **One call per idea, and the note is that idea's own PR.** Step 5 gave every idea its own dispatch and therefore its own PR, so there is no shared URL to write here: take the PR from the subagent that built *this* slug. Never write one run-wide PR URL across several slugs — the note is the only pointer back to the change, and a slug pointing at a PR that built something else is a false record that reads as a true one, and one that no later run can detect.
+- **Only what actually landed.** An idea whose PR did not land stays `accepted` and comes back on the next run — which is the correct outcome, because the sign-off is still valid and the work still is not done. Because each idea has its own PR, one idea failing marks nothing against the others: mark the ones that landed and leave the rest `accepted`, naming them in the report.
+- **Only the ideas this run was asked for can be marked**, since they are the only ones it read. A run given no idea flag marks nothing in the ideas store at all.
 - **Never mark an idea in the suggestion store, or a suggestion in the ideas store.** Two evidence standards, one file each; a slug is not a `bucket/id` and the stores share nothing.
 - Never move an idea back to `proposed` or `rejected` here. This command implements advice; it does not overturn a human's sign-off.
 
@@ -264,12 +308,15 @@ LOG_DIR="<logDir>" pnpm --filter server suggestions mark -r <bucket> -i <id> -s 
 - **Mark it `done` as normal.** That is what re-dates the claim, so a *third* failure surfaces as a fresh `regressed` row against this attempt rather than staying pinned to the one that already failed.
 - **The note carries the chain:** which attempt this is, the rung it climbed from and to, the new PR, and the prior PR it supersedes. Without it the next `/improve` can see that a fix failed but not that two already have.
 
-Report at the end: the range read, which buckets were judged and how many suggestions were confirmed versus dismissed, how many suggestions were pending, how many were regressed, how many accepted ideas were read and from which ledger tier, any defective rule dispatched to claude-proxy, the criteria that shipped, the PR number/URL for each repo, what was marked `done` or `skipped` and which ideas were marked `shipped`, and what stays `pending` or `accepted` with why. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
+Report at the end: the range read, which buckets were judged and how many suggestions were confirmed versus dismissed, how many suggestions were pending, how many were regressed, **whether the idea track ran at all** — with no `--idea`/`--ideas`, say plainly that no ideas were read and name the flags that read them; with one, how many were selected, from which ledger tier, and by which flag — any defective rule dispatched to claude-proxy, the criteria that shipped, the PR number/URL **for each repo on the suggestion track and for each idea on the idea track, listed separately**, what was marked `done` or `skipped`, which ideas were marked `shipped` and against which PR each, and what stays `pending` or `accepted` with why. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
 
 ## Notes
 
 - **Never invent an improvement.** If the pending set is thin, the run is small. Padding it with your own ideas breaks the trace from every change back to the sessions that justified it.
   - **An `accepted` idea is not an exception to that rule — it is a second way of satisfying it.** The rule is about the *trace*, not about who first thought of something: a suggestion traces to the sessions it was counted in, and an accepted idea traces to the recorded human sign-off that accepted it. Both are evidence somebody else produced, and neither is you deciding mid-run that something would be good. What stays forbidden is unchanged and is the whole of the rule's original force: an idea you thought of during *this* run, an idea still sitting at `proposed`, and an idea a human `rejected` are all invention with no trace, and none of them may become a criterion. If you want one considered, that is [ideate](ideate.md)'s job — propose it there and let it be signed off, rather than smuggling it in here.
+- **The idea track is opt-in, and its default is off.** `--idea <slug>` builds the named accepted ideas and `--ideas` builds all of them; with neither, the ledger is not read and the report says so. An accepted idea is a standing permission, not a work queue that drains into whichever run comes next — and a run that swept every accepted idea in automatically made the size of its own PR depend on how many sign-offs had accumulated since last time. The suggestion track is unaffected by both flags and always runs.
+- **A named slug that does not resolve stops the run.** Not on the ledger, or on it in any status other than `accepted`, and the stop names the slug and the status it actually holds. Skipping it instead would turn "build these three" into a run that silently built two, and the one that vanished is indistinguishable from one nobody asked for.
+- **One idea is one PR.** Each idea-sourced criterion gets its own subagent, its own `/task` and its own branch, and is never merged into the suggestion brief for the repo it lands in — the two argue from different evidence, so a PR carrying both can only be reviewed against one of them. It is also what lets Step 6 mark each shipped idea against the PR that actually built it.
 - **Marking is a claim about reality.** `done` means the change is in the PR the note points at, in every repo that change needed. Mark after the subagents return, never before they run — and a `done` is *dated*, so marking early doesn't just misreport this suggestion, it makes every session recorded afterwards read as evidence against a fix that wasn't there.
 - **Never fall back to a guessed claude-proxy path.** An unset `CLAUDE_PROXY_STORE` is a stop with an explanation, not a search.
 - The suggestions are recomputed from every transcript on each read, and buckets are fixed windows of ten numbered oldest-first — so a bucket number means the same sessions tomorrow, and the flags survive the recomputation.

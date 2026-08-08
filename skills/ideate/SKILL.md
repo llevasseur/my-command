@@ -59,7 +59,7 @@ Two boundaries, neither of which bends:
 
    Leave every row at proposed and set no other status. Do not ask which to accept and do not decide it yourself. A proposed row is the adjudication queue rather than an unanswered question, and it is also what dedupe reads — so it will not be re-proposed, because step 1 refuses a key present in any tier in **any** status, proposed included. A rejection still carries its reason, written by whoever rejects it: the status route refuses a rejected mark without a note, because that reason is the ledger's dedupe record. Nothing here invents one. **Never mark anything shipped:** that status carries the pull request url, stays on the command line, and this workflow opens no pull request.
 
-6. Stop there, naming the advice page as where the accepting happens. `$improve` picks an idea up once it is accepted, and only then.
+6. Stop there, naming the advice page as where the accepting happens. `$improve` may pick an idea up once it is accepted, and only then. Acceptance is the permission and not the trigger: that workflow builds an accepted idea only when it is asked for the slug by name, or for every accepted idea at once, and each one it builds gets its own pull request.
 
 ## Rules
 

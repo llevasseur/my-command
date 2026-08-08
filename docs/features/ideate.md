@@ -11,7 +11,7 @@ dirty: true
 
 ## Summary
 
-`/ideate` surveys a repo and proposes features or commands worth building. It is **proposal only** — it never implements, never opens a branch or worktree, never commits, and never calls [task](task.md). Its output is a ranked set of proposals recorded in a ledger, all at `proposed`, and it **asks nothing**: the run exits naming claude-proxy's dashboard Advice page as where a human accepts or rejects them. [improve](improve.md) is what turns an accepted proposal into a PR.
+`/ideate` surveys a repo and proposes features or commands worth building. It is **proposal only** — it never implements, never opens a branch or worktree, never commits, and never calls [task](task.md). Its output is a ranked set of proposals recorded in a ledger, all at `proposed`, and it **asks nothing**: the run exits naming claude-proxy's dashboard Advice page as where a human accepts or rejects them. [improve](improve.md) is what turns an accepted proposal into a PR — on request, since acceptance is the permission rather than the trigger: that command builds an accepted idea only when named with `--idea <slug>` (or all of them with `--ideas`), one PR per idea.
 
 ## Motivation
 
