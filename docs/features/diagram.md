@@ -31,6 +31,14 @@ opens no PR, commits nothing, and touches no code.
 
 ## Behavior
 
+Before resolving anything, a Step 0 precursor looks for an installed skill that covers Mermaid or
+software diagramming — `mermaid-diagrams` is the usual match — and loads it with the `Skill` tool.
+The command's own syntax and diagram-type lists are a fallback, not the authority: a skill is
+maintained against Mermaid's grammar, so where the two disagree about syntax or type choice the
+skill wins, and where they disagree about what the diagram is *for* the command wins. Finding no
+such skill is an expected answer that is reported once, and no skill is ever installed to satisfy
+the step. The skill that was loaded, or the absence of one, is named in the closing report.
+
 Resolves the subject from `my-command-tools state` plus `gh pr view` in one batch, treating a
 missing PR as an expected answer rather than a failure. Reads the changed files as one batched
 pass, following an import or route registration at most one hop past the diff, then commits to a
