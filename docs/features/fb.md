@@ -4,7 +4,7 @@ title: fb
 description: Implement a feedback request — a thin wrapper around task, current branch by default or a worktree of an existing branch.
 tags: [command, workflow, git]
 timestamp: 2026-07-15
-updated: 2026-08-02
+updated: 2026-08-08
 ---
 
 # fb

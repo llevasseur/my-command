@@ -4,7 +4,7 @@ title: revive
 description: Resume an interrupted Claude Code session from its recorded transcript — find where it stopped, finish only what's outstanding, and carry the original workflow to its documented end.
 tags: [command, workflow, git]
 timestamp: 2026-07-24
-updated: 2026-08-02
+updated: 2026-08-08
 ---
 
 # revive

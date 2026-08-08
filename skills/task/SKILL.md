@@ -11,16 +11,27 @@ Before the first tool call, record this pipeline as a task list whose **last ite
 is step 8's closing turn**, kept as its own item and left open until nothing else
 remains. A compaction carries that list forward; it does not carry these
 instructions, so the item is the only surviving record that the run owes an
-outcome. Once nothing else remains, resolve it rather than leaving it open: mark
-it completed with the run's final tool call, then send the closing message, so
-the list ends clean while that message still carries no tool call.
+outcome. Resolve it in the same tool-call turn as the run's last piece of real
+work — the teardown, the final verification, the closing PR call — so the list
+is already clean when that turn returns and the only thing left to do is speak.
+Never leave marking it as a call of its own after the work ends: a run whose
+last scheduled action is a bookkeeping tool call ends on that call, the mark
+lands every time, and the message meant to follow it never arrives.
 
 1. Resolve requested add-on skills from the skills installed on this device, read their complete instructions, and place them in the pipeline according to their prompts.
 2. Set up the workspace before editing. Unless `--here`, use
    `my-command-tools worktree begin --bootstrap` when available to fetch and
    create a dedicated `.codex/worktrees/<type>/<summary>` worktree from the
    latest requested base. Verify the branch, worktree, and base; never implement
-   on the default branch.
+   on the default branch. When a session-level tool moves the session into that
+   checkout, address it by the absolute path the helper just reported, copied
+   byte for byte — entering an existing checkout, never asking for a new one by
+   name, and never with a relative or reconstructed path. Make that one call and
+   read its result: a refusal describes how the worktree was created, so do not
+   retry it and do not reinvent a workaround, just work through absolute paths
+   under the reported path. Decide teardown with entry — it is the repository
+   helper's `worktree end` from outside the path, after stepping the session
+   back out without removing anything.
 3. Run repository bootstrap when available. Otherwise link only ignored environment files, install dependencies separately, and regenerate touched artifacts in the worktree.
 4. State the criteria, inspect existing targets, follow `AGENTS.md`, plan
    non-trivial work, reproduce bugs, implement completely, and run
@@ -67,15 +78,22 @@ the list ends clean while that message still carries no tool call.
    Anchor that turn before the first tool call: put "close the run in a
    text-only turn" in the todo list as its own final item, because the todo
    list is live session state that a compaction carries forward and this prompt
-   is not. Being the only item left is the cue to resolve it, not to leave it
-   open: mark it done with the run's final tool call, then send the closing
-   message. A compaction boundary is a checkpoint, not an ending — a recap
-   prompt, a background-task notification, or a session-continuation preamble
-   each mean the run is still owed its turn, so answer in text alone, say where
-   the run stands, and restore the todo item if it did not survive. Every
-   message from the user opens a task in the same transcript, and only a
-   reply carrying text and no tool call closes it, so answer a mid-run
-   question, correction, or recap in text before returning to tool calls.
+   is not. Resolve it in the same tool-call turn as the run's last piece of
+   real work, so the list is already clean when that turn returns and the only
+   thing left to do is speak; never leave marking it as a call of its own after
+   the work ends, because a run whose last scheduled action is bookkeeping ends
+   on that call and the message meant to follow it never arrives. A compaction
+   boundary is a checkpoint, not an ending — a recap prompt, a background-task
+   notification, or a session-continuation preamble each mean the run is still
+   owed its turn, so answer in text alone, say where the run stands, and
+   restore the todo item if it did not survive. Each side of a boundary records
+   its own standing, because a run split across two transcripts is two runs to
+   the record. Every message from the user opens a task in the same transcript,
+   and only a reply carrying text and no tool call closes it, so answer a
+   mid-run question, correction, or recap in text before returning to tool
+   calls. A reply to another session is not that turn either: a message-sending
+   call is still a tool call, so send the reply, let it return, then close in
+   text alone.
 
 Validation limitations do not stop PR creation when useful in-scope recovery is exhausted; document them in the PR. Never force-remove dirty or unpushed work.
 

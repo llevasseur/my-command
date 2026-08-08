@@ -4,7 +4,7 @@ title: task-bootstrap
 description: One-time per repo — interview the stack and generate that repo's own scripts/bootstrap-worktree.sh and/or "Worktree Setup" doc section, which task's Step 1.5 discovers.
 tags: [command, workflow, setup]
 timestamp: 2026-07-15
-updated: 2026-08-02
+updated: 2026-08-08
 ---
 
 # task-bootstrap

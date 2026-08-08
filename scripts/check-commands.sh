@@ -21,6 +21,7 @@
 #   9. every merge command carries the working merge command forms.
 #  10. the workflow gates ship whole: hook scripts present and executable, both events
 #      registered in the settings fragment, the installer wiring them, and an off switch.
+#  11. every command that enters a worktree it just created states the working entry form.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -291,6 +292,17 @@ if ! grep -Fq 'refusing to replace' scripts/install-personal.sh; then
   echo "::error::scripts/install-personal.sh no longer refuses to replace a hooks directory holding foreign files; installing our gates would delete a hook the user registered independently."
   fail=1
 fi
+
+# 11. A command that creates a worktree and then enters it must state the working call form.
+# Left unstated, every EnterWorktree call in one recorded window was refused — 3 of 3 — and each
+# run reinvented the same absolute-path workaround from scratch instead of calling it correctly.
+for f in src/commands/task.md src/commands/task-bootstrap.md src/commands/review.md \
+  src/commands/fb.md src/commands/revive.md; do
+  if ! grep -Fq 'include: shared/enter-worktree.md' "$f"; then
+    echo "::error::$f dropped the shared/enter-worktree.md include; its worktree entry would be attempted, refused, and worked around from scratch in every run."
+    fail=1
+  fi
+done
 
 if [ "$fail" -eq 0 ]; then
   echo "check-commands: all command invariants satisfied ($(ls src/commands/*.md | wc -l | tr -d ' ') commands)."
