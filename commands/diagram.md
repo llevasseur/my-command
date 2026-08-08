@@ -1,7 +1,7 @@
 ---
 description: Draw the architecture a change produces as a Mermaid diagram and attach it to that change's PR
 argument-hint: "[-t <pr|branch>] [-k <kind>] [-c] [-o <path>] [-n] [what to focus on]"
-allowed-tools: Bash(git:*), Bash(gh:*), Bash(my-command-tools:*), Bash(mmdc:*), Read, Edit, Write, Grep, Glob
+allowed-tools: Bash(git:*), Bash(gh:*), Bash(my-command-tools:*), Bash(mmdc:*), Read, Edit, Write, Grep, Glob, Skill
 ---
 
 Draw the architecture that a change produces, as one Mermaid diagram, and put it where the
@@ -56,6 +56,29 @@ Resolve the destination in this order, and say which one you used:
 Editing a PR body means rewriting text a human may have written. **Only the marker block is
 yours**: preserve every other byte of the body, and when the body has no markers yet, append
 the block at the end rather than rearranging what is there.
+
+## Step 0 — Load the diagramming skill first
+
+Run this before Step 1, on every run, including `--dry-run`.
+
+A skill installed on this device may already own the Mermaid syntax and the type-selection rules
+this command otherwise applies by hand. Loading it costs one call, and it outranks the summaries
+in Steps 3 and 4: a skill is maintained against Mermaid's own grammar, while those lists only
+carry the failures seen so far.
+
+1. **Look for one.** Check the skills available in this session for one covering Mermaid or
+   software diagramming. `mermaid-diagrams` is the one that normally covers it, and it ships a
+   `references/` directory with per-diagram-type syntax. Judge by what the listing actually
+   offers, never by a name you expect to be there.
+2. **Load the match with the `Skill` tool** before writing any Mermaid, and name the skill you
+   loaded in the closing report.
+3. **A miss is an expected answer**, not a failure. When no installed skill covers diagramming,
+   say so once and apply Steps 3 and 4 as written. Never install a skill to satisfy this step.
+
+Where a loaded skill and this file disagree about **syntax or diagram-type choice**, the skill
+wins. Where they disagree about what the diagram is *for* — one claim about one change, marked
+nodes, 5–20 real names, the marker block — this file wins, because those rules are about the
+review rather than about Mermaid.
 
 ## Step 1 — Resolve the subject and its diff
 
@@ -121,7 +144,9 @@ Pick the kind from the change unless `--kind` forced one:
 ## Step 4 — Write Mermaid that renders
 
 GitHub renders an invalid diagram as a red error block in the PR, so syntax is not a detail.
-The forms that break most often:
+Write to the skill Step 0 loaded where there was one; the list below is what this command knows
+on its own, and it is the whole of the rule only when Step 0 found nothing. The forms that break
+most often:
 
 - **Quote any label holding `(`, `)`, `[`, `]`, `{`, `}`, `:`, `,`, `#`, or `"`** —
   `A["parse(args)"]`, never `A[parse(args)]`.
@@ -207,4 +232,5 @@ cannot be resolved or a diagram that cannot be attached is reported, and the tas
 <!-- /include-block -->
 
 Lead with what the diagram claims and where it landed — PR number and URL, the file path, or
-"unattached, handed to `/my-command:pr`" — or with why there was nothing to draw.
+"unattached, handed to `/my-command:pr`" — or with why there was nothing to draw. Name the skill Step 0
+loaded, or say that no installed skill covered diagramming.

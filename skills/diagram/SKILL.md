@@ -37,6 +37,15 @@ other byte, and append the block when no markers exist yet.
 
 ## Steps
 
+0. **Look for a diagramming skill before anything else**, on every run. Another installed skill
+   may already own Mermaid's syntax and its diagram-type choices, and it is maintained against
+   the grammar itself while step 4 below only carries the failures seen so far. Check what the
+   session actually offers rather than assuming a name; a Mermaid or software-diagramming skill
+   is the match, and load it before writing any Mermaid. Finding none is an expected answer, not
+   a failure: say so once and follow steps 3 and 4 as written, and never install one to satisfy
+   this step. Where a loaded skill and this file disagree about syntax or diagram type, the skill
+   wins; where they disagree about what the diagram is *for* — one claim about one change, marked
+   nodes, 5 to 20 real names, the marker block — this file wins.
 1. **Resolve the subject and its diff in one batch.** `my-command-tools state` gives the branch,
    base, commits, and per-file diffstat; pass `--cwd <absolute path>` for another checkout rather
    than changing directory. Read the pull request through the GitHub CLI for its number, URL, and
@@ -92,7 +101,8 @@ after the last tool call returns rather than alongside it. A run's outcome is re
 a message with no tool call in it, so ending on one — or bundling the report into one — records
 no outcome at all. Every ending owes that turn, including one that stops early, is blocked or
 refused, or hands work back to an invoking workflow. Lead with what the diagram claims and where
-it landed, or with why there was nothing to draw.
+it landed, or with why there was nothing to draw, and name the diagramming skill step 0 loaded or
+say that none was installed.
 
 Anchor that turn before the first tool call: put "close the run in a text-only turn" in the todo
 list as its own final item, because the todo list is live session state that a compaction carries
