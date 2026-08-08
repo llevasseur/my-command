@@ -4,7 +4,7 @@ title: review
 description: Independently review an open PR against the codebase, then apply its findings via fb.
 tags: [command, workflow, git]
 timestamp: 2026-07-22
-updated: 2026-08-02
+updated: 2026-08-08
 ---
 
 # review

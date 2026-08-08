@@ -4,7 +4,7 @@ title: task
 description: Carry a plain-language task from criteria to an open PR — isolated worktree, bootstrap, implement, verify, then clean + PR.
 tags: [command, workflow, git]
 timestamp: 2026-07-15
-updated: 2026-08-03
+updated: 2026-08-08
 ---
 
 # task
@@ -35,13 +35,25 @@ The end goal is always an open PR.
 Default: `worktree begin --bootstrap` (which fetches first, so the branch lands on the
 freshest `origin/main` rather than a stale local ref) then `EnterWorktree` at the path it
 reports, implement against the criteria, `verify` the repo's own gates, `commit` in
-logical commits, then clean + PR + teardown. Teardown removes the worktree whether or not
-the PR is a draft — the branch is on origin either way. Same-repo, that is `ExitWorktree`
-with `action: "remove"` **and** `discard_changes: true` on the first attempt, after
-`state`'s `head` is confirmed to match `origin/<branch>`, rather than tripping the commit
-guard. Cross-repo, or for a worktree entered rather than created, it is
-`worktree end --branch <branch>` run from outside the path, which re-verifies the branch
-reached origin before removing. Never
+logical commits, then clean + PR + teardown.
+
+The entry call is **prescribed rather than left to the run**: `EnterWorktree({path:
+"<absolute path>"})`, with the path copied byte for byte from what `worktree begin` printed
+— an existing checkout entered, never a new one requested by `name`, and never a relative or
+reconstructed path. Left unstated, every such call in one recorded window was refused, 3 of
+3, and each run independently reinvented the same absolute-path workaround. The tool is not
+banned, because the `path` form demonstrably works; it is simply spelled out so the first
+call is the right one, and a refusal is read as a statement about how the worktree was made
+rather than something to retry. Teardown is decided with entry for the same reason.
+
+Teardown removes the worktree whether or not
+the PR is a draft — the branch is on origin either way. A worktree `worktree begin` created
+is not the session tool's to remove, so both paths end in
+`worktree end --branch <branch>` run from outside it, which re-verifies the branch reached
+origin: same-repo, `ExitWorktree` with `action: "keep"` steps the session back out first;
+cross-repo, the session was never inside it. A refusal there means HEAD is ahead of origin —
+push and re-run rather than forcing, and never route around it with `discard_changes`, which
+throws away the commits the refusal is protecting. Never
 implements or commits on `main`; `commit` refuses the default branch outright.
 
 The deterministic plumbing runs through the [command toolkit](../specs/command-toolkit.md)
@@ -90,10 +102,20 @@ through Step 4, not just the shipped one: no-change, still-failing verification,
 refused, abandoned. `--sub` does not move it, because the subagent's report is not the
 calling session's message. Step 1 anchors it by putting the closing turn in the todo list
 as its own final item before the first tool call — the todo list survives a compaction
-that drops this prompt. A compaction boundary is itself a checkpoint rather than an
+that drops this prompt. That anchor is resolved **in the same tool-call turn as the run's
+last real work**, not as a bookkeeping call after it: the earlier wording asked for the mark
+to be the run's final tool call, and across four recorded buckets the mark landed every time
+while the message that was supposed to follow it did not. An instruction whose terminal step
+is a tool call ends on a tool call, so the affordance is gone rather than restated — the list
+is already clean when the work's last turn returns, and the only thing the run has left is to
+speak. A compaction boundary is itself a checkpoint rather than an
 ending: a recap prompt, a background-task notification, or a continuation preamble each
 get answered in text alone, saying where the run stands, because a session is likeliest to
-die just after a compaction and that answer is often the only outcome it ever records.
+die just after a compaction and that answer is often the only outcome it ever records — and
+each side of the boundary records its own standing, since a run split across two transcripts
+is two runs to the record. A reply to another session is not the closing turn either: a
+message-sending call is a tool call, so a run whose whole job was answering another agent
+still owes a text-only turn of its own.
 Both halves are shared snippets (`src/shared/closing-turn-anchor.md` and
 `src/shared/closing-turn.md`) that every command carries. "Complete" is still reserved for an
 existing PR plus finished worktree teardown; a run that stops earlier reports the stop
