@@ -46,7 +46,7 @@ The survey is one batched read pass, per `shared/batched-discovery.md`.
 
 ### The ledger, and where it lands
 
-One entry per idea, carrying a stable kebab-case **slug** (the dedupe key), a title, a one-paragraph rationale, the evidence with paths (and `bucket/id` for a judge note), the repo it lands in **as a git remote slug**, a status of `proposed` / `accepted` / `rejected` / `shipped`, the date, and for `rejected` the reason or for `shipped` the PR url.
+One entry per idea, carrying a stable kebab-case **slug** (the dedupe key), a title, a bulleted rationale, the evidence with paths (and `bucket/id` for a judge note), the repo it lands in **as a git remote slug**, a status of `proposed` / `accepted` / `rejected` / `shipped`, the date, and for `rejected` the reason or for `shipped` the PR url.
 
 The repo is a remote slug rather than a checkout path because the tier-1 store is device-wide and shared across every repo on the machine — a path names a different thing, or nothing, on the next one.
 
@@ -65,13 +65,25 @@ Four rules make a waterfall safe for something used as a dedupe key:
 
 `shared/claude-proxy-checkout.md` gained an **optional-dependency** clause for this: the same derivation, but a command that declares the dependency optional reads those three failures as absence and falls through, while an error still stops. `/improve` and `/judge` do not declare it optional and keep the hard stop unchanged.
 
+### The rationale is bullets, in plain English
+
+The rationale is a list of bullets rather than a paragraph, and `shared/plain-rationale.md` is where that shape is stated once. A person reads it on the dashboard to decide one thing — accept, or reject — usually without having run the survey and usually with several cards open. A paragraph makes that reader parse prose for the claim they are deciding on. A fixed list makes two ideas comparable line for line.
+
+Six bullets, written as literal `- ` lines: **what it is**, **the problem**, **how it works**, **what it replaces or simplifies**, **size**, and **depends on `<slug>`** — the last written only when the idea consumes something a named idea introduces, since its absence is what tells `/improve` the idea declares no dependency. Three of Step 3's five required statements live here; the other two, the evidence and the repo, are fields of their own.
+
+Each bullet follows [ASD-STE100](https://asd-ste100.org) Simplified Technical English: one idea per sentence and at most twenty words, active voice and present tense, one word per concept, no idiom, at most three nouns in a row, an article before each countable noun, and no pronoun pointing at another bullet — a reader scans a card out of order.
+
+This is **stricter than `shared/rewrite-toward.md`**, which draws on the same standard and deliberately declines its word list, sentence cap, and simple tenses. That file governs command instructions, where the reader is an agent and a long sentence buys precision. A rationale is a short pitch to a human about to click Accept or Reject, so the cap costs nothing.
+
+Nothing rewrites a row it did not write: a rationale already on the ledger as a paragraph stays a paragraph, and claude-proxy's dashboard renders both shapes.
+
 ### The run
 
 **No human in the loop at all.** The run is unattended start to finish; the sign-off happens afterwards, in a browser.
 
 1. Resolve the tier; read every existing tier for dedupe.
 2. Survey the four sources in one batched pass.
-3. Compose **at most 3** proposals, ranked. Each states what it is, its evidence with paths, the repo, a rough size, and **what it would replace or simplify** — an idea that only adds surface has to say so.
+3. Compose **at most 3** proposals, ranked. Each states what it is, its evidence with paths, the repo, a rough size, and **what it would replace or simplify** — an idea that only adds surface has to say so. The rationale carries three of those as plain-English bullets, per the section above.
 4. Write **all** of them as `proposed`, including ones expected to be rejected. Dedupe only works if the ledger records what was considered rather than only what was liked.
 5. **Exit**, naming the dashboard Advice page as where they get adjudicated. Every row stays `proposed`; nothing else is marked.
 
