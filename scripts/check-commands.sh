@@ -26,7 +26,7 @@
 #      cleanup always fails where the default branch is checked out.
 #  13. the npx wizard installs and registers the gates too, not just the toolkit — an
 #      install surface that skips them ships the commands with the gates inert.
-#  13. the toolkit fails closed when those gates are not armed: the verbs every workflow
+#  14. the toolkit fails closed when those gates are not armed: the verbs every workflow
 #      command opens with refuse to run, with one detector behind them and one documented
 #      escape for a genuinely hook-less environment.
 set -euo pipefail
@@ -358,7 +358,7 @@ if ! grep -q 'fixHint' src/toolkit/lib/hooks-status.mjs; then
   fail=1
 fi
 
-# 13. The toolkit fails closed on an unarmed device. Reporting `hooks.armed: false` from
+# 14. The toolkit fails closed on an unarmed device. Reporting `hooks.armed: false` from
 # `doctor` left the unarmed state fully runnable, and nothing a session calls reads doctor, so
 # the closing-turn gate kept going unrun. The verbs a workflow command opens with must refuse
 # instead, and there must be a documented way out.
@@ -393,11 +393,11 @@ if ! grep -q 'deviceHooksStatus' src/toolkit/verbs/doctor.mjs; then
   fail=1
 fi
 # CI runs this script on a machine with no Claude settings at all, so the gate must be
-# provably escapable — and provably not escapable by default.
-if MY_COMMAND_REQUIRE_HOOKS=0 node src/toolkit/cli.mjs state --compact >/dev/null 2>&1; then
-  :
-else
-  echo "::error::\`MY_COMMAND_REQUIRE_HOOKS=0 my-command-tools state\` failed; the documented escape does not work, which bricks CI and every fresh clone."
+# provably escapable. `--base HEAD` keeps this about the gate: CI checks out a PR merge ref
+# with no origin/<default>, and `state` refuses to invent a base it does not have — so
+# without it this fails for a reason that has nothing to do with the escape.
+if ! escaped="$(MY_COMMAND_REQUIRE_HOOKS=0 node src/toolkit/cli.mjs state --compact --base HEAD 2>&1)"; then
+  echo "::error::\`MY_COMMAND_REQUIRE_HOOKS=0 my-command-tools state\` failed; the documented escape does not work, which bricks CI and every fresh clone. It said: ${escaped}"
   fail=1
 fi
 

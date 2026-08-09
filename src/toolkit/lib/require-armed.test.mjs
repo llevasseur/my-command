@@ -52,6 +52,13 @@ function cli(argv, env) {
   }
 }
 
+/**
+ * A `state` call that can only fail at the gate. `--base HEAD` is what makes it so: CI
+ * checks out a PR merge ref with no `origin/<default>` to resolve, and `state` refuses to
+ * invent a base it does not have — so without it, a passed gate still exits 1 here.
+ */
+const RUNS = ['state', '--cwd', REPO_ROOT, '--compact', '--base', 'HEAD'];
+
 const unarmedEnv = () => ({
   CLAUDE_CONFIG_DIR: device(),
   MY_COMMAND_HOOKS: undefined,
@@ -75,7 +82,11 @@ test('a gated verb exits non-zero on a device whose gates are not armed', () => 
 
 test('every gated verb refuses, and an ungated one still answers', () => {
   for (const verb of GATED_VERBS) {
-    assert.equal(cli([verb, '--cwd', REPO_ROOT, '--compact'], unarmedEnv()).code, 1, `${verb} should refuse`);
+    const { code, out } = cli([verb, '--cwd', REPO_ROOT, '--compact'], unarmedEnv());
+    assert.equal(code, 1, `${verb} should refuse`);
+    // Assert the refusal, not merely the exit code: a verb that failed for its own reasons
+    // exits 1 too, and would make this pass while the gate did nothing.
+    assert.equal(JSON.parse(out).armed, false, `${verb} should refuse at the gate`);
   }
   // `doctor` is how a stuck device finds out what to run, so it can never be gated.
   assert.equal(cli(['doctor', '--compact'], unarmedEnv()).code, 0);
@@ -85,7 +96,7 @@ test('a gated verb exits zero once the gates are registered', () => {
   const dir = device();
   install({ hooksDir: join(dir, 'my-command', 'hooks'), settingsPath: join(dir, 'settings.json'), uninstall: false });
 
-  const { code, out } = cli(['state', '--cwd', REPO_ROOT, '--compact'], {
+  const { code, out } = cli(RUNS, {
     CLAUDE_CONFIG_DIR: dir,
     MY_COMMAND_HOOKS: undefined,
     MY_COMMAND_REQUIRE_HOOKS: undefined,
@@ -109,10 +120,11 @@ test('each escape is explicit, and none of them is the default', () => {
 
 test('the escapes let a hook-less environment through', () => {
   for (const [argv, env] of /** @type {[string[], Record<string, string | undefined>][]} */ ([
-    [['state', '--cwd', REPO_ROOT, '--compact', '--unarmed'], {}],
-    [['state', '--cwd', REPO_ROOT, '--compact'], { MY_COMMAND_REQUIRE_HOOKS: '0' }],
-    [['state', '--cwd', REPO_ROOT, '--compact'], { MY_COMMAND_HOOKS: '0' }],
+    [[...RUNS, '--unarmed'], {}],
+    [RUNS, { MY_COMMAND_REQUIRE_HOOKS: '0' }],
+    [RUNS, { MY_COMMAND_HOOKS: '0' }],
   ])) {
-    assert.equal(cli(argv, { ...unarmedEnv(), ...env }).code, 0, `${argv.join(' ')} ${JSON.stringify(env)}`);
+    const { code, out } = cli(argv, { ...unarmedEnv(), ...env });
+    assert.equal(code, 0, `${argv.join(' ')} ${JSON.stringify(env)} → ${out}`);
   }
 });
