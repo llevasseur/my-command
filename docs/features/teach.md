@@ -4,6 +4,7 @@ title: teach
 description: Learn the real name for something you can only describe, and leave with one Simplified Technical English sentence you can say back to any agent.
 tags: [command, vocabulary, learning]
 timestamp: 2026-08-02
+updated: 2026-08-09
 dirty: true
 ---
 
@@ -29,8 +30,20 @@ failed, however accurate it is.
 
 ## Behavior
 
-Places the description in a field, then names it from the first source that
-covers that field: an installed skill (`animation-vocabulary` for web motion,
+Places the description in a field, then — **before it names anything** — runs
+[`/lookup`](lookup.md) against the hosted concept store, with `--field` set to the
+field just placed. That gate replaces the unconditional re-derivation the command
+used to open with, and its position is the point: after the naming step the term
+has already been invented and the duplicate already exists. An **exact term hit**
+prints the stored sentence verbatim, copies it, and ends the run; a **field hit**
+carries the neighbours into the naming step as context rather than as an answer;
+a **miss** is the only outcome that authorizes the rest of the run. An
+unreachable store is a miss with a stated cause — which variable was unset, the
+status code, or the network error — never a stop, on the same terms the save side
+already sets.
+
+It then names the concept from the first source that
+covers that field: the corpus neighbours that gate returned, an installed skill (`animation-vocabulary` for web motion,
 `domain-modeling` for ubiquitous language, `apple-design` and `emil-design-eng`
 for design vocabulary), the repo itself under `--here`, or model knowledge. It
 never invents a term — an invented one survives into every later prompt and the
@@ -181,6 +194,7 @@ claude-proxy.
 ## Related
 
 - Command source: `src/commands/teach.md`
+- Gated by [lookup](lookup.md), which reads the same store before the naming step
 - Saves to the hosted concept store (`CONCEPTS_URL` / `CONCEPTS_TOKEN`), not to
   the `CLAUDE_PROXY_STORE` log directory [improve](improve.md) and
   [revive](revive.md) read
