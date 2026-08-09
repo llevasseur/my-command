@@ -113,6 +113,22 @@ export CLAUDE_PROXY_STORE="$HOME/path/to/claude-proxy/logs/sessions"
 export CLAUDE_PROXY_ARCHIVE="$HOME/path/to/archived/claude/logs"   # optional
 ```
 
+`teach` does **not** use those. It saves concepts to the hosted concept store —
+a Cloudflare Worker — so a concept taught on one machine is readable from every
+other one and from an agent with no filesystem. Export its base URL and token
+instead, on **every device you teach from**:
+
+```sh
+export CONCEPTS_URL="https://<your-worker>.workers.dev"
+export CONCEPTS_TOKEN="<the token from the Worker's secret store>"
+```
+
+Read the token from the Worker's secret store or your password manager; never
+commit it. With either variable unset, `/teach` still names the term, still
+prints the sentence, and still copies it — it skips only the save and says in one
+line why. See [docs/features/teach.md](./docs/features/teach.md) for the
+per-device rollout.
+
 The `trim` command adapts the context-compaction strategy introduced by Yujiang Li,
 Zhenyu Hou, Yi Jing, Jie Tang, and Yuxiao Dong in
 [*CompactionRL: Reinforcement Learning with Context Compaction for Long-Horizon Agents*](https://arxiv.org/abs/2607.05378)
@@ -291,6 +307,12 @@ them at any time with `export MY_COMMAND_HOOKS=0`, or remove the registration wi
 Once set up, pull updates from any session with **`/sync`** — it finds the clone,
 fast-forwards it, and re-links any newly added commands, without hardcoding where
 the repo lives.
+
+Two things `/sync` cannot do for you, because they are not in the clone: exporting
+`CONCEPTS_URL` and `CONCEPTS_TOKEN` in each device's shell profile (above), and
+running `/sync` itself on a device you have not opened in a while. Both are
+required before claude-proxy retires its local `logs/concepts.jsonl` — a device
+still on the old `/teach` writes concepts to a file nothing will read.
 
 ## Changelog
 

@@ -160,19 +160,48 @@ surrounding prose. The user pastes it into a prompt they are already writing.
 
 ## 7. Offer to save
 
-Ask whether to save the concept. On yes, append one JSON object to
-`concepts.jsonl` in claude-proxy's log directory.
+Ask whether to save the concept. On yes, POST one JSON object to the hosted
+concept store — a Cloudflare Worker, not a file on this machine. A concept
+taught on one device is then readable from every other one.
 
-Resolve the path the way the `improve` workflow does: read `CLAUDE_PROXY_STORE`
-from the environment, then take its parent as the log directory, because the
-store is `<logDir>/sessions`. **Never hardcode a path, and never search the
-filesystem for a claude-proxy checkout.**
+Both halves of the address come from the environment:
 
-**Unlike `improve`, an unresolvable store is not fatal here.** That workflow
-cannot run without the proxy because the suggestions are its input; this one's
-input is the user. So when `CLAUDE_PROXY_STORE` is unset or its path is missing,
-keep the sentence, keep the clipboard, skip only the save, and say what failed
-and that the concept was not recorded. Never stop the run over it.
+- **`CONCEPTS_URL`** — the base URL of the Worker. The write path is
+  `POST <CONCEPTS_URL>/api/concepts`.
+- **`CONCEPTS_TOKEN`** — the bearer token, sent as an
+  `Authorization: Bearer <token>` header.
+
+**Never hardcode either value, never write either one into a file, and never put
+the token on a command line.** The snippet below reads both from the process
+environment, so the token stays out of the command, the transcript, and the
+shell history. Do not echo it, and do not print it back in the reply.
+
+**The write is idempotent, and the retry belongs inside the call.** A row id is
+derived from the record itself, so the store returns **201** when the concept is
+new and **200** when the identical record is replayed. The snippet below retries
+once on a network error or a `5xx`, reusing the same record. **Never re-run the
+whole command to retry a failed save.** Every run stamps a fresh `savedAt`, which
+changes the record, which changes the derived id — so a second run writes a
+*second version* of the concept instead of replaying the first. Idempotency
+protects a repeated request, not a repeated run.
+
+**An unreachable store is not fatal.** The `improve` workflow cannot run without
+the proxy because the suggestions are its input; this one's input is the user.
+Step 6 already printed the sentence and copied it, and that stands whatever this
+step does. So when `CONCEPTS_URL` or `CONCEPTS_TOKEN` is unset, or the POST
+fails, keep the sentence, keep the clipboard, skip only the save, and never stop
+the run over it.
+
+**Say why the save failed, in one short line.** The old behaviour skipped the
+save silently, which turned a broken store into quiet loss. One line, in the
+reply, naming the cause:
+
+- A variable is unset → name which one, and say the concept was not saved.
+- The store answered with an error → give the status code and the short reason it
+  returned.
+- The request never reached the store → give the network error.
+
+Never expand this into a paragraph, and never ask the user to fix it mid-run.
 
 ### The record
 
@@ -238,17 +267,22 @@ to say instead.
 an empty string or an empty array for one: the reading side distinguishes absent
 from empty, and an absent field is what makes it show its "nothing more to show"
 fallback. Records written before these fields existed carry none of them and stay
-valid — nothing in `concepts.jsonl` is ever rewritten or migrated.
+valid — a stored concept is never rewritten or migrated.
 
-Append with Node and pass every value as an argument, so no shell quoting or JSON
+Post with Node and pass every value as an argument, so no shell quoting or JSON
 escaping can corrupt a sentence containing quotes, backslashes, or newlines.
 Lists are **newline-separated**, one entry per line, because a tip or a note
 reliably contains a comma and never contains a newline:
 
 ```bash
 node -e '
-const fs = require("fs");
-const [f, term, sentence, field, skills, notes, tips, sources, surfaced] = process.argv.slice(1);
+const [term, sentence, field, skills, notes, tips, sources, surfaced] = process.argv.slice(1);
+const base = process.env.CONCEPTS_URL;
+const token = process.env.CONCEPTS_TOKEN;
+if (!base || !token) {
+  console.log("not saved: " + (base ? "CONCEPTS_TOKEN" : "CONCEPTS_URL") + " is not set");
+  process.exit(0);
+}
 const list = (v) => (v ? v.split("\n").map((s) => s.trim()).filter(Boolean) : []);
 const rec = { term, sentence, field, skills: list(skills), savedAt: new Date().toISOString() };
 const put = (k, v) => { if (typeof v === "string" ? v.trim() : v.length) rec[k] = v; };
@@ -256,8 +290,26 @@ put("notes", notes ?? "");
 put("tips", list(tips));
 put("sources", list(sources));
 put("surfacedSkills", list(surfaced));
-fs.appendFileSync(f, JSON.stringify(rec) + "\n");
-' "<logDir>/concepts.jsonl" "<term>" "<sentence>" "<field>" "<applied skills, one per line>" \
+const why = (e) => e.message + (e.cause && e.cause.message ? " (" + e.cause.message + ")" : "");
+(async () => {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await fetch(base.replace(/\/+$/, "") + "/api/concepts", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer " + token },
+        body: JSON.stringify(rec),
+      });
+      const body = (await res.text()).trim().slice(0, 200);
+      if (res.ok) return console.log("saved: " + res.status + (res.status === 200 ? " (already stored)" : " (new)"));
+      if (res.status >= 500 && attempt === 1) continue;
+      return console.log("not saved: " + res.status + " " + body);
+    } catch (err) {
+      if (attempt === 1) continue;
+      return console.log("not saved: " + why(err));
+    }
+  }
+})();
+' "<term>" "<sentence>" "<field>" "<applied skills, one per line>" \
   "<notes as Markdown>" "<tips, one per line>" "<sources, one per line>" "<surfaced skills, one per line>"
 ```
 
@@ -265,16 +317,55 @@ fs.appendFileSync(f, JSON.stringify(rec) + "\n");
 through and the key is never written. Pass an empty string for anything the run
 did not produce; do not drop the argument, or the values after it shift.
 
-The file is append-only, one object per line, so a concurrent run cannot truncate
+The snippet always exits `0` and always prints one line, because the save is the
+optional half of this step. Read that line and repeat its cause in the reply.
+
+The store is append-only. Re-teaching a term adds a version rather than replacing
+one, reads resolve the newest version, and a concurrent run can never overwrite
 another's record.
 
-**Why a file and not the database.** claude-proxy's SQLite database is a
-disposable materialized view over its logs, and deleting and re-ingesting it is a
-supported recovery. Nothing authored may live only there. The precedent for
-authored data that stays queryable is the command-run table, whose source of
-truth is a `.jsonl` file and whose table is rebuilt from it under a watermark.
-`concepts.jsonl` follows that precedent; a table ingested from it is a separate
-change in the claude-proxy repository, and this file is the contract between them.
+**Why the hosted store and not a local file.** A file on one laptop strands the
+corpus on that laptop, gives an agent nothing to query, and cannot be reached at
+all from a cloud box that keeps no copy of the user's files. The Worker answers
+all three. claude-proxy's ADR 0005 records the decision, the database choice, and
+the nightly git backup that pays for it.
+
+**This is step 2 of a three-step rollout, and the order is a correctness
+requirement.** The service shipped first. This workflow posts to it now.
+claude-proxy retires its local `concepts.jsonl` and schema **only after every
+device runs this version** — see "Rolling this out to every device" below.
+Deleting the file earlier would silently drop concepts written by a device still
+on the old workflow. Do not write the file here as well: there is no dual-write,
+and two stores that each look complete is the failure this ordering avoids.
+
+## Rolling this out to every device
+
+**The user does this by hand on each machine. Nothing here is automated, and no
+workflow does it for them.** claude-proxy cannot retire its local
+`concepts.jsonl` until every machine the user teaches from has finished both
+steps.
+
+On each device, in order:
+
+1. **Set both variables in the shell profile** (`~/.zshrc` or the equivalent),
+   then open a new shell:
+
+   ```sh
+   export CONCEPTS_URL="https://<the-worker>.workers.dev"
+   export CONCEPTS_TOKEN="<the token from the Worker's secret store>"
+   ```
+
+   Read the token out of the Worker's secret store or a password manager. Never
+   commit it, and never paste it into a repository file, a note, or a prompt.
+
+2. **Pull this version of the workflow** — the sync workflow in a session on that
+   device, or `git pull` in the clone the skills are symlinked from. A device
+   still on the old version keeps writing to its own local file, and those
+   concepts never reach the store.
+
+Confirm a device is done by teaching one throwaway concept and checking that the
+reply says `saved: 201`. When every device reports that, step 3 of the rollout is
+safe to start in claude-proxy.
 
 ## Closing turn
 
