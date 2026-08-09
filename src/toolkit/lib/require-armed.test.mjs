@@ -35,7 +35,6 @@ function cli(argv, env) {
   const previous = { ...process.env };
   let out = '';
   const write = process.stdout.write.bind(process.stdout);
-  // A narrowed stub, restored below.
   process.stdout.write = (/** @type {any} */ chunk) => {
     out += chunk;
     return true;

@@ -28,8 +28,7 @@ export function armingEscape(flags, env = process.env) {
   if (flags.unarmed === true || flags.unarmed === 'true') return '--unarmed';
   const required = env.MY_COMMAND_REQUIRE_HOOKS;
   if (required !== undefined && OFF.test(required.trim())) return 'MY_COMMAND_REQUIRE_HOOKS=0';
-  // The device-wide off switch already means "the gates are deliberately not running here";
-  // demanding they be armed anyway would make that switch impossible to use.
+  // The device-wide off switch already means the gates are deliberately not running here.
   const hooks = env.MY_COMMAND_HOOKS;
   if (hooks !== undefined && OFF.test(hooks.trim())) return 'MY_COMMAND_HOOKS=0';
   return null;

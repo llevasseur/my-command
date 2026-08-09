@@ -477,9 +477,8 @@ test('the job directory is reachable from a worktree, on the first call and the 
   const worktree = join(dir, '.claude', 'worktrees', 'feat-x');
   const state = scratch();
   // The harness tells a job to keep its scratch under $CLAUDE_JOB_DIR/tmp, so a guard that
-  // refused exactly that path left no path at all. The one-denial-per-subject rule made it
-  // worse rather than safer: the same command was allowed early in a run and refused later,
-  // and the workaround one session reached for clobbered its own uncommitted edits.
+  // refused exactly that path left no path at all — and under one-denial-per-subject the same
+  // command was allowed early in a run and refused later.
   for (const command of [
     'ls -la "$CLAUDE_JOB_DIR/tmp"',
     'cp src/my-command.ts "$CLAUDE_JOB_DIR/tmp/my-command.ts.bak"',

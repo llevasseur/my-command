@@ -73,8 +73,8 @@ export function run(ctx) {
   const workingTree = branch === current;
   const tracked = workingTree ? porcelain(cwd).filter((e) => !e.untracked) : [];
 
-  // Another branch's changes are `mergeBase..that branch`; only the current one is allowed
-  // to reach the working tree, which is the same rule `workingTree` states.
+  // Another branch's changes are `mergeBase..that branch`; only the current one reaches the
+  // working tree.
   const head = workingTree ? undefined : branch;
   const committed = diffStat(cwd, mergeBase, head).filter((f) => f.path);
   const commits = lines(exec('git', ['log', '--format=%H%x1f%s', `${mergeBase}..${branch}`], { cwd }).stdout).map(
@@ -121,8 +121,7 @@ function content(cwd, mergeBase, branch, workingTree, limit) {
   };
 
   const commits = read([mergeBase, branch], limit);
-  // The working tree spends what the commits left, so the cap covers the pair rather than
-  // each half — two full budgets is not the bound the caller asked for.
+  // The working tree spends what the commits left, so the cap covers the pair, not each half.
   const pending = workingTree ? read(['HEAD'], Math.max(limit - commits.chars, 0)) : null;
 
   return {

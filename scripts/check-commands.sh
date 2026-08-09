@@ -348,9 +348,9 @@ if ! grep -q 'fixHint' src/toolkit/lib/hooks-status.mjs; then
 fi
 
 # 13. The toolkit fails closed on an unarmed device. Reporting `hooks.armed: false` from
-# `doctor` left the unarmed state fully runnable, and nothing a session calls reads doctor —
-# so the closing-turn gate kept going unrun on devices that never registered it. The verbs a
-# workflow command opens with must refuse instead, and there must be a documented way out.
+# `doctor` left the unarmed state fully runnable, and nothing a session calls reads doctor, so
+# the closing-turn gate kept going unrun. The verbs a workflow command opens with must refuse
+# instead, and there must be a documented way out.
 if ! grep -q 'requireArmed' src/toolkit/cli.mjs; then
   echo "::error::src/toolkit/cli.mjs no longer calls requireArmed(); an unarmed device would run every workflow verb with the gates inert."
   fail=1
