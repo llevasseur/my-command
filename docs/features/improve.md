@@ -4,7 +4,7 @@ title: improve
 description: Turn claude-proxy's session suggestions into an implemented improvement — read the pending findings for a range of session buckets, escalate the ones whose last fix didn't hold, hand them to task as criteria, optionally build the accepted ideas a human named, and flag what shipped as done.
 tags: [command, workflow, agents]
 timestamp: 2026-07-26
-updated: 2026-08-07
+updated: 2026-08-09
 dirty: true
 ---
 
@@ -35,11 +35,22 @@ suggestion with its own evidence and source sessions, or a recorded human sign-o
 on an idea. The command adds no improvements of its own, and never acts on an idea
 still `proposed` or already `rejected`.
 
+**An idea flag makes the run idea-only.** `--idea` or `--ideas` suppresses the judge
+and suggestion tracks entirely — no pending suggestions read, no bucket judged, no
+suggestion criterion composed, nothing marked in the suggestions store — so exactly
+one track runs in any given run. Naming ideas is a request for those ideas, and a
+run that also swept the pending set would size itself from whatever the rules fired
+on since last time: the same objection that made the idea track opt-in, pointed the
+other way. It also keeps the expensive half of the command, reading transcripts by
+the megabyte, out of a run that was never going to compose a suggestion criterion.
+
 Its corollary: **a rule firing is not the same as something having gone wrong.** A
-rule counts calls and node positions and cannot see intent, so nothing is composed
-from unjudged rule output. Every dirty bucket in the range is judged first, and a
-judge run that fails stops the command rather than degrading into the intuition
-this pipeline exists to replace.
+rule counts calls and node positions and cannot see intent, so nothing on the
+suggestion track is composed from unjudged rule output. Every dirty bucket in the
+range is judged first, and a judge run that fails stops the run rather than degrading
+into the intuition this pipeline exists to replace. **Judging is a precondition of
+the suggestion track, not of the command**: an idea-only run composes no suggestion
+criterion, so there is no unjudged output for a verdict to guard.
 
 The second rule follows from the first: **a suggestion whose last fix didn't hold
 is not a fresh finding.** claude-proxy dates every `done` and reports a rule as
@@ -64,12 +75,21 @@ one must climb an escalation ladder rather than restate what already failed.
   slug list. Same one-idea-one-PR dispatch; it changes only which ideas are
   selected. Given together with `--idea`, the union is every accepted idea, so
   `--ideas` wins and the report says so.
-- **Both idea flags govern the idea track only.** The suggestion track runs exactly
-  as it always does whether or not either is given.
-- `--dry-run` / `-n` — report the suggestions and the criteria they compose into,
-  then stop. No subagent, no branch, no PR, nothing marked. **It still judges**:
-  judging records verdicts about transcripts rather than claims that a fix shipped,
-  and criteria are only worth reporting if they came from confirmed findings. It
+- **Either idea flag suppresses the judge and suggestion tracks outright.** An
+  idea-only run reads no pending suggestions, judges no dirty bucket, composes and
+  dispatches no suggestion criterion, and marks nothing in the suggestions store.
+  Exactly one track runs in any run, because the same flag decides both. The report
+  says the suggestion track was **deliberately skipped because an idea flag was
+  given** — never that it was empty, which describes a run that looked.
+- **`--range` and `--regressed` are suggestion-track flags**, so an idea flag leaves
+  them nothing to apply to. That is reported, not an error.
+- `--dry-run` / `-n` — report whatever the run's track would produce, then stop. No
+  subagent, no branch, no PR, nothing marked. **On a suggestion run it still
+  judges**: judging records verdicts about transcripts rather than claims that a fix
+  shipped, and criteria are only worth reporting if they came from confirmed
+  findings; an idea-only run has nothing to judge. On an idea-only run it also
+  reports each selected slug's file scope, its stated dependencies, and the dispatch
+  schedule it would use. It
   also reports the ideas it would act on and the ledger tier it read them from — or,
   with no idea flag, that it read none and why. An unresolved `--idea` slug stops a
   dry run exactly as it stops a real one.
@@ -100,7 +120,12 @@ than searching the filesystem or guessing a path.
 
 ## Behavior
 
-**Reading pending work.** Suggestions carry a status flag — `pending` by default,
+**Reading pending work — only when no idea flag was given.** The suggestion read
+below is skipped entirely under `--idea`/`--ideas`, for the mirror image of the
+reason the idea ledger is not read without them: a run that reads a queue "just to
+report it" ends up composing from it.
+
+Suggestions carry a status flag — `pending` by default,
 `done` once applied, `skipped` when deliberately passed over, `dismissed` once a
 judge verdict found the rule had misread the session — keyed by
 `(bucket, suggestion id)`, both of which are stable, so a flag survives the
@@ -162,7 +187,9 @@ released, and the answer is to wait. The run stops on the first unresolved slug,
 dispatched: a silent skip turns "build these three" into a run that quietly builds
 two, and the missing one looks identical to one nobody asked for.
 
-**Judging the dirty buckets.** Before any criterion is composed, the **dirty**
+**Judging the dirty buckets.** On a suggestion run only — an idea flag skips this
+phase whole, leaving every dirty flag exactly as it was for the next suggestion run
+rather than clearing it. Before any suggestion criterion is composed, the **dirty**
 buckets in the range — complete and unjudged — are found and handed to
 [judge](judge.md):
 
@@ -286,6 +313,15 @@ or a file, and an idea is never added to that repo's suggestion brief. They argu
 from different evidence, and a group carrying both can defend itself with only one
 of them.
 
+Each idea criterion also records the two fields the dispatch phase schedules from:
+its **file scope** — the paths it is expected to create or change, with an
+*undetermined* scope treated as the widest one rather than an empty one — and its
+**stated dependencies**, meaning whether the idea's own rationale says it consumes
+design tokens, a control primitive, a shared component, an API or CLI surface that
+another selected idea introduces. Only a dependency the idea states counts; an
+inferred one is a guess, and the sign-off covers a guess about sequencing no more
+than a guess about design. Ideas in different repos never share a scope.
+
 **Claiming an idea before it is built.** Every idea dispatch claims the idea in the
 ledger *first*, before any code is written:
 
@@ -311,28 +347,50 @@ slug under the same branch with `--pr`: claiming is idempotent for the same hold
 and a claim carrying a PR never expires — the six-hour TTL is sized to *writing* the
 change, while review is the long part of an idea's life.
 
-**Running the task.** The two tracks dispatch on **different units**. Suggestion
-criteria are grouped by the repo they land in and **one fresh subagent per repo**
-runs `/task <pass-through flags> <criteria>` — most runs are one repo and so one
-subagent, and more than one exists because the ladder moves work *between*
-checkouts, a rung-1 rule that failed in one repo's `AGENTS.md` often being answered
-by a rung-2 step in a command living in another. Idea criteria dispatch **one fresh
-subagent per idea**: one idea, one branch, one PR, never batched with each other and
-never merged into a repo's suggestion brief. A repo appearing in both tracks
-therefore gets a suggestion subagent *and* one subagent per idea landing in it, which
-is the intended shape rather than duplication.
+**Running the task.** The two tracks dispatch on **different units**, and only the
+one this run is on dispatches at all. Suggestion criteria are grouped by the repo
+they land in and **one fresh subagent per repo** runs
+`/task <pass-through flags> <criteria>`, **one at a time with each result read
+before the next** — most runs are one repo and so one subagent, and more than one
+exists because the ladder moves work *between* checkouts, a rung-1 rule that failed
+in one repo's `AGENTS.md` often being answered by a rung-2 step in a command living
+in another, so those briefs can reference each other.
 
-Every dispatch, across both tracks, **runs one at a time with its result read before
-the next** — they open separate PRs, but a later one's criteria may reference what
-an earlier one did, and two `/task` runs racing in one checkout is what this has
-always prevented. The suggestion track goes first, since an idea building on a
-just-landed suggestion fix is likelier than the reverse. Each subagent is told the
-absolute checkout path to work in. `/task` owns the workspace, verification, commits
-and the PR from that point; `/improve` creates no worktree and makes no edits of its
-own.
+Idea criteria dispatch **one fresh subagent per idea**: one idea, one branch, one PR,
+never batched with each other and never merged into a repo's suggestion brief.
+**Ideas that do not conflict are dispatched concurrently**, a wave at a time with
+every result read before the next wave opens; ideas that genuinely depend on one
+another run in order, and **a dependent idea branches off the branch it depends on**
+rather than off `main`, dispatched only once that branch exists, with its brief
+naming that base and targeting its PR there. Independence is not a reason to merge
+two ideas into one dispatch — it is the reason they can run side by side.
 
-**Flagging what shipped.** Only the criteria the subagents report as implemented
-are marked:
+**Two things, and only two, make one idea wait for another**: their file scopes
+overlap inside one repo, or one's rationale states that it consumes what the other
+introduces. Sharing a repo, sounding related, or coming from one `/ideate` run are
+none of them. **A clean textual merge is never evidence of independence** — a stacked
+idea merges without a conflict marker while referencing a token, prop or endpoint
+that does not exist on its base, so the break surfaces at build time rather than in
+the diff, which is why the test reads the rationale rather than probing the diffs.
+Where the two tests disagree the stricter wins, and where it is unclear the run
+serializes: an unnecessary wait costs one run's latency, a wrong parallel costs two
+branches whose merge order changes the result.
+
+**Every concurrent subagent gets an explicit lane** — the paths it owns and may
+write, and the paths it must not touch, which are the other in-flight ideas' scopes
+named as such. A subagent needing a file outside its lane stops and reports rather
+than taking it; it cannot see the others, so a lane is the only thing keeping two
+live branches from colliding. Same-repo concurrency is safe only because `/task`
+cuts a **fresh worktree per run** — which is exactly what `--here` removes, so a
+pass-through `--here` forces serial dispatch regardless of scope, and the report says
+so. Each subagent is told the absolute checkout path to work in. `/task` owns the
+workspace, verification, commits and the PR from that point; `/improve` creates no
+worktree and makes no edits of its own.
+
+**Flagging what shipped.** On an idea-only run this step does not run at all —
+nothing was read from the suggestions store, so nothing is written back to it, and
+no bucket's dirty flag moves. On a suggestion run, only the criteria the subagents
+report as implemented are marked:
 
 ```sh
 LOG_DIR="<logDir>" pnpm --filter server suggestions mark -r <bucket> -i <id>[,<id>...] -s done -n "<PR url>"
@@ -396,13 +454,18 @@ LOG_DIR="<logDir>" pnpm --filter server suggestions mark -r <bucket> -i <id> -s 
   -n "attempt 2 (rung 1 → rung 3); <new PR url> supersedes <prior PR url>"
 ```
 
-**Closing the run.** The final report names the range read, which buckets were
-judged with how many confirmed versus dismissed, how many suggestions were pending,
-how many were regressed, **whether the idea track ran at all** — with no idea flag,
-that no ideas were read and which flags read them; with one, how many were selected,
-by which flag and from which ledger tier — any defective rule dispatched to
-claude-proxy, the criteria that shipped, the PR number/URL **for each repo on the
-suggestion track and for each idea on the idea track, listed separately**, what was
+**Closing the run.** The report says **which track ran, and why the other did not**.
+A suggestion run names the range read, which buckets were judged with how many
+confirmed versus dismissed, how many suggestions were pending, how many were
+regressed, that no ideas were read and which flags would have read them, any
+defective rule dispatched to claude-proxy, the criteria that shipped and the PR
+number/URL for each repo. An idea-only run says the judge and suggestion tracks were
+**deliberately skipped because an idea flag was given** — never that no suggestions
+were pending or that nothing was judged, which are the sentences a reader mistakes
+for an empty backlog — then how many ideas were selected, by which flag and from
+which ledger tier, and **the schedule they ran on**: which went out together, which
+waited on which and off what base, and why anything was serialized. Either report
+lists the PR number/URL **for each idea on the idea track separately**, what was
 marked `done` or `skipped`, which ideas were marked `shipped` and against which PR
 each, and what stays `pending` or `accepted` with why. **On the idea track it also
 says what happened to each claim** — which slugs were claimed and under which branch,
