@@ -33,6 +33,7 @@
 | `trim` | Decide whether the current conversation is safe to compact, then provide focused instructions for Claude Code's built-in `/compact`. |
 | `cp` | Compose another command's invocation from a prompt and copy it to the clipboard, ready to paste into another agent — without running it or printing it. Every copy is also stashed under `~/.claude`, so `--again` puts it back after a later copy clobbers it. |
 | `teach` | Learn the real name for something you can only describe — one question at a time, until you can say it back as a single Simplified Technical English sentence, printed and copied. |
+| `lookup` | Read the hosted concept store **before** a term is named — a read-only gate answering **term hit** (the stored sentence, verbatim, then stop), **field hit** (neighbours as naming context), or **miss** (the only outcome that authorizes a `teach`). |
 | `diagram` | Draw the architecture a change **produces** as one Mermaid diagram and attach it to that change's PR — an open PR's body, a comment, or a file. Opens no PR and touches no code; composes into `task` with `--add`. |
 
 ## Use cases
@@ -95,6 +96,7 @@ skill syntax—for example, `$task -h ...`, `$review -t 42`, or `$mc -t feat/sea
 | `cp` | `/cp --again` | `--again` / `-a` — restore the last copy from `~/.claude/cp-last.txt` to the clipboard. No composing, no reading, no tokens spent on the text. A trailing slot number reaches an older ring entry (`/cp --again 2` → `cp-last.2.txt`, five deep). |
 | `teach` | `/teach the thing where scroll goes past the end and springs back` | Default — name the technique from a matching glossary skill, ask one question at a time until you can say it back, then print **and** copy one ≤25-word Simplified Technical English sentence. Reads no files. |
 | `teach` | `/teach -h the bouncy thing our modal does` | `--here` / `-h` — read the current repo so the sentence can name the real component and the pattern already in use. |
+| `lookup` | `/lookup -f "UI motion" rubber-banding` | `--field` / `-f <field>` scopes the neighbours returned on a field hit; `--limit` / `-l <n>` caps how many are listed (default 10). Trailing text is the term or description. Read-only: it never writes to the store. |
 | `diagram` | `/diagram` | Default — diagram the current branch's open PR and update the `<!-- diagram:start -->` block in its body. A re-run replaces that block; the rest of the body is untouched. With no PR yet, the block is handed back unattached rather than a PR being opened. |
 | `diagram` | `/diagram -t 42 the ingest path` | `--target` / `-t <PR-number-or-branch>` — diagram PR #42 instead of the current branch's. Trailing text is a focus hint naming the layer or flow to draw. |
 | `diagram` | `/diagram -k sequence -c` | `--kind` / `-k <flowchart\|sequence\|class\|er\|state>` forces the diagram type; `--comment` / `-c` posts a PR comment instead of editing the body. `--out` / `-o <path>` writes to a Markdown file, `--dry-run` / `-n` renders it in the reply and changes nothing. |

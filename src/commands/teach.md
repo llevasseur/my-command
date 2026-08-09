@@ -36,12 +36,27 @@ Every word this command emits is [ASD-STE100](https://asd-ste100.org) Simplified
 
 ## Step 1 — Place the field
 
-Decide which field the description belongs to — domain modeling, UI motion, visual design, a business term, a workflow, something else. The field selects the source in Step 2 and nothing more. Say which field you picked in one clause, so a wrong guess is correctable before the grill starts.
+Decide which field the description belongs to — domain modeling, UI motion, visual design, a business term, a workflow, something else. The field selects the corpus neighbours in Step 1.5 and the source in Step 2, and nothing more. Say which field you picked in one clause, so a wrong guess is correctable before the grill starts.
+
+## Step 1.5 — Check the corpus before you name anything
+
+**Run `/lookup` on the description, with `--field` set to the field Step 1 just placed it in.** The corpus already holds every term this command has ever settled, and until this step existed nothing read it back — so a run re-derived a term whether or not one was already stored. This step **replaces that unconditional re-derivation**, and it belongs here, before the naming step: after Step 2 the term has already been invented and the duplicate already exists.
+
+The gate has three outcomes, and each one decides what the rest of the run does:
+
+- **An exact term hit** — the concept is already taught. Print the stored sentence **verbatim**, copy it as Step 6 does, say when it was saved, and **stop the run there**. Never re-derive it, never improve it, and never save a second version. Two wordings for one concept is what this command's one-term-per-concept rule forbids, and re-deriving a stored sentence is how it happens.
+- **A field hit with no term hit** — carry the neighbours into Step 2 as a **naming source, not as an answer**. None of them is the term.
+- **A miss** — the corpus holds nothing for this. A miss is the only outcome that authorizes the rest of this run.
+
+**An unreachable store is a miss with a stated cause, not a stop.** An unset variable, an error status, or a network failure each cost the check and nothing else, on the same terms Step 7 already sets for the save side. The run carries on to Step 2 and says in one line why the corpus was not read — an unread corpus is where a duplicate term comes from, so the cause is the reader's only warning.
+
+`/lookup` writes nothing, so nothing in this step changes what Step 7 later saves.
 
 ## Step 2 — Name it, skills first
 
 Resolve the description to the term a practitioner would use. Take the first source that covers the field:
 
+0. **The neighbours Step 1.5 returned**, when it reported a field hit. A stored concept in the same field is what an installed skill covering the field is trying to approximate, so read them first — for the vocabulary the corpus already uses, never as a term to adopt whole.
 1. **Installed skills.** `animation-vocabulary` is a reverse-lookup glossary for web motion and answers "the bouncy thing when a popover opens" directly. `domain-modeling` owns ubiquitous language and domain terminology. `apple-design` and `emil-design-eng` carry design and interaction vocabulary. Load a matching one with the `Skill` tool.
 2. **The repo**, under `--here` only — a codebase's own name for a thing beats the general one, and `AGENTS.md` or `docs/` may already fix the vocabulary.
 3. **Model knowledge**, when no skill covers the field.
@@ -245,6 +260,7 @@ Confirm a device is done by teaching one throwaway concept and checking that the
 ## Notes
 
 - **The sentence is the product.** Reaching it in fewer questions is good; reaching something longer, hedged, or more precise than the user can repeat from memory is a failed run.
-- **A device with the variables unset still teaches.** It just saves nothing, and the run says so in one line. That is the intended behaviour, not a bug to work around.
+- **A device with the variables unset still teaches.** It just reads nothing in Step 1.5 and saves nothing in Step 7, and the run says so in one line each time. That is the intended behaviour, not a bug to work around.
+- **A term the corpus already holds ends the run at Step 1.5.** The stored sentence is the deliverable, so returning it verbatim is a complete run rather than a short one.
 - A sentence the user cannot say back is not shorter than the handwave they arrived with, and the run has bought them nothing.
 - Never grill for detail an implementer would need. The user is learning what to ask for, not writing a spec.

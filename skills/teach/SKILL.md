@@ -56,10 +56,43 @@ Decide which field the description belongs to — domain modeling, UI motion,
 visual design, a business term, a workflow, something else. Say which field you
 picked in one clause, so a wrong guess is correctable before the questions start.
 
+## 1.5 Check the corpus before you name anything
+
+**Run the lookup workflow on the description, with the field step 1 just placed
+it in.** The corpus already holds every term this workflow has ever settled, and
+until this step existed nothing read it back — so a run derived a term whether or
+not one was already stored. This step **replaces that unconditional
+re-derivation**, and it belongs here, before the naming step: after step 2 the
+term is already invented and the duplicate already exists.
+
+The gate has three outcomes, and each decides what the rest of the run does:
+
+- **An exact term hit** — the concept is already taught. Print the stored
+  sentence **word for word**, copy it as step 6 does, say when it was saved, and
+  **stop the run there**. Never derive it again, never improve it, and never save
+  a second version. Two wordings for one concept is what the one-term-per-concept
+  rule forbids, and deriving a stored sentence again is how it happens.
+- **A field hit with no term hit** — carry the neighbours into step 2 as a
+  **naming source, not as an answer**. None of them is the term.
+- **A miss** — the corpus holds nothing for this. A miss is the only outcome that
+  allows the rest of this run.
+
+**An unreachable store is a miss with a stated cause, not a stop.** An unset
+variable, an error status, or a network failure each cost the check and nothing
+else, on the same terms step 7 sets for the save side. The run carries on to step
+2 and states in one line why the corpus was not read — an unread corpus is where
+a duplicate term comes from, so the cause is the reader's only warning.
+
+The lookup workflow writes nothing, so nothing here changes what step 7 saves.
+
 ## 2. Name it, glossaries first
 
 Take the first source that covers the field:
 
+0. **The neighbours step 1.5 returned**, when it reported a field hit. A stored
+   concept in the same field is what an installed skill for that field is trying
+   to approximate, so read them first — for the vocabulary the corpus already
+   uses, never as a term to adopt whole.
 1. **An installed skill for that field.** A reverse-lookup glossary of motion and
    UI terms answers "the bouncy thing when a popover opens" directly. A domain
    modeling skill owns ubiquitous language. Design skills carry interaction
@@ -407,5 +440,8 @@ return, then close in text alone.
   from memory is a failed run.
 - A sentence the user cannot say back is no shorter than the handwave they
   arrived with, and the run bought them nothing.
+- **A term the corpus already holds ends the run at step 1.5.** The stored
+  sentence is the deliverable, so returning it word for word is a complete run
+  rather than a short one.
 - Never ask for detail an implementer would need. The user is learning what to
   ask for, not writing a specification.
