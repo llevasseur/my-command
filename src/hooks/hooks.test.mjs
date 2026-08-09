@@ -470,7 +470,35 @@ test('bash shapes: each failing form is refused with the working one named', () 
   refuses('grep -r --include=*.ts foo .', /rg -g '\*\.ts'/);
   refuses('pnpm start > srv.log 2>&1 & sleep 12; grep -i error srv.log', /run_in_background/);
   refuses('cat > /tmp/scratch.sh <<EOF\necho hi\nEOF', /`Write` tool/);
-  refuses('ls -la "$CLAUDE_JOB_DIR/tmp"', /only writable root/, join(dir, '.claude', 'worktrees', 'feat-x'));
+});
+
+test('the job directory is reachable from a worktree, on the first call and the hundredth', () => {
+  const dir = scratch();
+  const worktree = join(dir, '.claude', 'worktrees', 'feat-x');
+  const state = scratch();
+  // The harness tells a job to keep its scratch under $CLAUDE_JOB_DIR/tmp, so a guard that
+  // refused exactly that path left no path at all — and under one-denial-per-subject the same
+  // command was allowed early in a run and refused later.
+  for (const command of [
+    'ls -la "$CLAUDE_JOB_DIR/tmp"',
+    'cp src/my-command.ts "$CLAUDE_JOB_DIR/tmp/my-command.ts.bak"',
+    'echo note > "$CLAUDE_JOB_DIR/tmp/note.txt"',
+  ]) {
+    for (const attempt of [1, 2]) {
+      const answer = hook(
+        PRE_TOOL_USE,
+        {
+          session_id: 'jobdir',
+          transcript_path: transcript(['prompt']),
+          cwd: worktree,
+          tool_name: 'Bash',
+          tool_input: { command },
+        },
+        state,
+      );
+      assert.equal(denied(answer), false, `attempt ${attempt} should allow: ${command}`);
+    }
+  }
 });
 
 test('bash shapes: the working forms all pass', () => {

@@ -12,13 +12,15 @@
 //   unmatched glob    — an unquoted glob matching nothing, which zsh aborts the command on
 //   foreground sleep  — a wait the harness refuses, taking the probe chained to it down too
 //   heredoc write     — composing a file in the shell where the Write tool does it directly
-//   job dir reach     — the job directory addressed from inside an isolated worktree
+//
+// A scratch write under `$CLAUDE_JOB_DIR` from a worktree is deliberately *not* here: see
+// "The job directory is not a gate" in the spec.
 //
 // They share a hook because they decide from the same transcript; parsing it more than once
 // would let the answers disagree.
 import { existsSync, statSync } from 'node:fs';
 import { basename, isAbsolute, resolve } from 'node:path';
-import { dumpedFiles, foregroundSleep, heredocWrite, jobDirFromWorktree, unmatchedGlob } from './lib/bash-shapes.mjs';
+import { dumpedFiles, foregroundSleep, heredocWrite, unmatchedGlob } from './lib/bash-shapes.mjs';
 import { deny, guard, readEvent } from './lib/io.mjs';
 import { isReadOnly } from './lib/read-only.mjs';
 import { alreadyDenied, clearGate } from './lib/state.mjs';
@@ -142,16 +144,6 @@ function badShape(event, input, session) {
     return true;
   }
 
-  if (jobDirFromWorktree(command, cwd) && !alreadyDenied(session, 'jobdir', 'reach')) {
-    deny(
-      `This command addresses \`$CLAUDE_JOB_DIR\` from inside the isolated worktree at ${cwd}. ` +
-        `The worktree is the only writable root here, so the guard refuses the call however the ` +
-        `path is spelled — knowing the job directory's path is not what is missing.\n\n` +
-        `Put the file inside this worktree and use the \`Write\` tool to create it. A scratch ` +
-        `script, a PR body, a note to yourself: all of them belong under ${cwd}.`,
-    );
-    return true;
-  }
   return false;
 }
 

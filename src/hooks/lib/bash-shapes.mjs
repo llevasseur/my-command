@@ -1,9 +1,9 @@
 // Recognizing the Bash command shapes that fail for a known reason.
 //
 // Each function here answers about the command's *shape*, from evidence on this device —
-// a glob that matches nothing, a `sleep` in the foreground, a heredoc composing a file,
-// a path that belongs to another directory tree. None of them guesses at intent: every
-// shape below either fails outright when it runs or is refused by the harness.
+// a glob that matches nothing, a `sleep` in the foreground, a heredoc composing a file.
+// None of them guesses at intent: every shape below either fails outright when it runs or
+// is refused by the harness.
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 
@@ -141,18 +141,6 @@ export function foregroundSleep(command, background) {
 export function heredocWrite(command) {
   if (!/<<-?\s*["']?[A-Za-z_]\w*["']?/.test(command)) return false;
   return /(^|[^0-9<>&])>{1,2}[^>]/.test(command) || /\btee\b/.test(command);
-}
-
-/**
- * Whether the command reaches for the job directory from inside an isolated worktree. The
- * worktree is the only writable root there, so the guard refuses the call however the path
- * is spelled — knowing the path was never the gap.
- * @param {string} command @param {string} cwd
- * @returns {boolean}
- */
-export function jobDirFromWorktree(command, cwd) {
-  if (!command.includes('CLAUDE_JOB_DIR')) return false;
-  return cwd.includes(`/.claude/worktrees/`);
 }
 
 /**

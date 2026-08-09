@@ -7,6 +7,7 @@
 import { realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { ToolkitError } from './lib/proc.mjs';
+import { GATED_VERBS, requireArmed } from './lib/require-armed.mjs';
 import * as commit from './verbs/commit.mjs';
 import * as doctor from './verbs/doctor.mjs';
 import * as pr from './verbs/pr.mjs';
@@ -40,7 +41,7 @@ const VERBS = {
 // below eats the token after a switch — `commit --compact a.md b.md` silently drops
 // a.md from the commit, which is precisely the class of mistake this CLI exists to stop.
 // A switch that wants an explicit value can still be spelled `--compact=false`.
-const SWITCHES = new Set(['help', 'compact', 'draft', 'retitle', 'force', 'bootstrap', 'existing']);
+const SWITCHES = new Set(['help', 'compact', 'draft', 'retitle', 'force', 'bootstrap', 'existing', 'unarmed', 'diff']);
 
 /**
  * @param {string[]} argv
@@ -100,7 +101,13 @@ function helpText() {
     'Global options:',
     '  --cwd <path>   Run against a different directory.',
     '  --compact      Print single-line JSON instead of indented.',
+    '  --unarmed      Run a gated verb on a device whose workflow gates are not armed.',
     "  --help, -h     Show this, or a verb's options with `<verb> --help`.",
+    '',
+    `Gated verbs (${[...GATED_VERBS].join(', ')}) refuse to run until the workflow gates are`,
+    'registered, since a run started without them can end with no outcome recorded.',
+    '`--unarmed` or MY_COMMAND_REQUIRE_HOOKS=0 is the deliberate escape for CI and for a',
+    'fresh clone; MY_COMMAND_HOOKS=0 already covers a device with the gates switched off.',
     '',
     'Exit codes: 0 success · 1 the verb failed · 2 bad usage.',
   ].join('\n');
@@ -131,6 +138,8 @@ export function main(argv) {
   const indent = flags.compact ? undefined : 2;
 
   try {
+    // Before the verb, not after: an unarmed device must not be able to start a run at all.
+    requireArmed(verb, flags);
     const result = entry.run({ verb, positionals, flags, cwd });
     process.stdout.write(`${JSON.stringify(result, null, indent)}\n`);
     // Verbs that report a verdict set `pass`; surface it as the exit code so a caller

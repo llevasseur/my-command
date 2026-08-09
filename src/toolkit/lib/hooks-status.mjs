@@ -7,7 +7,9 @@
 // harness reads, and the link the registration points at.
 import { existsSync, readFileSync, readlinkSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { isAbsolute, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { codexDeviceRoot, deviceRoot } from './paths.mjs';
 
 /**
  * Expand a leading `~` and resolve to an absolute path, so a hook registered as
@@ -173,4 +175,48 @@ export function hooksStatus(opts) {
         : `${missing.length} of ${gates.length} gate(s) are not registered in ${settingsPath} — they are files nobody executes`,
     hint: armed && current ? null : fix,
   };
+}
+
+/** This toolkit's own directory, symlinks resolved: `<checkout>/src/toolkit` or `<device>/toolkit`. */
+function toolkitDir() {
+  return real(dirname(dirname(fileURLToPath(import.meta.url))));
+}
+
+/**
+ * `hooksStatus` for the device this toolkit is running on, with every path resolved from
+ * where this file actually sits. The single detector — `doctor` reports it and the arming
+ * gate decides on it, so the two can never disagree about whether the gates are armed.
+ *
+ * `armed: null` means the question does not apply here rather than that the answer is no:
+ * a Codex install registers no Claude hooks on purpose, and a detector that throws has no
+ * verdict to give. Both cases pass the gate, matching the hooks' own fail-open rule.
+ * @returns {Record<string, any>}
+ */
+export function deviceHooksStatus() {
+  const here = toolkitDir();
+  const hooksSrc = join(dirname(here), 'hooks');
+  const claudeDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+
+  if (here === real(join(codexDeviceRoot(), 'toolkit'))) {
+    return {
+      armed: null,
+      surface: 'codex',
+      reason: 'a Codex install registers no Claude hooks; the gates are a Claude Code mechanism',
+      hooksSrc,
+    };
+  }
+
+  try {
+    return {
+      surface: 'claude',
+      ...hooksStatus({
+        fragmentPath: join(hooksSrc, 'settings-fragment.json'),
+        hooksSrc,
+        hooksDir: join(deviceRoot(), 'hooks'),
+        settingsPath: join(claudeDir, 'settings.json'),
+      }),
+    };
+  } catch (err) {
+    return { armed: null, surface: 'claude', error: err instanceof Error ? err.message : String(err), hooksSrc };
+  }
 }

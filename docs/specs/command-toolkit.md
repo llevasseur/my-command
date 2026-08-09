@@ -24,7 +24,7 @@ noise, what a PR description should say, or whether a failure is worth fixing.
 | Verb | Answers |
 |------|---------|
 | `state` | branch, base, commits, tracked vs untracked changes, `hasWork` |
-| `scope` | what a branch changed: the ref to diff, its commits, its files |
+| `scope` | what a branch changed: the ref to diff, its commits, its files, and with `--diff` the hunks themselves |
 | `verify` | which of the repo's gates ran and passed; bounded output only on failure |
 | `commit` | stage an explicit path list and commit, with guards |
 | `pr` | push, then create or update the branch's PR |
@@ -41,6 +41,14 @@ replaces `$(git merge-base origin/main HEAD)`, `prs` replaces
 `gh pr list … | jq …`, and `doctor.checkout` replaces the nest of three command
 substitutions `/sync` used to derive its clone path with. See
 [Workflow gates](workflow-gates.md).
+
+`scope --diff` returns that branch's diff **content** in the same call, split into
+`diff.committed` and `diff.workingTree` and annotated per line — `<sign><line number>\t<text>`,
+the number being the line's own file. That closes the loop the verb previously left open:
+`scope` handed back `files`, and the caller then went and diffed, once per path. There is
+nothing left to fetch, so the per-path loop has no remaining excuse. Output is capped by
+`--diff-limit` (200,000 characters by default) and a file past the cap is named in
+`diff.omitted` rather than cut in half, since a truncated hunk reads as a complete one.
 
 There is deliberately no comment-scoping verb. `/clean` needs the surrounding
 branch diff to judge comments; pre-filtering would remove that context.
