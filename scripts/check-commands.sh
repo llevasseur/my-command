@@ -306,11 +306,9 @@ for f in src/commands/task.md src/commands/task-bootstrap.md src/commands/review
   fi
 done
 
-# 12. The npx wizard arms the gates, not just installs the toolkit. This is invariant 10 for
-# the other install surface: the gate bundle shipped whole and complete while the wizard had no
-# hooks step at all, so every device installed with `npx @llevasseur/my-command` got the
-# commands, got the toolkit, and got `hooks.armed: false` — the same "files nobody executes"
-# outcome, reached through the install path most users take.
+# 12. The npx wizard arms the gates, not just installs the toolkit — invariant 10 for the
+# other install surface. The bundle shipped whole while the wizard had no hooks step at all,
+# so every `npx @llevasseur/my-command` device reported `hooks.armed: false`.
 if ! grep -q 'installHooks()' src/my-command.ts; then
   echo "::error::src/my-command.ts no longer calls installHooks(); an npx install would ship the commands with the gates inert."
   fail=1

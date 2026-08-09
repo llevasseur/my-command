@@ -387,18 +387,16 @@ interface HooksResult {
 // silently: the harness cannot run the script, and a hook that fails to run allows the call.
 const HOOK_SCRIPTS = ['pre-tool-use.mjs', 'stop.mjs', 'install-hooks.mjs'];
 
-// Install the workflow gates and register them, so an npx install ends up with the gates
-// armed rather than with hook scripts nobody executes. Both halves are required: shipping
-// the scripts does nothing, because the harness runs only what settings.json registers.
+// Install the workflow gates and register them. Both halves are required: shipping the
+// scripts does nothing, because the harness runs only what settings.json registers.
 //
-// COPIED, not symlinked the way scripts/install-personal.sh does it. That script links back
-// into a git clone on purpose, so `git pull` updates the gates — but npx runs from an
-// ephemeral cache directory that is cleaned up after the wizard exits, so the same link
-// would dangle and every gate would silently disappear.
+// COPIED, not symlinked the way scripts/install-personal.sh does it — npx runs from an
+// ephemeral cache directory cleaned up after the wizard exits, so the same link would
+// dangle and every gate would silently disappear.
 async function installHooks(
   root = deviceRoot(),
-  // deviceRoot() is `<config dir>/my-command`, so the settings file the harness reads sits
-  // one level up. Taking it as a parameter is what lets a test install to a scratch root.
+  // deviceRoot() is `<config dir>/my-command`, so the harness's settings file sits one
+  // level up. A parameter, so a test can install to a scratch root.
   settingsPath = join(dirname(root), 'settings.json'),
 ): Promise<HooksResult> {
   const dest = join(root, 'hooks');
@@ -411,10 +409,9 @@ async function installHooks(
     const symlinked = Boolean(lstatSync(dest, { throwIfNoEntry: false })?.isSymbolicLink());
     if (!symlinked) {
       mkdirSync(dest, { recursive: true });
-      // Overwritten in place rather than replaced wholesale the way installToolkit() does
-      // it: this directory can also hold a hook the user installed and registered
-      // independently, and deleting that would aim their registration at a path this
-      // install does not provide.
+      // Overwritten in place, never replaced wholesale the way installToolkit() does it:
+      // this directory can hold a hook the user registered independently, and deleting
+      // that aims their registration at a path this install does not provide.
       // Tests belong to CI, not the device — the same rule installToolkit() applies.
       cpSync(HOOKS_SRC, dest, { recursive: true, force: true, filter: (src) => !src.endsWith('.test.mjs') });
       for (const script of HOOK_SCRIPTS) {
@@ -424,8 +421,7 @@ async function installHooks(
     }
 
     // Register through the copy that just landed, so the entries name the scripts the
-    // harness will actually run and the merge resolves its fragment from beside itself.
-    // Imported rather than shelled out: one process, and a real return value to report.
+    // harness will actually run. Imported rather than shelled out, for a value to report.
     const installer = join(dest, 'install-hooks.mjs');
     const mod = (await import(pathToFileURL(installer).href)) as {
       install: (opts: { hooksDir: string; settingsPath: string; uninstall: boolean }) => {
@@ -526,15 +522,12 @@ async function main() {
   } else if (choice === '3') {
     await installCodexSkills();
     reportToolkit(installToolkit(deviceRoot('codex')));
-    // No gates on the Codex path, deliberately. Codex does have a hook engine, but it is a
-    // different mechanism end to end: opt-in behind a `[features]` flag in
-    // ~/.codex/config.toml, configured as TOML or hooks.json rather than settings.json,
-    // gated by a per-hook trust review, and firing PreToolUse for the shell tool only —
-    // never for the Read/Edit/Write calls two of our three read gates judge. Our scripts
-    // also speak Claude Code's protocol (`stop_hook_active`, `{"decision":"block"}` on
-    // stdout) and parse a Claude transcript. So installing them here would either write
-    // Claude settings from a Codex install, or leave a hooks directory under ~/.codex that
-    // nothing would ever execute. A Codex-native port is its own piece of work.
+    // No gates on the Codex path, deliberately. Codex's hook engine is a different
+    // mechanism end to end: opt-in behind a `[features]` flag in ~/.codex/config.toml,
+    // configured as TOML rather than settings.json, and firing PreToolUse for the shell
+    // tool only — never for the Read/Edit/Write calls two of these gates judge. These
+    // scripts also speak Claude Code's protocol and parse a Claude transcript. A
+    // Codex-native port is its own piece of work.
   } else {
     console.log('Cancelled. Nothing changed.');
   }

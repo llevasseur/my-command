@@ -1,9 +1,7 @@
-// The wizard's hooks step. Its whole reason to exist is the negative case it closes: the
-// gate bundle shipped complete, and every device installed with `npx @llevasseur/my-command`
-// still reported `hooks.armed: false`, because the wizard installed the commands and the
-// toolkit and nothing else. So these tests assert the two halves that make a gate real —
-// executable scripts on the device, and a registration in the settings file the harness
-// reads — never against the real ~/.claude.
+// The wizard's hooks step, which closes a device installed by npx reporting
+// `hooks.armed: false`. These assert the two halves that make a gate real — executable
+// scripts on the device, and a registration in the settings file the harness reads —
+// never against the real ~/.claude.
 import assert from 'node:assert/strict';
 import {
   existsSync,

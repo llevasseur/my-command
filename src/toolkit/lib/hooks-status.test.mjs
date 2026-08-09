@@ -135,9 +135,8 @@ test('a stale real directory is armed but flagged as not tracking the checkout',
   assert.match(status.hint, /install-personal\.sh/);
 });
 
-// The hint used to be a hardcoded `bash <…>/scripts/install-personal.sh`. That script only
-// exists inside a git checkout, so the device the wizard installs — the one most users have —
-// was told to run a path that is not there. The fix has to follow the install surface.
+// install-personal.sh exists only inside a git checkout, so a hardcoded hint told the
+// device the wizard installs to run a path that is not there.
 test('a wizard-installed device is told to re-run the merge it actually has', () => {
   const d = wizardDevice();
 

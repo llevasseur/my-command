@@ -76,10 +76,9 @@ function expected(fragmentPath, hooksDir) {
 }
 
 /**
- * The command that arms the gates on *this* device. Which one it is depends on how the
- * device was installed, and naming the wrong one is worse than naming none: the hint used
- * to be a hardcoded `bash <…>/scripts/install-personal.sh`, which only exists inside a git
- * checkout — on a device installed by the npx wizard it pointed at a path that is not there.
+ * The command that arms the gates on *this* device, chosen by install surface. Naming the
+ * wrong one is worse than naming none: a hardcoded install-personal.sh points at a path a
+ * wizard-installed device does not have.
  * @param {string} hooksSrc @param {string} hooksDir
  * @returns {string}
  */
@@ -135,9 +134,8 @@ export function hooksStatus(opts) {
     }
   }
   const linked = linkTarget !== null && real(expand(linkTarget)) === real(hooksSrc);
-  // A wizard install copies the scripts to the device instead of linking, and then runs the
-  // toolkit from beside them — so hooksDir *is* hooksSrc. That is current, not stale, and
-  // must not be reported as a copy `git pull` does not update.
+  // A wizard install copies rather than links and runs the toolkit from beside the copy, so
+  // hooksDir *is* hooksSrc. Current, not the stale copy the unlinked case reports.
   const current = linked || real(hooksDir) === real(hooksSrc);
 
   /** @type {{event: string, command: string, registered: boolean}[]} */
