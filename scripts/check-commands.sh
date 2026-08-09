@@ -403,10 +403,9 @@ if ! escaped="$(MY_COMMAND_REQUIRE_HOOKS=0 node src/toolkit/cli.mjs state --comp
   fail=1
 fi
 
-# 15. Every command carries the step marker rules. The marker is what makes a step attribution
-# exact rather than inferred from prose, and it is one include in every command precisely so a
-# command that gains a step gets it without an edit — a command that dropped the include would
-# go back to being read heuristically without anything saying so.
+# 15. The step marker makes a step attribution exact rather than inferred from prose. It is one
+# include in every command, including a stepless one, so a command that gains a step is marked
+# without an edit.
 for f in src/commands/*.md; do
   if ! grep -Fq 'include-block: shared/step-marker.md' "$f"; then
     echo "::error::$(basename "$f") dropped the shared/step-marker.md include; its steps would be anchored by guessing at its prose instead of by the marker (docs/specs/run-markers.md)."
@@ -414,8 +413,8 @@ for f in src/commands/*.md; do
   fi
 done
 
-# The return marker bounds a nested run's span, and it ships inside the closing turn rather than
-# as an include of its own — so assert the text, not a directive check 6 already makes.
+# The return marker ships inside the closing turn rather than as an include of its own, so this
+# asserts its text rather than a directive check 6 already makes.
 if ! grep -Fq 'RETURN /<command>' src/shared/closing-turn.md; then
   echo "::error::src/shared/closing-turn.md no longer states the return marker; a nested run's span would run on to the end of the transcript and be charged with its host's work (docs/specs/run-markers.md)."
   fail=1
