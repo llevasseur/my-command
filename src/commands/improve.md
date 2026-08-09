@@ -99,28 +99,31 @@ A suggestion is counted from transcripts. An **idea** is invented — [ideate](i
 
 **Do this subsection only when `--idea` or `--ideas` was given.** With neither flag, read no ledger tier, compose no idea criterion, and carry one line to the final report: that no ideas were read because neither flag was given, and that `--idea <slug>` or `--ideas` is how to build them. Do not peek at the ledger "just to report the count" — a run that reads it anyway will end up acting on what it found, which is the behavior these flags exist to end.
 
-When one of them was given, read the ones signed off for this repo:
+When one of them was given, read the ones that are signed off **and free to build** for this repo:
 
 ```sh
-LOG_DIR="<logDir>" pnpm --filter server ideas list -s accepted --repo <slug> --json
+LOG_DIR="<logDir>" pnpm --filter server ideas list --available --repo <slug> --json
 ```
 
 - `<slug>` is the repo's git remote slug (`git remote get-url origin`), never a checkout path — the ideas store is device-wide and shared across every repo on the machine.
 - **Resolve the store through the same waterfall `/ideate` uses**, and read every tier that exists: tier 1 is `<logDir>/ideas.json` through the CLI above, tier 2 the repo's own `docs/ideas.md`, tier 3 `~/.claude/ideas/<repo-slug>.md`. An absent `ideas` CLI means tier 1 is absent, not that the run is over — fall through and say so. A tier that exists and fails to read is a stop.
-- **Only `accepted` is read.** A `proposed` idea is invention nobody signed off on, and a `rejected` one is invention that was turned down; reading either would be exactly the padding this command forbids. `shipped` is already done. `--idea` does not relax this: naming a slug selects from the accepted set, it does not admit anything into it.
+- **`--available` is the read, and it replaces `-s accepted` rather than sitting beside it.** It returns `accepted` plus the ideas whose claim has expired, which is exactly the set a run may take. `-s accepted` alone can never recover an idea that a run picked up and then died holding, because that entry now reads `claimed` and no sweeper will ever put it back; `-s accepted,claimed` overcorrects and hands you one out from under a run that is still building it. `--available` is the one query that draws that line, which is why it is the read here and why `-s accepted` is gone.
+- **This does not loosen the sign-off rule, and a later reader must not "fix" it back.** Every row `--available` returns was `accepted` at some point — `claimed` is only reachable *from* `accepted`, so nothing without a human sign-off can appear in it. The rule that only signed-off ideas are built is unchanged; what changed is that an abandoned one comes back rather than staying stuck.
+- **Nothing else is read.** A `proposed` idea is invention nobody signed off on, and a `rejected` one is invention that was turned down; reading either would be exactly the padding this command forbids. `shipped` is already done, and a `claimed` idea with a live claim belongs to another run. `--idea` does not relax this: naming a slug selects from the available set, it does not admit anything into it.
 - **`--range` does not apply.** Ideas are not bucketed, so a narrowed range narrows the suggestions and leaves the accepted ideas alone. Say that in the report rather than implying the whole run was scoped.
 
 #### Selecting the named slugs
 
-**`ideas list` has no `--slug` filter**, so the read above is the whole accepted set for the repo and the selection happens here, in this command, against what it returned.
+**`ideas list` has no `--slug` filter**, so the read above is the whole available set for the repo and the selection happens here, in this command, against what it returned.
 
 - **`--ideas`** — take every row the read returned. That is the whole selection; there is nothing to match and nothing that can fail to match.
 - **`--idea <slug>[,...]`** — for each named slug, find the row whose slug matches it exactly. Case and punctuation are compared as written; a near-miss is a miss.
 
 **A named slug that does not resolve is a stop, never a silent skip.** Report the slug and *its actual state*, then stop the run before dispatching anything:
 
-- **Not on any ledger tier** — say the slug is unknown, and which tiers were read looking for it. Offer the accepted slugs that *are* on the ledger for this repo, so a typo is one glance from being fixed.
-- **On the ledger but not `accepted`** — say the slug and the status it actually holds (`proposed`, `rejected`, or `shipped`), because each means something different and only one of them is fixable here. `proposed` needs a human sign-off on the dashboard's Advice page; `rejected` was turned down and this command does not overturn that; `shipped` already landed and its PR is in the ledger note.
+- **Not on any ledger tier** — say the slug is unknown, and which tiers were read looking for it. Offer the available slugs that *are* on the ledger for this repo, so a typo is one glance from being fixed.
+- **On the ledger but not available** — say the slug and the status it actually holds (`proposed`, `rejected`, or `shipped`), because each means something different and only one of them is fixable here. `proposed` needs a human sign-off on the dashboard's Advice page; `rejected` was turned down and this command does not overturn that; `shipped` already landed and its PR is in the ledger note.
+- **On the ledger and `claimed` by a live holder** — say the slug, who holds it, and since when, and that another run is building it right now. This is the one case that is neither a mistake nor permanent: the claim expires, or the run holding it releases it, and the slug becomes available again. Do not build it anyway, and do not go looking for a way around the holder.
 
 Stopping is the point: a silent skip turns "build these three ideas" into a run that quietly builds two, and the missing one looks identical to one that was never asked for. Stop on the **first** unresolved slug rather than dispatching the resolvable ones first — a partial run is the outcome this rule exists to prevent, and nothing has been dispatched yet at this stage, so stopping here costs nothing.
 
@@ -255,10 +258,33 @@ The two tracks dispatch on **different units**, and that difference is the whole
 
 Dispatch **one fresh subagent per selected idea**, each running `/task` with that single idea's criterion.
 
+#### Claim the idea before the subagent starts
+
+**Claim it first, then dispatch.** The claim goes in before any code is written — not when the PR opens, which is what the ledger used to record and what let two runs build the same idea eleven minutes apart, one of them closed unmerged. Decide the branch name for this dispatch, claim under it, and only then dispatch:
+
+```sh
+LOG_DIR="<logDir>" pnpm --filter server ideas claim --slug <slug> --by <branch> --json
+```
+
+- **`--by` is the branch name this dispatch is about to cut**, in `/task`'s own `<type>/<kebab-summary>` shape, derived from the idea slug. Decide it here rather than letting the subagent derive its own, and put it in the brief so the subagent cuts *that* branch — the holder string has to name a branch that actually comes to exist.
+- **The branch name is the point, not a formality.** It is the one holder string a second run can check on its own: `git branch -r` either shows that branch or it does not, so a second run can tell a claim backed by real work from a claim left by a run that vanished, without asking anybody. A run id or a person's name tells that second run nothing — it can see the idea is held and has no way to find out whether the work still exists.
+- **A refusal means someone else has it. Skip that idea and say so.** `claim` refuses any entry that is not takeable and reports the status, plus `heldBy`, `since`, and `pr` when a live claim is what blocked it. Move to the next idea, and name the skip in the final report with the holder and since-when. Never build it anyway, and never retry under a different `--by` — a second holder string does not make the idea free, it just hides the collision the claim was there to surface.
+- **Only `accepted` (or a stale or already-yours `claimed`) can be claimed at all**, so a claim can never route around a human sign-off. That check lives in the ledger, not here.
+- **A `--dry-run` claims nothing.** The claim is a write, and a dry run marks nothing in either store — it stopped back at Step 4 and never reached this step. Report the ideas it *would* have claimed.
+
+#### Dispatch, then attach the PR to the claim
+
 - **One idea, one subagent, one branch, one PR.** Never batch two ideas into one dispatch, even when they land in the same repo — that is the merge this step exists to prevent, and it is invisible afterwards because the resulting PR looks like an ordinary multi-criterion one.
+- **Re-claim with the PR the moment the subagent returns one**, as the same `--by`:
+
+  ```sh
+  LOG_DIR="<logDir>" pnpm --filter server ideas claim --slug <slug> --by <branch> --pr "<PR url>" --json
+  ```
+
+  `claim` is idempotent for the same holder, so this attaches the PR rather than fighting the claim you already hold. It matters because a claim carrying a `pr` never goes stale: the six-hour expiry is sized to **writing** the change, while the long part of an idea's life is review, so a PR sitting in review for a day would otherwise expire its own claim and invite a second run to build what is already built.
 - **Never add an idea to a repo's suggestion dispatch**, and never add a suggestion to an idea's. A repo appearing in both tracks gets a suggestion subagent *and* one subagent per idea landing there; that is the intended shape, not duplication to be tidied away.
 - **Say in the brief that the criterion is idea-sourced**, that its evidence is the recorded human sign-off rather than counted sessions, and that this `/task` run covers this idea alone. The subagent must not widen the scope to neighbouring work it notices, because the sign-off covers the idea and nothing else.
-- If a run selected no ideas — no flag, or an empty accepted set — this track dispatches nothing at all.
+- If a run selected no ideas — no flag, or an empty available set — this track dispatches nothing at all, and claims nothing.
 
 ### Rules both tracks share
 
@@ -295,6 +321,7 @@ LOG_DIR="<logDir>" pnpm --filter server ideas mark --slug <slug> -s shipped -n "
 - **Only the ideas this run was asked for can be marked**, since they are the only ones it read. A run given no idea flag marks nothing in the ideas store at all.
 - **Never mark an idea in the suggestion store, or a suggestion in the ideas store.** Two evidence standards, one file each; a slug is not a `bucket/id` and the stores share nothing.
 - Never move an idea back to `proposed` or `rejected` here. This command implements advice; it does not overturn a human's sign-off.
+- **`shipped` keeps the claim, and that is deliberate** — it becomes the record of which branch built the thing, beside the PR in the note. This mark is unchanged by the claim protocol: it still means the work *landed*, which is what it went back to meaning once the claim took over the job of saying "somebody is building this". Every other mark drops the claim, which is what makes `-s accepted` the release below.
 
 ### Marking a suggestion that had already regressed
 
@@ -308,14 +335,15 @@ LOG_DIR="<logDir>" pnpm --filter server suggestions mark -r <bucket> -i <id> -s 
 - **Mark it `done` as normal.** That is what re-dates the claim, so a *third* failure surfaces as a fresh `regressed` row against this attempt rather than staying pinned to the one that already failed.
 - **The note carries the chain:** which attempt this is, the rung it climbed from and to, the new PR, and the prior PR it supersedes. Without it the next `/improve` can see that a fix failed but not that two already have.
 
-Report at the end: the range read, which buckets were judged and how many suggestions were confirmed versus dismissed, how many suggestions were pending, how many were regressed, **whether the idea track ran at all** — with no `--idea`/`--ideas`, say plainly that no ideas were read and name the flags that read them; with one, how many were selected, from which ledger tier, and by which flag — any defective rule dispatched to claude-proxy, the criteria that shipped, the PR number/URL **for each repo on the suggestion track and for each idea on the idea track, listed separately**, what was marked `done` or `skipped`, which ideas were marked `shipped` and against which PR each, and what stays `pending` or `accepted` with why. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
+Report at the end: the range read, which buckets were judged and how many suggestions were confirmed versus dismissed, how many suggestions were pending, how many were regressed, **whether the idea track ran at all** — with no `--idea`/`--ideas`, say plainly that no ideas were read and name the flags that read them; with one, how many were selected, from which ledger tier, and by which flag — any defective rule dispatched to claude-proxy, the criteria that shipped, the PR number/URL **for each repo on the suggestion track and for each idea on the idea track, listed separately**, what was marked `done` or `skipped`, which ideas were marked `shipped` and against which PR each, and what stays `pending` or `accepted` with why. **On the idea track, say what happened to each claim**: which slugs this run claimed and under which branch, which it skipped because another run held them — with the holder and since-when — and which it released on the way out. A skipped idea and an idea nobody selected look identical in a report that only counts what shipped, and the first one is coming back on the next run. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
 
 ## Notes
 
 - **Never invent an improvement.** If the pending set is thin, the run is small. Padding it with your own ideas breaks the trace from every change back to the sessions that justified it.
   - **An `accepted` idea is not an exception to that rule — it is a second way of satisfying it.** The rule is about the *trace*, not about who first thought of something: a suggestion traces to the sessions it was counted in, and an accepted idea traces to the recorded human sign-off that accepted it. Both are evidence somebody else produced, and neither is you deciding mid-run that something would be good. What stays forbidden is unchanged and is the whole of the rule's original force: an idea you thought of during *this* run, an idea still sitting at `proposed`, and an idea a human `rejected` are all invention with no trace, and none of them may become a criterion. If you want one considered, that is [ideate](ideate.md)'s job — propose it there and let it be signed off, rather than smuggling it in here.
 - **The idea track is opt-in, and its default is off.** `--idea <slug>` builds the named accepted ideas and `--ideas` builds all of them; with neither, the ledger is not read and the report says so. An accepted idea is a standing permission, not a work queue that drains into whichever run comes next — and a run that swept every accepted idea in automatically made the size of its own PR depend on how many sign-offs had accumulated since last time. The suggestion track is unaffected by both flags and always runs.
-- **A named slug that does not resolve stops the run.** Not on the ledger, or on it in any status other than `accepted`, and the stop names the slug and the status it actually holds. Skipping it instead would turn "build these three" into a run that silently built two, and the one that vanished is indistinguishable from one nobody asked for.
+- **A named slug that does not resolve stops the run.** Not on the ledger, or on it in a status the run may not take, and the stop names the slug and the status it actually holds. Skipping it instead would turn "build these three" into a run that silently built two, and the one that vanished is indistinguishable from one nobody asked for. A slug held by a **live claim** is the exception: it is a skip with a named holder, not a stop, because nothing is wrong and the answer is to wait rather than to fix anything.
+- **The claim is what stops two runs building one idea, and it only works if it goes in first.** `accepted` used to be the status an implementing run looked for right up until its PR existed, so two runs reading the ledger minutes apart both saw the same idea as free and both built it. `claimed` closes that window from the front — stamped before any code is written, carrying the branch as its holder, expiring after six hours so a dead run cannot park an idea forever, and pinned open by a `pr` once one exists because review outlasts the expiry. The ledger has enforced all of this from the start; what it could not do was make a run call it.
 - **One idea is one PR.** Each idea-sourced criterion gets its own subagent, its own `/task` and its own branch, and is never merged into the suggestion brief for the repo it lands in — the two argue from different evidence, so a PR carrying both can only be reviewed against one of them. It is also what lets Step 6 mark each shipped idea against the PR that actually built it.
 - **Marking is a claim about reality.** `done` means the change is in the PR the note points at, in every repo that change needed. Mark after the subagents return, never before they run — and a `done` is *dated*, so marking early doesn't just misreport this suggestion, it makes every session recorded afterwards read as evidence against a fix that wasn't there.
 - **Never fall back to a guessed claude-proxy path.** An unset `CLAUDE_PROXY_STORE` is a stop with an explanation, not a search.
@@ -327,6 +355,17 @@ Report at the end: the range read, which buckets were judged and how many sugges
 - **A defective rule now has an exit.** `suggestions defects` is what turns a pattern of dismissals into one criterion against `packages/core/src/suggestions.ts`, so a systematically-wrong rule gets fixed rather than dismissed again on every future run.
 
 ## Close the run in a text-only turn
+
+**Release every claim this run is still holding, in the same turn as the run's last piece of real work.** An idea this run claimed and did not ship is released explicitly rather than left to expire:
+
+```sh
+LOG_DIR="<logDir>" pnpm --filter server ideas mark --slug <slug> -s accepted
+```
+
+- **A mark to anything but `shipped` drops the claim**, which is what makes this the release rather than a status change with a side effect.
+- **It belongs here because every exit routes here.** The run that gives up, is refused, hits a failing gate, or is abandoned as wrong all arrive at this step, and each one is a run holding an idea it is not going to build. Hooking the release to the closing turn is what makes it happen on the exits nobody plans for, rather than only on the tidy one.
+- **The alternative is a six-hour hole.** Without the release the idea sits `claimed` until the TTL expires, and every `/improve` in that window reads it as taken and skips it — the work is not blocked by anything real, only by a claim whose holder went away.
+- **Release what did not ship, not what did.** An idea that landed a PR was already re-claimed with that PR and then marked `shipped`; releasing it would throw away the record of who built it. If the PR opened but the run stopped before marking, leave the claim alone — it carries the PR, so it will not expire, and the next run can see the work exists.
 
 <!-- include-block: shared/closing-turn.md -->
 **This step is never skipped and never delegated.** The run is over when this session sends **one message carrying text and zero tool calls** — not when the work lands. That is the mechanic, not a style preference: a run's outcome is recorded only from a message with no tool call in it, so a message carrying the report *and* a tool call is recorded as a decision mid-run, and a run whose last message is a tool call records no outcome at all. Make the last tool call, let it return, then reply with text alone.
