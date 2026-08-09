@@ -25,7 +25,7 @@ Two boundaries follow, and neither bends:
 
 ## Flags
 
-- `--range <spec>` / `-r <spec>` — the bucket window for **evidence source 2 (judge notes) only**. One bucket (`9`), a list (`2,3,9`), a span (`2-9`), or a mix (`2-4,9`). **Default: every bucket.** The other three sources are not bucketed and this flag does not narrow them; say so if you report a narrowed run.
+- `--range <spec>` / `-r <spec>` — the bucket window for **evidence source 2 (judge notes) only**. One bucket (`9`), a list (`2,3,9`), a span (`2-9`), or a mix (`2-4,9`). **Default: every bucket.** The other four sources are not bucketed and this flag does not narrow them; say so if you report a narrowed run.
 - `--dry-run` / `-n` — report the proposals and **write nothing at all**, not even the `proposed` rows. A dry run resolves the ledger tier and reads every tier for dedupe, because a proposal that collides with an existing slug is not worth reporting either.
 - `--area <area>` — the kebab-case area to survey for. **Spelled exactly as the store spells it**, with no short alias: `ideas list --area` and `ideas file --area` take the same string, and `-r` and `-n` are already taken. **Default: absent**, which is not "no area" — see the two jobs below.
 - Anything else is not a flag this command takes. Report it rather than interpreting it.
