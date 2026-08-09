@@ -23,14 +23,17 @@ the point. Only touches comments — never code, logic, formatting, or behavior.
 
 ## Behavior
 
-Computes the branch diff against its merge-base (plus uncommitted changes when
-targeting the current branch) and only considers comments on added/modified lines.
+Gets the branch diff against its merge-base (plus uncommitted changes when targeting the
+current branch) from **one** `my-command-tools scope --diff` call, which returns the scope
+and the diff's own hunks together, and only considers comments on added/modified lines.
+Each hunk line carries its own line number, so a comment's location is known before a file
+is opened. Output is capped (`--diff-limit`), and files past the cap are named rather than
+cut in half.
 
 **That diff is the comment context, and the changed-file list is never walked.** Every
 line the command may touch is already in the hunks, so the scope result is not a queue of
-files to open one at a time — the recorded failure was a scope call returning eighteen
-paths followed by eighteen single-`Read` turns before the first edit, none of them
-dependent on any other. The command instead selects, from the hunks, the subset of files
+files to fetch one at a time — the recorded failure was a branch diff reissued once per
+path, alongside `sed -n` over three adjacent ranges of a single file. The command instead selects, from the hunks, the subset of files
 that actually carry a comment in scope and opens exactly that subset in **one** batched
 `Read` (`Edit` needs its target read first); a changed file with no comment in its hunks is
 never opened at all. A file discovered mid-edit joins the next batch rather than taking a

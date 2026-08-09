@@ -4,10 +4,9 @@
 // it without knowing how it was installed. This verb is how that claim gets checked
 // rather than assumed.
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { hooksStatus } from '../lib/hooks-status.mjs';
+import { deviceHooksStatus } from '../lib/hooks-status.mjs';
 import { candidateRoots, codexDeviceRoot, deviceRoot, findOnPath, linkDirs, TOOLKIT_BIN } from '../lib/paths.mjs';
 import { run as exec } from '../lib/proc.mjs';
 
@@ -89,27 +88,6 @@ function checkout() {
   };
 }
 
-/**
- * Whether the workflow gates are armed on this device. Resolved from this file's real path,
- * so it reports on the checkout the install actually points at.
- * @returns {Record<string, any>}
- */
-function hooks() {
-  const hooksSrc = join(dirname(real(HERE)), 'hooks');
-  const claudeDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
-  try {
-    return hooksStatus({
-      fragmentPath: join(hooksSrc, 'settings-fragment.json'),
-      hooksSrc,
-      // Where install-personal.sh links the scripts, and so what the registration names.
-      hooksDir: join(deviceRoot(), 'hooks'),
-      settingsPath: join(claudeDir, 'settings.json'),
-    });
-  } catch (err) {
-    return { armed: null, error: err instanceof Error ? err.message : String(err), hooksSrc };
-  }
-}
-
 export function run() {
   const roots = candidateRoots().map((c) => ({ ...c, exists: existsSync(join(c.path, 'cli.mjs')) }));
 
@@ -130,7 +108,7 @@ export function run() {
     installed: existsSync(join(device, 'toolkit', 'cli.mjs')),
     onPath: pathReachability(device),
     checkout: checkout(),
-    hooks: hooks(),
+    hooks: deviceHooksStatus(),
     version: existsSync(stamp) ? readFileSync(stamp, 'utf8').trim() : null,
     node: process.version,
     git: probe('git', ['--version']),

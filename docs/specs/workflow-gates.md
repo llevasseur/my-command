@@ -53,8 +53,7 @@ is allowed to be another sentence.
 | Unquoted glob matching nothing | 3 | `PreToolUse` refuses it — zsh would abort the whole command |
 | Foreground `sleep` | 3 | `PreToolUse` refuses it, naming `Monitor` and `run_in_background` |
 | Heredoc composing a file | 3 | `PreToolUse` refuses it, naming the `Write` tool |
-| The job directory addressed from a worktree | 3 | `PreToolUse` refuses it, naming the worktree as the writable root |
-| The gates not being armed at all | 3 | `doctor.hooks` reports it; `/sync` reports it as a failed sync |
+| The gates not being armed at all | 4 | `state`/`scope`/`commit`/`pr` refuse to run, so an unarmed device cannot start a run |
 | Unapproved signing prompt | 3 | `commit` retries once, itself |
 | `must be a collaborator` | 3 | `pr` resolves the identity, itself |
 | Hand-composed probes the classifier refuses | 4 | named read-only verbs, plus an installed allowlist |
@@ -175,6 +174,39 @@ still copies the bundle and calls `installHooks()` on **both** Claude install pa
 install surface that skips them ships the commands with the gates inert, which is exactly
 the failure above.
 
+### Why reporting it was not enough
+
+All three of those were still **reports**, and a report only works on someone who reads it.
+Nothing a session calls reads `doctor`, `/sync` runs when a human decides to sync, and an
+unarmed device stayed fully runnable in between — so the row above sat at rung 3 with a
+rung-1 activation, and the closing-turn rule went on regressing in buckets recorded entirely
+after the reporting shipped. The device this was written on read `armed: false` the whole
+time and nothing stopped.
+
+So the toolkit now **fails closed**. `state`, `scope`, `commit`, and `pr` — the verbs a
+workflow command opens with, before it has done anything — exit non-zero when the gates are
+not registered, with the arming command and the escape in the payload. A run cannot begin on
+a device where the Stop gate would not fire, which is the affordance removed rather than
+reported: the unarmed state is no longer a state you can work in.
+
+- **One detector, not two.** `deviceHooksStatus()` in `src/toolkit/lib/hooks-status.mjs`
+  resolves every path from where the toolkit file actually sits, and both `doctor` and the
+  gate call it. They cannot disagree about whether the gates are armed, and `doctor`'s own
+  private copy of that resolution is gone.
+- **`doctor` is never gated.** It is how a refused device finds out what to run.
+- **`armed: null` passes**, matching the hooks' own fail-open rule: a Codex install
+  registers nothing on purpose, and a detector that throws has no verdict to give. Only a
+  definite `false` refuses.
+- **One documented escape, never the default.** `--unarmed`, or
+  `MY_COMMAND_REQUIRE_HOOKS=0`, for CI and a fresh clone; `MY_COMMAND_HOOKS=0` already means
+  "the gates are off here on purpose" and is honoured too. The refusal names all of them,
+  so a genuinely hook-less environment is one flag away and never silently exempt.
+
+Invariant 13 in `check-commands.sh` asserts the fail-closed path exists — `cli.mjs` calling
+`requireArmed`, all four verbs listed, the single detector and the env escape named — and
+then runs `MY_COMMAND_REQUIRE_HOOKS=0 my-command-tools state` for real, so CI proves the way
+out works on the machine that needs it most.
+
 ## Install and off switch
 
 Two surfaces arm the gates, and both do the same two things: put the scripts at
@@ -269,14 +301,30 @@ each refusal is a statement about a command that was going to fail:
   demonstrated the alternative themselves — one wrote its scratch script with the `Write`
   tool, the other wrote `pr-body.md` with `Write` and passed it as a flag — so the denial
   names that form. A heredoc feeding a program's stdin with no redirect is untouched.
-- **`$CLAUDE_JOB_DIR` from a worktree.** Eight recorded guard refusals, every one because the
-  command targeted the job directory from inside an isolated worktree or wrapped itself in a
-  heredoc, subshell, or `$(…)`. The guard reacts to the target and the shape, so knowing the
-  path was never the gap; the cwd being under `.claude/worktrees/` is the evidence.
 - **Dumped files.** `cat`/`head`/`tail`/`sed`/`nl` and friends naming a file that exists.
   `grep` and `rg` are deliberately **not** dumpers: locating a symbol in a file already in
   context is the faster form the re-read gate recommends, and gating it would contradict the
   advice. A segment containing a redirect is skipped, since that is a copy rather than a look.
+
+### The job directory is not a gate
+
+There was a fifth shape here: `$CLAUDE_JOB_DIR` addressed from inside a worktree, refused
+because "the worktree is the only writable root". It is **removed**, not softened, because
+it refused exactly the path the harness prescribes — the job harness tells a session to keep
+its scratch under `$CLAUDE_JOB_DIR/tmp`, so a gate that denies that path denies the
+instruction the session was given and leaves no scratch location at all.
+
+The refusal was also not the same twice. One denial per subject meant an identical `Write`
+was allowed early in a run and refused later, which is worse than either answer on its own:
+one recorded session had `cp src/my-command.ts "$CLAUDE_JOB_DIR/tmp/my-command.ts.bak"`
+refused, worked around it with `perl -0pi`, and then lost its own uncommitted edits to the
+`git checkout --` that followed. The gate caused the damage it existed to prevent.
+
+And the write is not harmful. The job directory is outside the repository, cannot reach the
+worktree's index or working tree, and is cleaned up with the job. "Only writable root" was
+a statement about where *the work* belongs, not about where a scratch file may go, and the
+two were never the same claim. The prose in `task.md` now says so, so the rule and the gate
+cannot contradict each other again.
 
 ## Invariants
 
@@ -286,6 +334,8 @@ each refusal is a statement about a command that was going to fail:
   registration, and an off switch present. Enforced by `check-commands.sh`.
 - **A gate that is wired must be provably armed.** `doctor.hooks.armed` is the check, and
   a negative is loud. A mechanism nobody can confirm is running is prose with extra steps.
+- **An unarmed device cannot start a run.** The gated verbs refuse rather than report, one
+  detector answers for both, and the escape is explicit. A report nothing reads is rung 1.
 - **A legitimate parallel batch is never refused.** Asserted by test, and binding on every
   future gate.
 - **Fail open, always.** No gate does its own error handling; `guard()` is the entire
@@ -314,9 +364,11 @@ each refusal is a statement about a command that was going to fail:
       file needs no read.
 - [x] A re-read is still refused when the session edited a *different* file in between, and
       the file that did change stays re-readable.
-- [x] An unquoted glob matching nothing, a foreground `sleep`, a heredoc composing a file,
-      and `$CLAUDE_JOB_DIR` addressed from a worktree are each refused with the working
-      form named; the quoted, backgrounded, stdin-heredoc, and in-worktree forms pass.
+- [x] An unquoted glob matching nothing, a foreground `sleep`, and a heredoc composing a file
+      are each refused with the working form named; the quoted, backgrounded, and
+      stdin-heredoc forms pass.
+- [x] A scratch command under `$CLAUDE_JOB_DIR` from inside a worktree is allowed, and is
+      allowed identically on the second call.
 - [x] A shell dump of a file already read whole and unchanged is refused; `rg -n 'a|b'` on
       that same file is not.
 - [x] An identical read-only command is refused only while nothing since could have changed
@@ -339,6 +391,11 @@ each refusal is a statement about a command that was going to fail:
       script in a checkout, the shipped merge on a wizard install, the wizard itself when
       no bundle landed.
 - [x] Gates copied in place read `armed: true` with no hint, rather than as a stale copy.
+- [x] Every gated verb exits non-zero on a device whose gates are not registered, naming the
+      arming command and the escape; `doctor` still answers there.
+- [x] The same verb exits zero once the installer has run.
+- [x] `--unarmed`, `MY_COMMAND_REQUIRE_HOOKS=0`, and `MY_COMMAND_HOOKS=0` each let a
+      hook-less environment through, and none of them is the default.
 
 ## What was rejected
 

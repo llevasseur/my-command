@@ -512,6 +512,75 @@ test('scope reports a branch’s own commits and files without checking anything
   assert.equal(stillOnMain, 'feat/scoped');
 });
 
+test('scope --diff returns the whole branch diff, hunk-annotated, in that one call', () => {
+  const { dir, git } = repo();
+  git(['checkout', '-qb', 'feat/diffed']);
+  writeFileSync(join(dir, 'b.ts'), 'export const b = 1;\n// a comment\nexport const c = 2;\n');
+  git(['add', 'b.ts']);
+  git(['commit', '-qm', 'feat: add b']);
+  writeFileSync(join(dir, 'b.ts'), 'export const b = 1;\n// a comment\nexport const c = 3;\n');
+
+  const s = scope(ctx(dir, [], { base: 'main', diff: true }));
+  assert.ok(s.diff, '--diff should return diff content');
+
+  // The committed half: the branch's own work, with content rather than a file list.
+  const committed = s.diff.committed.find((/** @type {{path: string}} */ f) => f.path === 'b.ts');
+  assert.ok(committed, 'b.ts should be in the committed diff');
+  assert.equal(committed.hunks.length, 1);
+  assert.match(committed.hunks[0].header, /^@@ /);
+  assert.equal(committed.hunks[0].newStart, 1);
+  // Every line carries its own line number, so an edit needs no counting pass over the file.
+  assert.deepEqual(committed.hunks[0].lines, [
+    '+1\texport const b = 1;',
+    '+2\t// a comment',
+    '+3\texport const c = 2;',
+  ]);
+
+  // The uncommitted half is reported apart from it, and only for the current branch.
+  const pending = s.diff.workingTree.find((/** @type {{path: string}} */ f) => f.path === 'b.ts');
+  assert.ok(pending, 'the uncommitted edit should be in the working-tree diff');
+  assert.ok(pending.hunks[0].lines.includes('-3\texport const c = 2;'));
+  assert.ok(pending.hunks[0].lines.includes('+3\texport const c = 3;'));
+  assert.ok(pending.hunks[0].lines.includes(' 1\texport const b = 1;'), 'context lines are numbered too');
+
+  assert.equal(s.diff.truncated, false);
+  assert.deepEqual(s.diff.omitted, []);
+  assert.equal(s.diff.limit, 200_000);
+
+  // Still read-only: no checkout, no switch.
+  const still = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+  assert.equal(still, 'feat/diffed');
+});
+
+test('scope --diff is bounded, and says which files it dropped', () => {
+  const { dir, git } = repo();
+  git(['checkout', '-qb', 'feat/big']);
+  for (const name of ['one.ts', 'two.ts', 'three.ts']) {
+    writeFileSync(join(dir, name), `export const x = '${'y'.repeat(200)}';\n`);
+    git(['add', name]);
+  }
+  git(['commit', '-qm', 'feat: three files']);
+
+  const s = scope(ctx(dir, [], { base: 'main', diff: true, 'diff-limit': '150' }));
+  assert.ok(s.diff, '--diff should return diff content');
+
+  assert.equal(s.diff.truncated, true);
+  assert.ok(s.diff.omitted.length > 0, 'the dropped files are named');
+  // Dropped whole, never mid-hunk: a half-written hunk reads as a complete one.
+  assert.equal(s.diff.committed.length + s.diff.omitted.length, 3);
+  assert.ok(s.diff.committed.every((/** @type {{hunks: {lines: string[]}[]}} */ f) => f.hunks[0].lines.length > 0));
+});
+
+test('scope without --diff carries no diff content at all', () => {
+  const { dir, git } = repo();
+  git(['checkout', '-qb', 'feat/quiet']);
+  writeFileSync(join(dir, 'b.ts'), 'export const b = 1;\n');
+  git(['add', 'b.ts']);
+  git(['commit', '-qm', 'feat: add b']);
+
+  assert.equal(scope(ctx(dir, [], { base: 'main' })).diff, undefined);
+});
+
 test('scope refuses a branch that is not there', () => {
   const { dir } = repo();
   assert.throws(() => scope(ctx(dir, [], { branch: 'feat/nope' })), /no such branch/);
