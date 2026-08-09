@@ -4,6 +4,7 @@ title: ideate
 description: Surveys a repo and proposes features or commands worth building, citing only evidence a person already wrote down, recording every proposal in a ledger, and exiting with a pointer to the dashboard Advice page where a human accepts the ideas improve may act on.
 tags: [commands, advice, ideas, claude-proxy]
 timestamp: 2026-08-05
+updated: 2026-08-09
 dirty: true
 ---
 
@@ -27,26 +28,43 @@ Two boundaries carry that separation:
 
 ## Flags / Parameters
 
-- `--range <spec>` / `-r <spec>` — the bucket window for **evidence source 2 (judge notes) only**. One bucket (`9`), a list (`2,3,9`), a span (`2-9`), or a mix (`2-4,9`). Default: every bucket. The other three sources are not bucketed, so this never narrows the survey as a whole.
+- `--range <spec>` / `-r <spec>` — the bucket window for **evidence source 2 (judge notes) only**. One bucket (`9`), a list (`2,3,9`), a span (`2-9`), or a mix (`2-4,9`). Default: every bucket. The other four sources are not bucketed, so this never narrows the survey as a whole.
 - `--dry-run` / `-n` — report the proposals and write **nothing at all**, not even the `proposed` rows. It still resolves the tier and reads every tier for dedupe, since a proposal that collides is not worth reporting either.
+- `--area <area>` — the kebab-case area to survey for. **No short alias**, and spelled exactly as the store spells it: `ideas list --area` and `ideas file --area` take the same string, and `-r` and `-n` are taken. Default: absent, which is **not** "no area" — see below.
 - Anything else is not a flag this command takes and is reported rather than interpreted. There is no free-text argument.
+
+### `--area` does two jobs
+
+Every ledger entry carries an area, and `parseIdeaAdds` refuses an entry with no area exactly as it refuses one citing nothing. The area is therefore never optional on a write; only the flag is. The flag does two separate things and neither implies the other:
+
+1. **It constrains the survey.** `--area ui-ux` means "propose a user-interface idea", so the survey reads for that kind of idea and only proposals belonging under it get composed.
+2. **It supplies the required per-entry field.** With the flag, every proposal the run keeps is under that one area because the survey was narrowed to it — not because the flag stamped a finished batch. **Without the flag each proposal carries the area it belongs to, chosen per proposal**, so one run may file two proposals under two areas.
+
+**One area is never assigned to a batch spanning several.** A candidate that does not belong under the requested area is out of the run's scope: it is dropped and named, never filed under that area to keep the count up.
+
+The vocabulary is **free text validated by shape alone** — any kebab-case word is a valid area and opens a dashboard tab of its own. `SEED_IDEA_AREAS` (`ui-ux`, `infrastructure`, `code-quality`, `services`, `commands`) is advisory: it orders and labels the tabs and appears in the CLI's help, and nothing enforces membership. `/ideate` prefers an area already on the ledger over a new spelling of the same thing, and reports any new area it opens.
 
 ## Behavior
 
 ### Evidence, not vibes
 
-Every proposal must cite at least one of four sources, **with file paths**. All four already exist and were authored by a person; an agent asked "what would be useful?" produces plausible slop indefinitely, and this constraint is the only thing that stops it. "I noticed the code could use X" cites nothing and is not written down.
+Every proposal must cite at least one of five sources, and the first four carry **file paths**. All four already exist and were authored by a person; an agent asked "what would be useful?" produces plausible slop indefinitely, and this constraint is the only thing that stops it. "I noticed the code could use X" cites nothing and is not written down.
 
 1. **`## Open questions` sections** in the docs bundles — the best source available, because somebody already decided the question was worth asking and left it unresolved.
-2. **Judge enrichment notes** on CONFIRMED suggestions — prose about what actually keeps going slowly rather than a rule id. **This source may not exist**: the `suggestions judge`/`buckets` verbs may be absent, or no bucket may carry a verdict. The run then says so and works from the other three rather than failing. Only this source is narrowed by `--range`.
+2. **Judge enrichment notes** on CONFIRMED suggestions — prose about what actually keeps going slowly rather than a rule id. **This source may not exist**: the `suggestions judge`/`buckets` verbs may be absent, or no bucket may carry a verdict. The run then says so and works from the other sources rather than failing. Only this source is narrowed by `--range`.
 3. **The CHANGELOG** — what shipped, and what a run of related entries implies is half-built.
 4. **Authored deferrals** — explicit `Out of scope` / `Non-goals` / `Deferred` / `Future work` statements in `docs/specs/`, `docs/adrs/` and feature docs. A written "not now" is a decision somebody made, not something inferred.
+5. **A command gap** — a command nobody wrote, cited as `command-gap`. **Available only when the proposal's area is `commands`.** It is the one citation carrying **no locator** (there is no file to point at, which is the condition it describes) and the only one that may stand alone on an entry. Both rules are enforced at the parse boundary, so a `command-gap` citation from any other area is **refused, not stored**. The trade-off is stated rather than hidden: a locator-less citation is the one thing a reader cannot check, and confining it to one area is the price of having it at all.
 
-The survey is one batched read pass, per `shared/batched-discovery.md`.
+The survey is one batched read pass, per `shared/batched-discovery.md`. Source 5 is not part of that batch — it has nothing to read, and is a conclusion drawn from what the other four turned up and from what the repo's command surface lacks. `--area` narrows the survey as well as the write, and gates source 5 on the area being `commands`.
+
+**The dedupe read is never narrowed by `--area`.** `ideas list` accepts the flag; Step 1 does not use it. Dedupe reads the whole ledger regardless, because a dedupe read narrowed to one area is exactly how a rejected idea comes back under a different one. That unnarrowed read is also where the run learns the area vocabulary already in use.
 
 ### The ledger, and where it lands
 
-One entry per idea, carrying a stable kebab-case **slug** (the dedupe key), a title, a bulleted rationale, the evidence with paths (and `bucket/id` for a judge note), the repo it lands in **as a git remote slug**, a status of `proposed` / `accepted` / `rejected` / `shipped`, the date, and for `rejected` the reason or for `shipped` the PR url.
+One entry per idea, carrying a stable kebab-case **slug** (the dedupe key), a title, a bulleted rationale, the evidence with paths (and `bucket/id` for a judge note, or no locator for `command-gap`), the repo it lands in **as a git remote slug**, its **area**, a status of `proposed` / `accepted` / `rejected` / `shipped`, the date, and for `rejected` the reason or for `shipped` the PR url. The field list `ideas add` parses is `{ slug, title, rationale, evidence[], repo, area, status?, note? }`, and `area` is required on the same footing as the evidence.
+
+`add` reports near-miss areas under `similarAreas` — `infra` beside an existing `infrastructure` — and **still records the entry**, on the same reasoning as near-duplicate slugs: fragmenting the vocabulary is for a reader to notice, not for the store to refuse. `/ideate` surfaces every hit in its report and re-files nothing itself; `ideas file --slug <slug> --area <area>` is the correction, and it touches the area alone.
 
 The repo is a remote slug rather than a checkout path because the tier-1 store is device-wide and shared across every repo on the machine — a path names a different thing, or nothing, on the next one.
 
@@ -69,7 +87,7 @@ Four rules make a waterfall safe for something used as a dedupe key:
 
 The rationale is a list of bullets rather than a paragraph, and `shared/plain-rationale.md` is where that shape is stated once. A person reads it on the dashboard to decide one thing — accept, or reject — usually without having run the survey and usually with several cards open. A paragraph makes that reader parse prose for the claim they are deciding on. A fixed list makes two ideas comparable line for line.
 
-Six bullets, written as literal `- ` lines: **what it is**, **the problem**, **how it works**, **what it replaces or simplifies**, **size**, and **depends on `<slug>`** — the last written only when the idea consumes something a named idea introduces, since its absence is what tells `/improve` the idea declares no dependency. Three of Step 3's five required statements live here; the other two, the evidence and the repo, are fields of their own.
+Six bullets, written as literal `- ` lines: **what it is**, **the problem**, **how it works**, **what it replaces or simplifies**, **size**, and **depends on `<slug>`** — the last written only when the idea consumes something a named idea introduces, since its absence is what tells `/improve` the idea declares no dependency. Three of Step 3's six required statements live here; the other three — the evidence, the repo, and the area — are fields of their own.
 
 Each bullet follows [ASD-STE100](https://asd-ste100.org) Simplified Technical English: one idea per sentence and at most twenty words, active voice and present tense, one word per concept, no idiom, at most three nouns in a row, an abbreviation written out the first time or not used at all, an article before each countable noun, and no pronoun pointing at another bullet — a reader scans a card out of order.
 
@@ -81,9 +99,9 @@ Nothing rewrites a row it did not write: a rationale already on the ledger as a 
 
 **No human in the loop at all.** The run is unattended start to finish; the sign-off happens afterwards, in a browser.
 
-1. Resolve the tier; read every existing tier for dedupe.
-2. Survey the four sources in one batched pass.
-3. Compose **at most 3** proposals, ranked. Each states what it is, its evidence with paths, the repo, a rough size, and **what it would replace or simplify** — an idea that only adds surface has to say so. The rationale carries three of those as plain-English bullets, per the section above.
+1. Resolve the tier; read every existing tier — and the whole of each, never narrowed by `--area` — for dedupe.
+2. Survey the five sources in one batched pass.
+3. Compose **at most 3** proposals, ranked. Each states what it is, its evidence, the repo, **the area it belongs under**, a rough size, and **what it would replace or simplify** — an idea that only adds surface has to say so. Three of those six are entry fields (evidence, repo, area); the rationale carries the other three as plain-English bullets, per the section above.
 4. Write **all** of them as `proposed`, including ones expected to be rejected. Dedupe only works if the ledger records what was considered rather than only what was liked.
 5. **Exit**, naming the dashboard Advice page as where they get adjudicated. Every row stays `proposed`; nothing else is marked.
 
