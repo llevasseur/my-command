@@ -28,6 +28,7 @@ const PKG_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const SRC_DIR = join(PKG_ROOT, 'src', 'commands');
 const SKILLS_DIR = join(PKG_ROOT, 'skills');
 const TOOLKIT_SRC = join(PKG_ROOT, 'src', 'toolkit');
+const HOOKS_SRC = join(PKG_ROOT, 'src', 'hooks');
 const TOOLKIT_BIN = 'my-command-tools';
 const REPO = 'llevasseur/my-command';
 const MARKETPLACE = 'my-command';
@@ -370,6 +371,81 @@ function installToolkit(root = deviceRoot()): ToolkitResult {
   }
 }
 
+interface HooksResult {
+  installed: boolean;
+  /** Where the hook scripts landed, and what the registration names. */
+  hooksDir: string;
+  settingsPath: string;
+  registered?: number;
+  allowAdded?: number;
+  /** The scripts were left alone because the directory is a symlink into a checkout. */
+  symlinked?: boolean;
+  reason?: string;
+}
+
+// The scripts the harness executes directly. A lost mode bit fails only at hook time, and
+// silently: the harness cannot run the script, and a hook that fails to run allows the call.
+const HOOK_SCRIPTS = ['pre-tool-use.mjs', 'stop.mjs', 'install-hooks.mjs'];
+
+// Install the workflow gates and register them, so an npx install ends up with the gates
+// armed rather than with hook scripts nobody executes. Both halves are required: shipping
+// the scripts does nothing, because the harness runs only what settings.json registers.
+//
+// COPIED, not symlinked the way scripts/install-personal.sh does it. That script links back
+// into a git clone on purpose, so `git pull` updates the gates — but npx runs from an
+// ephemeral cache directory that is cleaned up after the wizard exits, so the same link
+// would dangle and every gate would silently disappear.
+async function installHooks(
+  root = deviceRoot(),
+  // deviceRoot() is `<config dir>/my-command`, so the settings file the harness reads sits
+  // one level up. Taking it as a parameter is what lets a test install to a scratch root.
+  settingsPath = join(dirname(root), 'settings.json'),
+): Promise<HooksResult> {
+  const dest = join(root, 'hooks');
+  const base: HooksResult = { installed: false, hooksDir: dest, settingsPath };
+  if (!existsSync(HOOKS_SRC)) return { ...base, reason: `no hooks in ${HOOKS_SRC}` };
+
+  try {
+    // A dev install symlinks this directory back into its clone. Copying through the link
+    // would write into the user's checkout, so leave it and refresh only the registration.
+    const symlinked = Boolean(lstatSync(dest, { throwIfNoEntry: false })?.isSymbolicLink());
+    if (!symlinked) {
+      mkdirSync(dest, { recursive: true });
+      // Overwritten in place rather than replaced wholesale the way installToolkit() does
+      // it: this directory can also hold a hook the user installed and registered
+      // independently, and deleting that would aim their registration at a path this
+      // install does not provide.
+      // Tests belong to CI, not the device — the same rule installToolkit() applies.
+      cpSync(HOOKS_SRC, dest, { recursive: true, force: true, filter: (src) => !src.endsWith('.test.mjs') });
+      for (const script of HOOK_SCRIPTS) {
+        const path = join(dest, script);
+        if (existsSync(path)) chmodSync(path, 0o755);
+      }
+    }
+
+    // Register through the copy that just landed, so the entries name the scripts the
+    // harness will actually run and the merge resolves its fragment from beside itself.
+    // Imported rather than shelled out: one process, and a real return value to report.
+    const installer = join(dest, 'install-hooks.mjs');
+    const mod = (await import(pathToFileURL(installer).href)) as {
+      install: (opts: { hooksDir: string; settingsPath: string; uninstall: boolean }) => {
+        registered: number;
+        allowAdded: number;
+      };
+    };
+    const merged = mod.install({ hooksDir: dest, settingsPath, uninstall: false });
+    return {
+      ...base,
+      installed: true,
+      registered: merged.registered,
+      allowAdded: merged.allowAdded,
+      symlinked,
+    };
+  } catch (err) {
+    return { ...base, reason: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 // What version of the toolkit landed on the device. The commit SHA, not package.json's
 // `version` — that field is pinned at 1.0.0 and this repo versions by commit, so
 // stamping it would make every install report the same string forever.
@@ -403,6 +479,27 @@ function reportToolkit(result: ToolkitResult) {
   }
 }
 
+function reportHooks(result: HooksResult) {
+  if (result.installed) {
+    if (result.symlinked) {
+      console.log(`\nWorkflow gates left as they are: ${result.hooksDir} is a symlink into a checkout.`);
+    } else {
+      console.log(`\nWorkflow gates installed: ${result.hooksDir}`);
+    }
+    console.log(
+      `Registered ${result.registered} hook(s) and ${result.allowAdded} read-only permission(s) in ${result.settingsPath}.`,
+    );
+    console.log(`Confirm they are armed with: ${TOOLKIT_BIN} doctor   (read hooks.armed)`);
+    console.log('  Turn them off without uninstalling:  export MY_COMMAND_HOOKS=0');
+    console.log(`  Remove the registration entirely:    node ${join(result.hooksDir, 'install-hooks.mjs')} --uninstall`);
+  } else {
+    // Deliberately not fatal: the commands are already installed and useful without the
+    // gates, so a hooks failure reports itself rather than failing the whole install.
+    console.log(`\nWorkflow gates not installed (${result.reason}).`);
+    console.log('The commands still work — the PreToolUse and Stop gates simply never fire.');
+  }
+}
+
 async function main() {
   console.log('MyCommand — Your Wish is My Command');
   console.log(`Bundles: ${commands.join(', ')}\n`);
@@ -419,12 +516,23 @@ async function main() {
   if (choice === '1') {
     await installPlugin();
     reportToolkit(installToolkit());
+    reportHooks(await installHooks());
   } else if (choice === '2') {
     await installPersonal();
     reportToolkit(installToolkit());
+    reportHooks(await installHooks());
   } else if (choice === '3') {
     await installCodexSkills();
     reportToolkit(installToolkit(deviceRoot('codex')));
+    // No gates on the Codex path, deliberately. Codex does have a hook engine, but it is a
+    // different mechanism end to end: opt-in behind a `[features]` flag in
+    // ~/.codex/config.toml, configured as TOML or hooks.json rather than settings.json,
+    // gated by a per-hook trust review, and firing PreToolUse for the shell tool only —
+    // never for the Read/Edit/Write calls two of our three read gates judge. Our scripts
+    // also speak Claude Code's protocol (`stop_hook_active`, `{"decision":"block"}` on
+    // stdout) and parse a Claude transcript. So installing them here would either write
+    // Claude settings from a Codex install, or leave a hooks directory under ~/.codex that
+    // nothing would ever execute. A Codex-native port is its own piece of work.
   } else {
     console.log('Cancelled. Nothing changed.');
   }
@@ -443,4 +551,4 @@ if (invokedDirectly) {
   });
 }
 
-export { checkboxPrompt, installCodexSkills, installPersonal, installToolkit, linkOnPath };
+export { checkboxPrompt, installCodexSkills, installHooks, installPersonal, installToolkit, linkOnPath };

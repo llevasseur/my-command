@@ -22,6 +22,8 @@
 #  10. the workflow gates ship whole: hook scripts present and executable, both events
 #      registered in the settings fragment, the installer wiring them, and an off switch.
 #  11. every command that enters a worktree it just created states the working entry form.
+#  12. the npx wizard installs and registers the gates too, not just the toolkit — an
+#      install surface that skips them ships the commands with the gates inert.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -303,6 +305,46 @@ for f in src/commands/task.md src/commands/task-bootstrap.md src/commands/review
     fail=1
   fi
 done
+
+# 12. The npx wizard arms the gates, not just installs the toolkit. This is invariant 10 for
+# the other install surface: the gate bundle shipped whole and complete while the wizard had no
+# hooks step at all, so every device installed with `npx @llevasseur/my-command` got the
+# commands, got the toolkit, and got `hooks.armed: false` — the same "files nobody executes"
+# outcome, reached through the install path most users take.
+if ! grep -q 'installHooks()' src/my-command.ts; then
+  echo "::error::src/my-command.ts no longer calls installHooks(); an npx install would ship the commands with the gates inert."
+  fail=1
+fi
+
+# Both Claude surfaces — plugin and personal — or one of them silently installs unarmed.
+wired="$(grep -c 'reportHooks(await installHooks())' src/my-command.ts || true)"
+if [ "$wired" -ne 2 ]; then
+  echo "::error::src/my-command.ts wires the gates into $wired of the 2 Claude install paths; both the plugin and personal choices must arm them."
+  fail=1
+fi
+
+# The copy has to be a copy. npx runs from an ephemeral cache that is cleaned up after the
+# wizard exits, so a symlink into it dangles and every gate silently disappears.
+if ! grep -q 'cpSync(HOOKS_SRC' src/my-command.ts; then
+  echo "::error::src/my-command.ts no longer copies src/hooks to the device; a link into the npx cache would dangle once that cache is cleaned up."
+  fail=1
+fi
+
+# A gate the user cannot turn off or remove is one they will uninstall the whole tool to escape.
+for needle in MY_COMMAND_HOOKS --uninstall; do
+  # -e, because the second needle starts with a dash and would otherwise read as a flag.
+  if ! grep -Fq -e "$needle" src/my-command.ts; then
+    echo "::error::src/my-command.ts no longer reports '$needle'; a wizard install would arm the gates without saying how to switch them off."
+    fail=1
+  fi
+done
+
+# The hint that fixes unarmed gates must not name install-personal.sh unconditionally — that
+# script only exists in a git checkout, so on a wizard-installed device it pointed at nothing.
+if ! grep -q 'fixHint' src/toolkit/lib/hooks-status.mjs; then
+  echo "::error::src/toolkit/lib/hooks-status.mjs no longer chooses its hint by install surface; a wizard-installed device would be told to run a script it does not have."
+  fail=1
+fi
 
 if [ "$fail" -eq 0 ]; then
   echo "check-commands: all command invariants satisfied ($(ls src/commands/*.md | wc -l | tr -d ' ') commands)."

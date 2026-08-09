@@ -76,6 +76,24 @@ function expected(fragmentPath, hooksDir) {
 }
 
 /**
+ * The command that arms the gates on *this* device. Which one it is depends on how the
+ * device was installed, and naming the wrong one is worse than naming none: the hint used
+ * to be a hardcoded `bash <…>/scripts/install-personal.sh`, which only exists inside a git
+ * checkout — on a device installed by the npx wizard it pointed at a path that is not there.
+ * @param {string} hooksSrc @param {string} hooksDir
+ * @returns {string}
+ */
+function fixHint(hooksSrc, hooksDir) {
+  const script = join(hooksSrc, '..', '..', 'scripts', 'install-personal.sh');
+  // A clone: the installer relinks the commands, the toolkit, and the gates in one pass.
+  if (existsSync(script)) return `bash ${script}`;
+  // A wizard install: the scripts are already on the device, so only the merge is missing.
+  if (existsSync(join(hooksDir, 'install-hooks.mjs'))) return `node ${join(hooksDir, 'install-hooks.mjs')}`;
+  // Neither — the hook bundle never landed, so re-running the wizard is the whole fix.
+  return 'npx @llevasseur/my-command';
+}
+
+/**
  * Report whether every gate the fragment declares is registered in the settings file the
  * harness reads, and whether the installed hooks directory points at this checkout.
  *
@@ -86,7 +104,7 @@ function expected(fragmentPath, hooksDir) {
  */
 export function hooksStatus(opts) {
   const { fragmentPath, hooksSrc, hooksDir, settingsPath } = opts;
-  const fix = `bash ${join(hooksSrc, '..', '..', 'scripts', 'install-personal.sh')}`;
+  const fix = fixHint(hooksSrc, hooksDir);
 
   if (!existsSync(fragmentPath)) {
     return { armed: false, reason: `no settings fragment at ${fragmentPath}`, fragmentPath, settingsPath, hint: fix };
@@ -117,6 +135,10 @@ export function hooksStatus(opts) {
     }
   }
   const linked = linkTarget !== null && real(expand(linkTarget)) === real(hooksSrc);
+  // A wizard install copies the scripts to the device instead of linking, and then runs the
+  // toolkit from beside them — so hooksDir *is* hooksSrc. That is current, not stale, and
+  // must not be reported as a copy `git pull` does not update.
+  const current = linked || real(hooksDir) === real(hooksSrc);
 
   /** @type {{event: string, command: string, registered: boolean}[]} */
   const gates = [];
@@ -145,12 +167,12 @@ export function hooksStatus(opts) {
     disabledByEnv:
       process.env.MY_COMMAND_HOOKS !== undefined && /^(0|off|false|no)$/i.test(process.env.MY_COMMAND_HOOKS.trim()),
     reason: armed
-      ? linked
+      ? current
         ? null
         : `registered, but ${hooksDir} does not point at ${hooksSrc} — the gates run from a copy that git pull does not update`
       : !settingsReadable
         ? `${settingsPath} is not valid JSON, so the harness reads no hooks from it`
         : `${missing.length} of ${gates.length} gate(s) are not registered in ${settingsPath} — they are files nobody executes`,
-    hint: armed && linked ? null : fix,
+    hint: armed && current ? null : fix,
   };
 }
