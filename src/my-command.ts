@@ -491,7 +491,9 @@ function reportHooks(result: HooksResult) {
     );
     console.log(`Confirm they are armed with: ${TOOLKIT_BIN} doctor   (read hooks.armed)`);
     console.log('  Turn them off without uninstalling:  export MY_COMMAND_HOOKS=0');
-    console.log(`  Remove the registration entirely:    node ${join(result.hooksDir, 'install-hooks.mjs')} --uninstall`);
+    console.log(
+      `  Remove the registration entirely:    node ${join(result.hooksDir, 'install-hooks.mjs')} --uninstall`,
+    );
   } else {
     // Deliberately not fatal: the commands are already installed and useful without the
     // gates, so a hooks failure reports itself rather than failing the whole install.
