@@ -4,6 +4,7 @@ title: Workflow gates
 description: The PreToolUse and Stop hooks, and the toolkit recoveries, that enforce the workflow rules mechanically instead of relying on an agent recalling them.
 tags: [process, hooks, toolkit, install, guardrails]
 timestamp: 2026-08-04
+updated: 2026-08-09
 ---
 
 # Workflow gates
@@ -138,17 +139,27 @@ that step.** The gates above shipped, were merged, and then did not execute for 
 the device that motivated them, `~/.claude/my-command/hooks` was never created and neither
 hook appeared anywhere in `settings.json`. Command *files* had arrived — `judge.md` and
 `improve.md` were both present, from PRs that merged afterwards — so commands reach a device
-by a path that does not run `scripts/install-personal.sh`, and therefore never registers
+by a path that did not run `scripts/install-personal.sh`, and therefore never registered
 anything. Every rule these gates enforce kept tripping in that window, and nothing anywhere
 reported that no gate could have fired.
 
-Two things close that:
+That path was the `npx` wizard, which installed the commands and the toolkit and stopped
+there; it now arms the gates too, which is what closes the hole rather than only reporting
+it. Three things close it:
 
+- **Every Claude install surface arms them**, so there is no longer a way to arrive with
+  the commands and without the gates. See [Install and off switch](#install-and-off-switch).
 - **`doctor.hooks`** answers it from the two places that decide. For every entry the
   settings fragment declares, it reports whether that exact command is registered in the
-  `settings.json` the harness reads, and whether the installed hooks directory is a symlink
-  to *this* checkout. `armed: false` names the missing entries, states the consequence —
-  "they are files nobody executes" — and carries the `hint` that fixes it. A `settings.json`
+  `settings.json` the harness reads, and whether the installed hooks directory is current —
+  a symlink to *this* checkout, or the copy the wizard left and runs the toolkit from
+  beside. `armed: false` names the missing entries, states the consequence —
+  "they are files nobody executes" — and carries the `hint` that fixes it. **That hint
+  follows the install surface**, because naming the wrong command is worse than naming
+  none: a checkout gets `bash …/scripts/install-personal.sh`, a wizard-installed device
+  gets `node …/hooks/install-hooks.mjs` since the scripts are already there and only the
+  merge is missing, and a device with no hook bundle at all gets
+  `npx @llevasseur/my-command`. A `settings.json`
   that cannot be parsed reads as unarmed rather than as absent, and `disabledByEnv` reports
   the off switch separately from a failure. The logic is `src/toolkit/lib/hooks-status.mjs`,
   tested against the real fragment.
@@ -158,16 +169,38 @@ Two things close that:
   checks the same field itself after registering, so the final line of a fresh install is
   what `settings.json` actually says rather than what was attempted.
 
-`check-commands.sh` holds both in place: `doctor` must still report hook registration, and
-both `/sync` surfaces must still read `hooks.armed`.
+`check-commands.sh` holds all three in place: `doctor` must still report hook registration,
+both `/sync` surfaces must still read `hooks.armed`, and invariant 12 asserts the wizard
+still copies the bundle and calls `installHooks()` on **both** Claude install paths — an
+install surface that skips them ships the commands with the gates inert, which is exactly
+the failure above.
 
 ## Install and off switch
 
-`scripts/install-personal.sh` symlinks `src/hooks` to
-`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/my-command/hooks` — so `git pull` updates the
-gates like it updates the commands — then runs `src/hooks/install-hooks.mjs` to merge
-the registration into `settings.json`. Shipping the scripts alone would do nothing: the
-harness only runs what `settings.json` registers.
+Two surfaces arm the gates, and both do the same two things: put the scripts at
+`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/my-command/hooks`, then run
+`install-hooks.mjs` to merge the registration into `settings.json`. Shipping the scripts
+alone would do nothing: the harness only runs what `settings.json` registers.
+
+- **`scripts/install-personal.sh`** — the clone install. It **symlinks** `src/hooks` to
+  that path, so `git pull` updates the gates like it updates the commands.
+- **The npx wizard** (`installHooks()` in `src/my-command.ts`, on Claude choices 1 and 2)
+  — it **copies** instead, deliberately: npx runs from an ephemeral cache directory that
+  is cleaned up when the wizard exits, so the same symlink would dangle and every gate
+  would silently disappear. It detects a symlink already at that path and leaves it alone
+  rather than writing through it into someone's checkout, and it never removes the
+  directory — see the clobbering rule below. A failure there reports itself and does not
+  fail the command install, since the commands are useful without the gates.
+
+The **Codex install registers nothing, on purpose.** Codex does have a hook engine, but it
+is a different mechanism end to end: opt-in behind a `[features]` flag in
+`~/.codex/config.toml`, configured as TOML or `hooks.json` rather than `settings.json`,
+gated by a per-hook trust review, and firing `PreToolUse` for the shell tool only — never
+for the Read/Edit/Write calls two of these gates judge. These scripts also speak Claude
+Code's protocol (`stop_hook_active`, `{"decision":"block"}` on stdout) and parse a Claude
+transcript. Installing them from a Codex install would either write Claude settings, or
+leave a hooks directory under `~/.codex` that nothing would ever execute. A Codex-native
+port is its own piece of work.
 
 **The installer never clobbers that directory.** It used to `rm -rf` it before linking,
 which is safe only for the stale-copy case it was written for. A real directory there can
@@ -297,6 +330,15 @@ each refusal is a statement about a command that was going to fail:
       `link.pointsAtCheckout` after the installer runs.
 - [x] The installer refuses rather than deletes a hooks directory holding a foreign hook,
       naming it, and arms the gates once it is gone.
+- [x] The wizard's hooks step lands the scripts executable, omits the tests, registers both
+      entries plus the read-only allowlist, and is idempotent across a second run.
+- [x] A hooks directory that is a symlink into a checkout is registered, never copied over.
+- [x] A hooks step that fails reports why and leaves `settings.json` unwritten, and the
+      command install still succeeds.
+- [x] The `armed: false` hint names a command that exists on *that* device: the installer
+      script in a checkout, the shipped merge on a wizard install, the wizard itself when
+      no bundle landed.
+- [x] Gates copied in place read `armed: true` with no hint, rather than as a stale copy.
 
 ## What was rejected
 

@@ -31,6 +31,9 @@ function device() {
   // The real fragment, so the check is held to what actually ships.
   copyFileSync(join(REPO_HOOKS, 'settings-fragment.json'), join(hooksSrc, 'settings-fragment.json'));
   for (const script of ['pre-tool-use.mjs', 'stop.mjs']) writeFileSync(join(hooksSrc, script), '// stub\n');
+  // A clone install: the fix is the installer script, and it only exists in a checkout.
+  mkdirSync(join(dir, 'checkout', 'scripts'), { recursive: true });
+  writeFileSync(join(dir, 'checkout', 'scripts', 'install-personal.sh'), '# stub\n');
   const hooksDir = join(dir, 'claude', 'my-command', 'hooks');
   mkdirSync(dirname(hooksDir), { recursive: true });
   return {
@@ -38,6 +41,26 @@ function device() {
     hooksDir,
     settingsPath: join(dir, 'claude', 'settings.json'),
     fragmentPath: join(hooksSrc, 'settings-fragment.json'),
+  };
+}
+
+/**
+ * A wizard-installed device: the scripts were copied to `<config>/my-command/hooks` and the
+ * toolkit runs from beside them, so hooksDir *is* hooksSrc and there is no checkout anywhere.
+ */
+function wizardDevice() {
+  const dir = scratch();
+  const hooksDir = join(dir, 'claude', 'my-command', 'hooks');
+  mkdirSync(hooksDir, { recursive: true });
+  copyFileSync(join(REPO_HOOKS, 'settings-fragment.json'), join(hooksDir, 'settings-fragment.json'));
+  for (const script of ['pre-tool-use.mjs', 'stop.mjs', 'install-hooks.mjs']) {
+    writeFileSync(join(hooksDir, script), '// stub\n');
+  }
+  return {
+    hooksSrc: hooksDir,
+    hooksDir,
+    settingsPath: join(dir, 'claude', 'settings.json'),
+    fragmentPath: join(hooksDir, 'settings-fragment.json'),
   };
 }
 
@@ -110,6 +133,36 @@ test('a stale real directory is armed but flagged as not tracking the checkout',
   assert.equal(status.link.pointsAtCheckout, false);
   assert.match(status.reason, /does not point at/);
   assert.match(status.hint, /install-personal\.sh/);
+});
+
+// install-personal.sh exists only inside a git checkout, so a hardcoded hint told the
+// device the wizard installs to run a path that is not there.
+test('a wizard-installed device is told to re-run the merge it actually has', () => {
+  const d = wizardDevice();
+
+  const status = hooksStatus(d);
+  assert.equal(status.armed, false);
+  assert.equal(status.hint, `node ${join(d.hooksDir, 'install-hooks.mjs')}`);
+  assert.doesNotMatch(status.hint, /install-personal\.sh/);
+});
+
+test('copied-in-place gates read as current, not as a stale copy git pull cannot update', () => {
+  const d = wizardDevice();
+  install({ hooksDir: d.hooksDir, settingsPath: d.settingsPath, uninstall: false });
+
+  const status = hooksStatus(d);
+  assert.equal(status.armed, true);
+  // Not a symlink, and correct anyway: the wizard copies rather than links on purpose.
+  assert.equal(status.link.pointsAtCheckout, false);
+  assert.equal(status.reason, null);
+  assert.equal(status.hint, null);
+});
+
+test('no hook bundle anywhere points at the wizard rather than at a missing script', () => {
+  const d = wizardDevice();
+  rmSync(join(d.hooksDir, 'install-hooks.mjs'));
+
+  assert.equal(hooksStatus(d).hint, 'npx @llevasseur/my-command');
 });
 
 test('uninstalling drops back to armed: false', () => {

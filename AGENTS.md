@@ -35,8 +35,11 @@ Read this instead of guessing a path. Every path below is real; nothing else is.
 - `src/hooks/` — the workflow gates the harness runs: `pre-tool-use.mjs`, `stop.mjs`,
   their shared `lib/`, the `settings-fragment.json` that registers them, and
   `install-hooks.mjs` which merges that fragment into the device `settings.json`.
-  `install-personal.sh` symlinks the directory and runs the merge; the gates do nothing
-  until it does. `MY_COMMAND_HOOKS=0` silences all of them. See
+  Two install surfaces arm them, and the gates do nothing until one of them runs:
+  `install-personal.sh` symlinks the directory into the clone so `git pull` updates the
+  gates, and the npx wizard's `installHooks()` copies it to the device — a symlink into
+  npx's cache directory would dangle the moment the wizard exits. Both then run the same
+  merge. `MY_COMMAND_HOOKS=0` silences all of them. See
   [`docs/specs/workflow-gates.md`](docs/specs/workflow-gates.md) — **a gate must fail
   open and must never refuse the same subject twice**, and both properties are gated by
   `check-commands.sh`.
