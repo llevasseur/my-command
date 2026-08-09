@@ -22,7 +22,9 @@
 #  10. the workflow gates ship whole: hook scripts present and executable, both events
 #      registered in the settings fragment, the installer wiring them, and an off switch.
 #  11. every command that enters a worktree it just created states the working entry form.
-#  12. the npx wizard installs and registers the gates too, not just the toolkit — an
+#  12. no command or shared snippet prescribes `gh pr merge … --delete-branch`, whose local
+#      cleanup always fails where the default branch is checked out.
+#  13. the npx wizard installs and registers the gates too, not just the toolkit — an
 #      install surface that skips them ships the commands with the gates inert.
 set -euo pipefail
 
@@ -306,7 +308,16 @@ for f in src/commands/task.md src/commands/task-bootstrap.md src/commands/review
   fi
 done
 
-# 12. The npx wizard arms the gates, not just installs the toolkit — invariant 10 for the
+# 12. `gh pr merge --delete-branch` runs a local branch cleanup after the merge, which fails
+# with `fatal: '<default>' is already used by worktree at …` wherever the default branch stays
+# checked out. The merge lands and the call still exits 1, so the prescribed form drops the
+# flag and deletes the branch as its own step.
+if grep -REn -- 'gh pr merge[^`]*--delete-branch' src/commands/ src/shared/; then
+  echo "::error::a command or shared snippet still prescribes 'gh pr merge … --delete-branch'; its local cleanup fails wherever the default branch is checked out, reporting a failure for a merge that succeeded. Merge without the flag and delete the branch separately ('my-command-tools worktree end --branch <branch>', 'git push origin --delete <branch>')."
+  fail=1
+fi
+
+# 13. The npx wizard arms the gates, not just installs the toolkit — invariant 10 for the
 # other install surface. The bundle shipped whole while the wizard had no hooks step at all,
 # so every `npx @llevasseur/my-command` device reported `hooks.armed: false`.
 if ! grep -q 'installHooks()' src/my-command.ts; then

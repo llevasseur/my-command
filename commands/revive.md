@@ -26,7 +26,7 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 **The store's location is not hardcoded — it comes from the environment.**
 
 - **`CLAUDE_PROXY_STORE` (required)** — the directory the proxy writes session transcripts into, holding `<id>.md` files directly. Read it from the environment (`printenv CLAUDE_PROXY_STORE`); never guess a path, never derive one from a repo checkout or a clone location.
-- **`CLAUDE_PROXY_ARCHIVE` (optional)** — the root that relocated older transcripts live under, typically one subdirectory per day. Search it recursively for `<id>.md`. When it is unset, skip the archive and say so; an id older than the live store's retention simply will not resolve.
+- **`CLAUDE_PROXY_ARCHIVE` (optional)** — the root that relocated older transcripts live under, typically one subdirectory per day. Read it in a call of its own as `printenv CLAUDE_PROXY_ARCHIVE || true`, never chained after the required variable: `printenv CLAUDE_PROXY_STORE; printenv CLAUDE_PROXY_ARCHIVE` exits on the second, so an unset optional variable reports the whole probe as failed. Search it recursively for `<id>.md`. When it is unset, skip the archive and say so; an id older than the live store's retention simply will not resolve.
 - **If `CLAUDE_PROXY_STORE` is unset or does not point at an existing directory, stop.** Say the variable is unset (or its path is missing), that `--source proxy` cannot run without it, and that it must be exported in the shell environment — e.g. in `~/.zshrc`:
 
   ```sh
