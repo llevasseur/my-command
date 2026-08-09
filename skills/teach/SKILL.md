@@ -205,14 +205,15 @@ Never expand this into a paragraph, and never ask the user to fix it mid-run.
 
 ### The record
 
-One JSON object per line. Five fields are **required** and always written:
+One JSON object per request — the whole record is the POST body. Five fields are
+**required** and always written:
 
 - `term` (string) — the term step 2 landed on.
 - `sentence` (string) — the step 4 sentence, exactly as printed and copied.
 - `field` (string) — the field step 1 placed it in.
 - `skills` (array of strings) — the skills this run **applied**, the ones step 2
   loaded. Never the skill-discovery workflow.
-- `savedAt` (string) — ISO timestamp of the append.
+- `savedAt` (string) — ISO timestamp of the POST.
 
 Four more are **optional**, and the reading side renders each one it finds:
 

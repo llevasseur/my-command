@@ -98,7 +98,7 @@ Off macOS, substitute `wl-copy`, `xclip -selection clipboard`, or `clip.exe`. Wi
 
 Ask whether to save the concept. On yes, POST one JSON object to the hosted concept store — a Cloudflare Worker, not a file on this machine. A concept taught on one device is then readable from every other one.
 
-Both halves of the address come from the environment. Read them with `printenv`:
+Both halves of the address come from the environment. `printenv CONCEPTS_URL` is safe to read. **Never run `printenv CONCEPTS_TOKEN`** — that prints the token into the transcript. Check only that it is set, without echoing it, or let the snippet below report an unset one:
 
 - **`CONCEPTS_URL`** — the base URL of the Worker. The write path is `POST <CONCEPTS_URL>/api/concepts`.
 - **`CONCEPTS_TOKEN`** — the bearer token, sent as an `Authorization: Bearer <token>` header.
@@ -119,7 +119,7 @@ Never expand this into a paragraph, and never ask the user to fix it mid-run.
 
 ### The record
 
-One JSON object per line. Five fields are **required** and always written:
+One JSON object per request — the whole record is the POST body. Five fields are **required** and always written:
 
 | Field | Type | What it holds |
 | --- | --- | --- |
@@ -127,7 +127,7 @@ One JSON object per line. Five fields are **required** and always written:
 | `sentence` | string | The Step 4 sentence, exactly as printed and copied. |
 | `field` | string | The field Step 1 placed it in. |
 | `skills` | string[] | The skills this run **applied** — the ones Step 2 loaded. Never `find-skills`. |
-| `savedAt` | string | ISO timestamp of the append. |
+| `savedAt` | string | ISO timestamp of the POST. |
 
 Four more are **optional**, and claude-proxy's detail page renders each one it finds:
 

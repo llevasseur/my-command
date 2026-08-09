@@ -120,8 +120,8 @@ is belt and braces.
 **An optional field with nothing in it is omitted, never written as `""` or
 `[]`.** claude-proxy's detail page distinguishes absent from empty, and absence is
 what makes it show its "nothing more to show" fallback. Records written before
-these fields existed carry none of them and stay valid; nothing in
-`concepts.jsonl` is rewritten or migrated. Lists are passed newline-separated
+these fields existed carry none of them and stay valid; a stored concept is never
+rewritten or migrated. Lists are passed newline-separated
 because a tip reliably contains a comma and never contains a newline.
 
 **An unreachable store is not fatal, and no longer silent.** `/improve`
