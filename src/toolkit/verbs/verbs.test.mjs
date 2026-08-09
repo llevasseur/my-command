@@ -314,6 +314,45 @@ test('pr --draft converts a non-draft PR toward draft', () => {
   }
 });
 
+test('pr takes its title from the first commit when --title is absent', () => {
+  const { dir, git, calls, restore } = repoWithFakeGh({
+    number: 11,
+    url: 'https://example.test/pr/11',
+    isDraft: false,
+    title: 'Existing',
+    state: 'OPEN',
+  });
+  try {
+    writeFileSync(join(dir, 'b.ts'), 'export const b = 1;\n');
+    git(['add', 'b.ts']);
+    git(['commit', '-qm', 'fix: stop losing the closing turn']);
+    writeFileSync(join(dir, 'c.ts'), 'export const c = 1;\n');
+    git(['add', 'c.ts']);
+    git(['commit', '-qm', 'a later commit nobody titles a PR after']);
+
+    const r = pr(ctx(dir, [], { body: 'body', retitle: true }));
+    assert.equal(r.action, 'updated');
+    assert.match(calls(), /--title fix: stop losing the closing turn/);
+  } finally {
+    restore();
+  }
+});
+
+test('pr still refuses when there is no commit to take a title from', () => {
+  const { dir, restore } = repoWithFakeGh({
+    number: 12,
+    url: 'https://example.test/pr/12',
+    isDraft: false,
+    title: 'Existing',
+    state: 'OPEN',
+  });
+  try {
+    assert.throws(() => pr(ctx(dir, [], { body: 'body' })), /--title is required/);
+  } finally {
+    restore();
+  }
+});
+
 const SHOT = 'https://github.com/user-attachments/assets/1111-2222';
 const CLIP = 'https://github.com/user-attachments/assets/3333-4444';
 

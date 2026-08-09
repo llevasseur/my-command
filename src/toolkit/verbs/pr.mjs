@@ -5,13 +5,14 @@ import { readFileSync } from 'node:fs';
 import { bool, str } from '../lib/flags.mjs';
 import { ghWrite, originSlug } from '../lib/gh.mjs';
 import { run as exec, ToolkitError, UsageError } from '../lib/proc.mjs';
-import { currentBranch, defaultBranch, repoRoot } from '../lib/repo.mjs';
+import { commitsSince, currentBranch, defaultBranch, repoRoot, resolveBase } from '../lib/repo.mjs';
 
-export const usage = `pr --title <text> --body <text|-> [--draft] [--base <branch>] [--retitle]
+export const usage = `pr [--title <text>] --body <text|-> [--draft] [--base <branch>] [--retitle]
 
 Push the current branch and create or update its PR.
 
-  --title <text>   PR title. Only applied to an existing PR when --retitle is given.
+  --title <text>   PR title. Defaults to the branch's first commit subject.
+                   Only applied to an existing PR when --retitle is given.
   --body <text>    PR description. Use \`-\` to read it from stdin.
   --draft          Create as a draft, or convert an existing non-draft PR to draft.
                    An existing draft is never taken out of draft, flag or not.
@@ -23,6 +24,22 @@ links — are always carried over into the new body. They are never dropped.
 
 A \`must be a collaborator\` rejection is resolved here — by retrying under a token
 belonging to the repository owner, then over REST — and never returned as an error.`;
+
+/**
+ * The subject of the branch's first commit, used when `--title` is absent. A missing title
+ * was a usage error that failed the same way on every re-run, and the answer it wanted was
+ * always already in the branch.
+ * @param {string} cwd @param {string} [base]
+ * @returns {string}
+ */
+function firstCommitSubject(cwd, base) {
+  const commits = commitsSince(cwd, resolveBase(cwd, base).sha);
+  const first = commits[commits.length - 1]?.subject?.trim();
+  if (!first) {
+    throw new UsageError('--title is required: the branch has no commit to take a subject from', { usage });
+  }
+  return first;
+}
 
 /**
  * The REST equivalent of a `gh pr` write, as a JSON body on stdin. REST accepts the
@@ -43,11 +60,10 @@ export function run(ctx) {
 
   if (branch === def) throw new ToolkitError(`refusing to open a PR from the default branch (${def})`, { branch });
 
-  const title = str(ctx.flags.title);
-  if (!title?.trim()) throw new UsageError('--title is required', { usage });
   const body = readBody(str(ctx.flags.body));
   const draft = bool(ctx.flags.draft);
   const base = str(ctx.flags.base) ?? def;
+  const title = str(ctx.flags.title)?.trim() || firstCommitSubject(cwd, str(ctx.flags.base));
 
   const push = exec('git', ['push', '-u', 'origin', 'HEAD'], { cwd });
   if (!push.ok) throw new ToolkitError('git push failed', { code: push.code, stderr: push.stderr });
