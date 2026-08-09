@@ -71,7 +71,7 @@ The rationale is a list of bullets rather than a paragraph, and `shared/plain-ra
 
 Six bullets, written as literal `- ` lines: **what it is**, **the problem**, **how it works**, **what it replaces or simplifies**, **size**, and **depends on `<slug>`** — the last written only when the idea consumes something a named idea introduces, since its absence is what tells `/improve` the idea declares no dependency. Three of Step 3's five required statements live here; the other two, the evidence and the repo, are fields of their own.
 
-Each bullet follows [ASD-STE100](https://asd-ste100.org) Simplified Technical English: one idea per sentence and at most twenty words, active voice and present tense, one word per concept, no idiom, at most three nouns in a row, an article before each countable noun, and no pronoun pointing at another bullet — a reader scans a card out of order.
+Each bullet follows [ASD-STE100](https://asd-ste100.org) Simplified Technical English: one idea per sentence and at most twenty words, active voice and present tense, one word per concept, no idiom, at most three nouns in a row, an abbreviation written out the first time or not used at all, an article before each countable noun, and no pronoun pointing at another bullet — a reader scans a card out of order.
 
 This is **stricter than `shared/rewrite-toward.md`**, which draws on the same standard and deliberately declines its word list, sentence cap, and simple tenses. That file governs command instructions, where the reader is an agent and a long sentence buys precision. A rationale is a short pitch to a human about to click Accept or Reject, so the cap costs nothing.
 
