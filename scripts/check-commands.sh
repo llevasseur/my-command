@@ -22,6 +22,8 @@
 #  10. the workflow gates ship whole: hook scripts present and executable, both events
 #      registered in the settings fragment, the installer wiring them, and an off switch.
 #  11. every command that enters a worktree it just created states the working entry form.
+#  12. no command or shared snippet prescribes `gh pr merge … --delete-branch`, whose local
+#      cleanup always fails where the default branch is checked out.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -303,6 +305,15 @@ for f in src/commands/task.md src/commands/task-bootstrap.md src/commands/review
     fail=1
   fi
 done
+
+# 12. `gh pr merge --delete-branch` runs a local branch cleanup after the merge, which fails
+# with `fatal: '<default>' is already used by worktree at …` wherever the default branch stays
+# checked out. The merge lands and the call still exits 1, so the prescribed form drops the
+# flag and deletes the branch as its own step.
+if grep -REn -- 'gh pr merge[^`]*--delete-branch' src/commands/ src/shared/; then
+  echo "::error::a command or shared snippet still prescribes 'gh pr merge … --delete-branch'; its local cleanup fails wherever the default branch is checked out, reporting a failure for a merge that succeeded. Merge without the flag and delete the branch separately ('my-command-tools worktree end --branch <branch>', 'git push origin --delete <branch>')."
+  fail=1
+fi
 
 if [ "$fail" -eq 0 ]; then
   echo "check-commands: all command invariants satisfied ($(ls src/commands/*.md | wc -l | tr -d ' ') commands)."

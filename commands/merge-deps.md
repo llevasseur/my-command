@@ -73,7 +73,7 @@ name and no `| jq` to pipe it through.
 
 The merge steps are where this pipeline's failed shell calls concentrate, and almost every one is a rejected merge re-issued verbatim. Read the error text and branch on it; never send the same call twice.
 
-- **Merging a PR into the default branch** is `gh pr merge <number> --<method> --delete-branch`, issued **once**. Its rejections are states, not usage errors:
+- **Merging a PR into the default branch** is `gh pr merge <number> --<method>`, issued **once**, and **never with `--delete-branch`**. That flag runs a local branch cleanup after the merge, which fails with `fatal: '<default>' is already used by worktree at …` on any device that keeps the default branch checked out — so the merge lands and the call still exits 1, reporting a failure for work that succeeded. Delete the branch as its own step instead: `my-command-tools worktree end --branch <branch>` for the local worktree and branch, and `git push origin --delete <branch>` for the remote ref, each in its own call. Its rejections are states, not usage errors:
   - `Merge already in progress`, or a failing `mergePullRequest` GraphQL call — GitHub accepted a merge and is still processing it. **Do not re-issue it.** Read the outcome instead: `my-command-tools prs view <number>`, whose result already carries `state`, `mergedAt`, and `mergeStateStatus`. `MERGED` is success, and the run continues at its next step. Only a PR that settles back to `OPEN` is merged again, and then once.
   - Pending required checks — a wait, not a refusal. Re-issue the identical command **with `--auto`** and record the PR as queued.
   - `not mergeable`, `BLOCKED`, or `BEHIND` — the default branch moved. Run `/my-command:mc -t <branch>`, then retry the merge once.
@@ -119,11 +119,12 @@ For each PR (number `N`, branch `B`):
 
 3. **Merge into main.** Merge through GitHub so branch protection is honored (never push
    to `main` directly):
-   - `--auto` given → `gh pr merge N --<method> --delete-branch --auto` and record `B` as
-     queued.
-   - Otherwise → `gh pr merge N --<method> --delete-branch`. If GitHub rejects it because
-     required checks are still pending, fall back to the same command **with `--auto`** and
-     record `B` as queued; on a clean merge record `B` as merged.
+   - `--auto` given → `gh pr merge N --<method> --auto` and record `B` as queued.
+   - Otherwise → `gh pr merge N --<method>`. If GitHub rejects it because required checks
+     are still pending, fall back to the same command **with `--auto`** and record `B` as
+     queued; on a clean merge record `B` as merged.
+   - On a merged (not queued) PR, delete the remote branch in its own call:
+     `git push origin --delete B`.
 
 4. **Clean the worktree.** `my-command-tools worktree end --branch B --force`. The verb
    normally refuses to remove a worktree whose HEAD isn't on origin; `--force` is right
@@ -160,7 +161,7 @@ For each PR (number `N`, branch `B`):
 - `$ARGUMENTS` holds only the flags — this command takes no free-text criteria.
 - <!-- include: shared/approval-own-call.md -->**A command that may need approval goes in its own Bash call** — `git fetch`, `git config`, and, as a narrow exception to the general rule to chain dependent mutations, branch-lifecycle operations such as checkout/switch, pull, remote-branch inspection, and local branch deletion. Folding one into an `&&` chain escalates approval to the whole compound command and costs a turn plus a retry. Put status output, pipes, and follow-up verification in separate read-only calls.<!-- /include -->
 - <!-- include: shared/classifier-refusal.md -->A classifier refusal is not evidence that repository protections should be weakened. Inspect the refused command first; when the intended operation is safe and the refusal looks incidental to the command's shape — an over-broad chain, pipe, or extra flag — retry only the smallest exact command, never an allowlisted Bash pattern or a permission-settings change.<!-- /include -->
-- <!-- include: shared/refusal-final.md -->A refusal of a **PR merge or a remote-ref deletion is final.** Surface it to the human and carry on with the rest of the work. Re-expressing the same operation is refused for the same reason and costs a second turn: `gh api -X PUT .../pulls/N/merge` is `gh pr merge`, and `gh api --method DELETE .../git/refs/heads/...` is `git push origin --delete`, so neither is a narrow retry — nor is re-running one under `GH_TOKEN=...`.<!-- /include --> Step 3's `gh pr merge N --<method> --delete-branch` is where this fires.
+- <!-- include: shared/refusal-final.md -->A refusal of a **PR merge or a remote-ref deletion is final.** Surface it to the human and carry on with the rest of the work. Re-expressing the same operation is refused for the same reason and costs a second turn: `gh api -X PUT .../pulls/N/merge` is `gh pr merge`, and `gh api --method DELETE .../git/refs/heads/...` is `git push origin --delete`, so neither is a narrow retry — nor is re-running one under `GH_TOKEN=...`.<!-- /include --> Step 3's `gh pr merge N --<method>` and its `git push origin --delete B` are where this fires.
 
 ## Close the run in a text-only turn
 
