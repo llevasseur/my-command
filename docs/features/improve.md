@@ -132,24 +132,33 @@ with an absent CLI meaning tier 1 is *absent* and a tier that exists and fails t
 read meaning **stop**:
 
 ```sh
-LOG_DIR="<logDir>" pnpm --filter server ideas list -s accepted --repo <slug> --json
+LOG_DIR="<logDir>" pnpm --filter server ideas list --available --repo <slug> --json
 ```
 
 The repo is a **git remote slug**, never a checkout path, because the store is
-device-wide. **Only `accepted` is ever read** — `proposed` is invention nobody
-signed off on, `rejected` is invention turned down, `shipped` is already done — and
-`--idea` does not relax that: naming a slug selects from the accepted set rather
-than admitting anything into it. `--range` does not apply, since ideas are not
-bucketed.
+device-wide. **`--available` is the read, replacing an older `-s accepted`**: it
+returns `accepted` plus the ideas whose claim has expired, which is exactly the set
+a run may take. `-s accepted` alone can never recover an idea a run picked up and
+then died holding — that entry reads `claimed` and no sweeper restores it — while
+`-s accepted,claimed` would hand out one a live run is still building. This does
+**not** loosen the sign-off rule, and should not be narrowed back: `claimed` is
+reachable only from `accepted`, so every available row was signed off. Nothing
+outside that set is read — `proposed` is invention nobody signed off on, `rejected`
+is invention turned down, `shipped` is already done, and a live claim belongs to
+another run — and `--idea` does not relax that: naming a slug selects from the
+available set rather than admitting anything into it. `--range` does not apply,
+since ideas are not bucketed.
 
 **The slug filtering happens in the command.** `ideas list` has **no `--slug`
-filter**, so the call above returns the whole accepted set for the repo and the
+filter**, so the call above returns the whole available set for the repo and the
 selection is made against what came back: `--ideas` takes every row, `--idea` matches
 each named slug exactly. **A named slug that does not resolve is a stop, not a
-skip** — reported as unknown with the tiers searched and the accepted slugs that do
-exist, or as present-but-not-accepted with the status it actually holds, since
+skip** — reported as unknown with the tiers searched and the available slugs that do
+exist, or as present-but-unavailable with the status it actually holds, since
 `proposed`, `rejected` and `shipped` each mean something different and only one is
-fixable here. The run stops on the first unresolved slug, before anything is
+fixable here. A slug held by a **live claim** is the one exception and is a skip
+with a named holder rather than a stop: nothing is wrong, the claim expires or is
+released, and the answer is to wait. The run stops on the first unresolved slug, before anything is
 dispatched: a silent skip turns "build these three" into a run that quietly builds
 two, and the missing one looks identical to one nobody asked for.
 
@@ -277,6 +286,31 @@ or a file, and an idea is never added to that repo's suggestion brief. They argu
 from different evidence, and a group carrying both can defend itself with only one
 of them.
 
+**Claiming an idea before it is built.** Every idea dispatch claims the idea in the
+ledger *first*, before any code is written:
+
+```sh
+LOG_DIR="<logDir>" pnpm --filter server ideas claim --slug <slug> --by <branch> --json
+```
+
+The claim exists because `accepted` used to be the status an implementing run looked
+for right up until its PR existed, so two runs reading the ledger minutes apart both
+saw one idea as free — claude-proxy PRs #139 and #140 built the same idea eleven
+minutes apart and one was closed unmerged. **`--by` is the branch name the dispatch
+is about to cut**, in `/task`'s own `<type>/<kebab-summary>` shape and named in the
+brief so the subagent cuts exactly it. The branch is the holder because it is the one
+string a second run can verify by itself — `git branch -r` either shows it or does
+not — which distinguishes a claim backed by real work from one left by a run that
+vanished; a run id or a person's name tells that second run nothing. **A refused
+claim means another run holds the idea**: skip it and report the holder and
+since-when, never build it anyway and never retry under a different `--by`. Only an
+`accepted` idea, or one whose claim is stale or already yours, can be claimed at all,
+so a claim cannot route around the human sign-off. A `--dry-run` claims nothing,
+because a claim is a write. Once a dispatch returns a PR, the run re-claims the same
+slug under the same branch with `--pr`: claiming is idempotent for the same holder,
+and a claim carrying a PR never expires — the six-hour TTL is sized to *writing* the
+change, while review is the long part of an idea's life.
+
 **Running the task.** The two tracks dispatch on **different units**. Suggestion
 criteria are grouped by the repo they land in and **one fresh subagent per repo**
 runs `/task <pass-through flags> <criteria>` — most runs are one repo and so one
@@ -329,7 +363,27 @@ time — the sign-off is still valid and the work still is not done — and beca
 PRs are separate, one idea failing marks nothing against the others. A run given no
 idea flag marks nothing in the ideas store at all. Nothing here moves an idea back
 to `proposed` or `rejected`: the command implements advice, it does not overturn a
-human's sign-off.
+human's sign-off. **`shipped` keeps the claim**, deliberately — it becomes the record
+of which branch built the thing, beside the PR in the note — and it still means the
+work *landed*, which is what it went back to meaning once the claim took over saying
+that somebody is building it.
+
+**Releasing a claim the run is not going to ship.** Every exit routes through the
+closing turn, so that is where an unshipped claim is handed back:
+
+```sh
+LOG_DIR="<logDir>" pnpm --filter server ideas mark --slug <slug> -s accepted
+```
+
+Every mark other than `shipped` drops the claim, which is what makes this the
+release. It lives on the closing turn because the exits that most need it are the
+ones nobody plans for — a run that gives up, is refused, or hits a failing gate is
+in each case holding an idea it will not build. Without the release that idea reads
+as taken for the full six-hour expiry and every `/improve` in the window skips it,
+blocked by a holder that went away rather than by any real work. Only what did *not*
+ship is released: a landed idea already carries its PR and was marked `shipped`, and
+a run that opened a PR but stopped before marking leaves the claim alone, since a
+claim carrying a PR does not expire and shows the next run the work exists.
 
 **Re-marking a regression.** A regressed suggestion is being fixed at least the
 second time, and `resolved` keeps only the most recent claim — so marking this
@@ -350,8 +404,13 @@ by which flag and from which ledger tier — any defective rule dispatched to
 claude-proxy, the criteria that shipped, the PR number/URL **for each repo on the
 suggestion track and for each idea on the idea track, listed separately**, what was
 marked `done` or `skipped`, which ideas were marked `shipped` and against which PR
-each, and what stays `pending` or `accepted` with why. It is delivered in a
-text-only turn; a subagent's report is never that turn.
+each, and what stays `pending` or `accepted` with why. **On the idea track it also
+says what happened to each claim** — which slugs were claimed and under which branch,
+which were skipped because another run held them with the holder and since-when, and
+which were released on the way out — because a skipped idea and an idea nobody
+selected look identical in a report that counts only what shipped, and the first is
+coming back on the next run. It is delivered in a text-only turn; a subagent's report
+is never that turn.
 
 ## Related
 
