@@ -29,6 +29,8 @@
 #  14. the toolkit fails closed when those gates are not armed: the verbs every workflow
 #      command opens with refuse to run, with one detector behind them and one documented
 #      escape for a genuinely hook-less environment.
+#  15. every command carries the step marker rules, so a run states the step it enters
+#      instead of leaving the record to infer it (docs/specs/run-markers.md).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -398,6 +400,23 @@ fi
 # without it this fails for a reason that has nothing to do with the escape.
 if ! escaped="$(MY_COMMAND_REQUIRE_HOOKS=0 node src/toolkit/cli.mjs state --compact --base HEAD 2>&1)"; then
   echo "::error::\`MY_COMMAND_REQUIRE_HOOKS=0 my-command-tools state\` failed; the documented escape does not work, which bricks CI and every fresh clone. It said: ${escaped}"
+  fail=1
+fi
+
+# 15. The step marker makes a step attribution exact rather than inferred from prose. It is one
+# include in every command, including a stepless one, so a command that gains a step is marked
+# without an edit.
+for f in src/commands/*.md; do
+  if ! grep -Fq 'include-block: shared/step-marker.md' "$f"; then
+    echo "::error::$(basename "$f") dropped the shared/step-marker.md include; its steps would be anchored by guessing at its prose instead of by the marker (docs/specs/run-markers.md)."
+    fail=1
+  fi
+done
+
+# The return marker ships inside the closing turn rather than as an include of its own, so this
+# asserts its text rather than a directive check 6 already makes.
+if ! grep -Fq 'RETURN /<command>' src/shared/closing-turn.md; then
+  echo "::error::src/shared/closing-turn.md no longer states the return marker; a nested run's span would run on to the end of the transcript and be charged with its host's work (docs/specs/run-markers.md)."
   fail=1
 fi
 

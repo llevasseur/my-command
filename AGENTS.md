@@ -55,7 +55,10 @@ The shared snippets a new command usually needs: `shared/closing-turn-anchor.md`
 `shared/batched-discovery.md` (the batched read-only discovery pass, required in every command
 that sweeps files before acting — invariant 8), `shared/merge-command-forms.md` (the working
 `gh pr merge` and `git -C <path>` forms, required in every command that merges — invariant 9),
-and `shared/rewrite-toward.md` (the density vocabulary rules — invariant 7).
+`shared/rewrite-toward.md` (the density vocabulary rules — invariant 7), and
+`shared/step-marker.md` (the `STEP <n>/<N>` marker a run writes as it enters each step,
+required in every command by invariant 15 — see
+[`docs/specs/run-markers.md`](docs/specs/run-markers.md)).
 
 ## Adding or changing a command — non-negotiable checklist
 
@@ -86,7 +89,8 @@ byte-in-sync with `src/commands/`, every command has a
 feature doc, generated Claude command, and Codex-native skill, every command carries
 the closing-turn anchor and its terminal step (and every skill mirrors both), every
 file-sweeping command carries the batched-discovery step, every merging command carries the
-merge command forms, and the wizard still globs both source directories. This is why the wizard "auto-updates" is safe to rely
+merge command forms, every command carries the step marker rules and the closing turn still
+states the return marker, and the wizard still globs both source directories. This is why the wizard "auto-updates" is safe to rely
 on—if someone replaces a glob with a hardcoded list, the check fails. The `commands` job in
 `.github/workflows/ci-pr.yml` blocks the PR on it.
 
