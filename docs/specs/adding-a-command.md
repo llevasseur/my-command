@@ -4,7 +4,8 @@ title: Adding a command
 description: The checklist an agent follows to add a MyCommand slash command so the suite, the install wizard, and the docs stay in sync.
 tags: [process, commands, wizard]
 timestamp: 2026-07-15
-updated: 2026-08-02
+updated: 2026-08-09
+dirty: true
 ---
 
 # Adding a command
@@ -46,6 +47,13 @@ Match the shape of the existing commands:
 
   `check-commands.sh` fails any command missing either directive or the heading,
   and the matching Codex skill MUST state both rules in its own words.
+- the step marker, as `<!-- include-block: shared/step-marker.md -->` in its own
+  paragraph before the first `## ` heading. It tells the run to open each step
+  with `STEP <n>/<N>`, so a recorded run states the step it entered instead of
+  leaving that to be inferred from its prose. Every command carries it, including
+  one with no `## Step …` headings, so a command that later gains steps is marked
+  without an edit. `check-commands.sh` fails a command missing it. See
+  [Run markers](run-markers.md).
 
 Bare is canonical: sibling commands are referenced bare (`/clean`, `/pr`); the
 build step namespaces them for the published plugin.
@@ -113,8 +121,9 @@ the mechanism: they are translations, not copies.
    commands / Codex skills / feature docs are one-to-one, the wizard still globs
    both source directories and still installs the toolkit on PATH
    ([Command toolkit](command-toolkit.md)), every command carries both
-   closing-turn directives plus the heading and every skill mirrors them, and the
-   two density paths keep `shared/rewrite-toward.md`. Also
+   closing-turn directives plus the heading and every skill mirrors them, every
+   command carries `shared/step-marker.md` and the closing turn still states the
+   return marker, and the two density paths keep `shared/rewrite-toward.md`. Also
    confirm `okq --bundle docs validate` passes. This check runs in PR CI, so a
    missed step blocks the merge rather than shipping silently.
 
