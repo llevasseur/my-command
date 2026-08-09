@@ -1,0 +1,162 @@
+---
+description: Read the hosted concept store before a term is named, so a concept the corpus already holds is never named a second time
+argument-hint: "[--field|-f <field>] [--limit|-l <n>] <term or description>"
+allowed-tools: Bash, Read
+---
+
+The corpus already holds every term `/teach` has ever settled, and until now nothing read it back. So a concept taught in March gets taught again in August, under a second wording, and the two sentences disagree. This command is the **gate** that stops that: it reads the store, and its answer decides whether a `/teach` is allowed to start.
+
+Input is the text in the `<command-args>` block above. Parse leading flags off the front; everything else is the term or the description to look up.
+
+**This command is read-only and writes nothing to the store, ever.** Every request is a `GET`. It never posts, never saves, never re-teaches, and never edits a stored record. A concept that turns out to be wrong is not this command's to fix.
+
+<!-- include: shared/closing-turn-anchor.md -->**Before the first tool call, anchor the closing turn.** Put "close the run in a text-only turn" in the harness todo/task list as its own final item — worded on its own, never folded into the work it follows. The todo list is live session state that a compaction carries forward; this prompt is not, so once this run is summarized that item is the only surviving record that an outcome is still owed. **Resolve it in the same tool-call turn as the run's last piece of real work** — the teardown, the final `verify`, the closing `gh` call — so the anchor is already marked completed when that turn returns and the only thing left for the run to do is speak. **Never leave marking it as a call of its own after the work ends.** A run whose last scheduled action is a bookkeeping tool call ends on that call: the mark lands, the message that was meant to follow it does not, and the run records no outcome — the exact failure this anchor exists to prevent, arriving through the anchor itself. Compose the closing message against a task list that is already clean, and if the anchor somehow survives the work, close it alongside whatever you are already calling rather than scheduling a turn for it — a still-open anchor is never a reason to end the run on a tool call.<!-- /include -->
+
+## Flags
+
+- `--field` / `-f <field>` — the field the concept belongs to (`UI motion`, `domain modeling`, a business area). It selects the neighbours in outcome 2. Without it the run has only the query to go on, and neighbours come from the search alone.
+- `--limit` / `-l <n>` — how many neighbours to list. Default 10.
+- Anything not a recognized flag is part of the term or description.
+
+## The three outcomes are the whole design
+
+A lookup is not a search. It ends in exactly one of three outcomes, and the outcome — not the result count — is what the caller acts on:
+
+1. **An exact term hit.** The stored Simplified Technical English sentence comes back **verbatim**, and the run **stops**. That sentence is the entire deliverable `/teach` exists to produce, so re-deriving it would yield a second wording for one concept — the thing `/teach`'s own one-term-per-concept rule forbids.
+2. **A field hit with no term hit.** The neighbours come back **as context for the naming step, never as the answer**. A stored concept in the same field is what `/teach`'s first naming source — an installed skill covering the field — is trying to approximate, so handing those neighbours to the naming step improves it. Handing them back as though one of them were the term does not.
+3. **A miss.** Say so and exit. **A miss is the only outcome that authorizes a `/teach` at all.**
+
+Only an exact term match is outcome 1 — the query equal to a stored `term`, compared trimmed and without case. A search result that merely mentions the query is a **neighbour**, and belongs to outcome 2 with the rest of them. There is no fourth outcome, and a near miss is never promoted into outcome 1 to save a run.
+
+## Step 1 — Read the store
+
+Both halves of the address come from the environment, exactly as `/teach` reads them for the save side. `printenv CONCEPTS_URL` is safe to read. **Never run `printenv CONCEPTS_TOKEN`** — that prints the token into the transcript. Check only that it is set, without echoing it, or let the snippet below report an unset one:
+
+- **`CONCEPTS_URL`** — the base URL of the Worker.
+- **`CONCEPTS_TOKEN`** — the bearer token, sent as an `Authorization: Bearer <token>` header.
+
+**Never hardcode either value, never write either one into a file, and never put the token on a command line.** The snippet reads both from `process.env` inside the node process, so the token stays out of the command, the transcript, and the shell history.
+
+The store is read in a fixed order, and the first thing that answers decides the outcome:
+
+1. `GET /api/concepts/concept?term=<query>` — the exact term. A `200` is outcome 1 and the run stops there. A `404` is this probe saying only that the corpus has no concept under that exact term.
+2. `GET /api/concepts/search?q=<query>` — BM25 full text. A result whose `term` equals the query is promoted to outcome 1; every other result is a neighbour.
+3. `GET /api/concepts?field=<field>` — the field listing, run only when `--field` was given. Its rows join the neighbours from step 2.
+
+Neighbours found at the end of that order is outcome 2. Nothing found is outcome 3.
+
+```bash
+node -e '
+const [term, field, limitArg] = process.argv.slice(1);
+const base = process.env.CONCEPTS_URL;
+const token = process.env.CONCEPTS_TOKEN;
+if (!base || !token) {
+  console.log("miss: " + (base ? "CONCEPTS_TOKEN" : "CONCEPTS_URL") + " is not set, so the corpus was not read");
+  process.exit(0);
+}
+const root = base.replace(/\/+$/, "");
+const limit = Number(limitArg) || 10;
+const why = (e) => e.message + (e.cause && e.cause.message ? " (" + e.cause.message + ")" : "");
+const get = async (path) => {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await fetch(root + path, { headers: { authorization: "Bearer " + token } });
+      if (res.status === 404) return { missing: true };
+      if (!res.ok) {
+        if (res.status >= 500 && attempt === 1) continue;
+        return { error: res.status + " " + (await res.text()).trim().slice(0, 120) };
+      }
+      return { body: await res.json() };
+    } catch (err) {
+      if (attempt === 1) continue;
+      return { error: why(err) };
+    }
+  }
+};
+const unreachable = (e) => console.log("miss: the store answered " + e + ", so the corpus was not read");
+const same = (a, b) => String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
+const hit = (c, versions) => {
+  console.log("term hit: " + c.term + " [" + (c.field ?? "no field") + "]" + (versions > 1 ? " (" + versions + " versions, newest shown)" : ""));
+  console.log("sentence: " + c.sentence);
+};
+const q = encodeURIComponent(term);
+(async () => {
+  const exact = await get("/api/concepts/concept?term=" + q);
+  if (exact.error) return unreachable(exact.error);
+  if (exact.body && exact.body.concept) {
+    return hit(exact.body.concept, (exact.body.versions || []).length);
+  }
+  const neighbours = new Map();
+  const found = await get("/api/concepts/search?q=" + q + "&limit=" + limit);
+  if (found.error) return unreachable(found.error);
+  for (const c of (found.body && found.body.results) || []) {
+    if (same(c.term, term)) return hit(c, 1);
+    neighbours.set(c.term, c);
+  }
+  if (field) {
+    const near = await get("/api/concepts?field=" + encodeURIComponent(field) + "&limit=" + limit);
+    if (near.error) return unreachable(near.error);
+    for (const c of (near.body && near.body.concepts) || []) neighbours.set(c.term, c);
+  }
+  const rows = [...neighbours.values()].slice(0, limit);
+  if (rows.length === 0) return console.log("miss: the corpus holds no concept for " + JSON.stringify(term));
+  console.log("field hit: " + rows.length + " neighbour(s), no term hit");
+  for (const c of rows) console.log("- " + c.term + " [" + (c.field ?? "no field") + "] " + c.sentence);
+})();
+' "<the term or description>" "<the field, or an empty string>" "<the limit>"
+```
+
+The snippet always exits `0` and always prints one first line naming the outcome. Read that line; it is the outcome, and nothing else in the run overrides it.
+
+## Step 2 — An unreachable store is a miss with a stated cause
+
+**A store this run could not read is a miss, not a stop.** The same reasoning `/teach` already applies to the save side applies here: the run keeps going, and the failure costs the check rather than the work. Never stop the run over it, and never ask the user to fix it mid-run.
+
+**Say the cause, in one short line**, so a reader can tell a corpus that holds nothing from a corpus that was never read. The difference matters here more than it does on the save side: an unread corpus authorizes a `/teach` that may well duplicate a stored term, and only the stated cause says so.
+
+- A variable is unset → name which one, and say the corpus was not read.
+- The store answered with an error → give the status code and the short reason it returned.
+- The request never reached the store → give the network error.
+
+Never expand this into a paragraph.
+
+## Step 3 — Report the outcome
+
+Print the outcome plainly, in the shape it earned. **Never re-word a stored sentence** — it is the deliverable of the run that produced it, and a paraphrase here is the second wording this command exists to prevent.
+
+- **Term hit** — the stored sentence on its own line, exactly as the store returned it, then the term, the field, and a note that older versions exist when the store reported more than one. Put the bare sentence on the clipboard as well, the way `/teach` Step 6 does, so it is usable in the prompt the user is already writing:
+
+  ```bash
+  pbcopy <<'LOOKUPEOF'
+  <the stored sentence>
+  LOOKUPEOF
+  ```
+
+  Off macOS, substitute `wl-copy`, `xclip -selection clipboard`, or `clip.exe`. With no clipboard sink, print the sentence and say the copy was skipped. Then **stop** — no `/teach`, no second wording, no improvement of a sentence that is already the answer.
+- **Field hit** — the neighbours as a short list, one `term — sentence` per line, under one line saying plainly that none of them is the term and that they are context for naming it. Never present the closest neighbour as the answer.
+- **Miss** — one line saying the corpus holds nothing for this, plus the cause when the store could not be read, and `/teach <the description>` as the next step.
+
+**Teach nothing here.** This command reads; it does not name, grill, or compose a sentence. A miss hands the work to `/teach` and ends.
+
+## Step 4 — Close the run in a text-only turn
+
+Lead with the outcome — term hit, field hit, or miss — in one line.
+
+<!-- include-block: shared/closing-turn.md -->
+**This step is never skipped and never delegated.** The run is over when this session sends **one message carrying text and zero tool calls** — not when the work lands. That is the mechanic, not a style preference: a run's outcome is recorded only from a message with no tool call in it, so a message carrying the report *and* a tool call is recorded as a decision mid-run, and a run whose last message is a tool call records no outcome at all. Make the last tool call, let it return, then reply with text alone.
+
+- **Every exit routes here, not just the shipped one.** Finished; nothing to do; a gate still failing; a step blocked, refused, or awaiting my answer; the request abandoned as wrong. The wording changes, the closing turn does not. A run that stopped early says where it stopped and what is on the branch, and leaves `/revive <thread id>` as the recovery path when the proxy thread id is available.
+- **Say it in one self-contained line first**, then any detail. Someone who never saw the request should be able to read that line alone.
+- **A compaction boundary is a checkpoint, not an ending.** A recap prompt ("The user stepped away and is coming back…"), a `[SYSTEM NOTIFICATION - NOT USER INPUT]` event, or a session-continuation preamble each mean the run is still owed its turn: answer that prompt in text alone, say where the run actually stands, and restore the anchor todo item if it did not survive. A session is likeliest to die just after a compaction, so that answer is often the only outcome the run ever records. **Each side of the boundary records its own standing**, because a run split across two transcripts is two runs to the record: one that carried a PR across a boundary and closed on neither side reads as two abandoned runs, not one shipped one.
+- **Every prompt from me opens a task, and only a text-only reply closes it.** The transcript starts a new `## Task:` at each of my messages — a mid-run question, a correction, a recap prompt, a change of direction — and writes `- done:` only when a reply carries text and no tool call. So answer my message in text alone *before* returning to tool calls. A run that reads the message and keeps working straight through leaves that task, and every task before it, with no outcome line. There is no marker to type: the `- done:` line is written for you from any text-only turn, and skipped entirely from a turn that carries a tool call.
+- **A reply to another session is not this turn either.** `SendMessage` is a tool call, so a run whose whole job was answering another agent records no outcome when that reply is the last thing it sends. Send the reply, let it return, then close here in text alone — even when the closing message says much what the reply already said.
+- **A subagent's report is never this turn.** The outcome belongs to the session the run started in, so after an `Agent` call returns, close the run here, in a message of your own.
+- **Resolve the anchor before the message is composed, never as a call after it.** Mark the anchor todo item completed in the same tool-call turn as the run's last piece of real work, so nothing is left scheduled when that turn returns and the run's next action is the message itself. Marking it as a standalone final call is the recorded way this step fails: the mark lands every time, the message does not, and the run records no outcome. Handing back with it still open reads as abandoned, so close it — alongside a call you were already making, never as a turn of its own.
+- **Do not tack the report onto the tool call before it.** `ExitWorktree`, `worktree end`, `verify`, and a closing `gh` call are exactly the calls that sit at the end of a run and swallow the outcome.
+<!-- /include-block -->
+
+## Notes
+
+- **The outcome is the product, not the rows.** A run that lists five plausible concepts without saying which of the three outcomes it reached has answered a search, not a gate.
+- **A device with the variables unset still answers.** It answers miss, and says which variable was unset. That is the intended behaviour, not a bug to work around.
+- The store is append-only and reads resolve the newest version of a term, so a term hit is the current wording rather than the first one.

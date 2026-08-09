@@ -21,6 +21,7 @@ Add one with `okq new feature "<title>"`.
 | ideate | [ideate.md](ideate.md) |
 | improve | [improve.md](improve.md) |
 | judge | [judge.md](judge.md) |
+| lookup | [lookup.md](lookup.md) |
 | mc | [mc.md](mc.md) |
 | merge-deps | [merge-deps.md](merge-deps.md) |
 | pr | [pr.md](pr.md) |
