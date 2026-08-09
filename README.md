@@ -296,13 +296,22 @@ The symlinks point back into the clone, so `git pull` updates every Claude
 command, Codex skill, the toolkit, and the workflow gates. Run the relevant
 script once per machine; both are path-agnostic.
 
-`install-personal.sh` also registers the [workflow gates](./docs/specs/workflow-gates.md)
+Both Claude install paths register the [workflow gates](./docs/specs/workflow-gates.md)
 in `~/.claude/settings.json` — the hooks that refuse serial discovery, a redundant
 whole-file re-read, a relative `cd` that cannot resolve, and a run that ends with no
 outcome. They fail open, never refuse the same thing twice, and always name the faster
-form. Skip registering them with `./scripts/install-personal.sh --no-hooks`, silence
-them at any time with `export MY_COMMAND_HOOKS=0`, or remove the registration with
+form. `install-personal.sh` symlinks them out of the clone; the `npx` wizard copies them
+onto the device instead, because npx runs from a cache directory that is cleaned up after
+it exits. Either way `my-command-tools doctor` reports `hooks.armed`, which is the only
+thing that says a gate can actually fire. Skip registering them with
+`./scripts/install-personal.sh --no-hooks`, silence them at any time with
+`export MY_COMMAND_HOOKS=0`, or remove the registration with
 `node ~/.claude/my-command/hooks/install-hooks.mjs --uninstall`.
+
+The Codex install deliberately registers nothing. Codex has its own hook engine, but it
+is opt-in behind a `[features]` flag in `~/.codex/config.toml`, configured as TOML rather
+than `settings.json`, and its `PreToolUse` fires for the shell tool alone — never for the
+Read and Edit calls two of these gates judge. A Codex-native port is its own work.
 
 Once set up, pull updates from any session with **`/sync`** — it finds the clone,
 fast-forwards it, and re-links any newly added commands, without hardcoding where

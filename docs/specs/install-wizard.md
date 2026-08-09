@@ -4,7 +4,7 @@ title: Install wizard
 description: The npx wizard that installs the command suite as a Claude Code plugin, bare personal commands, or Codex Skills, with per-item overwrite.
 tags: [process, wizard, install, codex]
 timestamp: 2026-07-28
-updated: 2026-08-02
+updated: 2026-08-09
 ---
 
 # Install wizard
@@ -37,6 +37,24 @@ in that product's device config root and links it onto PATH when possible.
   gets it too: a plugin command normally resolves via `$CLAUDE_PLUGIN_ROOT`, but the
   device copy keeps the tooling reachable from bare Claude commands, Codex skills,
   and manual shell use.
+- **Claude modes also arm the workflow gates.** `installHooks()` copies `src/hooks/` to
+  `<root>/hooks` and then calls the shipped `install-hooks.mjs` to merge the registration
+  into `<config dir>/settings.json`. Both halves are required — the harness runs only what
+  `settings.json` registers, so scripts alone are files nobody executes. It **copies** where
+  `scripts/install-personal.sh` symlinks, because npx runs from an ephemeral cache directory
+  that is cleaned up when the wizard exits; the same link would dangle and every gate would
+  silently disappear. `hooks.test.mjs` is skipped (tests belong to CI, the same rule
+  `installToolkit()` applies), the `.mjs` hook scripts keep their executable bit, a hooks
+  directory that is already a symlink into a checkout is registered but never written
+  through, and the directory is never removed — it can hold a hook the user registered
+  independently. A failure is reported, not fatal: the commands work without the gates.
+  See [workflow gates](workflow-gates.md#install-and-off-switch).
+- **Codex mode deliberately installs no gates.** Codex has a hook engine, but it is opt-in
+  behind a `[features]` flag in `~/.codex/config.toml`, configured as TOML rather than
+  `settings.json`, and its `PreToolUse` fires for the shell tool alone — never for the
+  Read/Edit/Write calls two of these gates judge. The scripts also speak Claude Code's hook
+  protocol and parse a Claude transcript. Installing them here would either write Claude
+  settings from a Codex install or leave a directory nothing executes.
 - **And put it on PATH.** `linkOnPath()` links that shim into the first of
   `~/.local/bin`, `~/bin` already on PATH, because commands call it by bare name —
   see [command toolkit](command-toolkit.md#reachable-by-name). It never edits a shell
@@ -66,8 +84,13 @@ overwrite prompt.
   `skills/<name>/SKILL.md`; the data-driven lists include each native form.
 - **New command ⇒ feature doc.** See [Adding a command](adding-a-command.md).
 - The module stays importable: `checkboxPrompt`, `installPersonal`,
-  `installCodexSkills`, `installToolkit`, and `linkOnPath` are exported, and
-  `main()` runs only when the file is invoked directly.
+  `installCodexSkills`, `installToolkit`, `installHooks`, and `linkOnPath` are exported,
+  and `main()` runs only when the file is invoked directly.
+- **No Claude install without the gates.** Both Claude modes call `installHooks()`;
+  dropping it from either ships the commands with the gates inert on that surface, which
+  is the failure the gates' own spec records. Enforced by `check-commands.sh` (invariant
+  12), which also holds the copy — not a symlink — and the reported off switch and
+  uninstall path in place.
 - **No install without tooling.** All modes call `installToolkit()`; dropping the
   call from either would ship commands whose toolkit calls fail at run time.
   Enforced by `check-commands.sh`.
@@ -87,6 +110,11 @@ overwrite prompt.
 - [ ] All modes leave it callable as a bare `my-command-tools` in a new shell, or say
       why not and how to fix it.
 - [ ] A second run reports the existing PATH link rather than duplicating or breaking it.
+- [ ] Both Claude modes leave `my-command-tools doctor` reporting `hooks.armed: true`.
+- [ ] The hook scripts land executable, without the tests, and a second run does not
+      stack a duplicate registration or a duplicate allowlist entry.
+- [ ] A hooks failure is reported and the command install still succeeds.
+- [ ] Codex mode writes no `hooks` directory and touches no Claude `settings.json`.
 
 ## Related
 
