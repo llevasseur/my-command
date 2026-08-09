@@ -24,6 +24,9 @@
 #  11. every command that enters a worktree it just created states the working entry form.
 #  12. the npx wizard installs and registers the gates too, not just the toolkit — an
 #      install surface that skips them ships the commands with the gates inert.
+#  13. the toolkit fails closed when those gates are not armed: the verbs every workflow
+#      command opens with refuse to run, with one detector behind them and one documented
+#      escape for a genuinely hook-less environment.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -276,7 +279,7 @@ fi
 # Registering the gates is a separate step from installing the commands, and command files
 # reach a device by paths that never run the installer — so the gates can ship, be pulled, and
 # still never execute. Something on the device has to say so.
-if ! grep -q 'hooksStatus' src/toolkit/verbs/doctor.mjs; then
+if ! grep -qi 'hooksstatus' src/toolkit/verbs/doctor.mjs; then
   echo "::error::src/toolkit/verbs/doctor.mjs no longer reports hook registration; nothing on the device would report the gates as unarmed."
   fail=1
 fi
@@ -341,6 +344,49 @@ done
 # script only exists in a git checkout, so on a wizard-installed device it pointed at nothing.
 if ! grep -q 'fixHint' src/toolkit/lib/hooks-status.mjs; then
   echo "::error::src/toolkit/lib/hooks-status.mjs no longer chooses its hint by install surface; a wizard-installed device would be told to run a script it does not have."
+  fail=1
+fi
+
+# 13. The toolkit fails closed on an unarmed device. Reporting `hooks.armed: false` from
+# `doctor` left the unarmed state fully runnable, and nothing a session calls reads doctor —
+# so the closing-turn gate kept going unrun on devices that never registered it. The verbs a
+# workflow command opens with must refuse instead, and there must be a documented way out.
+if ! grep -q 'requireArmed' src/toolkit/cli.mjs; then
+  echo "::error::src/toolkit/cli.mjs no longer calls requireArmed(); an unarmed device would run every workflow verb with the gates inert."
+  fail=1
+fi
+if [ -f src/toolkit/lib/require-armed.mjs ]; then
+  # The gate has to reach the verbs a run actually opens with, or it gates nothing.
+  for verb in state scope commit pr; do
+    if ! grep -q "'$verb'" src/toolkit/lib/require-armed.mjs; then
+      echo "::error::src/toolkit/lib/require-armed.mjs no longer gates '$verb'; a run could start on an unarmed device through it."
+      fail=1
+    fi
+  done
+  # A second detector could disagree with doctor's; there is exactly one.
+  if ! grep -q 'deviceHooksStatus' src/toolkit/lib/require-armed.mjs; then
+    echo "::error::src/toolkit/lib/require-armed.mjs no longer reads deviceHooksStatus(); the gate and doctor would answer from different detectors."
+    fail=1
+  fi
+  # Fail-closed with no way out is a brick: CI and a fresh clone have no hooks by design.
+  if ! grep -q 'MY_COMMAND_REQUIRE_HOOKS' src/toolkit/lib/require-armed.mjs; then
+    echo "::error::src/toolkit/lib/require-armed.mjs no longer honors MY_COMMAND_REQUIRE_HOOKS; a hook-less environment such as CI would have no documented escape."
+    fail=1
+  fi
+else
+  echo "::error::missing src/toolkit/lib/require-armed.mjs — the fail-closed arming gate is what makes an unarmed device unusable rather than merely reported."
+  fail=1
+fi
+if ! grep -q 'deviceHooksStatus' src/toolkit/verbs/doctor.mjs; then
+  echo "::error::src/toolkit/verbs/doctor.mjs no longer resolves its hook status through deviceHooksStatus(); it would report a different answer than the gate enforces."
+  fail=1
+fi
+# CI runs this script on a machine with no Claude settings at all, so the gate must be
+# provably escapable — and provably not escapable by default.
+if MY_COMMAND_REQUIRE_HOOKS=0 node src/toolkit/cli.mjs state --compact >/dev/null 2>&1; then
+  :
+else
+  echo "::error::\`MY_COMMAND_REQUIRE_HOOKS=0 my-command-tools state\` failed; the documented escape does not work, which bricks CI and every fresh clone."
   fail=1
 fi
 
