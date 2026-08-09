@@ -26,9 +26,7 @@ A \`must be a collaborator\` rejection is resolved here — by retrying under a 
 belonging to the repository owner, then over REST — and never returned as an error.`;
 
 /**
- * The subject of the branch's first commit, used when `--title` is absent. A missing title
- * was a usage error that failed the same way on every re-run, and the answer it wanted was
- * always already in the branch.
+ * The subject of the branch's first commit, used when `--title` is absent.
  * @param {string} cwd @param {string} [base]
  * @returns {string}
  */
