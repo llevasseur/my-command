@@ -29,7 +29,7 @@ Two boundaries carry that separation:
 ## Flags / Parameters
 
 - `--range <spec>` / `-r <spec>` — the bucket window for **evidence source 2 (judge notes) only**. One bucket (`9`), a list (`2,3,9`), a span (`2-9`), or a mix (`2-4,9`). Default: every bucket. The other four sources are not bucketed, so this never narrows the survey as a whole.
-- `--dry-run` / `-n` — report the proposals and write **nothing at all**, not even the `proposed` rows. It still resolves the tier and reads every tier for dedupe, since a proposal that collides is not worth reporting either.
+- `--dry-run` / `-n` — report the proposals and write **nothing at all**, not even the `proposed` rows. It still resolves the hosted ledger and reads all of it for dedupe, since a proposal that collides is not worth reporting either — so an unconfigured device refuses a dry run exactly as it refuses a real one.
 - `--area <area>` — the kebab-case area to survey for. **No short alias**, and spelled exactly as the store spells it: `ideas list --area` and `ideas file --area` take the same string, and `-r` and `-n` are taken. Default: absent, which is **not** "no area" — see below.
 - Anything else is not a flag this command takes and is reported rather than interpreted. There is no free-text argument.
 
@@ -66,22 +66,22 @@ One entry per idea, carrying a stable kebab-case **slug** (the dedupe key), a ti
 
 `add` reports near-miss areas under `similarAreas` — `infra` beside an existing `infrastructure` — and **still records the entry**, on the same reasoning as near-duplicate slugs: fragmenting the vocabulary is for a reader to notice, not for the store to refuse. `/ideate` surfaces every hit in its report and re-files nothing itself; `ideas file --slug <slug> --area <area>` is the correction, and it touches the area alone.
 
-The repo is a remote slug rather than a checkout path because the tier-1 store is device-wide and shared across every repo on the machine — a path names a different thing, or nothing, on the next one.
+The repo is a remote slug rather than a checkout path because the store spans every repo **and every device** — a path names a different thing, or nothing, on the next machine that reads the row.
 
-The store resolves as a waterfall, read wide and written narrow:
+### The store is hosted
 
-1. **claude-proxy** — `<logDir>/ideas.json`, reached through `pnpm --filter server ideas`, with the checkout resolved exactly as `shared/claude-proxy-checkout.md` does. A separate file and namespace from `suggestion-status.json`.
-2. **The surveyed repo's own docs bundle** — `docs/ideas.md`, committed markdown with a header stating the contract.
-3. **Device-local** — `~/.claude/ideas/<repo-slug>.md`, the same shape as tier 2.
+The ledger is an **append-only event log** on the existing `operator` Cloudflare Worker over D1, reached with **`IDEAS_URL`** and **`IDEAS_TOKEN`**. It used to be `<logDir>/ideas.json`, a device-local file beside the proxy's logs, behind a three-tier waterfall that fell through to the repo's own `docs/ideas.md` and then to `~/.claude/ideas/<repo-slug>.md`. **All three tiers are gone**, and `pnpm --filter server ideas` is now a client of the hosted store rather than the owner of a file — so its verbs take no `LOG_DIR`, though the `suggestions` verbs still do.
 
-Four rules make a waterfall safe for something used as a dedupe key:
+**An unconfigured device refuses every ideas read and write, loudly, with no fallback.** That refusal is deliberate rather than an omission: a device answering from its own copy would keep a second ledger that looks complete from the inside, diverges from the shared one, and re-proposes the ideas the shared one already rejected — the exact failure the dedupe key exists to prevent. Both commands surface it as a setup problem naming `IDEAS_URL` and `IDEAS_TOKEN`, and neither retries it nor routes around it.
 
-- **Write to the highest available tier, and name it in the report.** A silently-different tier between two runs is exactly how a rejected idea comes back.
-- **Dedupe reads every tier that exists**, not just the winning one. A machine that gains claude-proxy later must not forget what `docs/ideas.md` recorded.
-- **Fall through on absence only, never on error.** An unset `CLAUDE_PROXY_STORE`, a missing path, a checkout with no `server/package.json`, or an absent `ideas` CLI all mean tier 1 is *absent*. A tier-1 store that exists and fails to read or write is a **stop** — writing tier 2 behind a broken tier 1 forks the ledger into two that each look complete.
-- **Never propose a slug already present in any tier in any status, `rejected` included**, and refuse a near-duplicate under a different slug too, naming what it collides with. Tier 1 reports the near matches for a candidate as **`similarIdeaSlugs`**, so a non-empty list is a collision even when the exact slug is free; a markdown tier means reading the rows. A rejected idea returning every run is the failure this key prevents, and the rejection reason is the most valuable row in the file.
+The same operations reach the store over MCP as **`ideas_list`** (with an `available: true` argument), **`ideas_add`**, **`ideas_claim`**, and **`ideas_mark`** — which is what an agent in a cloud box with no checkout uses. The rows are the same either way.
 
-`shared/claude-proxy-checkout.md` gained an **optional-dependency** clause for this: the same derivation, but a command that declares the dependency optional reads those three failures as absence and falls through, while an error still stops. `/improve` and `/judge` do not declare it optional and keep the hard stop unchanged.
+Two rules keep a shared ledger usable as a dedupe key:
+
+- **Dedupe reads the whole ledger, every run** — one store across every device and every repo, never narrowed by `--area`, because a read narrowed to one area is exactly how a rejected idea comes back under a different one.
+- **Never propose a slug already present in any status, `rejected` included**, and refuse a near-duplicate under a different slug too, naming what it collides with. `add` reports the near matches for a candidate under **`similar`**, computed **server-side against every device's ideas including rejected rows**, so a non-empty list is a collision even when the exact slug is free — and it can name an idea proposed on a machine this one has never talked to. A free slug is not a clear field. A rejected idea returning every run is the failure this key prevents, and the rejection reason is the most valuable row on the ledger.
+
+`shared/claude-proxy-checkout.md` carries an **optional-dependency** clause for this command: the same derivation, but a command that declares the dependency optional reads those three failures as absence and continues, while an error still stops. Since the move, that absence costs `/ideate` the `ideas` CLI and the judge-note evidence source — **not the ledger**, which is hosted and reachable over MCP. `/improve` and `/judge` do not declare it optional and keep the hard stop unchanged.
 
 ### The rationale is bullets, in plain English
 
@@ -115,7 +115,7 @@ The look is **read-only** and uses the Chrome MCP tools (`tabs_context_mcp`, `ta
 
 **No human in the loop at all.** The run is unattended start to finish; the sign-off happens afterwards, in a browser.
 
-1. Resolve the tier; read every existing tier — and the whole of each, never narrowed by `--area` — for dedupe.
+1. Resolve the hosted ledger; read the whole of it, never narrowed by `--area`, for dedupe.
 2. Survey the five sources in one batched pass.
 3. Compose **at most 3** proposals, ranked. Each states what it is, its evidence, the repo, **the area it belongs under**, a rough size, and **what it would replace or simplify** — an idea that only adds surface has to say so. Three of those six are entry fields (evidence, repo, area); the rationale carries the other three as plain-English bullets, per the section above.
 4. **Check a user-interface proposal in the browser** (Step 3.5), confirming it, killing it, or recording the check as unavailable.
@@ -131,7 +131,7 @@ The in-session question existed for exactly one reason: `pnpm --filter server id
 What did **not** change is everything the trace rests on:
 
 - **`/improve` still acts only on an `accepted` idea.** The sign-off is still required; only its venue moved.
-- **A `proposed` row is the adjudication queue, not an unanswered question.** It is also what dedupe reads, so it is not re-proposed next run — a slug present in any tier in **any** status is refused, `proposed` included.
+- **A `proposed` row is the adjudication queue, not an unanswered question.** It is also what dedupe reads, so it is not re-proposed next run on any device — a slug present on the ledger in **any** status is refused, `proposed` included.
 - **A rejection still carries its reason.** `POST /api/ideas/status` refuses a `rejected` mark with 400 unless a note comes with it, because that reason is the ledger's dedupe record. The human writes it; nothing invents one.
 - **`shipped` stays CLI-only**, because it carries a PR url, and `/ideate` never sets it either way.
 
@@ -142,7 +142,7 @@ What did **not** change is everything the trace rests on:
 
 ## What changed in improve
 
-- Step 2 is now "Read the pending suggestions **and the accepted ideas**", reading `ideas list -s accepted --repo <slug> --json` through the same waterfall. Only `accepted` is read, and `--range` does not apply to it.
+- Step 2 is now "Read the pending suggestions **and the accepted ideas**", reading `ideas list --available --repo <slug> --json` from the same hosted ledger. `--available` is `accepted` plus any `claimed` idea whose claim has expired, and `--range` does not apply to it.
 - Step 4 composes idea-sourced criteria **alongside** the suggestion ones, labelled as such and never merged into a suggestion's criterion group — they argue from different evidence, and a merged group can defend itself with only one of them.
 - Step 6 gains `ideas mark --slug <slug> -s shipped -n "<PR url>"`, on the same terms as `suggestions mark`: only what actually landed. An idea whose PR did not land stays `accepted` and returns next run.
 - `--dry-run` reports the accepted ideas it would act on and marks nothing in either store.

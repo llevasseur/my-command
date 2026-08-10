@@ -90,7 +90,7 @@ one must climb an escalation ladder rather than restate what already failed.
   findings; an idea-only run has nothing to judge. On an idea-only run it also
   reports each selected slug's file scope, its stated dependencies, and the dispatch
   schedule it would use. It
-  also reports the ideas it would act on and the ledger tier it read them from — or,
+  also reports the ideas it would act on — or,
   with no idea flag, that it read none and why. An unresolved `--idea` slug stops a
   dry run exactly as it stops a real one.
 - **Pass-through `/task` flags** — `--here` / `-h`, `--base <branch>`,
@@ -146,22 +146,34 @@ are reported and skipped. An empty pending set ends the run with that answer and
 task.
 
 **Reading the accepted ideas — only when asked.** The idea track runs only under
-`--idea` or `--ideas`. With neither, no ledger tier is read, no idea criterion is
+`--idea` or `--ideas`. With neither, the ledger is not read, no idea criterion is
 composed, and the final report says so plainly rather than leaving the omission to
 be inferred: an accepted idea is standing permission to build something, not a
 queue that drains into whichever run comes next. Under one of the flags, the
-accepted ideas for this repo are read through the same waterfall
-[ideate](ideate.md) writes to — tier 1 `<logDir>/ideas.json` via the `ideas` CLI,
-tier 2 the repo's own `docs/ideas.md`, tier 3 `~/.claude/ideas/<repo-slug>.md`,
-with an absent CLI meaning tier 1 is *absent* and a tier that exists and fails to
-read meaning **stop**:
+available ideas for this repo are read from the same **hosted** ledger
+[ideate](ideate.md) writes to — an append-only event log on the `operator`
+Cloudflare Worker over D1, reached with `IDEAS_URL` and `IDEAS_TOKEN`:
 
 ```sh
-LOG_DIR="<logDir>" pnpm --filter server ideas list --available --repo <slug> --json
+pnpm --filter server ideas list --available --repo <slug> --json
 ```
 
-The repo is a **git remote slug**, never a checkout path, because the store is
-device-wide. **`--available` is the read, replacing an older `-s accepted`**: it
+There is **no `LOG_DIR`** on the ideas verbs any more; that variable pointed at the
+device-local `<logDir>/ideas.json` the ledger used to be, and it still belongs on
+the `suggestions` verbs, which do read the proxy's logs. The old three-tier
+waterfall — that file, then the repo's `docs/ideas.md`, then
+`~/.claude/ideas/<repo-slug>.md` — is gone, and there is nothing to fall through
+to. **An unconfigured device refuses every ideas read and write, loudly**, and the
+idea track ends there with a setup message naming both variables rather than a
+fallback: a device answering from its own copy would build against a set that
+diverges from the shared one while looking complete, and would build an idea the
+shared ledger records as rejected or as claimed by another machine. The same
+operations are available over MCP as `ideas_list` (with `available: true`),
+`ideas_add`, `ideas_claim` and `ideas_mark`, which is what an agent in a cloud box
+with no checkout uses.
+
+The repo is a **git remote slug**, never a checkout path, because the store spans
+every repo **and every device**. **`--available` is the read, replacing an older `-s accepted`**: it
 returns `accepted` plus the ideas whose claim has expired, which is exactly the set
 a run may take. `-s accepted` alone can never recover an idea a run picked up and
 then died holding — that entry reads `claimed` and no sweeper restores it — while
@@ -178,7 +190,7 @@ since ideas are not bucketed.
 filter**, so the call above returns the whole available set for the repo and the
 selection is made against what came back: `--ideas` takes every row, `--idea` matches
 each named slug exactly. **A named slug that does not resolve is a stop, not a
-skip** — reported as unknown with the tiers searched and the available slugs that do
+skip** — reported as unknown, with the available slugs that do
 exist, or as present-but-unavailable with the status it actually holds, since
 `proposed`, `rejected` and `shipped` each mean something different and only one is
 fixable here. A slug held by a **live claim** is the one exception and is a skip
@@ -305,7 +317,14 @@ with an answer.
 **Idea-sourced criteria, one per group.** Each selected idea composes into a
 criterion of its own, labelled idea-sourced, stating the sign-off as the evidence —
 the slug, its rationale, and the evidence the idea itself cited with paths, since
-the subagent cannot read the ledger. **An idea is a proposal, not a spec**: a named
+the subagent cannot read the ledger. **The entry's `comment` field is build
+criteria and outranks the rationale**: it is a human's own words about the proposal,
+written when they accepted it, so where the two disagree the comment is the ask and
+the rationale is the pitch that preceded it. It goes into the brief verbatim,
+marked as the accepting human's words. `ideas prompt --slug <slug>` composes the
+whole ready-to-paste `/task` brief from the entry — rationale, cited evidence, that
+comment, and the claim lines — and is preferred over re-deriving one by hand, since
+hand-assembly is where the comment gets dropped. **An idea is a proposal, not a spec**: a named
 mechanism passes through, and where none is named the criterion says what is
 undetermined rather than inventing a design the sign-off does not cover. The
 grouping stops at one idea — two ideas are never merged because they share a repo
@@ -326,7 +345,7 @@ than a guess about design. Ideas in different repos never share a scope.
 ledger *first*, before any code is written:
 
 ```sh
-LOG_DIR="<logDir>" pnpm --filter server ideas claim --slug <slug> --by <branch> --json
+pnpm --filter server ideas claim --slug <slug> --by <branch> --json
 ```
 
 The claim exists because `accepted` used to be the status an implementing run looked
@@ -337,9 +356,15 @@ is about to cut**, in `/task`'s own `<type>/<kebab-summary>` shape and named in 
 brief so the subagent cuts exactly it. The branch is the holder because it is the one
 string a second run can verify by itself — `git branch -r` either shows it or does
 not — which distinguishes a claim backed by real work from one left by a run that
-vanished; a run id or a person's name tells that second run nothing. **A refused
-claim means another run holds the idea**: skip it and report the holder and
-since-when, never build it anyway and never retry under a different `--by`. Only an
+vanished; a run id or a person's name tells that second run nothing. **A claim held
+by someone else exits non-zero**, so the run checks the exit status: a zero exit is
+the permission to build and anything else is not, and reading a non-zero exit as
+permission is how the claim gets bypassed by a run that never noticed it failed. **A
+refusal means another run holds the idea**: walk away, pick a different idea, and
+report the holder and since-when — never build it anyway and never retry under a
+different `--by`. Since the ledger is shared across every device, that holder may be
+a run on a machine this one has never talked to, and there is nothing local to check
+the refusal against. Only an
 `accepted` idea, or one whose claim is stale or already yours, can be claimed at all,
 so a claim cannot route around the human sign-off. A `--dry-run` claims nothing,
 because a claim is a write. Once a dispatch returns a PR, the run re-claims the same
@@ -410,7 +435,7 @@ in the **ideas** store, never the suggestion one — two evidence standards, one
 each, and a slug is not a `bucket/id`:
 
 ```sh
-LOG_DIR="<logDir>" pnpm --filter server ideas mark --slug <slug> -s shipped -n "<PR url>"
+pnpm --filter server ideas mark --slug <slug> -s shipped -n "<PR url>"
 ```
 
 **One call per idea, and the note is that idea's own PR.** Because each idea was
@@ -430,7 +455,7 @@ that somebody is building it.
 closing turn, so that is where an unshipped claim is handed back:
 
 ```sh
-LOG_DIR="<logDir>" pnpm --filter server ideas mark --slug <slug> -s accepted
+pnpm --filter server ideas mark --slug <slug> -s accepted
 ```
 
 Every mark other than `shipped` drops the claim, which is what makes this the
@@ -463,7 +488,7 @@ number/URL for each repo. An idea-only run says the judge and suggestion tracks 
 **deliberately skipped because an idea flag was given** — never that no suggestions
 were pending or that nothing was judged, which are the sentences a reader mistakes
 for an empty backlog — then how many ideas were selected, by which flag and from
-which ledger tier, and **the schedule they ran on**: which went out together, which
+how the hosted ledger was reached, and **the schedule they ran on**: which went out together, which
 waited on which and off what base, and why anything was serialized. Either report
 lists the PR number/URL **for each idea on the idea track separately**, what was
 marked `done` or `skipped`, which ideas were marked `shipped` and against which PR

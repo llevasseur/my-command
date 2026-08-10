@@ -37,7 +37,7 @@ Two boundaries follow, and neither bends:
 ## Flags
 
 - `--range <spec>` / `-r <spec>` — the bucket window for **evidence source 2 (judge notes) only**. One bucket (`9`), a list (`2,3,9`), a span (`2-9`), or a mix (`2-4,9`). **Default: every bucket.** The other four sources are not bucketed and this flag does not narrow them; say so if you report a narrowed run.
-- `--dry-run` / `-n` — report the proposals and **write nothing at all**, not even the `proposed` rows. A dry run resolves the ledger tier and reads every tier for dedupe, because a proposal that collides with an existing slug is not worth reporting either.
+- `--dry-run` / `-n` — report the proposals and **write nothing at all**, not even the `proposed` rows. A dry run still resolves the hosted ledger and reads all of it for dedupe, because a proposal that collides with an existing slug is not worth reporting either — and it is refused on an unconfigured device exactly as a real run is, since a dedupe read is still a read.
 - `--area <area>` — the kebab-case area to survey for. **Spelled exactly as the store spells it**, with no short alias: `ideas list --area` and `ideas file --area` take the same string, and `-r` and `-n` are already taken. **Default: absent**, which is not "no area" — see the two jobs below.
 - Anything else is not a flag this command takes. Report it rather than interpreting it.
 
@@ -52,11 +52,30 @@ Every entry on the ledger carries an **area**, and `parseIdeaAdds` refuses an en
 
 **The area vocabulary is free text, validated by shape only.** Any kebab-case word is a valid area and opens a tab of its own. The seed vocabulary — `ui-ux`, `infrastructure`, `code-quality`, `services`, `commands` — is **advisory**: it orders the dashboard's tabs and appears in the CLI's help, and nothing enforces membership. Prefer an area already in use on the ledger over a new spelling of the same thing; open a new one only when nothing existing fits, and say in the report that the run opened one.
 
-## Step 1 — Resolve the ledger, and read every tier that exists
+## Step 1 — Resolve the hosted ledger, and read it before surveying anything
 
 The ledger is where a proposal is recorded and, more importantly, where dedupe reads from. Resolve it before surveying anything: an idea that collides with an existing slug is not composed at all, so the read comes first.
 
-### Tier 1 — claude-proxy
+### The ledger is hosted, and every device shares one copy of it
+
+**The ledger is not a file on this machine, and it is not beside the logs.** It used to be `<logDir>/ideas.json`, one copy per device; it is now an **append-only event log** served by the existing `operator` Cloudflare Worker over D1, and every device reads and writes the same rows. Two variables reach it:
+
+- **`IDEAS_URL`** — the operator Worker's ideas endpoint.
+- **`IDEAS_TOKEN`** — the bearer token that authenticates this device to it.
+
+The `ideas` CLI is now a **client** of that store rather than the owner of a file, so nothing it reports comes from this machine's disk.
+
+### An unconfigured device refuses every ideas read and write
+
+**With `IDEAS_URL` or `IDEAS_TOKEN` missing, every ideas read and write is refused, loudly — and that refusal is a setup problem, not a condition to handle.** The CLI does not fall back to a local file, does not degrade to read-only, and does not answer from anything on this device.
+
+**There is deliberately no fallback.** A device answering out of its own copy would keep a second ledger that diverges from the shared one while looking complete from the inside, and the first thing that second ledger does is re-propose the ideas the shared one already rejected — the exact failure the dedupe key exists to prevent. So when the refusal comes:
+
+- **Surface it as a setup problem and name both variables**, saying which is missing, that this command has no ledger to dedupe against or write to without them, and that they belong in the shell environment.
+- **Do not retry it and do not route around it.** Not with a local file, not with a markdown ledger in the repo, not from a slug list remembered from an earlier run, and not by surveying anyway and reporting proposals nothing deduped. A proposal that was never checked against the ledger is how a rejected idea comes back.
+- **A refusal is not a tier being absent, because there are no tiers left.** The waterfall this command used to walk — the proxy's file, then the repo's own `docs/ideas.md`, then `~/.claude/ideas/<repo-slug>.md` — went with the device-local store. A run that reinvents one is building the divergent second ledger by hand.
+
+### claude-proxy still ships the CLI, and is still optional
 
 **claude-proxy is an _optional_ dependency of this command**, unlike [improve](improve.md) and [judge](judge.md) where its absence ends the run. Resolve it exactly as they do:
 
@@ -76,37 +95,33 @@ The ledger is where a proposal is recorded and, more importantly, where dedupe r
 - **Where a command declares claude-proxy an _optional_ dependency, those three failures mean it is *absent* rather than that the run is over.** Only a command that says so at its own step, and names what it falls back to, may read them that way; anything that does not say otherwise takes the stop above. **An error is still a stop even then.** A store that exists and fails to read or write is not absence — continuing past it writes a second copy of something that already has one, and two stores that each look complete is worse than no store.
 <!-- /include-block -->
 
-**Read that snippet's last bullet as the operative one here.** Its opening line and its stop are written for `/improve` and `/judge`, which have nothing to read without claude-proxy. This command **declares it optional**, so all three of those failures — unset variable, missing path, no `server/package.json` — mean tier 1 is *absent*: take the derivation, skip the stop, fall to tier 2, and name that in the report. What still stops the run is an **error**: a store that is there and will not read or write.
+**Read that snippet's last bullet as the operative one here.** Its opening line and its stop are written for `/improve` and `/judge`, which have nothing to read without claude-proxy. This command **declares it optional**, so all three of those failures — unset variable, missing path, no `server/package.json` — mean the `ideas` CLI is not reachable from a checkout on this device and evidence source 2 (judge notes, Step 2) has nothing to read. Take the derivation, skip the stop, and name both facts in the report.
 
-Ideas live at `<logDir>/ideas.json`, **a separate file and a separate namespace from `suggestion-status.json`**, reached through the `ideas` CLI:
+**What that absence does *not* mean is that the ledger is gone.** The ledger is hosted, so a missing checkout costs this run the CLI and the judge notes, never the ledger — reach the same store over MCP instead (below). The one thing with no substitute is `IDEAS_URL`/`IDEAS_TOKEN`, and their absence is the refusal above rather than a fall-through.
+
+With a checkout, the CLI is the client:
 
 ```sh
-LOG_DIR="<logDir>" pnpm --filter server ideas list --json                     # the whole ledger — the dedupe read
-LOG_DIR="<logDir>" pnpm --filter server ideas list -s accepted --repo <slug> --json
+pnpm --filter server ideas list --json                     # the whole ledger — the dedupe read
+pnpm --filter server ideas list -s accepted --repo <slug> --json
 ```
 
-Read `pnpm --filter server ideas --help` before composing a write; do not guess the verb syntax.
+Read `pnpm --filter server ideas --help` before composing a write; do not guess the verb syntax. **These verbs take no `LOG_DIR`** — that variable pointed at the file the ledger used to be, and the hosted store is reached with `IDEAS_URL`/`IDEAS_TOKEN` instead. `LOG_DIR` still belongs on the `suggestions` verbs, which do read the proxy's logs.
 
-**`ideas list` accepts `--area <area>`, and the dedupe read must never use it.** Dedupe reads the **whole ledger** regardless of `--area`, because a dedupe read narrowed to one area is precisely how a rejected idea comes back under a different one. The flag narrows what this run *composes*, never what it *checks against*. The same rule holds on tiers 2 and 3: read every row, not the rows filed where you are about to write.
+### The same store over MCP, for an agent with no checkout
 
-That unnarrowed read is also where the run learns the area vocabulary already in use. Take the areas off the rows it returns and prefer one of them in Step 3 over a new spelling of the same thing.
+Every operation here is also an MCP tool, against the same hosted rows: **`ideas_list`** (pass `available: true` for the buildable set), **`ideas_add`**, **`ideas_claim`**, and **`ideas_mark`**. That is what an agent in a cloud box with no claude-proxy checkout should use — it needs no `pnpm`, no `server` package, and no repository on disk. It is the same ledger either way, so a run that reaches it over MCP dedupes against exactly what a run on a laptop sees.
 
-### Tier 2 — the surveyed repo's own docs bundle
+### The rules that keep a shared ledger usable as a dedupe key
 
-`docs/ideas.md`, committed markdown, with a header stating the ledger's contract. Create it from that header if the repo has none.
+- **Dedupe reads the whole ledger, every run.** One store, every device, every repo — so the read is the whole thing rather than this machine's slice of it.
+- **`ideas list` accepts `--area <area>`, and the dedupe read must never use it.** A dedupe read narrowed to one area is precisely how a rejected idea comes back under a different one. The flag narrows what this run *composes*, never what it *checks against*.
+- **Never propose a slug already present in any status — `rejected` included.** A rejected idea returning on every run is the specific failure this key exists to prevent, and the rejection reason is the most valuable row on the ledger.
+- **A near-duplicate under a different slug defeats the key just as completely, so check `similar` before insisting on a slug.** `ideas add` reports the near matches for a candidate under **`similar`**, computed **server-side against every device's ideas, rejected rows included** — so a non-empty list is a collision even when the exact slug is free, and it can name an idea proposed on a machine this one has never talked to. Look at those hits rather than reading a free slug as a clear field: the whole point of a shared store is that the collision you cannot see locally is the one it catches. Name the entry it collides with and drop the proposal.
 
-### Tier 3 — device-local
+That unnarrowed dedupe read is also where the run learns the area vocabulary already in use — now the vocabulary of every device rather than this one's. Take the areas off the rows it returns and prefer one of them in Step 3 over a new spelling of the same thing.
 
-`~/.claude/ideas/<repo-slug>.md`, the same markdown shape as tier 2.
-
-### The four rules that make a waterfall safe for a dedupe key
-
-- **Write to the highest available tier, and name the tier used in the report.** A silently-different tier between two runs is exactly how a rejected idea comes back.
-- **Dedupe reads every tier that exists, not just the winning one.** A machine that gains claude-proxy later must not forget what `docs/ideas.md` already recorded. Read them all, every run.
-- **Fall through on absence only, never on error.** An unset `CLAUDE_PROXY_STORE`, a missing store path, a checkout with no `server/package.json`, or an `ideas` CLI that is not there yet all mean tier 1 is **absent** — fall to tier 2 and say so in the report. A tier-1 store that exists and fails to read or write is a **stop**: writing tier 2 behind a broken tier 1 forks the ledger into two ledgers that each look complete.
-- **Never propose a slug already present in any tier in any status — `rejected` included.** Also refuse a near-duplicate: the same idea under a different slug defeats the key just as completely. On tier 1 the store reports the near matches for a candidate as **`similarIdeaSlugs`**, so a non-empty list is a collision even when the exact slug is free; on a markdown tier the same check is yours to make by reading the rows. Either way, name the entry it collides with and drop the proposal. A rejected idea returning on every run is the specific failure this key exists to prevent, and the rejection reason is the most valuable row in the file.
-
-**The repo an idea lands in is recorded as its git remote slug** (`llevasseur/claude-proxy`), read from `git remote get-url origin`, never as an absolute checkout path. The tier-1 store is device-wide and shared across every repo on the machine, so a path names a different thing — or nothing — on the next one.
+**The repo an idea lands in is recorded as its git remote slug** (`llevasseur/claude-proxy`), read from `git remote get-url origin`, never as an absolute checkout path. The store spans every repo **and every device**, so a checkout path names a different thing — or nothing — on the next machine that reads the row.
 
 ## Step 2 — Survey the five evidence sources in one batched pass
 
@@ -226,8 +241,10 @@ Invoke a skill with the `Skill` tool, **at most one per proposal**, and only whe
 Write **all** of them, including the ones you expect to be rejected. This is the run's only write, and `proposed` is the only status it sets.
 
 ```sh
-LOG_DIR="<logDir>" pnpm --filter server ideas add --json '[{ … }]'
+pnpm --filter server ideas add --json '[{ … }]'
 ```
+
+The MCP equivalent is `ideas_add`, and it writes the same rows to the same hosted store. On an unconfigured device this write is **refused, not queued** — report the missing variable and stop, rather than holding the batch anywhere on disk to send later.
 
 - **Dedupe only works if the ledger records what was considered, not just what was liked.** An idea that never reaches the file can be re-proposed next run with a straight face; that is the whole failure this step prevents.
 - Each entry carries its stable kebab-case slug, title, the bulleted rationale in Step 3's shape, evidence with paths, the repo slug, and its **area**. Status is `proposed`. The full field list `add` parses is `{ slug, title, rationale, evidence[], repo, area, status?, note? }`.
@@ -235,11 +252,10 @@ LOG_DIR="<logDir>" pnpm --filter server ideas add --json '[{ … }]'
 - **A `command-gap` citation is refused on any entry whose area is not `commands`.** That check is at the parse boundary too, so it costs the entry rather than downgrading the citation.
 - **A confirmed browser check goes in `note`, never in `evidence`.** `evidence` holds what a person wrote down, and an observation is neither written down nor a locator a reader can open. The note names the route and what was on screen, so the person adjudicating the card knows the problem was still live when the run looked.
 - **Write the rationale as literal `- ` lines separated by newlines**, so the dashboard renders it as a list rather than as one run-on line. JSON carries the newlines; do not flatten them into a paragraph to fit the command line. A rationale already on the ledger as a paragraph stays a paragraph — the dashboard still reads it, and nothing here rewrites a row it did not write.
-- On tier 2 or 3, append the rows to the markdown ledger in the shape its header defines, **carrying the area on each row** so a later run on a machine that gains claude-proxy can file them without guessing.
-- If `add` refuses a slug, or answers with a non-empty `similarIdeaSlugs`, dedupe missed a collision in Step 1. Say which, and drop that proposal rather than renaming it to get past the refusal — a rename is exactly the near-duplicate the key exists to catch.
+- If `add` refuses a slug, or answers with a non-empty **`similar`**, dedupe missed a collision in Step 1. Say which, and drop that proposal rather than renaming it to get past the refusal — a rename is exactly the near-duplicate the key exists to catch. **A `similar` hit naming an idea this repo has never seen is not a bug in the check**: the store matches against every device's ideas, rejected rows included, so it catches precisely the collision Step 1's read could not have shown you locally.
 - **`add` also answers with `similarAreas`, and a hit there is reported, never refused.** `infra` beside an existing `infrastructure` lands, and the entry stays landed — fragmenting the vocabulary is a thing for a reader to notice rather than a thing the store rejects. **Surface every hit in the run's report**, naming the area written and the existing one it looks like, so a person can re-file it with `ideas file --slug <slug> --area <area>`. Do not re-file it yourself: `file` is a write on a row this run has just handed over, and the near miss may be a genuine sibling.
 
-**`--dry-run` / `-n` stops here**, having reported the proposals it would write and the tier it would write them to, and having written nothing.
+**`--dry-run` / `-n` stops here**, having reported the proposals it would write to the hosted ledger, and having written nothing.
 
 ## Step 5 — Exit, and say where the proposals get adjudicated
 
@@ -248,17 +264,19 @@ LOG_DIR="<logDir>" pnpm --filter server ideas add --json '[{ … }]'
 The in-session question existed for one reason: `pnpm --filter server ideas mark` was the only way to reach a status, so a proposing run could not end without a person at a terminal. The dashboard's **Advice page** now carries the ledger as approve/deny cards — `GET /api/ideas` lists them, `/api/ideas/stream` streams them over SSE so a row this run just wrote appears without a reload, and `POST /api/ideas/status` sets `accepted`, `rejected`, or `proposed` (the undo). A person can adjudicate on their own schedule, so blocking a run to wait for them buys nothing.
 
 - **Leave every row at `proposed`, and set no other status.** Do not ask which to accept, and do not decide it yourself — see the boundary above.
-- **A `proposed` row is the adjudication queue, not an unanswered question.** It is also what dedupe reads, so an idea sitting there is not re-proposed next run: Step 1 refuses a slug present in any tier in **any** status, `proposed` included.
+- **A `proposed` row is the adjudication queue, not an unanswered question.** It is also what dedupe reads, so an idea sitting there is not re-proposed next run — **on any device**: Step 1 refuses a slug present on the ledger in **any** status, `proposed` included.
 - **A rejection still carries its reason, written by whoever rejects it.** `POST /api/ideas/status` refuses a `rejected` mark with 400 unless a note comes with it, because that reason is the ledger's dedupe record. Nothing here invents one.
 - **Never mark anything `shipped`.** That status carries the PR url and stays CLI-only; this command opens no PR.
 
 Then stop, naming the Advice page as where the accepting happens. `/improve` may pick an idea up once it is `accepted`, and only then — unchanged. Acceptance is the *permission*, not the trigger: `/improve` builds an accepted idea only when asked for it by name with `--idea <slug>` (or for all of them with `--ideas`), and each one it builds gets a PR of its own.
 
-Report at the end: the ledger tier used and which tiers were read for dedupe, whether judge notes were available, how many proposals were composed, **the area each one was filed under** and whether `--area` was given, **which proposals were checked in the browser and what each check returned — confirmed, killed, or unavailable — naming the route and any skill the check called**, any `similarAreas` hit and the existing area it looks like, any new area this run opened, what collided and with what, that every proposal is recorded as `proposed` and awaits sign-off on the dashboard's Advice page, and that no branch or PR was opened. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
+Report at the end: that the hosted ledger was reached and how — the `ideas` CLI from a checkout, or MCP — whether judge notes were available, how many proposals were composed, **the area each one was filed under** and whether `--area` was given, **which proposals were checked in the browser and what each check returned — confirmed, killed, or unavailable — naming the route and any skill the check called**, any `similarAreas` hit and the existing area it looks like, any new area this run opened, what collided and with what, that every proposal is recorded as `proposed` and awaits sign-off on the dashboard's Advice page, and that no branch or PR was opened. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
 
 ## Notes
 
 - **Do not restate an Open Question as a proposal.** The question is already written down; the proposal has to add a design — a mechanism, a shape, a decision. "Should we offer a rolling last-10 view?" is not a proposal. "Add a rolling window alongside the fixed one, sharing the rule engine, with the fixed buckets keeping the flag store" is. If the honest answer is that you have nothing to add to the question, that is a run with fewer proposals, not a proposal.
+- **The ledger is hosted and shared by every device, and an unconfigured device gets a refusal rather than a fallback.** `IDEAS_URL` and `IDEAS_TOKEN` reach it. Without them there is no local file to read and none to write — report the missing variable as a setup problem and stop. The refusal is deliberate: a device answering from its own copy keeps a second ledger that looks complete and re-proposes the ideas the shared one already rejected, which is the one thing the dedupe key exists to stop.
+- **A free slug is not a clear field.** `add` reports near matches under `similar`, computed server-side against every device's ideas and including rejected rows, so it catches the collision this repo's own history could never have shown you. Read those hits before insisting on a slug — a near-duplicate under a different name defeats the key exactly as completely as a repeat of it.
 - **Never propose work `/improve` would find.** If the evidence is a suggestion rule tripping, that belongs to `/improve` and its source sessions. This command covers what the rules structurally *cannot* see: a missing feature, a missing command, a workflow with no tooling at all. Nothing counts a command that was never written, which is exactly why proposing one needs a different command and a different store.
 - **Proposal only.** No branch, no commit, no PR, no `/task`. An idea that seems obviously right is still an idea, and the sign-off is what makes it advice — which is why this run records it and leaves, rather than accepting it on the human's behalf.
 - **The two stores never merge.** `suggestions list` must never return an idea and `ideas list` must never return a suggestion. Two evidence standards, one file each.
