@@ -5,11 +5,14 @@ import { str } from '../lib/flags.mjs';
 import { run as exec, must, ToolkitError, UsageError } from '../lib/proc.mjs';
 import { currentBranch, defaultBranch, porcelain, repoRoot } from '../lib/repo.mjs';
 
-export const usage = `commit --message <text|-> <path> [<path>...]
+export const usage = `commit (--message-file <path> | --message <text>) <path> [<path>...]
 
 Stage the given paths and commit them.
 
-  --message <text>  Commit message. Use \`-\` to read the full message from stdin.
+  --message-file <path>  Read the commit message from this file. The form to reach for
+                         whenever the message runs past one line: write the file with the
+                         \`Write\` tool and pass its path, with no shell in between.
+  --message <text>       A one-line message given inline.
 
 Refuses to commit on the default branch, and refuses \`.\`/\`-A\`-style whole-tree
 staging — paths are always explicit so unrelated carryover files stay put.
@@ -55,7 +58,7 @@ export function run(ctx) {
     throw new ToolkitError('refusing whole-tree staging — list the paths this run actually changed', { offending });
   }
 
-  const message = readMessage(str(ctx.flags.message));
+  const message = readMessage(str(ctx.flags.message), str(ctx.flags['message-file']));
   if (!message.trim()) throw new ToolkitError('empty commit message', {});
 
   must('git', ['add', '--', ...paths], { cwd });
@@ -120,13 +123,28 @@ function commitOnce(cwd, message, paths) {
   return { result: exec('git', args, { cwd, input: message }), signingRetried: true };
 }
 
-/** @param {string | undefined} flag @returns {string} */
-function readMessage(flag) {
-  if (!flag) throw new UsageError('--message is required', { usage });
+/**
+ * The commit message, from a file by preference. `--message -` still reads stdin so an
+ * existing pipeline keeps working, but it is no longer the multi-line form anything is told
+ * to reach for: putting prose on stdin is what invites a heredoc, and a heredoc is refused
+ * inside a worktree — mid-commit, every time.
+ * @param {string | undefined} flag @param {string | undefined} file
+ * @returns {string}
+ */
+function readMessage(flag, file) {
+  if (file) {
+    if (flag) throw new UsageError('--message and --message-file are mutually exclusive', { usage });
+    try {
+      return readFileSync(file, 'utf8');
+    } catch (err) {
+      throw new ToolkitError(`could not read --message-file ${file}`, { file, cause: String(err) });
+    }
+  }
+  if (!flag) throw new UsageError('--message-file <path> or --message <text> is required', { usage });
   if (flag !== '-') return flag;
   try {
     return readFileSync(0, 'utf8');
   } catch {
-    throw new ToolkitError('--message - was given but stdin was empty', {});
+    throw new ToolkitError('--message - was given but stdin was empty — pass --message-file <path> instead', {});
   }
 }

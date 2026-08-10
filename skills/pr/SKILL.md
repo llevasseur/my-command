@@ -12,6 +12,10 @@ Parse `--draft` / `-d`; treat remaining text as optional title or context.
 2. Use `my-command-tools pr` when available to push and create or update the PR
    without embedding credentials. Preserve existing body assets. Convert to
    draft only when requested; never silently mark a draft ready.
+   - **Hand the body over as a file, never on stdin.** Write the description to a
+     path and pass `--body-file <absolute path>`. A description is multi-line by
+     nature, so `--body -` means composing a heredoc, and a heredoc is refused
+     wholesale inside an isolated worktree — which is exactly where this runs.
    - A `must be a collaborator` GraphQL error is the wrong identity, not a
      permission to request. `gh`'s GraphQL-backed writes (`gh pr create`,
      `gh pr edit`) resolve to an account that is not a collaborator on

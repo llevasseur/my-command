@@ -7,17 +7,20 @@ import { ghWrite, originSlug } from '../lib/gh.mjs';
 import { run as exec, ToolkitError, UsageError } from '../lib/proc.mjs';
 import { commitsSince, currentBranch, defaultBranch, repoRoot, resolveBase } from '../lib/repo.mjs';
 
-export const usage = `pr [--title <text>] --body <text|-> [--draft] [--base <branch>] [--retitle]
+export const usage = `pr [--title <text>] --body-file <path> [--draft] [--base <branch>] [--retitle]
 
 Push the current branch and create or update its PR.
 
-  --title <text>   PR title. Defaults to the branch's first commit subject.
-                   Only applied to an existing PR when --retitle is given.
-  --body <text>    PR description. Use \`-\` to read it from stdin.
-  --draft          Create as a draft, or convert an existing non-draft PR to draft.
-                   An existing draft is never taken out of draft, flag or not.
-  --base <branch>  Target branch (default: the repo's default branch).
-  --retitle        Also update the title of an existing PR.
+  --title <text>      PR title. Defaults to the branch's first commit subject.
+                      Only applied to an existing PR when --retitle is given.
+  --body-file <path>  Read the PR description from this file. A description is multi-line
+                      by nature, so this is the form to reach for: write the file with the
+                      \`Write\` tool and pass its path, with no shell in between.
+  --body <text>       A short description given inline.
+  --draft             Create as a draft, or convert an existing non-draft PR to draft.
+                      An existing draft is never taken out of draft, flag or not.
+  --base <branch>     Target branch (default: the repo's default branch).
+  --retitle           Also update the title of an existing PR.
 
 Assets already in an existing PR's description — images, videos, GitHub attachment
 links — are always carried over into the new body. They are never dropped.
@@ -58,7 +61,7 @@ export function run(ctx) {
 
   if (branch === def) throw new ToolkitError(`refusing to open a PR from the default branch (${def})`, { branch });
 
-  const body = readBody(str(ctx.flags.body));
+  const body = readBody(str(ctx.flags.body), str(ctx.flags['body-file']));
   const draft = bool(ctx.flags.draft);
   const base = str(ctx.flags.base) ?? def;
   const title = str(ctx.flags.title)?.trim() || firstCommitSubject(cwd, str(ctx.flags.base));
@@ -233,13 +236,28 @@ function preserveAssets(newBody, oldBody) {
   return { body: `${kept ? `${kept}\n\n` : ''}${heading}${block}\n`, preserved: missing.length };
 }
 
-/** @param {string | undefined} flag @returns {string} */
-function readBody(flag) {
-  if (!flag) throw new UsageError('--body is required', { usage });
+/**
+ * The PR description, from a file by preference. A description is multi-line by nature, so
+ * `--body -` meant a heredoc every time — and a heredoc is refused wholesale inside an
+ * isolated worktree, mid-PR. `-` still works for an existing pipeline; the path is the form
+ * to reach for.
+ * @param {string | undefined} flag @param {string | undefined} file
+ * @returns {string}
+ */
+function readBody(flag, file) {
+  if (file) {
+    if (flag) throw new UsageError('--body and --body-file are mutually exclusive', { usage });
+    try {
+      return readFileSync(file, 'utf8');
+    } catch (err) {
+      throw new ToolkitError(`could not read --body-file ${file}`, { file, cause: String(err) });
+    }
+  }
+  if (!flag) throw new UsageError('--body-file <path> or --body <text> is required', { usage });
   if (flag !== '-') return flag;
   try {
     return readFileSync(0, 'utf8');
   } catch {
-    throw new ToolkitError('--body - was given but stdin was empty', {});
+    throw new ToolkitError('--body - was given but stdin was empty — pass --body-file <path> instead', {});
   }
 }

@@ -47,8 +47,12 @@ is allowed to be another sentence.
 | Redundant whole-file reads | 3 | `PreToolUse` refuses a re-read of an unchanged file |
 | Re-narrowing on a file already read | 3 | `PreToolUse` refuses a shell dump of an unchanged file already read whole |
 | The same probe re-issued per item | 3 | `PreToolUse` refuses an identical read-only command whose answer cannot have changed |
-| Polling a condition already watched | 3 | `PreToolUse` refuses a probe of a file a `Monitor` in this session is following |
-| Editing a file this session never read | 3 | `PreToolUse` refuses it, asking for the whole edit pass's reads at once |
+| Polling a condition already watched | 3 | `PreToolUse` refuses a probe — shell **or** `Read` — of a file a `Monitor` or backgrounded Bash call in this session is following |
+| Editing a file this session never read | 4 | `PreToolUse` refuses it and hands over the file's git co-change set, so the batch is named rather than rediscovered |
+| Prose composed on stdin | 4 | `commit`/`pr` take `--message-file`/`--body-file`; `PreToolUse` refuses `--message -`/`--body -` and names the flag |
+| A second, path-narrowed diff | 4 | `scope --diff` already returned every hunk; `PreToolUse` refuses `git diff -- <path>`/`gh pr diff <path>` once it has run |
+| A JSON shape guessed rather than read | 3 | `PreToolUse` refuses a `node -e`/`python3 -c` one-liner naming a `.json` this session never opened |
+| A run ending on a bookkeeping call | 4 | `PreToolUse` refuses a `TodoWrite` that completes the closing-turn anchor and carries nothing else |
 | Relative `cd` that cannot resolve | 3 | `PreToolUse` refuses it, naming the absolute form |
 | Unquoted glob matching nothing | 3 | `PreToolUse` refuses it — zsh would abort the whole command |
 | Foreground `sleep` | 3 | `PreToolUse` refuses it, naming `Monitor` and `run_in_background` |
@@ -121,6 +125,40 @@ Both read-only gates get their evidence from the session transcript at
 being installed mid-session, it is per-session with no keying of our own, and it
 distinguishes one turn carrying six parallel calls from six turns carrying one each.
 The only sidecar state is the anti-wedge record.
+
+### Naming the batch rather than asking for it
+
+The read-before-write gate shipped at rung 3 and kept firing four and five times per run,
+always the same way: a trailing edit pass rediscovering the rejection **one file at a time**,
+because the denial said "read the whole pass's files at once" without saying which files
+those were. Telling an agent to enumerate is rung 1 wearing a hook's clothes.
+
+So the denial now does the enumeration. `companions()` reads the last forty commits that
+touched the refused path and tallies what changed alongside it, keeps the eight most frequent
+that still exist and that this session has not already read, and prints a `Read` line for each
+one. The file set in the recorded failures was nearly always exactly this derivable list — the
+command, its built copy, its skill — which is why history answers it and a rule could not.
+It is wrapped in a try/catch that returns an empty list, so a shallow clone, a path outside
+any repository, or a missing `git` degrades the denial to the sentence it used to be.
+
+### The anchor cannot be the last call
+
+The Stop gate is armed and correct, and that is the problem: it kept *firing*. Seven times in
+one bucket, and in nearly every case the message immediately before it was a complete, correct
+report that simply carried a tool call along with it — most often the call marking the
+closing-turn anchor done. The work landed and the outcome did not, through the very
+bookkeeping the anchor exists to guarantee.
+
+A fail-closed Stop gate is rung 3 for that: it refuses the ending after the run has already
+been shaped wrongly. The rung above is to make the wrong shape unschedulable. `PreToolUse`
+now refuses a `TodoWrite` that completes the closing-turn anchor when that call is the only
+thing its turn carries — the exact signature of "mark it done, then speak", which is the
+sequence that loses the message. A `TodoWrite` that rides along with real work in the same
+turn passes, which is what the commands already tell a run to do.
+
+`TaskUpdate` is deliberately **not** gated: its input carries a `taskId` and a status and
+never the subject, so a hook cannot tell the anchor from any other task without guessing —
+and never guessing outranks catching this on the second surface.
 
 ## Read-only classification
 
@@ -306,6 +344,32 @@ each refusal is a statement about a command that was going to fail:
   context is the faster form the re-read gate recommends, and gating it would contradict the
   advice. A segment containing a redirect is skipped, since that is a copy rather than a look.
 
+- **Prose on stdin.** `my-command-tools commit --message -` or `pr --body -`. The flag reads
+  stdin, and prose worth a flag is multi-line, so the only way to supply it from a shell is a
+  heredoc — the shape refused directly above, mid-commit and mid-PR, inside the isolated
+  worktree where these verbs run. Thirteen refusals across five recorded buckets were this
+  exact call, each reissued as `Write`-then-path one turn later. So the affordance is gone
+  from the taught form: the verbs now take `--message-file <path>` / `--body-file <path>`,
+  the commands teach only that, `check-commands.sh` refuses prose that teaches the stdin
+  form, and the gate's refusal names the replacement flag by name. `--message -` still
+  *works*, so a pipeline that already feeds it is not broken; nothing points an agent at it.
+- **A second, path-narrowed diff.** A `git diff`/`gh pr diff` segment carrying a `--`
+  pathspec, once `my-command-tools scope --diff` has run earlier in the session. That first
+  call already returned every changed file's hunks with line numbers attached, so the
+  narrowed call can only re-fetch bytes already in context — and the recorded shape is not
+  one stray call but the whole file list walked one path per turn: thirty-three such turns in
+  one bucket, forty-six in the next, one review spending thirty-five turns on a PR diff.
+  `--name-only`, `--stat`, and `--numstat` are skipped (those are enumerations, not content),
+  and with no prior `scope --diff` the gate stays silent, since then the diff is the first
+  call rather than the second.
+- **A JSON shape guessed rather than read.** A `node -e` / `bun -e` / `python3 -c` /
+  `deno eval` one-liner whose text names an existing `.json` file this session never opened.
+  The recorded failures are all the same: a one-liner written against a field layout the
+  session assumed, failing on the shape it actually found. The file is right there, and a
+  `Read` of it costs less than the failed run plus the retry. Touching the path first — by
+  `Read` or by any shell dump — clears the gate, and a one-liner naming no JSON file, or one
+  the session already read, is untouched.
+
 ### The job directory is not a gate
 
 There was a fifth shape here: `$CLAUDE_JOB_DIR` addressed from inside a worktree, refused
@@ -396,6 +460,23 @@ cannot contradict each other again.
 - [x] The same verb exits zero once the installer has run.
 - [x] `--unarmed`, `MY_COMMAND_REQUIRE_HOOKS=0`, and `MY_COMMAND_HOOKS=0` each let a
       hook-less environment through, and none of them is the default.
+- [x] `commit --message-file <path>` and `pr --body-file <path>` read the prose from the file;
+      passing both the file and the inline flag is a usage error, and an unreadable path fails
+      with the path named.
+- [x] `my-command-tools commit --message -` and `pr --body -` are each refused with the
+      `--message-file` / `--body-file` form named, and no command or shared snippet teaches
+      the stdin form.
+- [x] A `git diff -- <path>` or `gh pr diff` narrowed to a path is refused once
+      `scope --diff` has run in the session; the same call with no prior `scope --diff`, and a
+      `--name-only`/`--stat` enumeration at any time, both pass.
+- [x] A `node -e` or `python3 -c` one-liner naming an existing `.json` this session never
+      opened is refused; the same one-liner after that file was read passes.
+- [x] A `Read` of a file a `Monitor` or backgrounded Bash call in this session is following is
+      refused once, naming the bounded wait; an unrelated `Read` during that watch passes.
+- [x] The unread-`Edit` denial lists the refused path's git co-change set as `Read` lines, and
+      degrades to the bare instruction outside a repository.
+- [x] A `TodoWrite` that completes the closing-turn anchor and carries nothing else in its
+      turn is refused once; the same `TodoWrite` alongside other work in the turn passes.
 
 ## What was rejected
 

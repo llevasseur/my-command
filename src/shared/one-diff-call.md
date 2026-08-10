@@ -1,0 +1,5 @@
+**One diff call, and the content comes back with it.** `my-command-tools scope --diff` returns the branch's whole diff — every file, hunk by hunk, each line annotated `<sign><line number>\t<text>` — so a comment's file *and* its line are known before anything is opened. Read `diff.committed` and `diff.workingTree` off that one result.
+
+- **There is no second diff call.** Not `git diff -- <path>`, not `gh pr diff` narrowed to a file, not one call per entry of the file list: the hunk you would narrow to is already in the first result, and walking that list per path is the loop this call exists to replace. A `PreToolUse` gate refuses a path-narrowed diff once `scope --diff` has run in the session.
+- **A file under `diff.omitted` passed the size cap.** Re-run `scope --diff --diff-limit <chars>` once — never diff that path by hand.
+- **Open a file only when the hunk is not enough** — to see a symbol the diff does not show. That is a `Read`, batched with every other file you already know you need, never a diff.

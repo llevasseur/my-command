@@ -7,13 +7,22 @@
 // of the same subject.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { install } from './install-hooks.mjs';
-import { dumpedFiles, foregroundSleep, heredocWrite, unmatchedGlob } from './lib/bash-shapes.mjs';
+import {
+  dumpedFiles,
+  foregroundSleep,
+  heredocWrite,
+  inlineScriptJson,
+  perPathDiff,
+  ranToolkit,
+  stdinProseFlag,
+  unmatchedGlob,
+} from './lib/bash-shapes.mjs';
 import { isReadOnly } from './lib/read-only.mjs';
 import { lastFullReadOf, timeline } from './lib/transcript.mjs';
 
@@ -656,6 +665,206 @@ test('watched condition: an unrelated probe during a watch passes', () => {
     tool_input: { command: 'git status --porcelain' },
   });
   assert.equal(denied(answer), false);
+});
+
+// ── prose on stdin, guessed JSON, and the second diff ───────────────────────────────
+
+test('bash shapes: the stdin prose flags, a path-narrowed diff, and a guessed JSON shape', () => {
+  const dir = scratch();
+  writeFileSync(join(dir, 'pkg.json'), '{"a":1}');
+
+  // Prose on stdin: the flag is what invites the heredoc that gets refused.
+  assert.equal(stdinProseFlag('my-command-tools commit --message - src/a.ts')?.replacement, '--message-file');
+  assert.equal(stdinProseFlag('my-command-tools pr --title x --body -')?.replacement, '--body-file');
+  assert.equal(stdinProseFlag('my-command-tools commit --message-file /tmp/m.txt src/a.ts'), null);
+  assert.equal(stdinProseFlag('git commit --message -'), null);
+
+  // A diff narrowed to a path; enumerations are not content and are left alone.
+  assert.equal(perPathDiff('git diff origin/main -- src/a.ts'), 'git diff origin/main -- src/a.ts');
+  assert.equal(perPathDiff('gh pr diff 12 -- src/a.ts'), 'gh pr diff 12 -- src/a.ts');
+  assert.equal(perPathDiff('git diff --name-only origin/main -- src/a.ts'), null);
+  assert.equal(perPathDiff('git diff origin/main'), null);
+  assert.equal(perPathDiff('rg -n foo -- src/a.ts'), null);
+
+  // An inline one-liner reaching into a JSON document that exists.
+  assert.deepEqual(inlineScriptJson(`node -e "require('${join(dir, 'pkg.json')}')"`, dir), [join(dir, 'pkg.json')]);
+  assert.deepEqual(inlineScriptJson('python3 -c "import json; print(1)"', dir), []);
+  assert.deepEqual(inlineScriptJson(`node ${join(dir, 'pkg.json')}`, dir), []);
+
+  assert.equal(ranToolkit('my-command-tools scope --diff --branch x', 'scope', '--diff'), true);
+  assert.equal(ranToolkit('my-command-tools scope --branch x', 'scope', '--diff'), false);
+});
+
+test('stdin prose: the refusal names the path-taking flag, and once only', () => {
+  const dir = scratch();
+  const state = scratch();
+  const event = {
+    session_id: 'sp1',
+    transcript_path: transcript(['prompt']),
+    cwd: dir,
+    tool_name: 'Bash',
+    tool_input: { command: 'my-command-tools pr --title "x" --body -' },
+  };
+  const answer = hook(PRE_TOOL_USE, event, state);
+  assert.equal(denied(answer), true);
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /--body-file/);
+  assert.equal(denied(hook(PRE_TOOL_USE, event, state)), false);
+});
+
+test('second diff: refused only once `scope --diff` has already returned the hunks', () => {
+  const dir = scratch();
+  const scoped = transcript([
+    'prompt',
+    [read('Bash', { command: 'my-command-tools scope --diff --branch fix/x' })],
+    [read('Read', { file_path: join(dir, 'notes.md') })],
+  ]);
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'd1',
+    transcript_path: scoped,
+    cwd: dir,
+    tool_name: 'Bash',
+    tool_input: { command: 'git diff origin/main -- src/a.ts' },
+  });
+  assert.equal(denied(answer), true);
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /no second diff call/);
+
+  // With no prior scope --diff, the narrowed diff *is* the first call and is left alone.
+  const first = hook(PRE_TOOL_USE, {
+    session_id: 'd2',
+    transcript_path: transcript(['prompt']),
+    cwd: dir,
+    tool_name: 'Bash',
+    tool_input: { command: 'git diff origin/main -- src/a.ts' },
+  });
+  assert.equal(denied(first), false);
+});
+
+test('guessed JSON: a one-liner over an unread document is refused, and reading it allows it', () => {
+  const dir = scratch();
+  const doc = join(dir, 'suggestions.json');
+  writeFileSync(doc, '{"items":[]}');
+  const command = `node -e "const d=require('${doc}'); console.log(d.suggestions.length)"`;
+
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'j1',
+    transcript_path: transcript(['prompt']),
+    cwd: dir,
+    tool_name: 'Bash',
+    tool_input: { command },
+  });
+  assert.equal(denied(answer), true);
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /never read/);
+
+  const afterRead = hook(PRE_TOOL_USE, {
+    session_id: 'j2',
+    transcript_path: transcript(['prompt', [read('Read', { file_path: doc })]]),
+    cwd: dir,
+    tool_name: 'Bash',
+    tool_input: { command },
+  });
+  assert.equal(denied(afterRead), false);
+});
+
+test('watched condition: a Read that polls a watched file is refused, an unrelated Read is not', () => {
+  const dir = scratch();
+  const log = join(dir, 'verify.log');
+  writeFileSync(log, 'running\n');
+  const line = transcript([
+    'prompt',
+    [read('Bash', { command: `pnpm verify > ${log} 2>&1`, run_in_background: true })],
+  ]);
+
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'rp1',
+    transcript_path: line,
+    cwd: dir,
+    tool_name: 'Read',
+    tool_input: { file_path: log },
+  });
+  assert.equal(denied(answer), true);
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /already following/);
+
+  const unrelated = hook(PRE_TOOL_USE, {
+    session_id: 'rp2',
+    transcript_path: line,
+    cwd: dir,
+    tool_name: 'Read',
+    tool_input: { file_path: join(dir, 'other.md') },
+  });
+  assert.equal(denied(unrelated), false);
+});
+
+test('unread edit: the denial hands over the co-change batch derived from history', () => {
+  // realpath, because git reports the toplevel through /private/var on macOS and the
+  // denial's paths are resolved against it.
+  const dir = realpathSync(scratch());
+  execFileSync('git', ['init', '-q'], { cwd: dir });
+  execFileSync('git', ['config', 'user.email', 't@example.com'], { cwd: dir });
+  execFileSync('git', ['config', 'user.name', 'T'], { cwd: dir });
+  const src = join(dir, 'src.md');
+  const built = join(dir, 'built.md');
+  writeFileSync(src, 'a\n');
+  writeFileSync(built, 'a\n');
+  execFileSync('git', ['add', '-A'], { cwd: dir });
+  execFileSync('git', ['commit', '-qm', 'one', '--no-gpg-sign'], { cwd: dir });
+
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'cc1',
+    transcript_path: transcript(['prompt']),
+    cwd: dir,
+    tool_name: 'Edit',
+    tool_input: { file_path: src, old_string: 'a', new_string: 'b' },
+  });
+  assert.equal(denied(answer), true);
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /changes these alongside it/);
+  assert.ok(answer.hookSpecificOutput.permissionDecisionReason.includes(`Read({file_path: "${built}"`));
+});
+
+// ── the closing-turn anchor ─────────────────────────────────────────────────────────
+
+test('closing anchor: a lone TodoWrite completing the anchor is refused; riding along passes', () => {
+  const dir = scratch();
+  const todos = [
+    { content: 'implement the fix', status: 'completed' },
+    { content: 'close the run in a text-only turn', status: 'completed' },
+  ];
+  const alone = hook(PRE_TOOL_USE, {
+    session_id: 'ta1',
+    transcript_path: transcript(['prompt', [read('TodoWrite', { todos })]]),
+    cwd: dir,
+    tool_name: 'TodoWrite',
+    tool_input: { todos },
+  });
+  assert.equal(denied(alone), true);
+  assert.match(alone.hookSpecificOutput.permissionDecisionReason, /end on a tool call/);
+
+  // The prescribed form: marked in the same turn as the run's last real work.
+  const together = hook(PRE_TOOL_USE, {
+    session_id: 'ta2',
+    transcript_path: transcript([
+      'prompt',
+      [read('Bash', { command: 'my-command-tools worktree end --branch fix/x' }), read('TodoWrite', { todos })],
+    ]),
+    cwd: dir,
+    tool_name: 'TodoWrite',
+    tool_input: { todos },
+  });
+  assert.equal(denied(together), false);
+
+  // An anchor still open is not this shape at all.
+  const open = hook(PRE_TOOL_USE, {
+    session_id: 'ta3',
+    transcript_path: transcript(['prompt']),
+    cwd: dir,
+    tool_name: 'TodoWrite',
+    tool_input: {
+      todos: [
+        { content: 'implement the fix', status: 'in_progress' },
+        { content: 'close the run in a text-only turn', status: 'pending' },
+      ],
+    },
+  });
+  assert.equal(denied(open), false);
 });
 
 // ── the off switch ──────────────────────────────────────────────────────────────────

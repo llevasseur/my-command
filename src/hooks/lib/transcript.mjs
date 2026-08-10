@@ -182,9 +182,14 @@ export function watchedPaths(line, exceptTurnUuid) {
       if (!watching) continue;
       const text = `${use.input?.command ?? ''} ${JSON.stringify(use.input?.ws ?? '')}`;
       // A basename with an extension is the only token specific enough to key on; a bare
-      // word would collide with any command mentioning the same noun.
-      for (const m of text.matchAll(/[\w./-]*\/?([\w.-]+\.[A-Za-z]\w*)/g)) {
-        if (m[1].length >= 5) out.add(m[1]);
+      // word would collide with any command mentioning the same noun. Split into shell
+      // tokens first and take each one's basename whole — a regex scanning the raw text
+      // matches only a *suffix* of the name ("y.log" out of "verify.log"), which is enough
+      // for a substring test and wrong for anything that compares names.
+      for (const token of text.split(/[\s'"`(){}[\]<>|;&,]+/)) {
+        if (!token) continue;
+        const base = token.split('/').pop() ?? '';
+        if (base.length >= 5 && /^[\w.-]+\.[A-Za-z]\w*$/.test(base)) out.add(base);
       }
     }
   }
