@@ -138,8 +138,9 @@ function badShape(event, input, session) {
         `Write the file with the \`Write\` tool instead — no shell, no quoting, no guard — then ` +
         `pass its path to whatever needs it:\n` +
         `  Write({file_path: "<absolute path>", content: "…"})\n` +
-        `  … then \`my-command-tools pr --title <text> --body -\` reading that file, or run the ` +
-        `script by path.`,
+        `  … then \`my-command-tools pr --title <text> --body-file <that path>\`, or ` +
+        `\`my-command-tools commit --message-file <that path> <paths>\`, or run the script by ` +
+        `path. Both verbs take a file precisely so this shape never has to be composed.`,
     );
     return true;
   }

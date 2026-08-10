@@ -129,6 +129,36 @@ test('commit reports a no-op instead of failing when nothing is staged', () => {
   assert.equal(r.committed, false);
 });
 
+test('commit takes a multi-line message from --message-file', () => {
+  const { dir, git } = repo();
+  git(['checkout', '-qb', 'feat/x']);
+  writeFileSync(join(dir, 'a.ts'), 'export const a = 2;\n');
+
+  // The whole point of the flag: a message with body paragraphs, supplied without
+  // composing it in the shell.
+  const msgPath = join(dir, 'msg.txt');
+  writeFileSync(msgPath, 'feat: land the thing\n\nA body paragraph the shell would need a heredoc for.\n');
+
+  const r = commit(ctx(dir, ['a.ts'], { 'message-file': msgPath }));
+  assert.equal(r.committed, true);
+  assert.equal(r.subject, 'feat: land the thing');
+  assert.match(git(['log', '-1', '--format=%B']), /A body paragraph/);
+});
+
+test('commit refuses --message with --message-file, and an unreadable file', () => {
+  const { dir, git } = repo();
+  git(['checkout', '-qb', 'feat/x']);
+  writeFileSync(join(dir, 'a.ts'), 'export const a = 3;\n');
+
+  assert.throws(
+    () => commit(ctx(dir, ['a.ts'], { message: 'one', 'message-file': '/nope.txt' })),
+    /mutually exclusive/,
+  );
+  assert.throws(() => commit(ctx(dir, ['a.ts'], { 'message-file': '/nope/definitely-not.txt' })), /could not read/);
+  // Present as a bare switch is a usage error, not a silent fall through to stdin.
+  assert.throws(() => commit(ctx(dir, ['a.ts'], { 'message-file': true })), /needs a path/);
+});
+
 test('worktree begin --existing checks out a branch instead of creating one', () => {
   const { dir, git } = repo();
   git(['branch', 'feat/existing']);

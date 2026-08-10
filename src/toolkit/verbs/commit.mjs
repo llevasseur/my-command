@@ -1,15 +1,21 @@
 // `commit` — stage an explicit path list and commit, with the guards that keep a
 // workflow run from shipping someone else's files or landing on the default branch.
-import { readFileSync } from 'node:fs';
-import { str } from '../lib/flags.mjs';
 import { run as exec, must, ToolkitError, UsageError } from '../lib/proc.mjs';
 import { currentBranch, defaultBranch, porcelain, repoRoot } from '../lib/repo.mjs';
+import { textArg } from '../lib/text-arg.mjs';
 
-export const usage = `commit --message <text|-> <path> [<path>...]
+export const usage = `commit --message <text> | --message-file <path> — then <path> [<path>...]
 
 Stage the given paths and commit them.
 
-  --message <text>  Commit message. Use \`-\` to read the full message from stdin.
+  --message <text>       Commit message as one argument. The single-line form.
+  --message-file <path>  Read the message from a file. This is the multi-line form:
+                         write the message with your file-writing tool, then pass the
+                         path. Composing a multi-line message on the command line means
+                         a heredoc, which the workflow gates refuse inside an isolated
+                         worktree — so the file form is the one to reach for.
+
+\`--message -\` still reads the whole message from stdin, for a real pipeline.
 
 Refuses to commit on the default branch, and refuses \`.\`/\`-A\`-style whole-tree
 staging — paths are always explicit so unrelated carryover files stay put.
@@ -55,7 +61,7 @@ export function run(ctx) {
     throw new ToolkitError('refusing whole-tree staging — list the paths this run actually changed', { offending });
   }
 
-  const message = readMessage(str(ctx.flags.message));
+  const message = textArg(ctx.flags, 'message', 'message-file', { usage });
   if (!message.trim()) throw new ToolkitError('empty commit message', {});
 
   must('git', ['add', '--', ...paths], { cwd });
@@ -118,15 +124,4 @@ function commitOnce(cwd, message, paths) {
   // Let a pending approval land before spending the one retry on it.
   sleep(SIGNING_RETRY_WAIT_MS);
   return { result: exec('git', args, { cwd, input: message }), signingRetried: true };
-}
-
-/** @param {string | undefined} flag @returns {string} */
-function readMessage(flag) {
-  if (!flag) throw new UsageError('--message is required', { usage });
-  if (flag !== '-') return flag;
-  try {
-    return readFileSync(0, 'utf8');
-  } catch {
-    throw new ToolkitError('--message - was given but stdin was empty', {});
-  }
 }
