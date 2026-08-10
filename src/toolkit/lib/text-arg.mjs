@@ -1,14 +1,9 @@
-// Reading a long piece of prose — a commit message, a PR body — from wherever the caller
-// put it.
+// Reading a long piece of prose — a commit message, a PR body — as a literal, a file path,
+// or stdin.
 //
-// The stdin form (`--message -`, `--body -`) is the one an agent reaches for first, and it
-// is the one it cannot use: piping a multi-line string into a command means composing that
-// string in the shell, which is a heredoc, which the workflow gates refuse wholesale inside
-// an isolated worktree. Every recorded occurrence spent a refused call before rewriting.
-//
-// So the file form is first-class and is what the usage strings advertise. It pairs with the
-// file-writing tool the refusal already names: write the prose to a path, pass the path.
-// Stdin still works for a genuine pipeline; it is simply no longer the advertised route.
+// The file form is the advertised one: piping a multi-line string in means composing it in
+// the shell, which is a heredoc, which the workflow gates refuse inside a worktree. Stdin
+// still works for a real pipeline.
 import { readFileSync } from 'node:fs';
 import { str } from './flags.mjs';
 import { ToolkitError, UsageError } from './proc.mjs';
@@ -30,9 +25,8 @@ export function textArg(flags, name, fileName, opts) {
     throw new UsageError(`--${name} and --${fileName} are mutually exclusive — give one`, { usage: opts.usage });
   }
 
-  // Given as a bare switch, `str` drops the `true` the parser recorded — the flag is
-  // present with no path rather than absent, and that is a usage error, not a fallthrough
-  // to stdin.
+  // Given as a bare switch, `str` drops the `true` the parser recorded, so the flag reads
+  // as absent. A usage error, not a fallthrough to stdin.
   if (file === undefined && flags[fileName] !== undefined) {
     throw new UsageError(`--${fileName} needs a path`, { usage: opts.usage });
   }

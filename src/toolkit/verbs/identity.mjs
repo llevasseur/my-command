@@ -1,14 +1,9 @@
 // `identity` — which GitHub account this checkout's remote wants, and switching to it.
 //
-// A device logged in as more than one account has to pick one per repository, and the
-// pick is not a judgment call: the account that can write to `owner/repo` is `owner`. The
-// verb exists because the hand-rolled alternative is
-// `GH_TOKEN="$(gh auth token --user <login>)" <command>` — an assignment wrapping a
-// command substitution, which the workflow gates refuse, and which guesses at the login
-// rather than reading it off the remote.
-//
-// `pr` already resolves this on its own behalf; this verb is for the calls that are not
-// `pr` — a `gh pr edit` appending to a description, a `gh api` write.
+// The account that can write to `owner/repo` is `owner`, so the pick is readable rather
+// than a judgment call. This replaces the hand-rolled
+// `GH_TOKEN="$(gh auth token --user <login>)" <command>`, refused on shape. `pr` resolves
+// this on its own behalf; the verb is for the `gh` calls that are not `pr`.
 import { bool } from '../lib/flags.mjs';
 import { identity } from '../lib/gh.mjs';
 import { run as exec, ToolkitError } from '../lib/proc.mjs';

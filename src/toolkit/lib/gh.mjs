@@ -37,12 +37,9 @@ export function ownerToken(owner) {
 }
 
 /**
- * Every account this device is logged in as, and which one `gh` is currently using.
- * Parsed from `gh auth status` rather than asked of `gh api user`, so it costs no network
- * call and still answers while the active account is the wrong one.
- *
- * Two spellings are matched because both ship: current `gh` prints `account <login>` with
- * an `Active account:` line under it, older `gh` prints `Logged in to <host> as <login>`.
+ * Every account this device is logged in as, and which one `gh` is currently using. Read
+ * from `gh auth status` rather than `gh api user`, so it costs no network call and still
+ * answers while the active account is the wrong one.
  * @param {string} [cwd]
  * @returns {{login: string, active: boolean}[]}
  */
@@ -53,8 +50,10 @@ export function accounts(cwd) {
 }
 
 /**
- * The account list `gh auth status` describes, split out from the call so the parsing is
- * testable without a logged-in device.
+ * The account list `gh auth status` describes, split out from the call so it is testable
+ * without a logged-in device. Two spellings, because both ship: current `gh` prints
+ * `account <login>` with an `Active account:` line under it, older `gh` prints
+ * `Logged in to <host> as <login>`.
  * @param {string} text
  * @returns {{login: string, active: boolean}[]}
  */
@@ -80,12 +79,8 @@ export function parseAccounts(text) {
 
 /**
  * Which account this checkout's remote wants, which one `gh` is using, and the single
- * plain command that reconciles them.
- *
- * This exists so no caller composes `GH_TOKEN="$(gh auth token --user <login>)" …`. That
- * line is an assignment wrapping a command substitution — a shape the workflow gates
- * refuse — and it is guesswork besides, since the account a repo needs is the one that
- * owns it, which is readable from the remote.
+ * plain command that reconciles them. Replaces a hand-rolled
+ * `GH_TOKEN="$(gh auth token --user <login>)" …`, which the gates refuse on shape.
  * @param {string} cwd
  * @returns {{owner: string | null, repo: string | null, active: string | null,
  *            matches: boolean, loggedIn: boolean, select: string | null,
@@ -104,7 +99,6 @@ export function identity(cwd) {
     active,
     matches,
     loggedIn,
-    // A plain command with no assignment and no substitution, which is the whole point.
     select: !matches && loggedIn && owner ? `gh auth switch --user ${owner}` : null,
     accounts: list,
   };

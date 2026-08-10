@@ -1,6 +1,5 @@
-// Which GitHub account a checkout wants is read off `gh auth status`, so the parsing of
-// that output is what has to hold — a device with two logins is the case the whole
-// identity path exists for.
+// The identity path reads `gh auth status`, so its parsing is what has to hold — including
+// the two-login case it exists for.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { parseAccounts } from './gh.mjs';

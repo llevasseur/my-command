@@ -134,8 +134,6 @@ test('commit takes a multi-line message from --message-file', () => {
   git(['checkout', '-qb', 'feat/x']);
   writeFileSync(join(dir, 'a.ts'), 'export const a = 2;\n');
 
-  // The whole point of the flag: a message with body paragraphs, supplied without
-  // composing it in the shell.
   const msgPath = join(dir, 'msg.txt');
   writeFileSync(msgPath, 'feat: land the thing\n\nA body paragraph the shell would need a heredoc for.\n');
 
