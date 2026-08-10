@@ -12,12 +12,18 @@ Parse `--draft` / `-d`; treat remaining text as optional title or context.
 2. Use `my-command-tools pr` when available to push and create or update the PR
    without embedding credentials. Preserve existing body assets. Convert to
    draft only when requested; never silently mark a draft ready.
+   - Pass the description as a file rather than on stdin: write it with the
+     file-writing tool, then hand the repository helper that path. A PR body is
+     always multi-line, and composing one on the command line means a heredoc,
+     which is refused inside an isolated worktree.
    - A `must be a collaborator` GraphQL error is the wrong identity, not a
      permission to request. `gh`'s GraphQL-backed writes (`gh pr create`,
-     `gh pr edit`) resolve to an account that is not a collaborator on
-     `llevasseur`-owned repos, while REST succeeds. Select the right account
-     (`gh auth switch`, or `GH_TOKEN="$(gh auth token --user llevasseur)"`) or use
-     the REST equivalent.
+     `gh pr edit`) authenticate as whichever account is active, and this device is
+     logged in as more than one. The right account is the remote's owner, not a
+     guess: the repository helper resolves it for its own PR write, and reports
+     and selects it for any other `gh` call. Never wrap a command in a
+     `GH_TOKEN="$(gh auth token --user …)"` assignment — that shape is refused on
+     sight; REST is the remaining fallback.
 3. Do not create commits. If the owning workflow asks this skill not to tear down
    its worktree, leave it intact. Otherwise remove a linked worktree only after
    confirming it is clean and its HEAD exists on the remote branch.
