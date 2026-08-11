@@ -339,6 +339,13 @@ each refusal is a statement about a command that was going to fail:
   demonstrated the alternative themselves — one wrote its scratch script with the `Write`
   tool, the other wrote `pr-body.md` with `Write` and passed it as a flag — so the denial
   names that form. A heredoc feeding a program's stdin with no redirect is untouched.
+
+  The denial keeps firing, and every recorded firing is followed by the correct rewrite on
+  the next call. That is the gate working while the affordance still stood: the refused
+  shape was the natural first composition, so each occurrence cost a round-trip. What the
+  commands and the toolkit advertise has since changed to the form that is not refused —
+  `commit --message-file`, `pr --body-file`, `/cp` writing its stash with `Write` — so the
+  heredoc is no longer what a reader reaches for. The gate stays as the backstop.
 - **Dumped files.** `cat`/`head`/`tail`/`sed`/`nl` and friends naming a file that exists.
   `grep` and `rg` are deliberately **not** dumpers: locating a symbol in a file already in
   context is the faster form the re-read gate recommends, and gating it would contradict the

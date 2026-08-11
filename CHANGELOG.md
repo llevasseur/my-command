@@ -5,7 +5,16 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
-## 2026-08-09
+## 2026-08-10
+
+### Changed
+
+- **The shapes the gates keep refusing are no longer the shapes the toolkit and the commands advertise.** PR #63 armed the gates and added the branches; the judged transcripts since show them firing and being obeyed on the very next call, every time. That is a working gate standing next to a standing affordance, so each occurrence still cost one refused round-trip. This removes the affordances instead.
+- **`commit --message-file <path>` and `pr --body-file <path>` are what the usage strings now advertise.** A multi-line commit message or PR body composed on the command line is a heredoc, and a heredoc composing a file is refused wholesale inside a worktree — which is where both verbs are called from. The file form pairs with the tool the refusal already names: write the prose to a path, pass the path. `--message -` and `--body -` still read stdin for a real pipeline. `/task` and `/pr`, their Codex skills, and the heredoc denial's own suggested alternative all name the file flags now.
+- **`my-command-tools identity` answers the two-account question for the `gh` calls that are not `pr`.** The device is logged in as `llevasseur` and `llevasseurKG`, and the recorded workaround was `GH_TOKEN="$(gh auth token --user <login>)" <command>` — an assignment wrapping a substitution, refused on shape, and a guess at a login the remote already states. The verb reads the owner off the origin remote, reports it alongside the active account, and `--select` runs the one plain `gh auth switch --user <owner>`. `shared/gh-identity.md` no longer demonstrates the refused line, which is where every hand-rolled copy of it came from.
+- **`/cp` writes its clipboard stash with `Write` instead of a heredoc.** The command's own step 3 demonstrated `cat > ~/.claude/cp-last.txt <<'CPEOF'`, and `/cp` is invoked from inside a worktree often enough that the demonstration cost a refused call before anything reached the clipboard. The ring rotation stays in Bash, the write moves to the tool, and `Write` takes the content literally — which is what the single-quoted heredoc was for. Mirrored in the Codex skill and the feature doc.
+- **`/docs` and `/truncate` no longer tell a run to branch on `$?`.** That instruction is what made `(okq … ; echo "exit=$?") | tail` the natural composition of a health-check pass, and the compound line is refused. The harness reports each call's exit status on its own, so each check is now sent as its own plain call.
+- **`/task` names a reachable fallback when `my-command-tools` is not on PATH.** It previously said to run `my-command-tools doctor`, which is the command that just failed. It now names the device install path to reach the same CLI through, and `doctor`'s `onPath` output as the fix to report.
 
 ### Added
 

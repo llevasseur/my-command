@@ -30,9 +30,13 @@ line of context.
 Rewrites the prompt so it stands alone for an agent with no view of this
 conversation (pronouns resolved; files, branches, and PR numbers named; stated
 constraints kept; the user's flags preserved as typed), then writes
-`/<command> <prompt>` to a plain-text stash at `~/.claude/cp-last.txt` in one
-single-quoted heredoc and feeds the clipboard from that file, so both carry
-identical bytes. The clipboard sink is platform-detected — `pbcopy`, or
+`/<command> <prompt>` to a plain-text stash at `~/.claude/cp-last.txt` **with the
+`Write` tool** and feeds the clipboard from that file, so both carry identical
+bytes. The stash is never composed with a heredoc: `cat > … <<'EOF'` composes a
+file in the shell, which is refused outright inside an isolated worktree — and
+`/cp` is invoked from inside one often — so that form cost a refused call before
+anything reached the clipboard. `Write` also takes the content literally, which
+is what the single-quoted heredoc was for. The clipboard sink is platform-detected — `pbcopy`, or
 `wl-copy`, `xclip -selection clipboard`, or `clip.exe` off macOS — while the
 stash write happens everywhere. With no clipboard sink available it prints the
 line instead, the only case where printing is correct.
