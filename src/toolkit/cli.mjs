@@ -15,6 +15,7 @@ import * as identity from './verbs/identity.mjs';
 import * as pr from './verbs/pr.mjs';
 import * as prs from './verbs/prs.mjs';
 import * as scope from './verbs/scope.mjs';
+import * as stash from './verbs/stash.mjs';
 import * as state from './verbs/state.mjs';
 import * as verify from './verbs/verify.mjs';
 import * as worktree from './verbs/worktree.mjs';
@@ -41,6 +42,7 @@ const VERBS = {
   worktree,
   identity,
   concepts,
+  stash,
   doctor,
 };
 
@@ -60,6 +62,7 @@ const SWITCHES = new Set([
   'diff',
   'select',
   'json',
+  'no-clipboard',
 ]);
 
 /**
