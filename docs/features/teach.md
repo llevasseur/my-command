@@ -87,12 +87,21 @@ exclusion clause is right for a command file and wrong here.
 
 On yes, one JSON object is POSTed to the hosted concept store — a Cloudflare
 Worker over D1, not a file on the machine. The write path is
-`POST $CONCEPTS_URL/api/concepts` with an `Authorization: Bearer $CONCEPTS_TOKEN`
-header; both values come from the environment and neither is ever hardcoded or
-written to a file. The POST runs through `node` with every value passed as an
-argument and the token read from `process.env` inside the process, so a sentence
-containing quotes or backslashes cannot corrupt the record and the token never
-reaches the command line, the transcript, or the shell history.
+`POST <base>/api/concepts` with an `Authorization: Bearer <token>` header; both
+values come from the environment and neither is ever hardcoded or written to a
+file. `IDEAS_URL` and `IDEAS_TOKEN` are read first, with `CONCEPTS_URL` and
+`CONCEPTS_TOKEN` as the documented fallbacks, since ideas and concepts are one
+dataset behind one Worker.
+
+The POST is made by one toolkit verb, `my-command-tools concepts save`, shared
+with `/lookup` and `/learn` rather than inlined per command —
+`Bash(my-command-tools:*)` is allowlisted in `src/hooks/settings-fragment.json`,
+so it runs without an approval round-trip. **The record travels as JSON on
+standard input**, so no field of it ever reaches a command line: a sentence
+containing quotes or backslashes cannot corrupt the record, and neither a value
+nor the token appears in the transcript or the shell history. The verb reads both
+environment variables from `process.env` inside its own process, prints one line
+(`saved:` or `not saved: <cause>`), and always exits `0`.
 
 The write is idempotent: a row id is a ULID derived from the record, so the store
 returns **201** for a new concept and **200** for a replay. The retry sits
@@ -134,8 +143,9 @@ is belt and braces.
 `[]`.** claude-proxy's detail page distinguishes absent from empty, and absence is
 what makes it show its "nothing more to show" fallback. Records written before
 these fields existed carry none of them and stay valid; a stored concept is never
-rewritten or migrated. Lists are passed newline-separated
-because a tip reliably contains a comma and never contains a newline.
+rewritten or migrated. The verb enforces the omit rule on the record it is
+handed, and lists arrive as JSON arrays on stdin rather than as a delimited
+string, so no separator has to be reserved out of a tip.
 
 **An unreachable store is not fatal, and no longer silent.** `/improve`
 hard-stops without the proxy because the suggestions are its input; `/teach`'s
@@ -180,7 +190,11 @@ Nothing automates the rollout. On each machine you teach from, by hand:
    ```
 
    Read the token from the Worker's secret store or your password manager. Never
-   commit it and never paste it into a repo file or a prompt.
+   commit it and never paste it into a repo file or a prompt. **Neither installer
+   writes these lines for you**: `scripts/install-personal.sh` and the `npx`
+   wizard each report only whether the pair is set and print the two exports to
+   paste, because a token written into a settings file or a dotfile by a tool
+   lands somewhere you never chose and cannot easily audit.
 
 2. Pull this version of the command — run [`/sync`](sync.md) on that device, or
    `git pull` in the clone the commands are symlinked from. A device still on the
@@ -195,7 +209,10 @@ claude-proxy.
 
 - Command source: `src/commands/teach.md`
 - Gated by [lookup](lookup.md), which reads the same store before the naming step
-- Saves to the hosted concept store (`CONCEPTS_URL` / `CONCEPTS_TOKEN`), not to
+- Saves to the hosted concept store (`CONCEPTS_URL` / `CONCEPTS_TOKEN`) through
+  the shared `my-command-tools concepts` verb
+  (`src/toolkit/verbs/concepts.mjs`), whose environment contract the three store
+  commands carry from `src/shared/concepts-store.md` — not to
   the `CLAUDE_PROXY_STORE` log directory [improve](improve.md) and
   [revive](revive.md) read
 - Rolled out to each device with [sync](sync.md)

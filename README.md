@@ -152,10 +152,20 @@ export CONCEPTS_TOKEN="<the token from the Worker's secret store>"
 ```
 
 Read the token from the Worker's secret store or your password manager; never
-commit it. With either variable unset, `/teach` still names the term, still
-prints the sentence, and still copies it — it skips only the save and says in one
-line why. See [docs/features/teach.md](./docs/features/teach.md) for the
-per-device rollout.
+commit it. `IDEAS_URL` and `IDEAS_TOKEN` are read first here too, so a device
+that already set the pair above needs nothing more. With either variable unset,
+`/teach` still names the term, still prints the sentence, and still copies it —
+it skips only the save and says in one line why. See
+[docs/features/teach.md](./docs/features/teach.md) for the per-device rollout.
+
+`/lookup`, `/teach`, and `/learn` reach that store through one shared toolkit
+verb, `my-command-tools concepts` (`lookup`, `save`, `count`), rather than
+through a snippet pasted into each command. It reads both variables from
+`process.env` inside its own process, takes the record to save as JSON on
+standard input so no field reaches a command line, prints exactly one status line
+and always exits `0`. **Neither installer ever writes a token**: both
+`scripts/install-personal.sh` and the `npx` wizard report only whether the pair
+is set and print the two export lines for you to paste.
 
 The `trim` command adapts the context-compaction strategy introduced by Yujiang Li,
 Zhenyu Hou, Yi Jing, Jie Tang, and Yuxiao Dong in
