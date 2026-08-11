@@ -1044,7 +1044,10 @@ test('stop: a nested inline handback is not asked for an outcome', () => {
   const line = transcript([
     'prompt',
     [read('Skill', { skill: 'clean' })],
-    { say: 'Comments tightened in 3 files; nothing committed.\n\nRETURN /clean', calls: [read('Skill', { skill: 'pr' })] },
+    {
+      say: 'Comments tightened in 3 files; nothing committed.\n\nRETURN /clean',
+      calls: [read('Skill', { skill: 'pr' })],
+    },
   ]);
   assert.deepEqual(hook(STOP, { session_id: 'n1', transcript_path: line }), {});
 });
@@ -1074,7 +1077,10 @@ test('stop: an outermost run abandoned after its nested runs returned is still r
     'prompt',
     [read('Skill', { skill: 'clean' })],
     { say: 'cleaned\n\nRETURN /clean', calls: [read('Skill', { skill: 'pr' })] },
-    { say: 'PR #91 opened\n\nRETURN /pr', calls: [read('Bash', { command: 'my-command-tools worktree end --branch x' })] },
+    {
+      say: 'PR #91 opened\n\nRETURN /pr',
+      calls: [read('Bash', { command: 'my-command-tools worktree end --branch x' })],
+    },
     [read('Bash', { command: 'my-command-tools worktree end --branch x' })],
   ]);
   const answer = hook(STOP, { session_id: 'n4', transcript_path: line });
@@ -1119,9 +1125,27 @@ test('the return marker reads a real invocation name and never the placeholder',
 test('an open nested run is counted only within the current task', () => {
   // A Skill call before the last prompt belongs to a finished task.
   const before = timeline([
-    { type: 'assistant', uuid: 'a0', timestamp: new Date().toISOString(), message: { role: 'assistant', content: [{ type: 'tool_use', id: 't0', name: 'Skill', input: { skill: 'clean' } }] } },
-    { type: 'user', uuid: 'u1', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'text', text: 'next thing' }] } },
-    { type: 'assistant', uuid: 'a2', timestamp: new Date().toISOString(), message: { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls' } }] } },
+    {
+      type: 'assistant',
+      uuid: 'a0',
+      timestamp: new Date().toISOString(),
+      message: {
+        role: 'assistant',
+        content: [{ type: 'tool_use', id: 't0', name: 'Skill', input: { skill: 'clean' } }],
+      },
+    },
+    {
+      type: 'user',
+      uuid: 'u1',
+      timestamp: new Date().toISOString(),
+      message: { role: 'user', content: [{ type: 'text', text: 'next thing' }] },
+    },
+    {
+      type: 'assistant',
+      uuid: 'a2',
+      timestamp: new Date().toISOString(),
+      message: { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls' } }] },
+    },
   ]);
   assert.equal(nestedRunOpen(before), false);
 });
