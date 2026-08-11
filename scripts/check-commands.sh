@@ -31,7 +31,9 @@
 #      escape for a genuinely hook-less environment.
 #  15. every command carries the step marker rules, so a run states the step it enters
 #      instead of leaving the record to infer it (docs/specs/run-markers.md).
-#  18. the closing turn distinguishes a nested inline handback from a run close, on all three
+#  18. every fenced shell snippet the docs tell an agent to run is a shape the gates accept —
+#      the repo may not prescribe a command its own harness refuses.
+#  19. the closing turn distinguishes a nested inline handback from a run close, on all three
 #      surfaces, and the Stop gate reads the same distinction — a nested run that spends a
 #      text-only turn strands its parent's remaining steps (docs/specs/run-markers.md).
 set -euo pipefail
@@ -478,7 +480,18 @@ if grep -REn -- 'my-command-tools (commit|pr) [^`]*--(message|body) -' src/comma
   fail=1
 fi
 
-# 18. Only the outermost run closes in a text-only turn. A text-only assistant message ends the
+# 18. The docs may not prescribe a command the harness refuses. `/cp` step 3 told every run to
+# rotate its stash ring with a `for i in 3 2 1` loop over `$((i + 1))` paths, and a
+# worktree-isolated session refused it every time — on shape, not on substance, since every
+# path in it was under ~/.claude. One bad snippet is a bug; a repo that can grow another one
+# silently is the defect, so every fenced shell block in src/commands/, src/shared/ and skills/
+# goes through the same shape checker the gate uses. A block nobody is told to run declares
+# itself with `<!-- not-run: <reason> -->`.
+if ! node scripts/check-doc-snippets.mjs; then
+  fail=1
+fi
+
+# 19. Only the outermost run closes in a text-only turn. A text-only assistant message ends the
 # assistant's turn, so a command invoked inline by another strands its parent's remaining steps
 # by closing — observed on PR #90, where /task's teardown and closing report were both stranded
 # by /clean's and /pr's closes. This is gated on all three surfaces the way 6 and 15 gate the

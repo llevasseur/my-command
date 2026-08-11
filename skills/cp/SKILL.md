@@ -15,48 +15,45 @@ possible.
    spending tokens on its text:
 
    ```bash
-   pbcopy < ~/.claude/cp-last.txt
+   my-command-tools stash restore
    ```
 
-   An optional slot number reaches an older ring entry — `--again 2` restores
-   `~/.claude/cp-last.2.txt`, valid through slot 4. Substitute the platform's
-   clipboard sink as in step 3. If the stash file is missing, say so plainly and
-   write nothing rather than copying an empty clipboard. Then stop.
+   An optional slot number reaches an older ring entry — `--again 2` is
+   `my-command-tools stash restore 2`, valid through slot 4. The verb detects the
+   clipboard sink itself, so there is nothing to substitute per platform. If the
+   slot holds nothing it says so and leaves the clipboard alone: repeat that
+   plainly and write nothing rather than copying an empty clipboard. Then stop.
 2. **Compose.** The first argument token names the target skill (`$name` or a bare
    name); the rest is the prompt. Rewrite it to stand alone for an agent that
    cannot see this conversation — resolve pronouns, name files, branches, and PR
    numbers, keep every stated constraint, and add no scope. Keep the user's flags
    as typed. With `--verbatim` / `-v`, copy the prompt unchanged.
-3. **Copy.** Rotate the stash ring, write the composed line to
-   `~/.claude/cp-last.txt`, then feed the clipboard from that file, so both carry
-   identical bytes and a later copy can be undone with step 1. Rotate the ring in
-   the shell:
+3. **Copy.** Two calls. Write `$<skill> <composed prompt>` to
+   `~/.claude/cp-compose.txt` with the file-writing tool, spelling the home
+   directory out, then hand that path to the stash — it rotates the ring, installs
+   the line as the newest entry, and feeds the clipboard from it, so the stash and
+   the clipboard carry identical bytes and a later copy can be undone with step 1:
 
    ```bash
-   mkdir -p ~/.claude
-   rm -f ~/.claude/cp-last.4.txt
-   for i in 3 2 1; do
-     [ -f ~/.claude/cp-last.$i.txt ] && mv ~/.claude/cp-last.$i.txt ~/.claude/cp-last.$((i + 1)).txt
-   done
-   [ -f ~/.claude/cp-last.txt ] && mv ~/.claude/cp-last.txt ~/.claude/cp-last.1.txt
+   my-command-tools stash write --content-file /Users/<you>/.claude/cp-compose.txt
    ```
 
-   Write `$<skill> <composed prompt>` to `~/.claude/cp-last.txt` with the
-   file-writing tool, spelling the home directory out, then:
+   **The entry travels as a file path, never as a shell-composed string.**
+   Composing a file in the shell is refused inside an isolated worktree, which is
+   where this skill is often invoked from, and an argument would need every quote,
+   backslash, and newline escaped correctly. The file-writing tool takes the
+   content literally and the verb copies the bytes.
 
-   ```bash
-   pbcopy < ~/.claude/cp-last.txt
-   ```
-
-   **Write the stash with the file-writing tool, never with a heredoc.** Composing
-   a file in the shell is refused inside an isolated worktree, which is where this
-   skill is often invoked from, and a file-writing tool takes the content literally
-   so nothing expands or escapes either way.
+   **The rotation belongs to the verb because a loop cannot be allowlisted.** The
+   ring used to be a `for i in 3 2 1` loop over `$((i + 1))` paths pasted into this
+   prompt. Every path in it was under `~/.claude`, so it carried no repository
+   write — and it was refused every time anyway, because an isolated session cannot
+   resolve a loop-computed path by reading it.
 
    The stash write happens on every platform; only the clipboard call is
-   platform-detected. Use `wl-copy`, `xclip -selection clipboard`, or `clip.exe`
-   where `pbcopy` does not exist. With no clipboard sink the stash is written
-   anyway: print the composed line and say why.
+   platform-detected, and the verb does that itself — `pbcopy`, `wl-copy`,
+   `xclip -selection clipboard`, `clip.exe`. With no clipboard sink the stash is
+   written anyway: print the composed line and say why.
 4. **Report.** `Done!`, then at most one short line naming the direction taken.
    Nothing else.
 
@@ -64,6 +61,8 @@ The stash is plain text under `~/.claude` only — never markdown, a doc artifac
 or anything inside the repository. The ring is five deep: `cp-last.txt` plus
 `cp-last.1.txt` through `cp-last.4.txt`, oldest dropped on each copy. For
 recovery with no agent at all, add to `~/.zshrc`:
+
+<!-- not-run: a shell function the user pastes into ~/.zshrc; no agent ever executes it -->
 
 ```bash
 cpagain() { pbcopy < ~/.claude/cp-last.txt; }
