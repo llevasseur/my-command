@@ -97,9 +97,9 @@ The `ideas` CLI is now a **client** of that store rather than the owner of a fil
 
 **Read that snippet's last bullet as the operative one here.** Its opening line and its stop are written for `/improve` and `/judge`, which have nothing to read without claude-proxy. This command **declares it optional**, so all three of those failures — unset variable, missing path, no `server/package.json` — mean the `ideas` CLI is not reachable from a checkout on this device and evidence source 2 (judge notes, Step 2) has nothing to read. Take the derivation, skip the stop, and name both facts in the report.
 
-**What that absence does *not* mean is that the ledger is gone.** The ledger is hosted, so a missing checkout costs this run the CLI and the judge notes, never the ledger — reach the same store over MCP instead (below). The one thing with no substitute is `IDEAS_URL`/`IDEAS_TOKEN`, and their absence is the refusal above rather than a fall-through.
+**What that absence does *not* mean is that the ledger is gone.** The ledger is hosted, so a missing checkout costs this run the judge notes and nothing else — the store hooks below live in `~/.claude/my-command/hooks/` and read the ledger with no checkout at all, and MCP reaches the same store from a cloud box. The one thing with no substitute is `IDEAS_URL`/`IDEAS_TOKEN`, and their absence is the refusal above rather than a fall-through.
 
-With a checkout, the CLI is the client:
+The ledger hook is the client, checkout or no checkout:
 
 ```sh
 ~/.claude/my-command/hooks/ideas-read.mjs                        # the whole ledger — the dedupe read
