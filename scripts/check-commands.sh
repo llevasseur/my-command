@@ -264,9 +264,8 @@ if [ -f src/hooks/settings-fragment.json ]; then
       fi
     done
 
-    # An unallowlisted store hook still runs; it just costs an approval round-trip per call, which
-    # is the whole reason these are named scripts. Nothing else covers this — the event loop above
-    # and hooks-status.mjs both read only `hooks`.
+    # An unallowlisted store hook still runs, at one approval round-trip per call. Nothing else
+    # catches that: the event loop above and hooks-status.mjs both read only `hooks`.
     missing_allow=$(node -e '
       const f = JSON.parse(require("node:fs").readFileSync("src/hooks/settings-fragment.json", "utf8"));
       const allow = new Set(f.permissions?.allow ?? []);
