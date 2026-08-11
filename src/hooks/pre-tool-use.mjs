@@ -19,9 +19,8 @@
 //
 // A scratch write under `$CLAUDE_JOB_DIR` from a worktree is deliberately *not* here: see
 // "The job directory is not a gate" in the spec. Neither is an `Edit`/`Write` of a path this
-// session never read: see "The read-before-edit gate could not be right" — `Edit` and `Write`
-// enforce that precondition themselves, and the gate mirroring them could only add refusals
-// of correct behaviour.
+// session never read — `Edit` and `Write` enforce that precondition themselves; see "The
+// read-before-edit gate could not be right".
 //
 // They share a hook because they decide from the same transcript; parsing it more than once
 // would let the answers disagree.
@@ -74,10 +73,9 @@ guard(() => {
   const session = String(event.session_id ?? '');
 
   const readOnly = isReadOnly(name, input);
-  // Every gate except the Bash shape checks decides from this session's history. When the
-  // transcript the hook was handed belongs to another run — which is what a subagent's call
-  // arrives with — that history is not evidence about this run, so those gates stay silent
-  // rather than judging someone else's turns.
+  // Every gate except the Bash shape checks decides from this session's history, and a
+  // subagent's call arrives carrying the parent's transcript. Someone else's turns are not
+  // evidence about this run, so those gates stay silent.
   const foreign = foreignTranscript(event.transcript_path ?? '');
 
   if (name === 'Bash') {
@@ -423,8 +421,6 @@ function relativeCd(event, input) {
     if (/[$`*?]/.test(target)) continue;
     if (existsSync(resolve(from, target))) continue;
 
-    // Naming the rule is what already failed; where the path this `cd` was reaching for can
-    // be found, the denial hands over the absolute form rather than describing it.
     const found = nearbyPath(from, target);
 
     deny(
@@ -448,9 +444,8 @@ function relativeCd(event, input) {
 }
 
 /**
- * The same command with the offending glob quoted — the form that runs, ready to send. A
- * refusal that only names a rule leaves the rewrite to be composed again; this one has been
- * composed already. `--include=*.ts` keeps its flag and quotes only the pattern.
+ * The same command with the offending glob quoted — the form that runs, ready to send.
+ * `--include=*.ts` keeps its flag and quotes only the pattern.
  * @param {string} command @param {string} glob
  * @returns {string}
  */
@@ -462,9 +457,7 @@ function quotedGlob(command, glob) {
 
 /**
  * The absolute path a failed relative `cd` was reaching for, found by walking up from the
- * directory it was issued in, or null. The nearest ancestor wins, and the walk stops at the
- * filesystem root — a worktree's `server/nexus` is a few levels up from wherever the shell
- * actually was, which is the whole reason the relative form keeps being sent.
+ * directory it was issued in, or null. Nearest ancestor wins; the walk stops at the root.
  * @param {string} from @param {string} target
  * @returns {string | null}
  */
@@ -529,20 +522,18 @@ function redundantRead(input, line, session) {
 
 /**
  * Refuse the 4th consecutive **single-call** turn of nothing but read-only calls. Counted in
- * turns rather than calls so the gate rewards the fix, and only single-call turns are counted
- * so it cannot punish it: a turn that batched several probes is the prescribed form, and it
- * ends the run rather than extending it. What remains is exactly the recorded defect — one
- * probe per turn, repeated, with no decision between them. Any non-read-only call breaks the
- * run, as does a user prompt.
+ * turns rather than calls, and only single-call turns count: a turn that batched several
+ * probes is the prescribed form, so it ends the run rather than extending it. What remains is
+ * one probe per turn, repeated. Any non-read-only call breaks the run, as does a user prompt.
  * @param {string} name @param {Record<string, any>} input
  * @param {(import('./lib/transcript.mjs').Turn | null)[]} line @param {string} session
  */
 function serialDiscovery(name, input, line, session) {
   let i = line.length - 1;
 
-  // The current call's own turn may already be written, or may not be — PreToolUse fires
-  // while the message is still being emitted. Count it exactly once either way, and when it
-  // is written, a batch alongside it means this turn is already the batched form.
+  // The current call's own turn may already be written, or may not be — PreToolUse fires while
+  // the message is still being emitted. Count it exactly once either way; a batch alongside it
+  // means this turn is already the batched form.
   const last = line[i];
   if (last && issued(last, name, input)) {
     if (last.toolUses.length > 1) return;
@@ -556,8 +547,7 @@ function serialDiscovery(name, input, line, session) {
     if (turn === null) break;
     if (turn.toolUses.length === 0) break;
     // A batched turn is the answer this gate asks for, so it ends the run instead of
-    // lengthening it. Without this, four correctly batched turns were refused as readily as
-    // four serial ones — the gate arguing against its own instruction.
+    // lengthening it.
     if (turn.toolUses.length > 1) break;
     if (!turn.toolUses.every((u) => isReadOnly(u.name, u.input))) break;
     run += 1;

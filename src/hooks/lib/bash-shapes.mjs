@@ -144,9 +144,8 @@ export function heredocWrite(command) {
 
   // A heredoc feeding a program's stdin with no redirect is deliberately untouched, so the
   // redirect has to be a real one. Two things that are not: a `>` inside the heredoc body,
-  // which is data rather than shell syntax, and a `>` inside a quoted argument — `sed 's/.*->
-  // //'` redirects nothing, and refused a legitimate `node hook <<JSON | jq` call on that
-  // basis. So drop the body, then judge only what the shell itself reads.
+  // which is data rather than shell syntax, and one inside a quoted argument — `sed 's/.*-> //'`
+  // redirects nothing. So drop the body, then judge only what the shell itself reads.
   const delimiter = opener[2];
   const closes = new RegExp(`^\\s*${delimiter}\\s*$`);
   const opens = new RegExp(`<<-?\\s*["']?${delimiter}["']?`);

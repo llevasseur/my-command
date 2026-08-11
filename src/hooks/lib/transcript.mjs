@@ -59,9 +59,8 @@ function epoch(value) {
  * @returns {(Turn | null)[]}
  */
 export function timeline(records) {
-  // A call the harness refused or that failed outright is not evidence of anything having
-  // been done: a `Read` that was denied returned no content, so it must not count as a read.
-  // Collected first, because a tool_result is always written after the call it answers.
+  // A denied `Read` returned no content, so it is not a read. Collected first: a tool_result
+  // is always written after the call it answers.
   /** @type {Set<string>} */
   const failed = new Set();
   for (const rec of records) {
@@ -100,12 +99,9 @@ export function timeline(records) {
       .join('\n')
       .trim();
 
-    // One assistant message is written to the transcript as **one record per content block**,
-    // each carrying the same `message.id` and its own `uuid`. So a turn issuing eight parallel
-    // `Read`s arrives here as eight records, and treating each as a turn is what made the
-    // discovery gate report "call #8 in a row, each in its own turn" for a single batched turn
-    // — and made a batch's own calls look like prior reads of the files it was reading. The
-    // message id is the turn boundary, and it is observed rather than inferred.
+    // One assistant message is written as **one record per content block**, each carrying the
+    // same `message.id` and its own `uuid` — so a turn issuing eight parallel `Read`s arrives
+    // here as eight records, and the message id is the only turn boundary on offer.
     const msgId = typeof rec?.message?.id === 'string' ? rec.message.id : '';
     const prev = out[out.length - 1];
     if (msgId && prev && prev.msgId === msgId) {
@@ -127,16 +123,13 @@ export function timeline(records) {
  * calls — in which case it is not evidence about this run and no gate may judge from it.
  *
  * A subagent's tool call arrives with the **parent session's** `transcript_path`, while the
- * subagent's own turns are written to `<transcript>/subagents/<agent>.jsonl`. Every gate here
- * reads history, so inside a subagent they all read the wrong history: reads the subagent
- * genuinely made are invisible, and turns it never took are counted. That is what made the
- * read-before-edit gate fire twenty-two times in one `/task` run — and `/task`, `/work`,
- * `/manage` and `/god` all do their work in subagents.
+ * subagent's own turns are written to `<transcript>/subagents/<agent>.jsonl`. So inside a
+ * subagent every gate reads the wrong history: reads it genuinely made are invisible, and
+ * turns it never took are counted.
  *
- * Detected by recency rather than by naming the agent, because the event carries no agent id:
- * while a subagent is running, its transcript is being appended to and the parent's is not.
- * The answer only ever *suppresses* a denial, so a wrong guess here costs a missed violation
- * rather than a refused legitimate call — the direction this repo's design rules require.
+ * Detected by recency, because the event carries no agent id: while a subagent runs, its
+ * transcript is appended to and the parent's is not. The answer only ever *suppresses* a
+ * denial, so being wrong costs a missed violation rather than a refused legitimate call.
  * @param {string} path
  * @returns {boolean}
  */
@@ -212,9 +205,8 @@ export function issued(turn, name, input) {
 }
 
 /**
- * A value's JSON with object keys in a fixed order, so two encodings of the same input
- * compare equal. The event's `tool_input` and the transcript's copy of it are serialized by
- * different code paths, and key order is not part of what either of them means.
+ * A value's JSON with object keys in a fixed order, so two encodings of the same input compare
+ * equal. The event's `tool_input` and the transcript's copy are serialized by different paths.
  * @param {any} value
  * @returns {string}
  */
@@ -247,9 +239,7 @@ export function lastFullReadOf(line, path, exceptTurnUuid) {
     if (exceptTurnUuid && turn.uuid === exceptTurnUuid) continue;
     for (const use of turn.toolUses) {
       if (use.name !== 'Read') continue;
-      // A read that was refused or errored delivered no bytes, so it never made this file
-      // redundant to read. Recording it on the attempt is what let one batch of ten parallel
-      // `Read`s refuse nine of its own calls.
+      // A refused or errored read delivered no bytes, so it never made this file redundant.
       if (use.ok === false) continue;
       if (use.input?.file_path !== path) continue;
       if (use.input?.offset !== undefined || use.input?.limit !== undefined) continue;

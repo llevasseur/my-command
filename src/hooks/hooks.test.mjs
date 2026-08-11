@@ -132,9 +132,8 @@ const read = (name, input) => ({ name, input });
 /**
  * A transcript in the shape the harness actually writes: **one record per content block**,
  * every block of one assistant message carrying that message's `id` and its own `uuid`. The
- * builder above puts a turn's blocks in a single record, which no real session does — and
- * that difference is exactly what hid the miscount, since a turn of eight parallel `Read`s
- * arrives as eight records.
+ * builder above puts a turn's blocks in a single record, which no real session does — use this
+ * one for anything that counts turns.
  *
  * `failed` names the calls whose `tool_result` came back an error, addressed as
  * `<turn index>-<call index>`, so a refused read can be told from one that returned content.
@@ -338,8 +337,8 @@ test('one message is one turn even though its blocks are separate records', () =
 });
 
 test('serial discovery: a parallel batch is never refused, in the real transcript shape', () => {
-  // The reproduction: eight parallel `Read`s in one turn, refused as "call #7 in a row, each
-  // in its own turn" because each block was counted as a turn of its own.
+  // Eight parallel `Read`s in one turn, once refused as "call #7 in a row, each in its own
+  // turn" because each block counted as a turn.
   const batch = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => read('Read', { file_path: `/x/${n}.ts` }));
   const answer = hook(PRE_TOOL_USE, {
     session_id: 'pb1',
@@ -352,8 +351,7 @@ test('serial discovery: a parallel batch is never refused, in the real transcrip
 });
 
 test('serial discovery: batched turns never accumulate, however many there are', () => {
-  // Four consecutive turns, each correctly batched. The prescribed form must not be refused
-  // just because there were four of them.
+  // Four consecutive turns, each correctly batched: the prescribed form, four times over.
   /** @type {('prompt' | {name: string, input: Record<string, unknown>}[])[]} */
   const spec = [
     'prompt',
@@ -385,8 +383,8 @@ test('serial discovery: genuinely serial single-call turns are still refused', (
 });
 
 test('a batch does not refuse its own calls as reads it already made', () => {
-  // Ten parallel reads of ten distinct, never-read files: nine came back refused because the
-  // gate had already recorded each one as read while the same batch was being processed.
+  // Ten parallel reads of ten distinct, never-read files: nine were once refused as files the
+  // batch had already read.
   const dir = scratch();
   const files = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => join(dir, `f${n}.ts`));
   const old = (Date.now() - 3_600_000) / 1000;
@@ -456,9 +454,9 @@ test('a transcript belonging to another run is not evidence about this one', () 
   const old = (Date.now() - 3_600_000) / 1000;
   utimesSync(file, old, old);
 
-  // A subagent's call arrives carrying the parent's transcript, while its own turns are
-  // written beside it under `subagents/`. The parent's history says this file was read; the
-  // run actually making the call may never have read it, so no gate may judge from it.
+  // A subagent's call arrives carrying the parent's transcript, while its own turns are written
+  // beside it under `subagents/`. The parent's history says this file was read; the run making
+  // the call may never have read it.
   const parent = splitTranscript(['prompt', [read('Read', { file_path: file })], [read('Grep', { pattern: 'x' })]]);
   const event = {
     session_id: 'ft1',
@@ -640,8 +638,7 @@ test('no edit is refused for want of a prior read, whatever the transcript says'
   writeFileSync(existing, '# Changelog\n');
 
   // The case the removed gate refused: an existing file, never read in this transcript. The
-  // harness's own precondition still rejects a genuinely unread edit — but the hook could not
-  // tell that apart from a read it simply could not see, so it no longer offers an opinion.
+  // harness still rejects a genuinely unread edit itself; the hook no longer offers an opinion.
   const existingFile = hook(PRE_TOOL_USE, {
     session_id: 'e1',
     transcript_path: transcript(['prompt', [read('Read', { file_path: join(dir, 'elsewhere.ts') })]]),
@@ -701,8 +698,7 @@ test('unmatched glob: the denial carries the same command with the pattern quote
 });
 
 test('heredoc: a stdin heredoc is untouched even beside a quoted arrow or a pipe', () => {
-  // Both of these fed a program's stdin, which the gate is documented not to touch. The `->`
-  // inside a quoted `sed` script read as a redirect and refused the whole call.
+  // Both feed a program's stdin, which the gate is documented not to touch.
   assert.equal(heredocWrite("ls -l $HOOK | sed 's/.*-> //'\nnode hook <<JSON\n{}\nJSON"), false);
   assert.equal(heredocWrite('node hook <<JSON | jq -r .decision\n{"a":1}\nJSON'), false);
   // A `>` inside the body is data, not a redirect.
