@@ -51,7 +51,7 @@ Only an exact term match is outcome 1 — the query equal to a stored `term`, co
 - **`CONCEPTS_URL`** — the base URL of the Worker. `IDEAS_URL` is read first and `CONCEPTS_URL` is the documented fallback, because ideas and concepts are one dataset behind one Worker.
 - **`CONCEPTS_TOKEN`** — the shared bearer token, sent as an `Authorization: Bearer <token>` header. `IDEAS_TOKEN` is read first and `CONCEPTS_TOKEN` is the fallback, for the same reason.
 
-**Never print the token, never write it into a file, and never put it on a command line or in a URL** — a token in a query string lands in the transcript, in shell history, and in the Worker's request log. `printenv CONCEPTS_URL` is safe to read; **never run `printenv CONCEPTS_TOKEN`**. The verb reads both variables from `process.env` inside its own process, so neither value ever reaches an argument, and a record being saved travels on **stdin** rather than as arguments for the same reason.
+**Never print the token, never write it into a file, and never put it on a command line or in a URL** — a token in a query string lands in the transcript, in shell history, and in the Worker's request log. `printenv CONCEPTS_URL` is safe to read; **never run `printenv CONCEPTS_TOKEN`**. The verb reads both variables from `process.env` inside its own process, so neither value ever reaches an argument, and a record being saved travels **as a file path or on stdin** rather than as arguments for the same reason. Prefer `--record-file <path>`: write the JSON with the `Write` tool and hand over the path, with no shell in between, exactly as `commit --message-file` and `pr --body-file` already work. Composing the record inline means a heredoc, and that shape is refused inside an isolated worktree.
 
 **Every subcommand prints exactly one status line on stdout and always exits `0`.** Read that line; it is the outcome, and nothing else in the run overrides it. `--json` returns the structured result instead, for a caller that wants the fields rather than the line.
 
@@ -62,7 +62,7 @@ The store is read in a fixed order, and the first thing that answers decides the
 
 1. `GET /api/concepts/concept?term=<query>` — the exact term. A `200` is outcome 1 and the run stops there. A `404` is this probe saying only that the corpus has no concept under that exact term.
 2. `GET /api/concepts/search?q=<query>` — BM25 full text. A result whose `term` equals the query is promoted to outcome 1; every other result is a neighbour.
-3. `GET /api/concepts?field=<field>` — the field listing, run only when `--field` was given. Its rows join the neighbours from step 2.
+3. `GET /api/concepts?field=<field>` — the field listing, run only when `--field` was given. A row whose `term` equals the query is promoted to outcome 1 on the same terms as step 2; every other row joins the neighbours from step 2. The promotion is not an optimization: a concept the term probe missed and BM25 did not rank still *is* the exact term, and reporting it as a neighbour would invite `/teach` to name it a second time.
 
 Neighbours found at the end of that order is outcome 2. Nothing found is outcome 3.
 

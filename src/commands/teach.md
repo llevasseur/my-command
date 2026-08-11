@@ -134,7 +134,7 @@ Ask whether to save the concept. On yes, POST one JSON object to the hosted conc
 - **`CONCEPTS_URL`** — the base URL of the Worker. `IDEAS_URL` is read first and `CONCEPTS_URL` is the documented fallback, because ideas and concepts are one dataset behind one Worker.
 - **`CONCEPTS_TOKEN`** — the shared bearer token, sent as an `Authorization: Bearer <token>` header. `IDEAS_TOKEN` is read first and `CONCEPTS_TOKEN` is the fallback, for the same reason.
 
-**Never print the token, never write it into a file, and never put it on a command line or in a URL** — a token in a query string lands in the transcript, in shell history, and in the Worker's request log. `printenv CONCEPTS_URL` is safe to read; **never run `printenv CONCEPTS_TOKEN`**. The verb reads both variables from `process.env` inside its own process, so neither value ever reaches an argument, and a record being saved travels on **stdin** rather than as arguments for the same reason.
+**Never print the token, never write it into a file, and never put it on a command line or in a URL** — a token in a query string lands in the transcript, in shell history, and in the Worker's request log. `printenv CONCEPTS_URL` is safe to read; **never run `printenv CONCEPTS_TOKEN`**. The verb reads both variables from `process.env` inside its own process, so neither value ever reaches an argument, and a record being saved travels **as a file path or on stdin** rather than as arguments for the same reason. Prefer `--record-file <path>`: write the JSON with the `Write` tool and hand over the path, with no shell in between, exactly as `commit --message-file` and `pr --body-file` already work. Composing the record inline means a heredoc, and that shape is refused inside an isolated worktree.
 
 **Every subcommand prints exactly one status line on stdout and always exits `0`.** Read that line; it is the outcome, and nothing else in the run overrides it. `--json` returns the structured result instead, for a caller that wants the fields rather than the line.
 
@@ -193,10 +193,13 @@ Four more are **optional**, and claude-proxy's detail page renders each one it f
 
 **Omit an optional field entirely when there is nothing to record.** Never write `""` or `[]` for one: the detail page distinguishes absent from empty, and an absent field is what makes it show its "nothing more to show" fallback. Records written before these fields existed carry none of them and stay valid — a stored concept is never rewritten or migrated.
 
-The record travels as **JSON on stdin**, so no field ever reaches a command line and no shell quoting or JSON escaping can corrupt a sentence containing quotes, backslashes, or newlines. Lists are real JSON arrays, one entry per element:
+The record travels as **JSON in a file**, so no field ever reaches a command line and no shell quoting or JSON escaping can corrupt a sentence containing quotes, backslashes, or newlines. Lists are real JSON arrays, one entry per element. Write it with the `Write` tool, then pass the path — never compose it inline with a heredoc, which is refused inside an isolated worktree:
 
-```bash
-my-command-tools concepts save <<'CONCEPTEOF'
+```
+Write({file_path: "$CLAUDE_JOB_DIR/tmp/concept.json", content: "…"})
+```
+
+```json
 {
   "term": "<term>",
   "sentence": "<sentence>",
@@ -207,8 +210,13 @@ my-command-tools concepts save <<'CONCEPTEOF'
   "sources": ["<a source>"],
   "surfacedSkills": ["<a surfaced skill>"]
 }
-CONCEPTEOF
 ```
+
+```bash
+my-command-tools concepts save --record-file <the absolute path just written>
+```
+
+With no scratch directory to write to, `concepts save` still reads the record on stdin from a real pipeline — but `--record-file` is the form to reach for.
 
 The verb stamps `savedAt` itself and enforces the omit rule — an empty string and an empty list both fall through and the key is never written — so an optional field the run did not produce can be passed empty or left out of the object entirely. It drops `find-skills` from both skill lists, since that one is the finder and never an applied skill.
 

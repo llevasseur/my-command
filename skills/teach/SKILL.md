@@ -311,13 +311,13 @@ from empty, and an absent field is what makes it show its "nothing more to show"
 fallback. Records written before these fields existed carry none of them and stay
 valid — a stored concept is never rewritten or migrated.
 
-The record travels as **JSON on standard input**, so no field ever reaches a
-command line and no shell quoting or JSON escaping can corrupt a sentence
-containing quotes, backslashes, or newlines. Lists are real JSON arrays, one
-entry per element:
+The record travels as **JSON in a file**, so no field ever reaches a command line
+and no shell quoting or JSON escaping can corrupt a sentence containing quotes,
+backslashes, or newlines. Lists are real JSON arrays, one entry per element.
+Write the file first, then hand over its path — never compose the record inline
+with a heredoc, which is refused inside an isolated worktree:
 
-```bash
-my-command-tools concepts save <<'CONCEPTEOF'
+```json
 {
   "term": "<term>",
   "sentence": "<sentence>",
@@ -328,8 +328,14 @@ my-command-tools concepts save <<'CONCEPTEOF'
   "sources": ["<a source>"],
   "surfacedSkills": ["<a surfaced skill>"]
 }
-CONCEPTEOF
 ```
+
+```bash
+my-command-tools concepts save --record-file <the absolute path just written>
+```
+
+With nowhere to write a scratch file, the verb still reads the record on standard
+input from a real pipeline — but the file path is the form to reach for.
 
 The verb stamps `savedAt` itself and enforces the omit rule: an empty string and
 an empty list both fall through and the key is never written, so an optional

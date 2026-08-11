@@ -96,10 +96,13 @@ dataset behind one Worker.
 The POST is made by one toolkit verb, `my-command-tools concepts save`, shared
 with `/lookup` and `/learn` rather than inlined per command —
 `Bash(my-command-tools:*)` is allowlisted in `src/hooks/settings-fragment.json`,
-so it runs without an approval round-trip. **The record travels as JSON on
-standard input**, so no field of it ever reaches a command line: a sentence
-containing quotes or backslashes cannot corrupt the record, and neither a value
-nor the token appears in the transcript or the shell history. The verb reads both
+so it runs without an approval round-trip. **The record travels as JSON in a file
+named by `--record-file`**, with stdin kept for a real pipeline, so no field of it
+ever reaches a command line: a sentence containing quotes or backslashes cannot
+corrupt the record, and neither a value nor the token appears in the transcript or
+the shell history. The path-taking flag is the same shape `commit --message-file`
+and `pr --body-file` already use, and for the same reason — composing multi-line
+input inline means a heredoc, which is refused inside an isolated worktree. The verb reads both
 environment variables from `process.env` inside its own process, prints one line
 (`saved:` or `not saved: <cause>`), and always exits `0`.
 
@@ -144,8 +147,8 @@ is belt and braces.
 what makes it show its "nothing more to show" fallback. Records written before
 these fields existed carry none of them and stay valid; a stored concept is never
 rewritten or migrated. The verb enforces the omit rule on the record it is
-handed, and lists arrive as JSON arrays on stdin rather than as a delimited
-string, so no separator has to be reserved out of a tip.
+handed, and lists arrive as JSON arrays rather than as a delimited string, so no
+separator has to be reserved out of a tip.
 
 **An unreachable store is not fatal, and no longer silent.** `/improve`
 hard-stops without the proxy because the suggestions are its input; `/teach`'s

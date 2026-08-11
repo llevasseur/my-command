@@ -79,7 +79,11 @@ outcome:
 2. `GET /api/concepts/search?q=<query>` — BM25 full text. A result whose `term`
    equals the query is promoted to outcome 1; every other result is a neighbour.
 3. `GET /api/concepts?field=<field>` — the field listing, run only when
-   `--field` was given. Its rows join the neighbours from step 2.
+   `--field` was given. A row whose `term` equals the query is promoted to
+   outcome 1 on the same terms as step 2; every other row joins the neighbours
+   from step 2. A concept the term probe missed and BM25 did not rank still is
+   the exact term, and reporting it as a neighbour would invite `/teach` to name
+   it a second time.
 
 Neighbours at the end of that order is outcome 2; nothing is outcome 3. A `5xx`
 or a network error is retried once inside the call, as on the save side.

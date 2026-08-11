@@ -706,7 +706,9 @@ const STORE_ENV = ['IDEAS_URL', 'IDEAS_TOKEN', 'CONCEPTS_URL', 'CONCEPTS_TOKEN']
 
 /**
  * One `concepts` call against a stubbed store. `routes` maps a substring of the request URL
- * to the answer for it; an unmatched probe 404s the way an empty corpus does.
+ * to the answer for it; an unmatched probe 404s the way an empty corpus does. A `POST` is
+ * answered `201` and its parsed body is collected in `posted`, so a write can be asserted on
+ * field by field.
  * @param {string[]} positionals
  * @param {{env?: Record<string, string>, routes?: Record<string, {status?: number, body?: unknown}>, flags?: Record<string, string | boolean | string[]>}} [opts]
  */
@@ -721,10 +723,16 @@ async function conceptsRun(positionals, opts = {}) {
   }
   Object.assign(process.env, env);
 
+  /** @type {any[]} */
+  const posted = [];
   const realFetch = globalThis.fetch;
   globalThis.fetch = /** @type {typeof fetch} */ (
     /** @type {unknown} */ (
-      async (/** @type {unknown} */ url) => {
+      async (/** @type {unknown} */ url, /** @type {any} */ init) => {
+        if (init?.method === 'POST') {
+          posted.push(JSON.parse(String(init.body)));
+          return new Response(JSON.stringify({ ok: true }), { status: 201 });
+        }
         const key = Object.keys(routes).find((k) => String(url).includes(k));
         const answer = key === undefined ? { status: 404, body: {} } : routes[key];
         return new Response(JSON.stringify(answer.body ?? {}), {
@@ -737,7 +745,7 @@ async function conceptsRun(positionals, opts = {}) {
 
   try {
     const result = await concepts(ctx(process.cwd(), positionals, opts.flags ?? {}));
-    return { result: /** @type {any} */ (result), line: conceptsLine(result) };
+    return { result: /** @type {any} */ (result), line: conceptsLine(result), posted };
   } finally {
     globalThis.fetch = realFetch;
     for (const key of STORE_ENV) {
@@ -809,6 +817,132 @@ test('concepts lookup misses with the cause when CONCEPTS_TOKEN is unset', async
   const { result, line } = await conceptsRun(['lookup', 'scrim'], { env: { CONCEPTS_URL: 'https://store.test' } });
   assert.equal(result.outcome, 'miss');
   assert.equal(line, 'miss: CONCEPTS_TOKEN is not set, so the corpus was not read');
+});
+
+test('concepts lookup promotes an exact match found only in the field listing', async () => {
+  const { result, line } = await conceptsRun(['lookup', 'scrim'], {
+    flags: { field: 'UI motion' },
+    routes: {
+      '/api/concepts?field=': {
+        body: {
+          concepts: [
+            { term: 'backdrop', field: 'UI motion', sentence: 'The layer a scrim dims.' },
+            { term: 'Scrim', field: 'UI motion', sentence: 'The dimmed layer behind a modal.' },
+          ],
+        },
+      },
+    },
+  });
+  assert.equal(result.outcome, 'term hit');
+  assert.match(line, /^term hit: Scrim \[UI motion\]\nsentence: The dimmed layer behind a modal\.$/);
+});
+
+test('concepts save reads the record from --record-file and keeps it off the command line', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'concepts-record-'));
+  const recordFile = join(dir, 'concept.json');
+  writeFileSync(
+    recordFile,
+    JSON.stringify({
+      term: 'scrim',
+      field: 'UI motion',
+      sentence: 'A sentence with "quotes", a \\backslash, and\na newline.',
+      skills: ['teach'],
+    }),
+  );
+
+  /** @type {any[]} */
+  const seen = [];
+  const server = createServer((req, res) => {
+    let raw = '';
+    req.on('data', (chunk) => {
+      raw += chunk;
+    });
+    req.on('end', () => {
+      seen.push(JSON.parse(raw));
+      res.writeHead(201, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+    });
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(undefined)));
+  const { port } = /** @type {import('node:net').AddressInfo} */ (server.address());
+
+  const cli = fileURLToPath(new URL('../cli.mjs', import.meta.url));
+  try {
+    const child = spawn(process.execPath, [cli, 'concepts', 'save', '--record-file', recordFile], {
+      env: {
+        ...process.env,
+        IDEAS_URL: '',
+        IDEAS_TOKEN: '',
+        CONCEPTS_URL: `http://127.0.0.1:${port}`,
+        CONCEPTS_TOKEN: 'secret',
+      },
+    });
+    child.stdin.end();
+    let out = '';
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => {
+      out += chunk;
+    });
+    const code = await new Promise((resolve, reject) => {
+      child.on('error', reject);
+      child.on('close', resolve);
+    });
+    assert.equal(code, 0);
+    assert.match(out, /^saved: 201 \(new\)$/m);
+  } finally {
+    server.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].sentence, 'A sentence with "quotes", a \\backslash, and\na newline.');
+});
+
+test('concepts count carries the stored optionals forward onto the new version', async () => {
+  const stored = {
+    term: 'scrim',
+    field: 'UI motion',
+    sentence: 'The dimmed layer behind a modal.',
+    skills: ['teach'],
+    notes: 'Named for the theatre gauze.',
+    tips: ['Dim, never blur.'],
+    sources: ['https://example.test/scrim'],
+    surfacedSkills: ['apple-design'],
+    savedAt: '2026-01-01T00:00:00.000Z',
+  };
+  const { result, line, posted } = await conceptsRun(['count', 'scrim', 'learn'], {
+    routes: { '/api/concepts/concept': { body: { concept: stored } } },
+  });
+  assert.equal(result.outcome, 'counted');
+  assert.match(line, /^counted: 201 — learn on scrim$/);
+
+  assert.equal(posted.length, 1);
+  const rec = posted[0];
+  assert.deepEqual(rec.skills, ['teach', 'learn']);
+  assert.equal(rec.notes, stored.notes);
+  assert.deepEqual(rec.tips, stored.tips);
+  assert.deepEqual(rec.sources, stored.sources);
+  assert.deepEqual(rec.surfacedSkills, stored.surfacedSkills);
+  assert.equal(rec.sentence, stored.sentence);
+  assert.equal(rec.field, stored.field);
+  // A new version, not the stored one replayed.
+  assert.notEqual(rec.savedAt, stored.savedAt);
+});
+
+test('concepts count omits an optional the stored record never had', async () => {
+  const { posted } = await conceptsRun(['count', 'scrim', 'learn'], {
+    routes: {
+      '/api/concepts/concept': {
+        body: {
+          concept: { term: 'scrim', field: 'UI motion', sentence: 'The dimmed layer.', skills: [], notes: '  ' },
+        },
+      },
+    },
+  });
+  assert.equal('notes' in posted[0], false);
+  assert.equal('tips' in posted[0], false);
+  assert.equal('sources' in posted[0], false);
+  assert.equal('surfacedSkills' in posted[0], false);
 });
 
 test('concepts count refuses to record find-skills as an applied skill', async () => {

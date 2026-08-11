@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { str } from '../lib/flags.mjs';
 
-export const usage = `concepts <lookup|save|count> [--json]
+export const usage = `concepts <lookup|save|count> [--record-file <path>] [--json]
 
 Read and write the hosted concept store. Every subcommand prints one status line on
 stdout and always exits 0 — an unreachable store costs the check and nothing else, so a
@@ -20,12 +20,15 @@ caller reads the line and carries on rather than stopping the run.
         term hit: <term> [<field>]     followed by \`sentence: <the stored sentence>\`
         field hit: <n> neighbour(s), no term hit    followed by one \`- term [field] sentence\` per row
         miss: <why>                    the corpus holds no concept, or the store was not read
-      An exact term match is compared trimmed and case-insensitively. A search result that
-      merely mentions the query is a neighbour, never a term hit.
+      An exact term match is compared trimmed and case-insensitively, wherever the row was
+      found. A result that merely mentions the query is a neighbour, never a term hit.
 
-  concepts save
-      Reads the record as JSON on stdin, so no field ever reaches a command line and no
-      shell quoting can corrupt a sentence containing quotes, backslashes, or newlines.
+  concepts save [--record-file <path>]
+      Reads the record as JSON — from the file when --record-file is given, otherwise from
+      stdin — so no field ever reaches a command line and no shell quoting can corrupt a
+      sentence containing quotes, backslashes, or newlines. --record-file is the form to
+      reach for: write the file with the \`Write\` tool and pass its path, with no shell in
+      between, the way \`commit --message-file\` and \`pr --body-file\` already work.
       Required: term, sentence, field, skills. Optional: notes, tips, sources,
       surfacedSkills — each omitted entirely when empty, never written as "" or [].
       \`savedAt\` is stamped here. Prints \`saved: <status>\` or \`not saved: <cause>\`.
@@ -167,7 +170,10 @@ async function lookup(term, field, limit) {
   if (field) {
     const near = await get(root, token, `/api/concepts?field=${encodeURIComponent(field)}&limit=${limit}`);
     if (near.error) return unreachable(near.error);
-    for (const c of near.body?.concepts || []) neighbours.set(c.term, c);
+    for (const c of near.body?.concepts || []) {
+      if (same(c.term, term)) return hit(c, 1);
+      neighbours.set(c.term, c);
+    }
   }
 
   const rows = [...neighbours.values()].slice(0, limit);
@@ -226,25 +232,34 @@ function hit(c, versions) {
  */
 
 /**
- * The record arrives as JSON on stdin so no field ever reaches a command line.
+ * The record arrives as JSON from a file or on stdin, never as arguments, so no field ever
+ * reaches a command line.
+ * @param {string} [path] the --record-file path, or undefined to read stdin
  * @returns {{record: Record<string, any>} | {error: string}}
  */
-function recordOnStdin() {
+function recordFrom(path) {
+  const source = path ? `the record file ${JSON.stringify(path)}` : 'stdin';
+  const empty = path
+    ? `${source} is empty — write the JSON record to it first`
+    : 'no record arrived on stdin — pipe the JSON record in, or pass --record-file <path>';
   let raw;
   try {
-    raw = readFileSync(0, 'utf8');
-  } catch {
-    return { error: 'no record arrived on stdin — pipe the JSON record in' };
+    raw = readFileSync(path ?? 0, 'utf8');
+  } catch (err) {
+    if (path) return { error: `${source} could not be read (${err instanceof Error ? err.message : String(err)})` };
+    return { error: empty };
   }
-  if (!raw.trim()) return { error: 'no record arrived on stdin — pipe the JSON record in' };
+  if (!raw.trim()) return { error: empty };
   try {
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return { error: 'the record on stdin is not a JSON object' };
+      return { error: `the record on ${source} is not a JSON object` };
     }
     return { record: parsed };
   } catch (err) {
-    return { error: `the record on stdin is not valid JSON (${err instanceof Error ? err.message : String(err)})` };
+    return {
+      error: `the record on ${source} is not valid JSON (${err instanceof Error ? err.message : String(err)})`,
+    };
   }
 }
 
@@ -264,15 +279,18 @@ function listOf(v) {
  */
 const say = (outcome, line, extra = {}) => ({ subcommand: '', outcome, lines: [line], cause: null, ...extra });
 
-/** @returns {Promise<Result>} */
-async function save() {
+/**
+ * @param {string} [recordFile]
+ * @returns {Promise<Result>}
+ */
+async function save(recordFile) {
   /** @param {string} cause */
   const no = (cause) => say('not saved', `not saved: ${cause}`, { subcommand: 'save', cause });
 
   const env = store();
   if (!env.ok) return no(`${env.unset} is not set`);
 
-  const given = recordOnStdin();
+  const given = recordFrom(recordFile);
   if ('error' in given) return no(given.error);
   const input = given.record;
 
@@ -384,7 +402,7 @@ export function run(ctx) {
     return lookup(term, str(ctx.flags.field), limit);
   }
 
-  if (sub === 'save') return save();
+  if (sub === 'save') return save(str(ctx.flags['record-file']));
 
   if (sub === 'count') {
     const [term, skill] = rest;
