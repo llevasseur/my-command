@@ -1037,13 +1037,10 @@ test('stop: an in-flight re-run of the same stop is left alone', () => {
 
 // ── the outcome gate: only the outermost run owes one ───────────────────────────────
 //
-// A text-only message ends the assistant's turn, so a command invoked inline by another must
-// hand back *with* the parent's next call rather than close. This gate used to demand the
-// closing turn from those runs, which stranded the parent's remaining steps — PR #90 of this
-// repo lost /task's teardown and its closing report exactly that way.
+// A text-only message ends the assistant's turn, so a command invoked inline by another hands
+// back *with* the parent's next call rather than closing.
 
 test('stop: a nested inline handback is not asked for an outcome', () => {
-  // /clean reports, writes its marker, and the parent's next Skill call rides the same message.
   const line = transcript([
     'prompt',
     [read('Skill', { skill: 'clean' })],
@@ -1062,8 +1059,7 @@ test('stop: a namespaced handback marker counts the same', () => {
 });
 
 test('stop: a pipeline with a nested command still open is not asked for an outcome', () => {
-  // /task invoked /clean and no marker has accounted for it, so the outermost run has steps
-  // after this one and the stop is mid-pipeline rather than an ending.
+  // No marker has accounted for the /clean call yet, so this stop lands mid-pipeline.
   const line = transcript([
     'prompt',
     [read('Skill', { skill: 'clean' })],
@@ -1073,8 +1069,7 @@ test('stop: a pipeline with a nested command still open is not asked for an outc
 });
 
 test('stop: an outermost run abandoned after its nested runs returned is still refused', () => {
-  // Both children handed back, so nothing is open; the parent then ended on its teardown call
-  // and never spoke. This is the case the gate exists for and it must still fire.
+  // Both children handed back, so nothing is open; the parent ended on teardown and never spoke.
   const line = transcript([
     'prompt',
     [read('Skill', { skill: 'clean' })],
@@ -1088,8 +1083,7 @@ test('stop: an outermost run abandoned after its nested runs returned is still r
 });
 
 test('stop: a marker in earlier prose does not excuse a run that ends on a tool call', () => {
-  // The marker only counts on the handback message's own last line. A run that mentioned one
-  // and then went on working owes its outcome like any other.
+  // The marker counts only on the handback message's own last line.
   const line = transcript([
     'prompt',
     { say: 'RETURN /clean\n\nand now the rest of the work' },
@@ -1109,8 +1103,7 @@ test('the return marker reads a real invocation name and never the placeholder',
   ]);
   assert.equal(returnMarker(line[0]), '/task');
 
-  // A session that merely loaded a command file has handed nothing back, so the snippet's own
-  // angle-bracket placeholder must not match.
+  // A session that merely loaded a command file has handed nothing back.
   const loaded = timeline([
     {
       type: 'assistant',
@@ -1124,7 +1117,7 @@ test('the return marker reads a real invocation name and never the placeholder',
 });
 
 test('an open nested run is counted only within the current task', () => {
-  // A Skill call before the last prompt belongs to a finished task; this one has no nesting.
+  // A Skill call before the last prompt belongs to a finished task.
   const before = timeline([
     { type: 'assistant', uuid: 'a0', timestamp: new Date().toISOString(), message: { role: 'assistant', content: [{ type: 'tool_use', id: 't0', name: 'Skill', input: { skill: 'clean' } }] } },
     { type: 'user', uuid: 'u1', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'text', text: 'next thing' }] } },

@@ -35,15 +35,13 @@ guard(() => {
   if (!endsOnToolCall && !saidNothing) return;
 
   // A nested inline run hands back by putting its report and `RETURN /<command>` in the same
-  // message that carries the parent's next tool call. That shape is the prescribed handback
-  // rather than an ending, so there is no outcome to demand of it. An abandoned outermost run
-  // whose last message happens to carry both is allowed for the same reason a gate never
-  // guesses: the two are indistinguishable, and a false denial costs more than a missed one.
+  // message that carries the parent's next tool call — the prescribed handback, not an ending.
+  // An abandoned outermost run whose last message happens to carry both is allowed too: the
+  // two are indistinguishable, and a false denial costs more than a missed one.
   if (endsOnToolCall && returnMarker(last)) return;
 
-  // A command this session invoked inline is still open, so the run the user invoked has steps
-  // owed after it and this stop lands mid-pipeline. Firing here is what demanded the text-only
-  // turn that ends the parent's turn and strands those steps — the defect, not the fix.
+  // A command this session invoked inline is still open, so the outermost run has steps after
+  // this one and the stop lands mid-pipeline.
   if (nestedRunOpen(line)) return;
 
   // Keyed to the turn, so one turn can be blocked at most once however many times the

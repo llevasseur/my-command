@@ -91,11 +91,9 @@ export function turns(line) {
 
 /**
  * The command name a turn handed control back from, or null. `shared/closing-turn.md` puts
- * `RETURN /<command>` alone on the last line of the message that hands back — a text-only
- * close for an outermost or subagent run, and for a nested inline run the same message that
- * carries the parent's next tool call. Only a real invocation name matches: the angle-bracket
- * placeholder the snippet itself is written with cannot, so a session that merely loaded a
- * command file has not handed anything back.
+ * `RETURN /<command>` alone on the last line of the message that hands back. Only a real
+ * invocation name matches: the angle-bracket placeholder the snippet itself is written with
+ * cannot, so a session that merely loaded a command file has not handed anything back.
  * @param {Turn | null | undefined} turn @returns {string | null}
  */
 export function returnMarker(turn) {
@@ -113,8 +111,7 @@ export function returnMarker(turn) {
  * Counted rather than paired, because the two are emitted from different places: the parent
  * issues the `Skill` call and the child writes the marker, and a nested handback carries the
  * child's marker alongside the parent's *next* `Skill` call in one message. Only turns since
- * the last real prompt count — a new prompt starts a new task, and an earlier task's nesting
- * says nothing about this one.
+ * the last real prompt count, since an earlier task's nesting says nothing about this one.
  * @param {(Turn | null)[]} line @returns {boolean}
  */
 export function nestedRunOpen(line) {

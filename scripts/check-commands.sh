@@ -489,8 +489,7 @@ if ! grep -Fq "$NESTED" src/shared/closing-turn.md; then
   echo "::error::src/shared/closing-turn.md no longer distinguishes a nested inline handback from a run close; every nested command would end its parent's turn and strand the rest of the parent's pipeline (docs/specs/run-markers.md)."
   fail=1
 fi
-# The three cases have to be tellable apart by the run itself, or the rule states an outcome
-# with no way to reach it.
+# The three cases have to be tellable apart by the run itself, or the rule is unactionable.
 for needle in 'Skill` tool' 'Agent` tool'; do
   if ! grep -Fq "$needle" src/shared/closing-turn.md; then
     echo "::error::src/shared/closing-turn.md no longer names '$needle' as how a run tells which of the three invocation cases it is in; the handback rule would be unactionable (docs/specs/run-markers.md)."
@@ -510,9 +509,8 @@ for f in skills/*/SKILL.md; do
     fail=1
   fi
 done
-# The gate has to agree with the prose. It fired mid-pipeline on PR #90 demanding the very
-# text-only turn that does the stranding, so both exemptions must still be read from the
-# transcript rather than removed (docs/specs/workflow-gates.md).
+# The gate has to agree with the prose beside it, so both exemptions must still be read from
+# the transcript rather than removed (docs/specs/workflow-gates.md).
 for needle in returnMarker nestedRunOpen; do
   if ! grep -q "$needle" src/hooks/stop.mjs; then
     echo "::error::src/hooks/stop.mjs no longer reads $needle(); the outcome gate would demand a text-only turn from a nested handback or from a pipeline still mid-flight, which is what strands the parent's steps (docs/specs/workflow-gates.md)."
