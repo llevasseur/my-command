@@ -46,19 +46,25 @@ miss is never promoted to outcome 1 to save a run.
 
 ## 1. Read the store
 
-Both halves of the address come from the environment, exactly as the teach
-workflow reads them for the save side. Reading `CONCEPTS_URL` is safe. **Never
-print `CONCEPTS_TOKEN`** — that puts the token in the transcript. Check only that
-it is set, or let the snippet report an unset one.
+Every call into the store goes through one toolkit verb, `my-command-tools
+concepts`. Never hand-roll a `node -e` block or a `curl` against it: the verb is
+what the `my-command-tools` allowlist covers, so it runs without an approval
+round-trip, and an inlined snippet costs one on every run.
+
+Both halves of the address come from the environment, and the verb reads them
+itself. `IDEAS_URL` and `IDEAS_TOKEN` are read first; `CONCEPTS_URL` and
+`CONCEPTS_TOKEN` are the documented fallbacks, because ideas and concepts are one
+dataset behind one Worker.
 
 - **`CONCEPTS_URL`** — the base URL of the Worker.
 - **`CONCEPTS_TOKEN`** — the bearer token, sent as an
   `Authorization: Bearer <token>` header.
 
-**Never hardcode either value, never write either one into a file, and never put
-the token on a command line.** The snippet reads both from the process
-environment, so the token stays out of the command, the transcript, and the shell
-history.
+Reading `CONCEPTS_URL` is safe. **Never print `CONCEPTS_TOKEN`** — that puts the
+token in the transcript. **Never hardcode either value, never write either one
+into a file, and never put the token on a command line or in a URL.** The verb
+reads both from the process environment inside its own process, so the token
+stays out of the command, the transcript, and the shell history.
 
 Read the store in a fixed order. The first probe that answers decides the
 outcome:
@@ -73,68 +79,19 @@ outcome:
 
 Neighbours at the end of that order is outcome 2. Nothing is outcome 3.
 
+One call runs that whole order:
+
 ```bash
-node -e '
-const [term, field, limitArg] = process.argv.slice(1);
-const base = process.env.CONCEPTS_URL;
-const token = process.env.CONCEPTS_TOKEN;
-if (!base || !token) {
-  console.log("miss: " + (base ? "CONCEPTS_TOKEN" : "CONCEPTS_URL") + " is not set, so the corpus was not read");
-  process.exit(0);
-}
-const root = base.replace(/\/+$/, "");
-const limit = Number(limitArg) || 10;
-const why = (e) => e.message + (e.cause && e.cause.message ? " (" + e.cause.message + ")" : "");
-const get = async (path) => {
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      const res = await fetch(root + path, { headers: { authorization: "Bearer " + token } });
-      if (res.status === 404) return { missing: true };
-      if (!res.ok) {
-        if (res.status >= 500 && attempt === 1) continue;
-        return { error: res.status + " " + (await res.text()).trim().slice(0, 120) };
-      }
-      return { body: await res.json() };
-    } catch (err) {
-      if (attempt === 1) continue;
-      return { error: why(err) };
-    }
-  }
-};
-const unreachable = (e) => console.log("miss: the store answered " + e + ", so the corpus was not read");
-const same = (a, b) => String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
-const hit = (c, versions) => {
-  console.log("term hit: " + c.term + " [" + (c.field ?? "no field") + "]" + (versions > 1 ? " (" + versions + " versions, newest shown)" : ""));
-  console.log("sentence: " + c.sentence);
-};
-const q = encodeURIComponent(term);
-(async () => {
-  const exact = await get("/api/concepts/concept?term=" + q);
-  if (exact.error) return unreachable(exact.error);
-  if (exact.body && exact.body.concept) {
-    return hit(exact.body.concept, (exact.body.versions || []).length);
-  }
-  const neighbours = new Map();
-  const found = await get("/api/concepts/search?q=" + q + "&limit=" + limit);
-  if (found.error) return unreachable(found.error);
-  for (const c of (found.body && found.body.results) || []) {
-    if (same(c.term, term)) return hit(c, 1);
-    neighbours.set(c.term, c);
-  }
-  if (field) {
-    const near = await get("/api/concepts?field=" + encodeURIComponent(field) + "&limit=" + limit);
-    if (near.error) return unreachable(near.error);
-    for (const c of (near.body && near.body.concepts) || []) neighbours.set(c.term, c);
-  }
-  const rows = [...neighbours.values()].slice(0, limit);
-  if (rows.length === 0) return console.log("miss: the corpus holds no concept for " + JSON.stringify(term));
-  console.log("field hit: " + rows.length + " neighbour(s), no term hit");
-  for (const c of rows) console.log("- " + c.term + " [" + (c.field ?? "no field") + "] " + c.sentence);
-})();
-' "<the term or description>" "<the field, or an empty string>" "<the limit>"
+my-command-tools concepts lookup "<the term or description>" --field "<the field>" --limit <n>
 ```
 
-The snippet always exits `0` and always prints one first line naming the outcome.
+Leave `--field` off when the run has no field, and `--limit` off to take the
+default of 10.
+
+The verb always exits `0` and always prints one first line naming the outcome:
+`term hit:` followed by a `sentence:` line carrying the stored sentence
+unmodified, `field hit:` followed by one `- term [field] sentence` line per
+neighbour, or `miss:` with the cause appended when the corpus could not be read.
 That line is the outcome, and nothing later in the run overrides it.
 
 ## 2. An unreachable store is a miss with a stated cause

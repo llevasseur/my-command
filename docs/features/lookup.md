@@ -55,12 +55,21 @@ miss is never promoted to save a run.
 
 ### Store resolution
 
+Every call into the store goes through one toolkit verb,
+`my-command-tools concepts lookup`, shared with `/teach` and `/learn` rather than
+inlined per command. `Bash(my-command-tools:*)` is allowlisted in
+`src/hooks/settings-fragment.json`, so the verb runs without an approval
+round-trip; the `node -e` block this replaced was not allowlistable and cost one
+on every run.
+
 Both halves of the address come from the environment, exactly as `/teach` reads
-them for the save side: `CONCEPTS_URL` for the Worker's base URL and
-`CONCEPTS_TOKEN` for the `Authorization: Bearer` header. Neither is hardcoded,
-written to a file, or put on a command line — a `node` process reads both from
-`process.env`, so the token stays out of the command, the transcript, and the
-shell history.
+them for the save side. `IDEAS_URL` and `IDEAS_TOKEN` are read first, with
+`CONCEPTS_URL` and `CONCEPTS_TOKEN` as the documented fallbacks, because ideas
+and concepts are one dataset behind one Worker. The base URL addresses the
+Worker; the token becomes the `Authorization: Bearer` header. Neither is
+hardcoded, written to a file, or put on a command line or in a URL — the verb
+reads both from `process.env` inside its own process, so the token stays out of
+the command, the transcript, and the shell history.
 
 The store is read in a fixed order, and the first probe that answers decides the
 outcome:
@@ -70,10 +79,22 @@ outcome:
 2. `GET /api/concepts/search?q=<query>` — BM25 full text. A result whose `term`
    equals the query is promoted to outcome 1; every other result is a neighbour.
 3. `GET /api/concepts?field=<field>` — the field listing, run only when
-   `--field` was given. Its rows join the neighbours from step 2.
+   `--field` was given. A row whose `term` equals the query is promoted to
+   outcome 1 on the same terms as step 2; every other row joins the neighbours
+   from step 2. A concept the term probe missed and BM25 did not rank still is
+   the exact term, and reporting it as a neighbour would invite `/teach` to name
+   it a second time.
 
 Neighbours at the end of that order is outcome 2; nothing is outcome 3. A `5xx`
 or a network error is retried once inside the call, as on the save side.
+
+One call runs that whole order — `my-command-tools concepts lookup "<query>"
+[--field <field>] [--limit <n>]`. It always exits `0` and always prints one first
+line naming the outcome: `term hit:` followed by a `sentence:` line carrying the
+stored sentence unmodified, `field hit:` followed by one `- term [field] sentence`
+line per neighbour, or `miss:` with the cause appended when the corpus could not
+be read. That line is the outcome. `--json` returns the structured result instead,
+for a caller that wants the fields rather than the line.
 
 ### An unreachable store is a miss with a stated cause
 
@@ -104,5 +125,7 @@ command exists to prevent.
 - Command source: `src/commands/lookup.md`
 - Gates [teach](teach.md) at its step 1.5, before the naming step
 - Reads the hosted concept store (`CONCEPTS_URL` / `CONCEPTS_TOKEN`) that
-  [teach](teach.md) writes
+  [teach](teach.md) writes, through the shared `my-command-tools concepts` verb
+  (`src/toolkit/verbs/concepts.mjs`) and the `src/shared/concepts-store.md`
+  include the three store commands carry
 - Spec: [Adding a command](../specs/adding-a-command.md)

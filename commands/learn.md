@@ -101,68 +101,30 @@ Then write the lease into the harness todo/task list, as its own item, immediate
 
 **Only on a term hit.** The count is one `POST` to the same hosted concept store, adding the leased skill to the record's `skills` and carrying every other field forward unchanged. The store is append-only, so this lands as a **new version of the same concept** — which is the count. Grouping those rows by `skill` on the read side is "how often did we download this", and it needs nothing this command maintains.
 
-Both halves of the address come from the environment, exactly as `/my-command:teach` and `/my-command:lookup` read them. `printenv CONCEPTS_URL` is safe. **Never run `printenv CONCEPTS_TOKEN`** — that prints the token into the transcript. **Never hardcode either value, never write either one into a file, and never put the token on a command line.** The snippet reads both from `process.env` inside the node process.
+<!-- include-block: shared/concepts-store.md -->
+### The concept store
 
-**The snippet re-reads the stored record and writes it back, rather than the run retyping it.** A hand-composed record is where a paraphrased sentence or a dropped `notes` field comes from, and because reads resolve the newest version, a version written without them loses them for every later reader. Carrying them forward inside the same call is what makes that mechanical rather than remembered.
+**The store is a hosted service, and every call into it goes through one toolkit verb.** It is a Cloudflare Worker over D1, and it is the source of truth for every concept `/my-command:teach` has ever saved. `my-command-tools concepts` is the only thing that speaks to it — never hand-roll a `node -e` block or a `curl` against it. The verb is what `Bash(my-command-tools:*)` allowlists, so it runs without an approval round-trip, and an inlined snippet costs one on every run.
+
+**Both halves of the address come from the environment, and the verb reads them itself.**
+
+- **`CONCEPTS_URL`** — the base URL of the Worker. `IDEAS_URL` is read first and `CONCEPTS_URL` is the documented fallback, because ideas and concepts are one dataset behind one Worker.
+- **`CONCEPTS_TOKEN`** — the shared bearer token, sent as an `Authorization: Bearer <token>` header. `IDEAS_TOKEN` is read first and `CONCEPTS_TOKEN` is the fallback, for the same reason.
+
+**Never print the token, never write it into a file, and never put it on a command line or in a URL** — a token in a query string lands in the transcript, in shell history, and in the Worker's request log. `printenv CONCEPTS_URL` is safe to read; **never run `printenv CONCEPTS_TOKEN`**. The verb reads both variables from `process.env` inside its own process, so neither value ever reaches an argument, and a record being saved travels **as a file path or on stdin** rather than as arguments for the same reason. Prefer `--record-file <path>`: write the JSON with the `Write` tool and hand over the path, with no shell in between, exactly as `commit --message-file` and `pr --body-file` already work. Composing the record inline means a heredoc, and that shape is refused inside an isolated worktree.
+
+**Every subcommand prints exactly one status line on stdout and always exits `0`.** Read that line; it is the outcome, and nothing else in the run overrides it. `--json` returns the structured result instead, for a caller that wants the fields rather than the line.
+
+**An unreachable store is a stated skip, never a stop.** Name the cause in one short line — which variable was unset, the status code and the short reason it returned, or the network error — and carry on. Never stop the run over it, and never ask the user to fix it mid-run. **Never work around it by touching a local file**: `logs/concepts.jsonl` is a backup of the store, not a second copy of it, so writing to it forks the corpus and reading it answers from a snapshot of unknown age.
+<!-- /include-block -->
+
+**The verb re-reads the stored record and writes it back, rather than the run retyping it.** A hand-composed record is where a paraphrased sentence or a dropped `notes` field comes from, and because reads resolve the newest version, a version written without them loses them for every later reader. Carrying them forward inside the same call is what makes that mechanical rather than remembered.
 
 ```bash
-node -e '
-const [term, skill] = process.argv.slice(1);
-const base = process.env.CONCEPTS_URL;
-const token = process.env.CONCEPTS_TOKEN;
-if (!base || !token) {
-  console.log("not counted: " + (base ? "CONCEPTS_TOKEN" : "CONCEPTS_URL") + " is not set");
-  process.exit(0);
-}
-if (skill === "find-skills") {
-  console.log("not counted: find-skills is never recorded as an applied skill");
-  process.exit(0);
-}
-const root = base.replace(/\/+$/, "");
-const auth = { authorization: "Bearer " + token };
-const why = (e) => e.message + (e.cause && e.cause.message ? " (" + e.cause.message + ")" : "");
-(async () => {
-  let stored;
-  try {
-    const res = await fetch(root + "/api/concepts/concept?term=" + encodeURIComponent(term), { headers: auth });
-    if (!res.ok) return console.log("not counted: the store answered " + res.status + " for " + JSON.stringify(term));
-    stored = (await res.json()).concept;
-  } catch (err) {
-    return console.log("not counted: " + why(err));
-  }
-  if (!stored) return console.log("not counted: the corpus holds no concept for " + JSON.stringify(term));
-  const rec = {
-    term: stored.term,
-    sentence: stored.sentence,
-    field: stored.field,
-    skills: [...(stored.skills || []), skill].filter((s) => s !== "find-skills"),
-    savedAt: new Date().toISOString(),
-  };
-  for (const k of ["notes", "tips", "sources", "surfacedSkills"]) {
-    const v = stored[k];
-    if (typeof v === "string" ? v.trim() : Array.isArray(v) && v.length) rec[k] = v;
-  }
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      const res = await fetch(root + "/api/concepts", {
-        method: "POST",
-        headers: { "content-type": "application/json", ...auth },
-        body: JSON.stringify(rec),
-      });
-      const body = (await res.text()).trim().slice(0, 200);
-      if (res.ok) return console.log("counted: " + res.status + " — " + skill + " on " + rec.term);
-      if (res.status >= 500 && attempt === 1) continue;
-      return console.log("not counted: " + res.status + " " + body);
-    } catch (err) {
-      if (attempt === 1) continue;
-      return console.log("not counted: " + why(err));
-    }
-  }
-})();
-' "<the stored term, exactly as /my-command:lookup returned it>" "<the leased skill name>"
+my-command-tools concepts count "<the stored term, exactly as /my-command:lookup returned it>" "<the leased skill name>"
 ```
 
-The snippet always exits `0` and always prints one line. Read that line and repeat its cause in the reply.
+It carries `notes`, `tips`, `sources`, and `surfacedSkills` forward unchanged, stamps a fresh `savedAt`, and never records `find-skills` as an applied skill. It always exits `0` and always prints one line. Read that line and repeat its cause in the reply.
 
 - **A repeat lease is still a count.** The skill already sitting in the record's `skills` is not a reason to skip the write: the row counts an install, not a distinct skill.
 - **A no-op install is still a count.** The question the group-by answers is how often this skill was reached for, and a run that reached for one it already had reached for it.

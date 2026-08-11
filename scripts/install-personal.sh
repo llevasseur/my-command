@@ -96,6 +96,21 @@ if [ -d "$TOOLKIT_SRC" ]; then
     ln -sfn "$SHIM" "$LINK_DIR/my-command-tools"
     echo "On PATH as 'my-command-tools' via $LINK_DIR/my-command-tools (new shells only)."
   fi
+
+  # `my-command-tools concepts` reads the hosted store's address and token from the
+  # environment. Report only whether they are set — never print a value, and never write a
+  # token into a settings file or a dotfile.
+  if [ -n "${IDEAS_URL:-${CONCEPTS_URL:-}}" ] && [ -n "${IDEAS_TOKEN:-${CONCEPTS_TOKEN:-}}" ]; then
+    echo "Concept store: address and token are both set, so 'my-command-tools concepts' can reach it."
+  else
+    echo "note: the concept store is unconfigured, so /lookup, /teach and /learn will each" >&2
+    echo "      report a stated skip instead of reading or writing the corpus." >&2
+    echo "      Add these two lines to your own shell profile — this installer writes neither:" >&2
+    echo "        export CONCEPTS_URL=\"https://<your-worker-host>\"" >&2
+    echo "        export CONCEPTS_TOKEN=\"<the shared bearer token>\"" >&2
+    echo "      IDEAS_URL and IDEAS_TOKEN are read first and cover both, since /work reads the" >&2
+    echo "      same Worker." >&2
+  fi
 fi
 
 # The workflow gates. Symlinked like the toolkit so `git pull` updates them, and registered
