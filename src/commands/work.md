@@ -105,9 +105,29 @@ This is a step of the workflow, not a habit to recall. Run it whenever a phase o
 Read the ideas that are signed off **and free to build** for this repo, once, unnarrowed by area:
 
 ```sh
-LOG_DIR="<logDir>" pnpm --filter server ideas list --available --repo <slug> --json
+~/.claude/my-command/hooks/ideas-read.mjs --available --repo <slug>
 ```
 
+<!-- include-block: shared/store-hooks.md -->
+### Reach the hosted stores through the store hooks
+
+**Every read and write of the hosted concept store and the hosted ideas ledger goes through a hook in `~/.claude/my-command/hooks/`**, never through an inlined `node -e` block. The hooks are installed beside the workflow gates and **allowlisted by name**, so each call runs without an approval round-trip; an inlined block is not allowlisted and costs one. On a device with `CLAUDE_CONFIG_DIR` set, they sit under that directory's `my-command/hooks/` instead — `my-command-tools doctor` reports where.
+
+- `concept-save.mjs <term> <sentence> <field> <skills> [notes] [tips] [sources] [surfaced]` — write a concept. List arguments are newline-separated.
+- `concept-count.mjs <term> <skill>` — count one skill install on that concept's record.
+- `ideas-read.mjs [--available] [--repo <owner/name>] [--area <area>] [--status <a,b>]` — read the ledger.
+- `ideas-add.mjs <path-to-json>` — record proposals from a JSON array in a file.
+- `ideas-claim.mjs <slug> <holder> [pr-url]` — take an idea.
+- `ideas-mark.mjs <slug> <status> [note]` — set an idea's status.
+
+**Never pass a token to one of these, and never print one.** Each hook reads `CONCEPTS_URL`/`CONCEPTS_TOKEN` — and for the ledger `IDEAS_URL`/`IDEAS_TOKEN`, falling back to the concepts pair — from `process.env` inside its own process. A token on a command line reaches the transcript and the shell history; `printenv CONCEPTS_TOKEN` and `printenv IDEAS_TOKEN` are never run.
+
+**Read the first line of the output, and only the first line, as the outcome.** Every hook prints at most one status line and always **exits 0**, so the exit status says nothing — `saved:`, `counted:`, `read:`, `added:`, `claimed:`, `marked:` are the successes, and a line beginning `not ` carries the cause after the colon: which variable was unset, the HTTP status with its short reason, or the network error. `ideas-read.mjs` and `ideas-add.mjs` print their JSON on the lines after that one, on success only.
+
+**An unreachable store is a stated skip, never a stop** — except where the command says otherwise. The call is lost and nothing else: the run continues and says in one short line why, naming the cause the hook gave it. Each hook already retries once on a network error or a 5xx, reusing the identical record, so **never recover by re-running a whole command**: a fresh run stamps a new `savedAt`, which changes the derived row id and writes a second version instead of replaying the first.
+<!-- /include-block -->
+
+- **The read is a stop here, not a skip.** This is the one place this command overrides the stated-skip rule: `not read:` means there is no ledger to select from, so report the cause the hook named — the unset variable, the status, or the network error — and stop. A run that carries on has nothing to build.
 - `<slug>` is the repo's git remote slug (`git remote get-url origin`), or whatever `--repo` overrode it with. Never a checkout path.
 - **`--available` is the read, and it replaces `-s accepted` rather than sitting beside it.** It returns `accepted` plus the ideas whose claim has expired, which is exactly the set a run may take. `-s accepted` alone can never recover an idea that a run picked up and then died holding, because that entry now reads `claimed` and no sweeper will ever put it back; `-s accepted,claimed` overcorrects and hands you one out from under a run that is still building it. `--available` is the one query that draws that line.
 - **This does not loosen the sign-off rule, and a later reader must not "fix" it back.** Every row `--available` returns was `accepted` at some point — `claimed` is only reachable *from* `accepted`, so nothing without a human sign-off can appear in it. What changed is that an abandoned idea comes back rather than staying stuck.
@@ -216,12 +236,12 @@ Anything else is independent and goes out concurrently. In particular, landing i
 **Claim it first, then dispatch — for every idea, however it is scheduled.** The claim goes in before any code is written — not when the PR opens, which is what the ledger used to record and what let two runs build the same idea eleven minutes apart, one of them closed unmerged. Parallel dispatch does not relax this by a single step: claim **every** idea in a wave before that wave goes out, one `claim` call per slug, and dispatch only the ones whose claim succeeded. Concurrency makes the claim matter more, not less — a wave dispatched first and claimed afterwards is exactly the window the protocol closes, widened to the size of the wave. Decide the branch name for this dispatch, claim under it, and only then dispatch:
 
 ```sh
-LOG_DIR="<logDir>" pnpm --filter server ideas claim --slug <slug> --by <branch> --json
+~/.claude/my-command/hooks/ideas-claim.mjs <slug> <branch>
 ```
 
 - **`--by` is the branch name this dispatch is about to cut**, in `/task`'s own `<type>/<kebab-summary>` shape, derived from the idea slug. Decide it here rather than letting the subagent derive its own, and put it in the brief so the subagent cuts *that* branch — the holder string has to name a branch that actually comes to exist.
 - **The branch name is the point, not a formality.** It is the one holder string a second run can check on its own: `git branch -r` either shows that branch or it does not, so a second run can tell a claim backed by real work from a claim left by a run that vanished, without asking anybody. A run id or a person's name tells that second run nothing — it can see the idea is held and has no way to find out whether the work still exists.
-- **A refusal means someone else has it. Skip that idea and say so.** `claim` refuses any entry that is not takeable and reports the status, plus `heldBy`, `since`, and `pr` when a live claim is what blocked it. **A claim held by someone else exits non-zero**, so read the exit status rather than the output: **a zero exit is the permission to build and anything else is not**, and treating a non-zero exit as one is how the claim gets bypassed by a run that never noticed it failed. The store spans every device, so the holder may be a run on a machine this one has never talked to — there is nothing local to double-check the refusal against and nothing to double-check it with. Move to the next idea — dispatch the rest of the wave without it — and name the skip in the final report with the holder and since-when. **A refused claim also drops whatever was stacked on it**: an idea that was to branch off the refused one has no base to build on, so it is skipped too and reported as blocked by that skip, never re-based onto `main` to keep it moving. Never build it anyway, and never retry under a different `--by` — a second holder string does not make the idea free, it just hides the collision the claim was there to surface.
+- **A refusal means someone else has it. Skip that idea and say so.** The hook refuses any entry that is not takeable and names the holder and since-when when a live claim is what blocked it. **Read its first line, and read it strictly: `claimed:` is the permission to build and every other line is a refusal.** The hook always exits 0 — like every store hook, it reports rather than fails — so the exit status says nothing here and must not be consulted. Reading anything but a `claimed:` line as permission is how the claim gets bypassed by a run that never noticed it failed. The store spans every device, so the holder may be a run on a machine this one has never talked to — there is nothing local to double-check the refusal against and nothing to double-check it with. Move to the next idea — dispatch the rest of the wave without it — and name the skip in the final report with the holder and since-when. **A refused claim also drops whatever was stacked on it**: an idea that was to branch off the refused one has no base to build on, so it is skipped too and reported as blocked by that skip, never re-based onto `main` to keep it moving. Never build it anyway, and never retry under a different `--by` — a second holder string does not make the idea free, it just hides the collision the claim was there to surface.
 - **Only `accepted` (or a stale or already-yours `claimed`) can be claimed at all**, so a claim can never route around a human sign-off. That check lives in the ledger, not here.
 
 ### Dispatch, then attach the PR to the claim
@@ -230,7 +250,7 @@ LOG_DIR="<logDir>" pnpm --filter server ideas claim --slug <slug> --by <branch> 
 - **Re-claim with the PR the moment the subagent returns one**, as the same `--by`:
 
   ```sh
-  LOG_DIR="<logDir>" pnpm --filter server ideas claim --slug <slug> --by <branch> --pr "<PR url>" --json
+  ~/.claude/my-command/hooks/ideas-claim.mjs <slug> <branch> "<PR url>"
   ```
 
   `claim` is idempotent for the same holder, so this attaches the PR rather than fighting the claim you already hold. It matters because a claim carrying a `pr` never goes stale: the six-hour expiry is sized to **writing** the change, while the long part of an idea's life is review, so a PR sitting in review for a day would otherwise expire its own claim and invite a second run to build what is already built.
@@ -245,7 +265,7 @@ LOG_DIR="<logDir>" pnpm --filter server ideas claim --slug <slug> --by <branch> 
 An accepted idea whose brief actually landed is marked in the ideas ledger:
 
 ```sh
-LOG_DIR="<logDir>" pnpm --filter server ideas mark --slug <slug> -s shipped -n "<PR url>"
+~/.claude/my-command/hooks/ideas-mark.mjs <slug> shipped "<PR url>"
 ```
 
 - **One call per idea, and the note is that idea's own PR.** Step 4 gave every idea its own dispatch and therefore its own PR, so there is no shared URL to write here: take the PR from the subagent that built *this* slug. Never write one run-wide PR URL across several slugs — the note is the only pointer back to the change, and a slug pointing at a PR that built something else is a false record that reads as a true one, and one that no later run can detect.
@@ -278,7 +298,7 @@ Report at the end: how many ideas were selected and by which selector each came 
 **Release every claim this run is still holding, in the same turn as the run's last piece of real work.** An idea this run claimed and did not ship is released explicitly rather than left to expire:
 
 ```sh
-LOG_DIR="<logDir>" pnpm --filter server ideas mark --slug <slug> -s accepted
+~/.claude/my-command/hooks/ideas-mark.mjs <slug> accepted
 ```
 
 - **A mark to anything but `shipped` drops the claim**, which is what makes this the release rather than a status change with a side effect.

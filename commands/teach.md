@@ -124,14 +124,14 @@ Off macOS, substitute `wl-copy`, `xclip -selection clipboard`, or `clip.exe`. Wi
 
 Ask whether to save the concept. On yes, POST one JSON object to the hosted concept store — a Cloudflare Worker, not a file on this machine. A concept taught on one device is then readable from every other one.
 
-Both halves of the address come from the environment. `printenv CONCEPTS_URL` is safe to read. **Never run `printenv CONCEPTS_TOKEN`** — that prints the token into the transcript. Check only that it is set, without echoing it, or let the snippet below report an unset one:
+Both halves of the address come from the environment. `printenv CONCEPTS_URL` is safe to read. **Never run `printenv CONCEPTS_TOKEN`** — that prints the token into the transcript. Check only that it is set, without echoing it, or let the hook below report an unset one:
 
 - **`CONCEPTS_URL`** — the base URL of the Worker. The write path is `POST <CONCEPTS_URL>/api/concepts`.
 - **`CONCEPTS_TOKEN`** — the bearer token, sent as an `Authorization: Bearer <token>` header.
 
-**Never hardcode either value, never write either one into a file, and never put the token on a command line.** The snippet below reads both from `process.env` inside the node process, so the token stays out of the command, the transcript, and the shell history. Do not echo it, and do not print it back in the reply.
+**Never hardcode either value, never write either one into a file, and never put the token on a command line.** The hook below reads both from `process.env` inside its own process, so the token stays out of the command, the transcript, and the shell history. Do not echo it, and do not print it back in the reply.
 
-**The write is idempotent, and the retry belongs inside the call.** A row id is a ULID derived from the record itself, so the store returns **201** when the concept is new and **200** when the identical record is replayed. The snippet below therefore retries once on a network error or a `5xx`, reusing the same record. **Never re-run the whole command to retry a failed save.** Every run stamps a fresh `savedAt`, which changes the record, which changes the derived id — so a second run writes a *second version* of the concept instead of replaying the first. Idempotency protects a repeated request, not a repeated run.
+**The write is idempotent, and the retry belongs inside the call.** A row id is a ULID derived from the record itself, so the store returns **201** when the concept is new and **200** when the identical record is replayed. The hook below therefore retries once on a network error or a `5xx`, reusing the same record. **Never re-run the whole command to retry a failed save.** Every run stamps a fresh `savedAt`, which changes the record, which changes the derived id — so a second run writes a *second version* of the concept instead of replaying the first. Idempotency protects a repeated request, not a repeated run.
 
 **An unreachable store is not fatal.** `/my-command:improve` cannot run without the proxy because the suggestions *are* the input; `/my-command:teach`'s input is the user. Step 6 already printed the sentence and copied it, and that stands whatever this step does. So when `CONCEPTS_URL` or `CONCEPTS_TOKEN` is unset, or the POST fails, keep the sentence, keep the clipboard, skip only the save, and never stop the run over it.
 
@@ -181,50 +181,36 @@ Four more are **optional**, and claude-proxy's detail page renders each one it f
 
 **Omit an optional field entirely when there is nothing to record.** Never write `""` or `[]` for one: the detail page distinguishes absent from empty, and an absent field is what makes it show its "nothing more to show" fallback. Records written before these fields existed carry none of them and stay valid — a stored concept is never rewritten or migrated.
 
-Post with `node` and pass every value as an argument, so no shell quoting or JSON escaping can corrupt a sentence containing quotes, backslashes, or newlines. Lists are **newline-separated**, one entry per line, because a tip or a note reliably contains a comma and never contains a newline:
+Write it with the `concept-save` hook, passing every value as an argument, so no shell quoting or JSON escaping can corrupt a sentence containing quotes, backslashes, or newlines. Lists are **newline-separated**, one entry per line, because a tip or a note reliably contains a comma and never contains a newline:
 
 ```bash
-node -e '
-const [term, sentence, field, skills, notes, tips, sources, surfaced] = process.argv.slice(1);
-const base = process.env.CONCEPTS_URL;
-const token = process.env.CONCEPTS_TOKEN;
-if (!base || !token) {
-  console.log("not saved: " + (base ? "CONCEPTS_TOKEN" : "CONCEPTS_URL") + " is not set");
-  process.exit(0);
-}
-const list = (v) => (v ? v.split("\n").map((s) => s.trim()).filter(Boolean) : []);
-const rec = { term, sentence, field, skills: list(skills), savedAt: new Date().toISOString() };
-const put = (k, v) => { if (typeof v === "string" ? v.trim() : v.length) rec[k] = v; };
-put("notes", notes ?? "");
-put("tips", list(tips));
-put("sources", list(sources));
-put("surfacedSkills", list(surfaced));
-const why = (e) => e.message + (e.cause && e.cause.message ? " (" + e.cause.message + ")" : "");
-(async () => {
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      const res = await fetch(base.replace(/\/+$/, "") + "/api/concepts", {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: "Bearer " + token },
-        body: JSON.stringify(rec),
-      });
-      const body = (await res.text()).trim().slice(0, 200);
-      if (res.ok) return console.log("saved: " + res.status + (res.status === 200 ? " (already stored)" : " (new)"));
-      if (res.status >= 500 && attempt === 1) continue;
-      return console.log("not saved: " + res.status + " " + body);
-    } catch (err) {
-      if (attempt === 1) continue;
-      return console.log("not saved: " + why(err));
-    }
-  }
-})();
-' "<term>" "<sentence>" "<field>" "<applied skills, one per line>" \
+~/.claude/my-command/hooks/concept-save.mjs \
+  "<term>" "<sentence>" "<field>" "<applied skills, one per line>" \
   "<notes as Markdown>" "<tips, one per line>" "<sources, one per line>" "<surfaced skills, one per line>"
 ```
 
-`put` is what enforces the omit rule — an empty string and an empty list both fall through and the key is never written. Pass `""` for anything the run did not produce; do not drop the argument, or the values after it shift.
+<!-- include-block: shared/store-hooks.md -->
+### Reach the hosted stores through the store hooks
 
-The snippet always exits `0` and always prints one line, because the save is the optional half of this step. Read that line and repeat its cause in the reply.
+**Every read and write of the hosted concept store and the hosted ideas ledger goes through a hook in `~/.claude/my-command/hooks/`**, never through an inlined `node -e` block. The hooks are installed beside the workflow gates and **allowlisted by name**, so each call runs without an approval round-trip; an inlined block is not allowlisted and costs one. On a device with `CLAUDE_CONFIG_DIR` set, they sit under that directory's `my-command/hooks/` instead — `my-command-tools doctor` reports where.
+
+- `concept-save.mjs <term> <sentence> <field> <skills> [notes] [tips] [sources] [surfaced]` — write a concept. List arguments are newline-separated.
+- `concept-count.mjs <term> <skill>` — count one skill install on that concept's record.
+- `ideas-read.mjs [--available] [--repo <owner/name>] [--area <area>] [--status <a,b>]` — read the ledger.
+- `ideas-add.mjs <path-to-json>` — record proposals from a JSON array in a file.
+- `ideas-claim.mjs <slug> <holder> [pr-url]` — take an idea.
+- `ideas-mark.mjs <slug> <status> [note]` — set an idea's status.
+
+**Never pass a token to one of these, and never print one.** Each hook reads `CONCEPTS_URL`/`CONCEPTS_TOKEN` — and for the ledger `IDEAS_URL`/`IDEAS_TOKEN`, falling back to the concepts pair — from `process.env` inside its own process. A token on a command line reaches the transcript and the shell history; `printenv CONCEPTS_TOKEN` and `printenv IDEAS_TOKEN` are never run.
+
+**Read the first line of the output, and only the first line, as the outcome.** Every hook prints at most one status line and always **exits 0**, so the exit status says nothing — `saved:`, `counted:`, `read:`, `added:`, `claimed:`, `marked:` are the successes, and a line beginning `not ` carries the cause after the colon: which variable was unset, the HTTP status with its short reason, or the network error. `ideas-read.mjs` and `ideas-add.mjs` print their JSON on the lines after that one, on success only.
+
+**An unreachable store is a stated skip, never a stop** — except where the command says otherwise. The call is lost and nothing else: the run continues and says in one short line why, naming the cause the hook gave it. Each hook already retries once on a network error or a 5xx, reusing the identical record, so **never recover by re-running a whole command**: a fresh run stamps a new `savedAt`, which changes the derived row id and writes a second version instead of replaying the first.
+<!-- /include-block -->
+
+The hook enforces the omit rule — an empty string and an empty list both fall through and the key is never written. Pass `""` for anything the run did not produce; do not drop the argument, or the values after it shift.
+
+It always exits `0` and always prints one line, because the save is the optional half of this step. Read that line and repeat its cause in the reply.
 
 The store is append-only. Re-teaching a term adds a version rather than replacing one, reads resolve the newest version, and a concurrent run can never overwrite another's record.
 
