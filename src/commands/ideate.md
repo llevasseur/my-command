@@ -97,16 +97,33 @@ The `ideas` CLI is now a **client** of that store rather than the owner of a fil
 
 **Read that snippet's last bullet as the operative one here.** Its opening line and its stop are written for `/improve` and `/judge`, which have nothing to read without claude-proxy. This command **declares it optional**, so all three of those failures — unset variable, missing path, no `server/package.json` — mean the `ideas` CLI is not reachable from a checkout on this device and evidence source 2 (judge notes, Step 2) has nothing to read. Take the derivation, skip the stop, and name both facts in the report.
 
-**What that absence does *not* mean is that the ledger is gone.** The ledger is hosted, so a missing checkout costs this run the CLI and the judge notes, never the ledger — reach the same store over MCP instead (below). The one thing with no substitute is `IDEAS_URL`/`IDEAS_TOKEN`, and their absence is the refusal above rather than a fall-through.
+**What that absence does *not* mean is that the ledger is gone.** The ledger is hosted, so a missing checkout costs this run the judge notes and nothing else — the store hooks below live in `~/.claude/my-command/hooks/` and read the ledger with no checkout at all, and MCP reaches the same store from a cloud box. The one thing with no substitute is `IDEAS_URL`/`IDEAS_TOKEN`, and their absence is the refusal above rather than a fall-through.
 
-With a checkout, the CLI is the client:
+The ledger hook is the client, checkout or no checkout:
 
 ```sh
-pnpm --filter server ideas list --json                     # the whole ledger — the dedupe read
-pnpm --filter server ideas list -s accepted --repo <slug> --json
+~/.claude/my-command/hooks/ideas-read.mjs                        # the whole ledger — the dedupe read
+~/.claude/my-command/hooks/ideas-read.mjs --status accepted --repo <slug>
 ```
 
-Read `pnpm --filter server ideas --help` before composing a write; do not guess the verb syntax. **These verbs take no `LOG_DIR`** — that variable pointed at the file the ledger used to be, and the hosted store is reached with `IDEAS_URL`/`IDEAS_TOKEN` instead. `LOG_DIR` still belongs on the `suggestions` verbs, which do read the proxy's logs.
+<!-- include-block: shared/store-hooks.md -->
+### Reach the hosted ideas ledger through the ideas hooks
+
+**Every read, claim, and mark against the hosted ideas ledger goes through a hook in `~/.claude/my-command/hooks/`**, never through an inlined `node -e` block. The hooks are installed beside the workflow gates and **allowlisted by name**, so each call runs without an approval round-trip; an inlined block is not allowlisted and costs one. On a device with `CLAUDE_CONFIG_DIR` set, they sit under that directory's `my-command/hooks/` instead — `my-command-tools doctor` reports where. The hosted **concept** store is a separate address reached through `my-command-tools concepts`, not through these.
+
+- `ideas-read.mjs [--available] [--repo <owner/name>] [--area <area>] [--status <a,b>]` — read the ledger.
+- `ideas-add.mjs <path-to-json>` — record proposals from a JSON array in a file.
+- `ideas-claim.mjs <slug> <holder> [pr-url]` — take an idea.
+- `ideas-mark.mjs <slug> <status> [note]` — set an idea's status.
+
+**Never pass a token to one of these, and never print one.** Each hook reads `IDEAS_URL`/`IDEAS_TOKEN` — falling back to `CONCEPTS_URL`/`CONCEPTS_TOKEN`, since ideas and concepts sit behind one Worker — from `process.env` inside its own process. A token on a command line reaches the transcript and the shell history; `printenv CONCEPTS_TOKEN` and `printenv IDEAS_TOKEN` are never run.
+
+**Read the first line of the output, and only the first line, as the outcome.** Every hook prints at most one status line and always **exits 0**, so the exit status says nothing — `read:`, `added:`, `claimed:`, `marked:` are the successes, and a line beginning `not ` carries the cause after the colon: which variable was unset, the HTTP status with its short reason, or the network error. `ideas-read.mjs` and `ideas-add.mjs` print their JSON on the lines after that one, on success only.
+
+**An unreachable ledger is a stated skip, never a stop** — except where the command says otherwise. The call is lost and nothing else: the run continues and says in one short line why, naming the cause the hook gave it. Each hook already retries once on a network error or a 5xx, replaying the identical request, so **never recover by re-running a whole command**.
+<!-- /include-block -->
+
+**The dedupe read is a stop, not a skip.** A `not read:` line means nothing was deduped against, and a proposal nothing checked is how a rejected idea comes back — so report the cause the hook named and stop, exactly as the refusal above says. `LOG_DIR` belongs on the `suggestions` verbs, which do read the proxy's logs; it has nothing to do with the ledger.
 
 ### The same store over MCP, for an agent with no checkout
 
@@ -240,11 +257,15 @@ Invoke a skill with the `Skill` tool, **at most one per proposal**, and only whe
 
 Write **all** of them, including the ones you expect to be rejected. This is the run's only write, and `proposed` is the only status it sets.
 
+Compose the batch with `Write` into a scratch JSON file holding the array, then hand the hook that path:
+
 ```sh
-pnpm --filter server ideas add --json '[{ … }]'
+~/.claude/my-command/hooks/ideas-add.mjs <path to the proposals JSON>
 ```
 
-The MCP equivalent is `ideas_add`, and it writes the same rows to the same hosted store. On an unconfigured device this write is **refused, not queued** — report the missing variable and stop, rather than holding the batch anywhere on disk to send later.
+**The path is what keeps a rationale intact.** Each proposal carries literal `- ` bullet lines separated by newlines, and composing those inline is the heredoc shape this repo's gates refuse — so the array goes to a file and the file's path goes on the command line.
+
+The MCP equivalent is `ideas_add`, and it writes the same rows to the same hosted store. On an unconfigured device this write is **refused, not queued** — report the variable the hook named and stop, rather than holding the batch anywhere on disk to send later.
 
 - **Dedupe only works if the ledger records what was considered, not just what was liked.** An idea that never reaches the file can be re-proposed next run with a straight face; that is the whole failure this step prevents.
 - Each entry carries its stable kebab-case slug, title, the bulleted rationale in Step 3's shape, evidence with paths, the repo slug, and its **area**. Status is `proposed`. The full field list `add` parses is `{ slug, title, rationale, evidence[], repo, area, status?, note? }`.

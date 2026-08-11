@@ -385,7 +385,18 @@ interface HooksResult {
 
 // The scripts the harness executes directly. A lost mode bit fails only at hook time, and
 // silently: the harness cannot run the script, and a hook that fails to run allows the call.
-const HOOK_SCRIPTS = ['pre-tool-use.mjs', 'stop.mjs', 'install-hooks.mjs'];
+const HOOK_SCRIPTS = [
+  'pre-tool-use.mjs',
+  'stop.mjs',
+  'install-hooks.mjs',
+  // The ideas hooks. A command invokes these itself rather than the harness running them,
+  // but a lost mode bit fails the same way, quieter: a "permission denied" the run reports
+  // as an unreachable ledger.
+  'ideas-read.mjs',
+  'ideas-add.mjs',
+  'ideas-claim.mjs',
+  'ideas-mark.mjs',
+];
 
 // Install the workflow gates and register them. Both halves are required: shipping the
 // scripts does nothing, because the harness runs only what settings.json registers.

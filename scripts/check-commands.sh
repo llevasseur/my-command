@@ -263,6 +263,23 @@ if [ -f src/hooks/settings-fragment.json ]; then
         fail=1
       fi
     done
+
+    # An unallowlisted store hook still runs, at one approval round-trip per call. Nothing else
+    # catches that: the event loop above and hooks-status.mjs both read only `hooks`.
+    missing_allow=$(node -e '
+      const f = JSON.parse(require("node:fs").readFileSync("src/hooks/settings-fragment.json", "utf8"));
+      const allow = new Set(f.permissions?.allow ?? []);
+      const scripts = ["ideas-read", "ideas-add", "ideas-claim", "ideas-mark"];
+      const wanted = scripts.flatMap((s) => [
+        `Bash({{HOOKS_DIR}}/${s}.mjs:*)`,
+        `Bash(~/.claude/my-command/hooks/${s}.mjs:*)`,
+      ]);
+      console.log(wanted.filter((entry) => !allow.has(entry)).join(" "));
+    ')
+    if [ -n "$missing_allow" ]; then
+      echo "::error::src/hooks/settings-fragment.json is missing permissions.allow entries: $missing_allow — each of those store hook calls would cost an approval prompt."
+      fail=1
+    fi
   fi
 fi
 
