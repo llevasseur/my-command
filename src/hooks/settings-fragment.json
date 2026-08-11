@@ -25,6 +25,18 @@
   "permissions": {
     "allow": [
       "Bash(my-command-tools:*)",
+      "Bash({{HOOKS_DIR}}/concept-save.mjs:*)",
+      "Bash({{HOOKS_DIR}}/concept-count.mjs:*)",
+      "Bash({{HOOKS_DIR}}/ideas-read.mjs:*)",
+      "Bash({{HOOKS_DIR}}/ideas-add.mjs:*)",
+      "Bash({{HOOKS_DIR}}/ideas-claim.mjs:*)",
+      "Bash({{HOOKS_DIR}}/ideas-mark.mjs:*)",
+      "Bash(~/.claude/my-command/hooks/concept-save.mjs:*)",
+      "Bash(~/.claude/my-command/hooks/concept-count.mjs:*)",
+      "Bash(~/.claude/my-command/hooks/ideas-read.mjs:*)",
+      "Bash(~/.claude/my-command/hooks/ideas-add.mjs:*)",
+      "Bash(~/.claude/my-command/hooks/ideas-claim.mjs:*)",
+      "Bash(~/.claude/my-command/hooks/ideas-mark.mjs:*)",
       "Bash(git status:*)",
       "Bash(git log:*)",
       "Bash(git diff:*)",
