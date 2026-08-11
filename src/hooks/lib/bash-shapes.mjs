@@ -139,8 +139,34 @@ export function foregroundSleep(command, background) {
  * @returns {boolean}
  */
 export function heredocWrite(command) {
-  if (!/<<-?\s*["']?[A-Za-z_]\w*["']?/.test(command)) return false;
-  return /(^|[^0-9<>&])>{1,2}[^>]/.test(command) || /\btee\b/.test(command);
+  const opener = /<<-?\s*(["']?)([A-Za-z_]\w*)\1/.exec(command);
+  if (!opener) return false;
+
+  // A heredoc feeding a program's stdin with no redirect is deliberately untouched, so the
+  // redirect has to be a real one. Two things that are not: a `>` inside the heredoc body,
+  // which is data rather than shell syntax, and a `>` inside a quoted argument — `sed 's/.*->
+  // //'` redirects nothing, and refused a legitimate `node hook <<JSON | jq` call on that
+  // basis. So drop the body, then judge only what the shell itself reads.
+  const delimiter = opener[2];
+  const closes = new RegExp(`^\\s*${delimiter}\\s*$`);
+  const opens = new RegExp(`<<-?\\s*["']?${delimiter}["']?`);
+  /** @type {string[]} */
+  const shell = [];
+  let inBody = false;
+  for (const line of command.split('\n')) {
+    if (inBody) {
+      if (closes.test(line)) inBody = false;
+      continue;
+    }
+    shell.push(line);
+    if (opens.test(line)) inBody = true;
+  }
+
+  const bare = tokenize(shell.join('\n'))
+    .filter((t) => !t.quoted)
+    .map((t) => t.text)
+    .join(' ');
+  return /(^|[^0-9<>&])>{1,2}([^>]|$)/.test(bare) || /\btee\b/.test(bare);
 }
 
 /**

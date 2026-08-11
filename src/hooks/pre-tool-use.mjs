@@ -2,9 +2,8 @@
 // PreToolUse — the call shapes that fail, or pay twice, for a known reason.
 // See docs/specs/workflow-gates.md.
 //
-//   serial discovery  — a 4th straight turn of nothing but read-only calls (batch instead)
+//   serial discovery  — a 4th straight single-call turn of nothing but read-only calls
 //   redundant read    — a whole-file Read of a file already read whole and unchanged since
-//   unread edit       — an Edit of a path this session never read, which Edit itself rejects
 //   dumped again      — a shell probe dumping a file already read whole and unchanged
 //   repeated probe    — the same Bash probe re-issued with nothing since to change its answer
 //   polling a watch   — a probe of a file a Monitor in this session is already watching
@@ -19,13 +18,15 @@
 //   trailing anchor   — a bookkeeping call scheduled after the run's last real work
 //
 // A scratch write under `$CLAUDE_JOB_DIR` from a worktree is deliberately *not* here: see
-// "The job directory is not a gate" in the spec.
+// "The job directory is not a gate" in the spec. Neither is an `Edit`/`Write` of a path this
+// session never read: see "The read-before-edit gate could not be right" — `Edit` and `Write`
+// enforce that precondition themselves, and the gate mirroring them could only add refusals
+// of correct behaviour.
 //
 // They share a hook because they decide from the same transcript; parsing it more than once
 // would let the answers disagree.
-import { execFileSync } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
-import { basename, dirname, isAbsolute, resolve } from 'node:path';
+import { basename, isAbsolute, resolve } from 'node:path';
 import {
   dumpedFiles,
   foregroundSleep,
@@ -41,6 +42,7 @@ import { isReadOnly } from './lib/read-only.mjs';
 import { alreadyDenied, clearGate } from './lib/state.mjs';
 import {
   entries,
+  foreignTranscript,
   issued,
   lastFullReadOf,
   repeatedProbe,
@@ -64,20 +66,6 @@ const MAX_SERIAL_TURNS = 3;
  */
 const CHANGED_GRACE_MS = 2000;
 
-/** File tools whose call the harness rejects unless this session read the path first. */
-const EDITORS = new Set(['Edit', 'Write', 'NotebookEdit', 'MultiEdit']);
-
-/**
- * Commits of history consulted for co-change, and companions offered. Both bounded: the list
- * is a hint for one batch, not an audit. They live above `guard()` rather than beside the
- * function that reads them, because the dispatcher below runs at module evaluation — a `const`
- * declared later is still in its temporal dead zone when the gate fires, and `companions()`
- * catches that `ReferenceError` into an empty list, which is indistinguishable from a repo
- * with no history.
- */
-const COCHANGE_COMMITS = 40;
-const COCHANGE_MAX = 8;
-
 guard(() => {
   const event = readEvent();
   if (!event) return;
@@ -86,11 +74,17 @@ guard(() => {
   const session = String(event.session_id ?? '');
 
   const readOnly = isReadOnly(name, input);
+  // Every gate except the Bash shape checks decides from this session's history. When the
+  // transcript the hook was handed belongs to another run — which is what a subagent's call
+  // arrives with — that history is not evidence about this run, so those gates stay silent
+  // rather than judging someone else's turns.
+  const foreign = foreignTranscript(event.transcript_path ?? '');
 
   if (name === 'Bash') {
     // Cheapest gates first, and the only ones that need no transcript: a command whose own
     // shape makes it fail is going to fail whatever the session did before it.
     if (badShape(event, input, session)) return;
+    if (foreign) return;
     // These need the transcript but not read-only status: a dumper like `sed` is not
     // classified read-only, and dumping a file already in context is the shape regardless.
     const line = timeline(entries(event.transcript_path ?? ''));
@@ -106,11 +100,11 @@ guard(() => {
   if (!readOnly) {
     // A real action ends the discovery run, so the gate is armed again for the next one.
     clearGate(session, 'serial');
-    if (EDITORS.has(name)) unreadEdit(event, name, input, session);
-    if (name === 'TodoWrite') trailingAnchor(event, input, session);
+    if (name === 'TodoWrite' && !foreign) trailingAnchor(event, input, session);
     return;
   }
 
+  if (foreign) return;
   const line = timeline(entries(event.transcript_path ?? ''));
   const cwd = typeof event.cwd === 'string' ? event.cwd : process.cwd();
   if (name === 'Read' && readPolling(input, line, session, cwd)) return;
@@ -222,6 +216,8 @@ function badShape(event, input, session) {
       `\`${glob}\` is an unquoted pattern that matches nothing from ${cwd}. This shell is zsh, ` +
         `where that aborts the whole command with "no matches found" — nothing in it runs, ` +
         `including the parts that would have worked.\n\n` +
+        `This exact command, with that pattern quoted so the program expands it:\n` +
+        `  ${quotedGlob(command, glob)}\n\n` +
         `Quote any pattern the invoked program should expand rather than the shell:\n` +
         `  • \`rg -g '*.ts'\` and \`rg --files -g '*.ts'\` instead of \`grep --include=*.ts\`\n` +
         `  • \`find . -name '*.ts'\`, with the pattern quoted\n\n` +
@@ -277,126 +273,6 @@ function badShape(event, input, session) {
   }
 
   return false;
-}
-
-/**
- * Refuse an `Edit`/`Write` of a path this session never read. `Edit` enforces this itself
- * with "File has not been read yet", so the call was going to be rejected — the gate's value
- * is saying to read *every* target of this edit pass at once, instead of hitting the same
- * rejection file after file.
- * @param {Record<string, any>} event @param {string} name
- * @param {Record<string, any>} input @param {string} session
- */
-function unreadEdit(event, name, input, session) {
-  const path = input?.file_path ?? input?.notebook_path;
-  if (typeof path !== 'string' || !isAbsolute(path)) return;
-  // Creating a file needs no prior read; only an existing one carries the precondition.
-  try {
-    if (!statSync(path).isFile()) return;
-  } catch {
-    return;
-  }
-
-  const line = timeline(entries(event.transcript_path ?? ''));
-  const all = turns(line);
-  const current = all[all.length - 1];
-  const currentUuid = current && issued(current, name, input) ? current.uuid : undefined;
-  if (touched(line, path, currentUuid)) return;
-  if (alreadyDenied(session, 'unread', path)) return;
-
-  // The value of this gate was always "read the whole pass at once", and asking for a list
-  // the agent has to assemble is why it was rediscovered one rejection at a time. So the
-  // list is derived here and handed over: the files this repo's own history changes
-  // alongside this one, minus the ones already read.
-  const rest = companions(path).filter((p) => !touched(line, p, currentUuid));
-
-  deny(
-    `This session has not read ${path}, so \`${name}\` will reject it with "File has not been ` +
-      `read yet". Inherited context, a continuation summary, and shell output do not satisfy ` +
-      `that precondition, and re-sending this edit cannot clear it.\n\n` +
-      `Read it first — and read every *other* file this edit pass will write in the same turn, ` +
-      `as one batch of parallel \`Read\` calls. A targeted \`offset\`/\`limit\` slice counts.\n\n` +
-      (rest.length > 0
-        ? `This repo's history changes these alongside it, and this session has read none of ` +
-          `them either. If the pass writes them, they belong in the same batch:\n` +
-          `${rest.map((p) => `  Read({file_path: "${p}"})`).join('\n')}\n\n` +
-          `Send that block in one turn rather than meeting this same rejection file after file.`
-        : `Enumerate the pass's whole write set now and send it as one block, rather than ` +
-          `meeting this same rejection file after file.`),
-  );
-}
-
-/**
- * Files this repository's recent history changes in the same commit as `path`, most frequent
- * first. Derivable rather than remembered — a command file and its built copy, its skill, its
- * feature doc and the changelog move together every time — which is what makes discovering
- * them one rejection at a time a removable cost rather than an unavoidable one.
- * @param {string} path
- * @returns {string[]}
- */
-function companions(path) {
-  try {
-    const cwd = dirname(path);
-    const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
-      cwd,
-      encoding: 'utf8',
-      timeout: 3000,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
-    if (!root) return [];
-
-    // Ask git for the repo-relative name rather than subtracting the root from the path: on
-    // macOS the root comes back through /private/var while the event's path does not, and
-    // that difference both misses the history and leaves the file in its own companion list.
-    const self = execFileSync('git', ['ls-files', '--full-name', '--', basename(path)], {
-      cwd,
-      encoding: 'utf8',
-      timeout: 3000,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-      .split('\n')[0]
-      .trim();
-    if (!self) return [];
-
-    // Two calls rather than one, because a pathspec narrows `--name-only`'s output as well as
-    // the commit set: `git log --name-only -- <self>` lists only `self`, never what moved with
-    // it. So ask which commits touched it, then ask those commits what else they carried.
-    const hashes = execFileSync('git', ['log', `--max-count=${COCHANGE_COMMITS}`, '--format=%H', '--', self], {
-      cwd: root,
-      encoding: 'utf8',
-      timeout: 5000,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-      .split('\n')
-      .filter(Boolean);
-    if (hashes.length === 0) return [];
-
-    const log = execFileSync('git', ['log', '--no-walk', '--format=%x00', '--name-only', ...hashes], {
-      cwd: root,
-      encoding: 'utf8',
-      timeout: 5000,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
-
-    /** @type {Map<string, number>} */
-    const tally = new Map();
-    for (const commit of log.split('\0')) {
-      for (const name of new Set(commit.split('\n').filter(Boolean))) {
-        if (name === self) continue;
-        const full = resolve(root, name);
-        tally.set(full, (tally.get(full) ?? 0) + 1);
-      }
-    }
-
-    return [...tally.entries()]
-      .filter(([full]) => existsSync(full))
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .slice(0, COCHANGE_MAX)
-      .map(([full]) => full);
-  } catch {
-    // Not a repo, git missing, or a slow history: the gate's advice stands without the list.
-    return [];
-  }
 }
 
 /**
@@ -547,18 +423,61 @@ function relativeCd(event, input) {
     if (/[$`*?]/.test(target)) continue;
     if (existsSync(resolve(from, target))) continue;
 
+    // Naming the rule is what already failed; where the path this `cd` was reaching for can
+    // be found, the denial hands over the absolute form rather than describing it.
+    const found = nearbyPath(from, target);
+
     deny(
       `\`cd ${target}\` does not resolve from ${from}, so this command would fail with ` +
         `"no such file or directory" before doing anything.\n\n` +
-        `Spell the path absolutely instead of changing directory:\n` +
-        `  • the toolkit takes the checkout as a flag — \`my-command-tools <verb> --cwd <absolute path>\`\n` +
-        `  • git takes it as \`git -C <absolute path> …\`\n` +
-        `  • everything else takes the absolute path as its argument\n\n` +
-        `If a directory genuinely must be entered, enter it by absolute path.`,
+        (found
+          ? `That path does exist here:\n  ${found}\nUse it directly, without changing ` +
+            `directory:\n` +
+            `  • \`my-command-tools <verb> --cwd ${found}\`\n` +
+            `  • \`git -C ${found} …\`\n` +
+            `  • every other command takes it as an argument\n`
+          : `Spell the path absolutely instead of changing directory:\n` +
+            `  • the toolkit takes the checkout as a flag — \`my-command-tools <verb> --cwd <absolute path>\`\n` +
+            `  • git takes it as \`git -C <absolute path> …\`\n` +
+            `  • everything else takes the absolute path as its argument\n`) +
+        `\nIf a directory genuinely must be entered, enter it by absolute path.`,
     );
     return true;
   }
   return false;
+}
+
+/**
+ * The same command with the offending glob quoted — the form that runs, ready to send. A
+ * refusal that only names a rule leaves the rewrite to be composed again; this one has been
+ * composed already. `--include=*.ts` keeps its flag and quotes only the pattern.
+ * @param {string} command @param {string} glob
+ * @returns {string}
+ */
+function quotedGlob(command, glob) {
+  const eq = glob.indexOf('=');
+  const quoted = eq === -1 ? `'${glob}'` : `${glob.slice(0, eq + 1)}'${glob.slice(eq + 1)}'`;
+  return command.split(glob).join(quoted);
+}
+
+/**
+ * The absolute path a failed relative `cd` was reaching for, found by walking up from the
+ * directory it was issued in, or null. The nearest ancestor wins, and the walk stops at the
+ * filesystem root — a worktree's `server/nexus` is a few levels up from wherever the shell
+ * actually was, which is the whole reason the relative form keeps being sent.
+ * @param {string} from @param {string} target
+ * @returns {string | null}
+ */
+function nearbyPath(from, target) {
+  let dir = from;
+  for (let depth = 0; depth < 12; depth++) {
+    const candidate = resolve(dir, target);
+    if (existsSync(candidate)) return candidate;
+    const up = resolve(dir, '..');
+    if (up === dir) break;
+    dir = up;
+  }
+  return null;
 }
 
 /**
@@ -609,32 +528,37 @@ function redundantRead(input, line, session) {
 }
 
 /**
- * Refuse the 4th consecutive turn of nothing but read-only calls. Counted in turns rather
- * than calls so the gate rewards the fix: six `Read`s sent as parallel calls in one turn
- * are one turn, while six sent one per turn are six. Any non-read-only call breaks the
+ * Refuse the 4th consecutive **single-call** turn of nothing but read-only calls. Counted in
+ * turns rather than calls so the gate rewards the fix, and only single-call turns are counted
+ * so it cannot punish it: a turn that batched several probes is the prescribed form, and it
+ * ends the run rather than extending it. What remains is exactly the recorded defect — one
+ * probe per turn, repeated, with no decision between them. Any non-read-only call breaks the
  * run, as does a user prompt.
  * @param {string} name @param {Record<string, any>} input
  * @param {(import('./lib/transcript.mjs').Turn | null)[]} line @param {string} session
  */
 function serialDiscovery(name, input, line, session) {
-  let run = 0;
   let i = line.length - 1;
 
   // The current call's own turn may already be written, or may not be — PreToolUse fires
-  // while the message is still being emitted. Count it exactly once either way.
+  // while the message is still being emitted. Count it exactly once either way, and when it
+  // is written, a batch alongside it means this turn is already the batched form.
   const last = line[i];
   if (last && issued(last, name, input)) {
-    run = 1;
+    if (last.toolUses.length > 1) return;
     i -= 1;
-  } else {
-    run = 1;
   }
+  let run = 1;
 
   for (; i >= 0; i--) {
     const turn = line[i];
     // A user prompt is a fresh instruction; discovery for it starts over here.
     if (turn === null) break;
     if (turn.toolUses.length === 0) break;
+    // A batched turn is the answer this gate asks for, so it ends the run instead of
+    // lengthening it. Without this, four correctly batched turns were refused as readily as
+    // four serial ones — the gate arguing against its own instruction.
+    if (turn.toolUses.length > 1) break;
     if (!turn.toolUses.every((u) => isReadOnly(u.name, u.input))) break;
     run += 1;
   }
@@ -645,7 +569,8 @@ function serialDiscovery(name, input, line, session) {
   if (alreadyDenied(session, 'serial', 'run')) return;
 
   deny(
-    `This is read-only call #${run} in a row, each in its own turn, with no action between them.\n` +
+    `This is read-only turn #${run} in a row, each carrying a single call, with no action ` +
+      `between them.\n` +
       `Discovery that takes four turns was not enumerated before it started.\n\n` +
       `Name every path, pattern, and probe the rest of this phase needs, then send them as ` +
       `parallel tool calls in a single turn — one block of Read/Grep/Glob calls, and one ` +

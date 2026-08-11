@@ -2,13 +2,15 @@
 // It distinguishes one turn carrying six parallel tool calls from six turns carrying one
 // each, which is the distinction the discovery gate is about, and it survives the hooks
 // being installed mid-session where a sidecar state file would not.
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 
 /**
  * @typedef {object} Turn
  * @property {string} uuid
+ * @property {string} msgId       The assistant message id every block of this turn shares.
  * @property {number} at          Epoch ms of the turn's timestamp.
- * @property {{name: string, input: Record<string, any>, id?: string}[]} toolUses
+ * @property {{name: string, input: Record<string, any>, id?: string, ok: boolean}[]} toolUses
  * @property {boolean} hasText    The turn said something, not only called tools.
  * @property {string} text        What it said, blocks joined in order and trimmed.
  */
@@ -57,6 +59,20 @@ function epoch(value) {
  * @returns {(Turn | null)[]}
  */
 export function timeline(records) {
+  // A call the harness refused or that failed outright is not evidence of anything having
+  // been done: a `Read` that was denied returned no content, so it must not count as a read.
+  // Collected first, because a tool_result is always written after the call it answers.
+  /** @type {Set<string>} */
+  const failed = new Set();
+  for (const rec of records) {
+    if (rec?.type !== 'user' || !Array.isArray(rec?.message?.content)) continue;
+    for (const b of rec.message.content) {
+      if (b?.type === 'tool_result' && b.is_error === true && typeof b.tool_use_id === 'string') {
+        failed.add(b.tool_use_id);
+      }
+    }
+  }
+
   /** @type {(Turn | null)[]} */
   const out = [];
   for (const rec of records) {
@@ -72,16 +88,72 @@ export function timeline(records) {
 
     const toolUses = content
       .filter((b) => b?.type === 'tool_use' && typeof b.name === 'string')
-      .map((b) => ({ name: b.name, input: b.input ?? {}, id: b.id }));
+      .map((b) => ({
+        name: b.name,
+        input: b.input ?? {},
+        id: b.id,
+        ok: !(typeof b.id === 'string' && failed.has(b.id)),
+      }));
     const text = content
       .filter((b) => b?.type === 'text' && typeof b.text === 'string')
       .map((b) => b.text)
       .join('\n')
       .trim();
 
-    out.push({ uuid: rec.uuid ?? '', at: epoch(rec.timestamp), toolUses, hasText: text.length > 0, text });
+    // One assistant message is written to the transcript as **one record per content block**,
+    // each carrying the same `message.id` and its own `uuid`. So a turn issuing eight parallel
+    // `Read`s arrives here as eight records, and treating each as a turn is what made the
+    // discovery gate report "call #8 in a row, each in its own turn" for a single batched turn
+    // — and made a batch's own calls look like prior reads of the files it was reading. The
+    // message id is the turn boundary, and it is observed rather than inferred.
+    const msgId = typeof rec?.message?.id === 'string' ? rec.message.id : '';
+    const prev = out[out.length - 1];
+    if (msgId && prev && prev.msgId === msgId) {
+      prev.toolUses.push(...toolUses);
+      if (text) {
+        prev.text = prev.text ? `${prev.text}\n${text}` : text;
+        prev.hasText = true;
+      }
+      continue;
+    }
+
+    out.push({ uuid: rec.uuid ?? '', msgId, at: epoch(rec.timestamp), toolUses, hasText: text.length > 0, text });
   }
   return out;
+}
+
+/**
+ * Whether the transcript this hook was handed belongs to a run other than the one now making
+ * calls — in which case it is not evidence about this run and no gate may judge from it.
+ *
+ * A subagent's tool call arrives with the **parent session's** `transcript_path`, while the
+ * subagent's own turns are written to `<transcript>/subagents/<agent>.jsonl`. Every gate here
+ * reads history, so inside a subagent they all read the wrong history: reads the subagent
+ * genuinely made are invisible, and turns it never took are counted. That is what made the
+ * read-before-edit gate fire twenty-two times in one `/task` run — and `/task`, `/work`,
+ * `/manage` and `/god` all do their work in subagents.
+ *
+ * Detected by recency rather than by naming the agent, because the event carries no agent id:
+ * while a subagent is running, its transcript is being appended to and the parent's is not.
+ * The answer only ever *suppresses* a denial, so a wrong guess here costs a missed violation
+ * rather than a refused legitimate call — the direction this repo's design rules require.
+ * @param {string} path
+ * @returns {boolean}
+ */
+export function foreignTranscript(path) {
+  try {
+    if (!path) return false;
+    const dir = join(dirname(path), basename(path).replace(/\.jsonl$/, ''), 'subagents');
+    const parentAt = statSync(path).mtimeMs;
+    for (const name of readdirSync(dir)) {
+      if (!name.endsWith('.jsonl')) continue;
+      if (statSync(join(dir, name)).mtimeMs > parentAt) return true;
+    }
+    return false;
+  } catch {
+    // No subagent directory, or an unreadable one: the transcript is this run's own.
+    return false;
+  }
 }
 
 /** @param {(Turn | null)[]} line @returns {Turn[]} */
@@ -135,8 +207,27 @@ export function nestedRunOpen(line) {
  * @returns {boolean}
  */
 export function issued(turn, name, input) {
-  const wanted = JSON.stringify(input ?? {});
-  return turn.toolUses.some((u) => u.name === name && JSON.stringify(u.input ?? {}) === wanted);
+  const wanted = canonical(input ?? {});
+  return turn.toolUses.some((u) => u.name === name && canonical(u.input ?? {}) === wanted);
+}
+
+/**
+ * A value's JSON with object keys in a fixed order, so two encodings of the same input
+ * compare equal. The event's `tool_input` and the transcript's copy of it are serialized by
+ * different code paths, and key order is not part of what either of them means.
+ * @param {any} value
+ * @returns {string}
+ */
+function canonical(value) {
+  return JSON.stringify(value, (_key, val) =>
+    val && typeof val === 'object' && !Array.isArray(val)
+      ? Object.fromEntries(
+          Object.keys(val)
+            .sort()
+            .map((k) => [k, val[k]]),
+        )
+      : val,
+  );
 }
 
 /**
@@ -156,6 +247,10 @@ export function lastFullReadOf(line, path, exceptTurnUuid) {
     if (exceptTurnUuid && turn.uuid === exceptTurnUuid) continue;
     for (const use of turn.toolUses) {
       if (use.name !== 'Read') continue;
+      // A read that was refused or errored delivered no bytes, so it never made this file
+      // redundant to read. Recording it on the attempt is what let one batch of ten parallel
+      // `Read`s refuse nine of its own calls.
+      if (use.ok === false) continue;
       if (use.input?.file_path !== path) continue;
       if (use.input?.offset !== undefined || use.input?.limit !== undefined) continue;
       if (turn.at > at) at = turn.at;
@@ -179,6 +274,8 @@ export function touched(line, path, exceptTurnUuid) {
     if (exceptTurnUuid && turn.uuid === exceptTurnUuid) continue;
     for (const use of turn.toolUses) {
       if (!TOUCHES.has(use.name)) continue;
+      // A refused read does not satisfy the harness's read-before-write precondition either.
+      if (use.ok === false) continue;
       const target = use.input?.file_path ?? use.input?.notebook_path;
       if (target === path) return true;
     }

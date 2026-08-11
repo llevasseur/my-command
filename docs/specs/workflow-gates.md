@@ -44,12 +44,11 @@ is allowed to be another sentence.
 
 | Behaviour | Rung | Mechanism |
 |---|---|---|
-| Serial discovery | 3 | `PreToolUse` refuses a 4th consecutive read-only **turn** |
+| Serial discovery | 3 | `PreToolUse` refuses a 4th consecutive **single-call** read-only turn; a batched turn ends the run instead of extending it |
 | Redundant whole-file reads | 3 | `PreToolUse` refuses a re-read of an unchanged file |
 | Re-narrowing on a file already read | 3 | `PreToolUse` refuses a shell dump of an unchanged file already read whole |
 | The same probe re-issued per item | 3 | `PreToolUse` refuses an identical read-only command whose answer cannot have changed |
 | Polling a condition already watched | 3 | `PreToolUse` refuses a probe — shell **or** `Read` — of a file a `Monitor` or backgrounded Bash call in this session is following; the `Read` half judges the watch's own output target by whole path |
-| Editing a file this session never read | 4 | `PreToolUse` refuses it and hands over the file's git co-change set, so the batch is named rather than rediscovered |
 | Prose composed on stdin | 4 | `commit`/`pr` take `--message-file`/`--body-file`; `PreToolUse` refuses `--message -`/`--body -` and names the flag |
 | A second, path-narrowed diff | 4 | `scope --diff` already returned every hunk; `PreToolUse` refuses a single-path `git diff -- <path>`/`gh pr diff <path>` once it has run, leaving the batched multi-path form the prose prescribes alone |
 | A JSON shape guessed rather than read | 3 | `PreToolUse` refuses a `node -e`/`python3 -c` one-liner naming a `.json` this session never opened |
@@ -128,20 +127,75 @@ being installed mid-session, it is per-session with no keying of our own, and it
 distinguishes one turn carrying six parallel calls from six turns carrying one each.
 The only sidecar state is the anti-wedge record.
 
-### Naming the batch rather than asking for it
+### One assistant message is one turn, and the transcript does not say so
 
-The read-before-write gate shipped at rung 3 and kept firing four and five times per run,
-always the same way: a trailing edit pass rediscovering the rejection **one file at a time**,
-because the denial said "read the whole pass's files at once" without saying which files
-those were. Telling an agent to enumerate is rung 1 wearing a hook's clothes.
+Every gate here counts turns, and the transcript does not hand them over. One assistant
+message is written as **one JSONL record per content block** — a turn carrying text and eight
+parallel `Read`s arrives as nine records, each with its own `uuid`, all sharing one
+`message.id`. `timeline()` treated each record as a turn, so the batched form these gates
+exist to produce was measured as its serial opposite.
 
-So the denial now does the enumeration. `companions()` reads the last forty commits that
-touched the refused path and tallies what changed alongside it, keeps the eight most frequent
-that still exist and that this session has not already read, and prints a `Read` line for each
-one. The file set in the recorded failures was nearly always exactly this derivable list — the
-command, its built copy, its skill — which is why history answers it and a rule could not.
-It is wrapped in a try/catch that returns an empty list, so a shallow clone, a path outside
-any repository, or a missing `git` degrades the denial to the sentence it used to be.
+Two gates were wrong because of it, and both were reproduced live:
+
+- **Serial discovery** refused a single turn of eight parallel `Read`s with "this is read-only
+  call #7 in a row, each in its own turn". The turn was the prescribed shape, and the refusal
+  cost a turn to correct.
+- **Redundant reads** refused nine of ten parallel `Read`s of ten distinct, never-read files,
+  each quoting a prior read from milliseconds earlier — the batch's own calls. The exclusion
+  for "the turn that issued this call" only checked the *last* record, so every earlier block
+  of the same message read as a previous turn that had already read the file.
+
+The fix is to group records by `message.id`, which is the turn boundary observed rather than
+inferred. On top of that the discovery gate now counts only **single-call** turns: a turn that
+batched several probes ends the run instead of lengthening it, so four correctly batched turns
+can never be refused the way four serial ones are. What is left is exactly the recorded
+defect — one probe per turn, repeated, with nothing decided in between.
+
+A read is also recorded only when it **returned content**. A `tool_result` marked `is_error`
+means the call was refused or failed, and a refused read delivers no bytes, so it can never
+make a later read redundant.
+
+### A subagent's call carries the parent's transcript
+
+A tool call made inside a subagent arrives with the **parent session's** `transcript_path`,
+while the subagent's own turns are written to `<transcript>/subagents/<agent>.jsonl`. Every
+gate here reads history, so inside a subagent all of them read the wrong history: reads the
+subagent genuinely made are invisible, and turns it never took are counted against it. This
+was confirmed by replaying one refused `Edit` against both files — denied with the parent's
+transcript, silent with the subagent's, for a file the subagent had read three turns earlier.
+
+That is not a small blast radius. `/task`, `/work`, `/manage` and `/god` all do their work in
+subagents, which is where these gates spend most of their firing.
+
+So `foreignTranscript()` stands the transcript-based gates down when the transcript handed to
+the hook is not the running run's own, detected by recency: while a subagent is running, its
+transcript is being appended to and the parent's is not. The event carries no agent id, so
+the subagent's own file cannot be *identified* without guessing — but it does not have to be.
+The answer only ever suppresses a denial, so being wrong costs a missed violation rather than
+a refused legitimate call, which is the direction the design rules above require. The Bash
+shape checks are unaffected: they read the command and the filesystem, never the transcript.
+
+### The read-before-edit gate could not be right
+
+It is **removed**, not narrowed. It refused an `Edit`/`Write` of a path the session had not
+read, mirroring the precondition `Edit` and `Write` enforce themselves — and the evidence it
+needed was the one thing it could not see. Inside a subagent it read the parent's transcript,
+so a file the run had just read looked unread, and it fired twenty-two times in a single
+`/task` run: each time the agent read the file and retried successfully, so nothing was
+prevented and roughly twenty-two turns were spent. It fired five more times on the run that
+removed it, each on a file that run had already read, each costing a turn.
+
+It also refused `Write` of paths that did not exist — a scratch `pr-body.md`, a
+`commit-msg.txt` — where the refusal could never be satisfied, because a file that does not
+exist cannot be read.
+
+Nothing is unprotected by its removal. `Edit` and `Write` reject a genuinely unread file
+themselves, with the same message; the gate could only ever add refusals of correct
+behaviour on top of a rule the harness already enforces. The co-change enumeration it carried
+went with it — a good answer attached to a question the hook had no standing to ask.
+
+`src/shared/batched-discovery.md` still tells a run to re-establish the precondition after a
+compaction. That prose is about the harness's rule, which is unchanged, and it stays.
 
 ### The anchor cannot be the last call
 
@@ -537,8 +591,15 @@ cannot contradict each other again.
   a negative is loud. A mechanism nobody can confirm is running is prose with extra steps.
 - **An unarmed device cannot start a run.** The gated verbs refuse rather than report, one
   detector answers for both, and the escape is explicit. A report nothing reads is rung 1.
-- **A legitimate parallel batch is never refused.** Asserted by test, and binding on every
+- **A legitimate parallel batch is never refused.** Asserted by test — over a transcript in
+  the shape the harness actually writes, one record per content block, since a fixture that
+  puts a turn's calls in a single record is what hid this for a release. Binding on every
   future gate.
+- **A gate judges only its own run's history.** Where the transcript handed to the hook
+  belongs to another run, every gate that reads history stays silent rather than judging it.
+- **A gate whose evidence is not available does not ship.** Where a gate cannot see what it
+  needs to be right, it is removed rather than left refusing correct behaviour — especially
+  where the harness already enforces the same rule itself.
 - **Fail open, always.** No gate does its own error handling; `guard()` is the entire
   error policy.
 - **One denial per subject per session.** A gate cannot refuse the same thing twice.
@@ -566,9 +627,23 @@ cannot contradict each other again.
 - [x] The installer merge is idempotent and preserves foreign hooks and settings.
 - [x] `commit` attempts a signing prompt exactly twice, then reports it.
 - [x] `pr` reports `identity: "REST"` rather than a `must be a collaborator` error.
-- [x] An `Edit` of a path this session never read is refused, asking for the whole edit
-      pass's reads in one batch; a prior whole read or slice allows it, and creating a new
-      file needs no read.
+- [x] One assistant message is one turn even though the harness writes each of its content
+      blocks as a separate record.
+- [x] A turn of eight parallel `Read`s is not refused as serial discovery, and four
+      consecutive batched turns are not refused either; four consecutive single-call turns
+      still are.
+- [x] Ten parallel `Read`s of ten distinct files do not refuse each other as reads this
+      session already made.
+- [x] A `Read` whose result came back an error is not recorded as a read, so re-issuing it is
+      allowed; the same transcript with the read succeeding still refuses the re-read.
+- [x] No `Edit` or `Write` is refused for want of a prior read — including a `Write` to a path
+      that does not exist, which no read could ever precede.
+- [x] Every history-reading gate stands down when a subagent transcript beside the one it was
+      handed is newer than it.
+- [x] The relative-`cd` refusal names the absolute path the `cd` was reaching for, and the
+      unquoted-glob refusal carries the same command with the pattern quoted.
+- [x] A heredoc feeding a program's stdin is not reported as composing a file, even when the
+      command also carries a pipe or a `>` inside a quoted argument.
 - [x] A re-read is still refused when the session edited a *different* file in between, and
       the file that did change stays re-readable.
 - [x] An unquoted glob matching nothing, a foreground `sleep`, and a heredoc composing a file
