@@ -7,7 +7,7 @@
 // of the same subject.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, test } from 'node:test';
@@ -24,7 +24,7 @@ import {
   unmatchedGlob,
 } from './lib/bash-shapes.mjs';
 import { isReadOnly } from './lib/read-only.mjs';
-import { lastFullReadOf, nestedRunOpen, returnMarker, timeline } from './lib/transcript.mjs';
+import { entries, lastFullReadOf, nestedRunOpen, returnMarker, timeline } from './lib/transcript.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PRE_TOOL_USE = join(HERE, 'pre-tool-use.mjs');
@@ -128,6 +128,86 @@ function transcript(spec, startedAt = Date.now() - 600_000) {
 
 /** @param {string} name @param {Record<string, unknown>} input */
 const read = (name, input) => ({ name, input });
+
+/**
+ * A transcript in the shape the harness actually writes: **one record per content block**,
+ * every block of one assistant message carrying that message's `id` and its own `uuid`. The
+ * builder above puts a turn's blocks in a single record, which no real session does — use this
+ * one for anything that counts turns.
+ *
+ * `failed` names the calls whose `tool_result` came back an error, addressed as
+ * `<turn index>-<call index>`, so a refused read can be told from one that returned content.
+ * @param {('prompt' | {name: string, input: Record<string, unknown>}[])[]} spec
+ * @param {{failed?: string[], startedAt?: number}} [options]
+ * @returns {string}
+ */
+function splitTranscript(spec, options = {}) {
+  const startedAt = options.startedAt ?? Date.now() - 600_000;
+  const failed = new Set(options.failed ?? []);
+  const dir = scratch();
+  const path = join(dir, 'transcript.jsonl');
+  /** @type {string[]} */
+  const lines = [];
+
+  spec.forEach((item, i) => {
+    const timestamp = new Date(startedAt + i * 1000).toISOString();
+    if (item === 'prompt') {
+      lines.push(
+        JSON.stringify({
+          type: 'user',
+          uuid: `u${i}`,
+          timestamp,
+          message: { role: 'user', content: [{ type: 'text', text: 'do the thing' }] },
+        }),
+      );
+      return;
+    }
+    const id = `msg_${i}`;
+    // The text block is its own record too, exactly as the harness writes it.
+    lines.push(
+      JSON.stringify({
+        type: 'assistant',
+        uuid: `a${i}-text`,
+        timestamp,
+        message: { id, role: 'assistant', content: [{ type: 'text', text: 'looking' }] },
+      }),
+    );
+    item.forEach((u, n) => {
+      lines.push(
+        JSON.stringify({
+          type: 'assistant',
+          uuid: `a${i}-${n}`,
+          timestamp,
+          message: {
+            id,
+            role: 'assistant',
+            content: [{ type: 'tool_use', id: `t${i}-${n}`, name: u.name, input: u.input }],
+          },
+        }),
+      );
+    });
+    // Results come back in one user record, the way the harness returns a batch.
+    lines.push(
+      JSON.stringify({
+        type: 'user',
+        uuid: `ur${i}`,
+        timestamp,
+        message: {
+          role: 'user',
+          content: item.map((_u, n) => ({
+            type: 'tool_result',
+            tool_use_id: `t${i}-${n}`,
+            is_error: failed.has(`${i}-${n}`),
+            content: failed.has(`${i}-${n}`) ? 'refused' : 'ok',
+          })),
+        },
+      }),
+    );
+  });
+
+  writeFileSync(path, `${lines.join('\n')}\n`);
+  return path;
+}
 
 // ── read-only classification ────────────────────────────────────────────────────────
 
@@ -243,6 +323,154 @@ test('serial discovery: the same run is never refused twice', () => {
   assert.equal(denied(hook(PRE_TOOL_USE, event, state)), true);
   // The gate has had its say; a second refusal would leave the agent no way forward.
   assert.equal(denied(hook(PRE_TOOL_USE, event, state)), false);
+});
+
+// ── the turn boundary, as the harness actually writes it ────────────────────────────
+
+test('one message is one turn even though its blocks are separate records', () => {
+  const line = timeline(
+    entries(splitTranscript(['prompt', [1, 2, 3, 4, 5].map((n) => read('Read', { file_path: `/x/${n}.ts` }))])),
+  );
+  const assistantTurns = line.filter((t) => t !== null);
+  assert.equal(assistantTurns.length, 1, 'five parallel calls are one turn, not five');
+  assert.equal(assistantTurns[0].toolUses.length, 5);
+});
+
+test('serial discovery: a parallel batch is never refused, in the real transcript shape', () => {
+  // Eight parallel `Read`s in one turn, once refused as "call #7 in a row, each in its own
+  // turn" because each block counted as a turn.
+  const batch = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => read('Read', { file_path: `/x/${n}.ts` }));
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'pb1',
+    transcript_path: splitTranscript(['prompt', batch]),
+    cwd: '/x',
+    tool_name: 'Read',
+    tool_input: { file_path: '/x/8.ts' },
+  });
+  assert.equal(denied(answer), false);
+});
+
+test('serial discovery: batched turns never accumulate, however many there are', () => {
+  // Four consecutive turns, each correctly batched: the prescribed form, four times over.
+  /** @type {('prompt' | {name: string, input: Record<string, unknown>}[])[]} */
+  const spec = [
+    'prompt',
+    ...[0, 1, 2, 3].map((turn) => [1, 2, 3].map((n) => read('Read', { file_path: `/x/${turn}-${n}.ts` }))),
+  ];
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'pb2',
+    transcript_path: splitTranscript(spec),
+    cwd: '/x',
+    tool_name: 'Read',
+    tool_input: { file_path: '/x/next.ts' },
+  });
+  assert.equal(denied(answer), false);
+});
+
+test('serial discovery: genuinely serial single-call turns are still refused', () => {
+  // The case the gate is for, in the same real shape: one call per turn, nothing between.
+  /** @type {('prompt' | {name: string, input: Record<string, unknown>}[])[]} */
+  const spec = ['prompt', ...['a', 'b', 'c'].map((name) => [read('Read', { file_path: `/x/${name}.ts` })])];
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'pb3',
+    transcript_path: splitTranscript(spec),
+    cwd: '/x',
+    tool_name: 'Read',
+    tool_input: { file_path: '/x/d.ts' },
+  });
+  assert.equal(denied(answer), true);
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /parallel tool calls in a single turn/);
+});
+
+test('a batch does not refuse its own calls as reads it already made', () => {
+  // Ten parallel reads of ten distinct, never-read files: nine were once refused as files the
+  // batch had already read.
+  const dir = scratch();
+  const files = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => join(dir, `f${n}.ts`));
+  const old = (Date.now() - 3_600_000) / 1000;
+  for (const file of files) {
+    writeFileSync(file, 'x\n');
+    utimesSync(file, old, old);
+  }
+
+  const batch = files.map((file) => read('Read', { file_path: file }));
+  const line = splitTranscript(['prompt', batch]);
+  for (const file of files) {
+    const answer = hook(PRE_TOOL_USE, {
+      session_id: 'pb4',
+      transcript_path: line,
+      cwd: dir,
+      tool_name: 'Read',
+      tool_input: { file_path: file },
+    });
+    assert.equal(denied(answer), false, `${file} is being read by this very batch`);
+  }
+});
+
+test('a read that was refused is not recorded as a read', () => {
+  const dir = scratch();
+  const file = join(dir, 'api.ts');
+  writeFileSync(file, 'export const a = 1;\n');
+  const old = (Date.now() - 3_600_000) / 1000;
+  utimesSync(file, old, old);
+
+  // The earlier call never returned content, so re-issuing it is the first real read.
+  const refused = splitTranscript(['prompt', [read('Read', { file_path: file })], [read('Grep', { pattern: 'x' })]], {
+    failed: ['1-0'],
+  });
+  assert.equal(
+    denied(
+      hook(PRE_TOOL_USE, {
+        session_id: 'fr1',
+        transcript_path: refused,
+        cwd: dir,
+        tool_name: 'Read',
+        tool_input: { file_path: file },
+      }),
+    ),
+    false,
+  );
+
+  // The same transcript with the read succeeding is the redundant re-read it always was.
+  const succeeded = splitTranscript(['prompt', [read('Read', { file_path: file })], [read('Grep', { pattern: 'x' })]]);
+  assert.equal(
+    denied(
+      hook(PRE_TOOL_USE, {
+        session_id: 'fr2',
+        transcript_path: succeeded,
+        cwd: dir,
+        tool_name: 'Read',
+        tool_input: { file_path: file },
+      }),
+    ),
+    true,
+  );
+});
+
+test('a transcript belonging to another run is not evidence about this one', () => {
+  const dir = scratch();
+  const file = join(dir, 'api.ts');
+  writeFileSync(file, 'export const a = 1;\n');
+  const old = (Date.now() - 3_600_000) / 1000;
+  utimesSync(file, old, old);
+
+  // A subagent's call arrives carrying the parent's transcript, while its own turns are written
+  // beside it under `subagents/`. The parent's history says this file was read; the run making
+  // the call may never have read it.
+  const parent = splitTranscript(['prompt', [read('Read', { file_path: file })], [read('Grep', { pattern: 'x' })]]);
+  const event = {
+    session_id: 'ft1',
+    transcript_path: parent,
+    cwd: dir,
+    tool_name: 'Read',
+    tool_input: { file_path: file },
+  };
+  assert.equal(denied(hook(PRE_TOOL_USE, event)), true, 'with no subagent, the parent transcript is this run');
+
+  const sub = join(dirname(parent), 'transcript', 'subagents');
+  mkdirSync(sub, { recursive: true });
+  writeFileSync(join(sub, 'agent-1.jsonl'), '{}\n');
+  assert.equal(denied(hook(PRE_TOOL_USE, event)), false, 'a live subagent means this history is not its own');
 });
 
 // ── redundant reads (R3) ────────────────────────────────────────────────────────────
@@ -402,49 +630,82 @@ test('redundant read: an edit to a *different* file does not license a re-read o
   assert.equal(denied(allowed), false);
 });
 
-// ── read before write ───────────────────────────────────────────────────────────────
+// ── read before write: the gate that was removed ────────────────────────────────────
 
-test('unread edit: an Edit of a path this session never read is refused, with the batch instruction', () => {
+test('no edit is refused for want of a prior read, whatever the transcript says', () => {
   const dir = scratch();
-  const file = join(dir, 'CHANGELOG.md');
-  writeFileSync(file, '# Changelog\n');
-  const answer = hook(PRE_TOOL_USE, {
+  const existing = join(dir, 'CHANGELOG.md');
+  writeFileSync(existing, '# Changelog\n');
+
+  // The case the removed gate refused: an existing file, never read in this transcript. The
+  // harness still rejects a genuinely unread edit itself; the hook no longer offers an opinion.
+  const existingFile = hook(PRE_TOOL_USE, {
     session_id: 'e1',
     transcript_path: transcript(['prompt', [read('Read', { file_path: join(dir, 'elsewhere.ts') })]]),
     cwd: dir,
     tool_name: 'Edit',
-    tool_input: { file_path: file, old_string: 'a', new_string: 'b' },
+    tool_input: { file_path: existing, old_string: 'a', new_string: 'b' },
   });
-  assert.equal(denied(answer), true);
-  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /has not been read yet/);
-  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /every \*other\* file this edit pass will write/);
+  assert.equal(denied(existingFile), false);
+
+  // A `Write` of a path that does not exist is a create, and no read can ever precede it —
+  // the refusal it used to draw was one nothing could satisfy.
+  for (const path of [join(dir, 'tmp', 'pr-body.md'), join(dir, 'commit-msg.txt')]) {
+    const created = hook(PRE_TOOL_USE, {
+      session_id: 'e2',
+      transcript_path: transcript(['prompt']),
+      cwd: dir,
+      tool_name: 'Write',
+      tool_input: { file_path: path, content: 'hi' },
+    });
+    assert.equal(denied(created), false, `creating ${path} needs no prior read`);
+  }
 });
 
-test('unread edit: a read of the path — whole or sliced — allows the edit, and a new file needs none', () => {
+// ── the refusal hands over the form that runs ───────────────────────────────────────
+
+test('relative cd: the denial names the absolute path the cd was reaching for', () => {
   const dir = scratch();
-  const file = join(dir, 'spec.md');
-  writeFileSync(file, '# Spec\n');
+  mkdirSync(join(dir, 'server', 'nexus'), { recursive: true });
+  const from = join(dir, 'apps', 'admin');
+  mkdirSync(from, { recursive: true });
 
-  for (const priorRead of [{ file_path: file }, { file_path: file, offset: 1, limit: 5 }]) {
-    const answer = hook(PRE_TOOL_USE, {
-      session_id: 'e2',
-      transcript_path: transcript(['prompt', [read('Read', priorRead)]]),
-      cwd: dir,
-      tool_name: 'Edit',
-      tool_input: { file_path: file, old_string: 'a', new_string: 'b' },
-    });
-    assert.equal(denied(answer), false, `should allow after ${JSON.stringify(priorRead)}`);
-  }
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'cd9',
+    transcript_path: transcript(['prompt']),
+    cwd: from,
+    tool_name: 'Bash',
+    tool_input: { command: 'cd server/nexus && ls' },
+  });
+  assert.equal(denied(answer), true);
+  // Not "spell it absolutely" — the absolute path itself, ready to use.
+  assert.ok(answer.hookSpecificOutput.permissionDecisionReason.includes(join(dir, 'server', 'nexus')));
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /--cwd /);
+});
 
-  // Creating a file carries no read-before-write precondition.
-  const created = hook(PRE_TOOL_USE, {
-    session_id: 'e3',
+test('unmatched glob: the denial carries the same command with the pattern quoted', () => {
+  const dir = scratch();
+  writeFileSync(join(dir, 'a.md'), '');
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'g9',
     transcript_path: transcript(['prompt']),
     cwd: dir,
-    tool_name: 'Write',
-    tool_input: { file_path: join(dir, 'brand-new.md'), content: 'hi' },
+    tool_name: 'Bash',
+    tool_input: { command: 'grep -rn foo --include=*.ts .' },
   });
-  assert.equal(denied(created), false);
+  assert.equal(denied(answer), true);
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /--include='\*\.ts'/);
+});
+
+test('heredoc: a stdin heredoc is untouched even beside a quoted arrow or a pipe', () => {
+  // Both feed a program's stdin, which the gate is documented not to touch.
+  assert.equal(heredocWrite("ls -l $HOOK | sed 's/.*-> //'\nnode hook <<JSON\n{}\nJSON"), false);
+  assert.equal(heredocWrite('node hook <<JSON | jq -r .decision\n{"a":1}\nJSON'), false);
+  // A `>` inside the body is data, not a redirect.
+  assert.equal(heredocWrite('node hook <<JSON\n{"note":"a > b"}\nJSON'), false);
+  // A real redirect still composes a file, and so does a tee.
+  assert.equal(heredocWrite('cat <<EOF > /tmp/out.txt\nhi\nEOF'), true);
+  assert.equal(heredocWrite('cat <<EOF | tee /tmp/out.txt\nhi\nEOF'), true);
 });
 
 // ── bash shapes that fail on their own ──────────────────────────────────────────────
@@ -899,32 +1160,6 @@ test('watched condition: a Read that polls a watched file is refused, an unrelat
     tool_input: { file_path: join(dir, 'other.md') },
   });
   assert.equal(denied(unrelated), false);
-});
-
-test('unread edit: the denial hands over the co-change batch derived from history', () => {
-  // realpath, because git reports the toplevel through /private/var on macOS and the
-  // denial's paths are resolved against it.
-  const dir = realpathSync(scratch());
-  execFileSync('git', ['init', '-q'], { cwd: dir });
-  execFileSync('git', ['config', 'user.email', 't@example.com'], { cwd: dir });
-  execFileSync('git', ['config', 'user.name', 'T'], { cwd: dir });
-  const src = join(dir, 'src.md');
-  const built = join(dir, 'built.md');
-  writeFileSync(src, 'a\n');
-  writeFileSync(built, 'a\n');
-  execFileSync('git', ['add', '-A'], { cwd: dir });
-  execFileSync('git', ['commit', '-qm', 'one', '--no-gpg-sign'], { cwd: dir });
-
-  const answer = hook(PRE_TOOL_USE, {
-    session_id: 'cc1',
-    transcript_path: transcript(['prompt']),
-    cwd: dir,
-    tool_name: 'Edit',
-    tool_input: { file_path: src, old_string: 'a', new_string: 'b' },
-  });
-  assert.equal(denied(answer), true);
-  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /changes these alongside it/);
-  assert.ok(answer.hookSpecificOutput.permissionDecisionReason.includes(`Read({file_path: "${built}"`));
 });
 
 // ── the closing-turn anchor ─────────────────────────────────────────────────────────
