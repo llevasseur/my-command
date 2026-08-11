@@ -29,7 +29,7 @@ Parse these off the front of the `<command-args>` block above; everything else i
 
 1. Read the state: `my-command-tools state`. If `onDefaultBranch` is true, stop and tell me to switch to a feature branch first. Note `worktree` — step 4 needs it.
 2. Review what changed so the description is accurate. The same `state` output carries `commits` (subject lines since the base) and `diffStat` (per-file added/deleted); pull the actual diff only if those leave you guessing.
-3. Write the PR description in **concise bullet-point form** — what changed and why, grouped logically. No filler, no "this PR does X" preamble. Lead with the most important changes. Then apply it:
+3. Write the PR description in **concise bullet-point form** — what changed and why, grouped logically. No filler, no "this PR does X" preamble. Lead with the most important changes. Write it to a file with the `Write` tool, then hand over the path:
 
    Write the description to a file with the `Write` tool — `$CLAUDE_JOB_DIR/tmp/pr-body.md`, or any absolute path outside the repo — then pass that path:
 
@@ -37,7 +37,7 @@ Parse these off the front of the `<command-args>` block above; everything else i
    my-command-tools pr --title "<title>" --body-file <absolute path> [--draft] [--retitle]
    ```
 
-   A PR body is always multi-line, so composing it on the command line means a heredoc, which is refused inside a worktree; the file form is the one that works everywhere. One call does all of it: pushes the branch, finds the branch's open PR if it has one, and either creates or edits accordingly. It reports `action` (`created`/`updated`), `number`, and `url`.
+   **`--body-file` is the form, and the shell never sees the prose.** A description is multi-line by nature, so the old `--body -` meant composing a heredoc — a shape refused wholesale inside an isolated worktree, mid-PR, which is exactly where this command runs. A `PreToolUse` gate now refuses `--body -` and names this flag. One call does all the rest: pushes the branch, finds the branch's open PR if it has one, and either creates or edits accordingly. It reports `action` (`created`/`updated`), `number`, and `url`.
    - Derive the title from the branch/commits unless I provided one in the arguments. On an **existing** PR the title is left alone unless you pass `--retitle` — add it only if the current title is clearly stale or I gave one.
    - **Assets already in the description are kept — always.** Before editing, the verb reads the PR's current body and carries every image, video, and GitHub attachment link it finds into the new one, appending any your rewrite left out under an `## Assets` heading. Write the description from the diff as you normally would: don't re-paste assets by hand, don't try to preserve them yourself, and never justify dropping one because it isn't in your bullets. An update reports how many it carried over as `assetsPreserved`.
    - Pass `--draft` when `--draft`/`-d` was given. The verb only ever moves a PR *toward* draft; without the flag an existing draft stays a draft rather than being flipped in front of reviewers early.

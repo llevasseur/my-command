@@ -21,6 +21,14 @@ Clean up the comments in my changes. Only touch comments — never change code, 
 
 ## Scope
 
+<!-- include-block: shared/one-diff-call.md -->
+**One diff call, and the content comes back with it.** `my-command-tools scope --diff` returns the branch's whole diff — every file, hunk by hunk, each line annotated `<sign><line number>\t<text>` — so a comment's file *and* its line are known before anything is opened. Read `diff.committed` and `diff.workingTree` off that one result.
+
+- **There is no second diff call.** Not `git diff -- <path>`, not `gh pr diff` narrowed to a file, not one call per entry of the file list: the hunk you would narrow to is already in the first result, and walking that list per path is the loop this call exists to replace. A `PreToolUse` gate refuses a path-narrowed diff once `scope --diff` has run in the session.
+- **A file under `diff.omitted` passed the size cap.** Re-run `scope --diff --diff-limit <chars>` once — never diff that path by hand.
+- **Open a file only when the hunk is not enough** — to see a symbol the diff does not show. That is a `Read`, batched with every other file you already know you need, never a diff.
+<!-- /include-block -->
+
 <!-- include-block: shared/batched-discovery.md -->
 ### Discovery runs as one batched pass
 
@@ -35,7 +43,7 @@ This is a step of the workflow, not a habit to recall. Run it whenever a phase o
 
 1. **Get the scope and the diff in one call: `my-command-tools scope --diff`**, or `my-command-tools scope --diff --branch <name>` when $ARGUMENTS names one. That single read-only call is the whole discovery phase — it resolves the upstream-or-default base and the merge-base, lists the commits and the changed files, **and returns the diff's own content, hunk by hunk**. It never checks out or switches a branch, so the current checkout stays untouched. Read its fields; re-deriving any of them is the mistake this verb exists to remove.
 2. The diff comes back split the way the scope is: `diff.committed` is every commit made on the branch, and `diff.workingTree` the staged/unstaged changes on top — populated only when `workingTree` is true, since no other branch has a working tree of its own. Each file carries `hunks`, and every hunk line is `<sign><line number>\t<text>`: `+` added, `-` removed, a leading space for context, and the number is that line's own file — the new one for `+` and context, the old one for `-`. So a comment's line number is already in hand before any file is opened. If `diff.truncated` is true, `diff.omitted` names the files whose content was past the size cap; raise it with `--diff-limit <chars>` or narrow the run, and never fetch them one at a time.
-3. **There is no second diff call, ever.** Not `git diff <diffRef>`, not `git diff HEAD`, and above all not one `git diff … -- <path>` per changed file — that per-path loop is the named failure this step exists to prevent, recorded as a scope call returning eighteen paths followed by a diff call each. Step 1 already returned all of it.
+3. **There is no second diff call, ever** — the one-diff-call rule above, which a `PreToolUse` gate now enforces rather than merely stating. Step 1 already returned all of it.
 4. **Select from the hunks, then read once.** Working from that diff, pick out the files whose hunks actually carry a comment in scope. **That subset — not `files` — is the input to a single batched `Read` block**, sent as one turn. `Edit` needs a read of its target in this session, so this reads exactly the files you are about to edit and no others: a changed file with no comment in its hunks is never opened at all, which is most of them on a typical branch. If editing turns up one more file you genuinely need, it joins the next batch alongside everything else still outstanding — it never gets a turn to itself. This governs a list that arrived complete; a probe whose target is chosen by the previous result is a real dependency and is untouched by it.
 5. Only consider comments on lines added or modified anywhere in that combined diff. Do NOT clean comments in untouched code, even if they're bad. Ignore generated files.
    - On a long-lived/shared branch, the branch-wide diff resurfaces earlier commits' code (a second `scope --diff --base <commit>` call is a narrowing, not a re-fetch) — including comments a prior clean pass already handled. If `commits` shows evidence of an earlier clean (e.g. a `chore: clean ... comments` subject), narrow with `my-command-tools scope --base <that commit>` and report the older code as out-of-scope instead of re-litigating it.

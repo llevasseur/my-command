@@ -41,7 +41,10 @@ lands every time, and the message meant to follow it never arrives.
    or repository instructions allow delegation.
 5. Add changelog work when the repository tracks it. Commit logical scoped
    changes with explicit paths through `my-command-tools commit` when available;
-   never sweep in unrelated work. `1Password: failed to fill whole buffer` with
+   never sweep in unrelated work. For a multi-line message, write it to a file and
+   pass `--message-file <absolute path>` rather than piping a heredoc on stdin — a
+   heredoc is refused wholesale inside an isolated worktree, which is where this
+   step runs. `1Password: failed to fill whole buffer` with
    `fatal: failed to write commit object` is an unapproved signing prompt, not a
    repository problem: the commit did not happen and the tree is untouched. Retry
    the same commit once after the prompt is approved. Never rewrite the commit,

@@ -12,15 +12,30 @@
 //   unmatched glob    — an unquoted glob matching nothing, which zsh aborts the command on
 //   foreground sleep  — a wait the harness refuses, taking the probe chained to it down too
 //   heredoc write     — composing a file in the shell where the Write tool does it directly
+//   prose on stdin    — a toolkit verb asked to read `-`, which is what invites the heredoc
+//   guessed JSON      — a `node -e`/`python3 -c` one-liner against a JSON shape never read
+//   diff again        — a per-path diff after `scope --diff` already returned that content
+//   read-polling      — a `Read` of a file a watch in this session is already following
+//   trailing anchor   — a bookkeeping call scheduled after the run's last real work
 //
 // A scratch write under `$CLAUDE_JOB_DIR` from a worktree is deliberately *not* here: see
 // "The job directory is not a gate" in the spec.
 //
 // They share a hook because they decide from the same transcript; parsing it more than once
 // would let the answers disagree.
+import { execFileSync } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
-import { basename, isAbsolute, resolve } from 'node:path';
-import { dumpedFiles, foregroundSleep, heredocWrite, unmatchedGlob } from './lib/bash-shapes.mjs';
+import { basename, dirname, isAbsolute, resolve } from 'node:path';
+import {
+  dumpedFiles,
+  foregroundSleep,
+  heredocWrite,
+  inlineScriptJson,
+  perPathDiff,
+  ranToolkit,
+  stdinProseFlag,
+  unmatchedGlob,
+} from './lib/bash-shapes.mjs';
 import { deny, guard, readEvent } from './lib/io.mjs';
 import { isReadOnly } from './lib/read-only.mjs';
 import { alreadyDenied, clearGate } from './lib/state.mjs';
@@ -32,6 +47,7 @@ import {
   timeline,
   touched,
   turns,
+  watchedOutputs,
   watchedPaths,
 } from './lib/transcript.mjs';
 
@@ -50,6 +66,17 @@ const CHANGED_GRACE_MS = 2000;
 
 /** File tools whose call the harness rejects unless this session read the path first. */
 const EDITORS = new Set(['Edit', 'Write', 'NotebookEdit', 'MultiEdit']);
+
+/**
+ * Commits of history consulted for co-change, and companions offered. Both bounded: the list
+ * is a hint for one batch, not an audit. They live above `guard()` rather than beside the
+ * function that reads them, because the dispatcher below runs at module evaluation — a `const`
+ * declared later is still in its temporal dead zone when the gate fires, and `companions()`
+ * catches that `ReferenceError` into an empty list, which is indistinguishable from a repo
+ * with no history.
+ */
+const COCHANGE_COMMITS = 40;
+const COCHANGE_MAX = 8;
 
 guard(() => {
   const event = readEvent();
@@ -80,13 +107,101 @@ guard(() => {
     // A real action ends the discovery run, so the gate is armed again for the next one.
     clearGate(session, 'serial');
     if (EDITORS.has(name)) unreadEdit(event, name, input, session);
+    if (name === 'TodoWrite') trailingAnchor(event, input, session);
     return;
   }
 
   const line = timeline(entries(event.transcript_path ?? ''));
+  const cwd = typeof event.cwd === 'string' ? event.cwd : process.cwd();
+  if (name === 'Read' && readPolling(input, line, session, cwd)) return;
   if (name === 'Read' && redundantRead(input, line, session)) return;
   serialDiscovery(name, input, line, session);
 });
+
+/**
+ * Refuse a `Read` of a file a `Monitor` or a backgrounded Bash command in this session is
+ * already following. The shell half of this has been gated since the watch gate shipped; the
+ * `Read` half was not, and it is the half that recurred — a backgrounded verify run whose
+ * output file was re-read three times while waiting, with the file unchanged between reads.
+ * A watch delivers its events itself, so there is no second read to make.
+ *
+ * Only the watch's own output target counts — the file it redirects to, `tee`s to, or tails —
+ * compared as a whole resolved path. A first read of the script a watch runs, or of the config
+ * it was handed, is discovery rather than polling.
+ * @param {Record<string, any>} input
+ * @param {(import('./lib/transcript.mjs').Turn | null)[]} line @param {string} session
+ * @param {string} cwd
+ * @returns {boolean} true when the call was denied
+ */
+function readPolling(input, line, session, cwd) {
+  const path = input?.file_path;
+  if (typeof path !== 'string') return false;
+
+  const all = turns(line);
+  const current = all[all.length - 1];
+  const currentUuid = current && issued(current, 'Read', input) ? current.uuid : undefined;
+  const target = isAbsolute(path) ? path : resolve(cwd, path);
+  const watched = watchedOutputs(line, currentUuid).find(
+    (file) => (isAbsolute(file) ? file : resolve(cwd, file)) === target,
+  );
+  if (!watched) return false;
+  if (alreadyDenied(session, 'watched', watched)) return false;
+
+  deny(
+    `A watch armed earlier in this session is already following ${watched}, and this \`Read\` is ` +
+      `polling it by hand. Waiting is the watch's job: its events arrive as notifications on ` +
+      `their own schedule, so a second and third read of the same file return the same bytes ` +
+      `and a stalled condition is polled forever.\n\n` +
+      `Do not read it again to find out whether it moved. Let the notification arrive, or — if ` +
+      `the filter is not catching what you need — arm a bounded wait that ends by itself:\n` +
+      `  Bash({run_in_background: true, command: "until grep -q '<done marker>' ${path}; do sleep 1; done"})\n` +
+      `widening the pattern to the failure signatures too, so a crash is not silence.\n\n` +
+      `Read it once, after the wait reports. If that watch has already ended, say so and ` +
+      `re-issue: this refusal happens once.`,
+  );
+  return true;
+}
+
+/**
+ * Refuse a `TodoWrite` whose only remaining effect is to mark the closing-turn anchor done.
+ * The Stop gate below already refuses a run that ends on a tool call — but it fires *after*
+ * the run has already ended that way, and the recorded shape is always the same: a complete
+ * report was composed, and this bookkeeping call was attached to it, so the harness recorded
+ * a decision mid-run instead of an outcome. The scheduling is the thing to remove, so it is
+ * refused here, before the turn exists.
+ * @param {Record<string, any>} event @param {Record<string, any>} input @param {string} session
+ */
+function trailingAnchor(event, input, session) {
+  const todos = input?.todos;
+  if (!Array.isArray(todos) || todos.length === 0) return;
+
+  const anchors = todos.filter((t) => /close the run|text-only turn/i.test(String(t?.content ?? t?.subject ?? '')));
+  if (anchors.length === 0) return;
+  // Only when the anchor is the single thing this call completes: every other item is
+  // already done, and the anchor is what this write flips.
+  if (!anchors.every((t) => t?.status === 'completed')) return;
+  if (!todos.every((t) => t?.status === 'completed')) return;
+
+  const line = timeline(entries(event.transcript_path ?? ''));
+  const all = turns(line);
+  const current = all[all.length - 1];
+  // A bookkeeping call riding along with real work is the prescribed form; only a call that
+  // is the turn's whole content is the shape that ends a run.
+  if (current && issued(current, 'TodoWrite', input) && current.toolUses.length > 1) return;
+  if (alreadyDenied(session, 'anchor', 'closing')) return;
+
+  deny(
+    `Every item on this list is complete except the closing-turn anchor, and this call is the ` +
+      `only thing in its turn — so marking it is the last action the run would take, and the run ` +
+      `would end on a tool call with no outcome recorded. That is the exact failure the anchor ` +
+      `exists to prevent, arriving through the anchor itself.\n\n` +
+      `Do not schedule this call. The anchor is bookkeeping the run no longer needs: reply now ` +
+      `with the report in text alone — one self-contained line saying where the run stands, then ` +
+      `the detail. An anchor left open is never a reason to spend a turn on a tool call.\n\n` +
+      `If you genuinely still owe real work, send that work and mark the anchor in the same turn ` +
+      `as it, which is what the anchor asks for.`,
+  );
+}
 
 /**
  * The Bash gates that need only the command and the cwd. Ordered cheapest first; each one
@@ -131,6 +246,22 @@ function badShape(event, input, session) {
     return true;
   }
 
+  // Before the heredoc gate, because the stdin flag is *why* the heredoc gets composed.
+  const stdin = stdinProseFlag(command);
+  if (stdin && !alreadyDenied(session, 'stdin', stdin.verb)) {
+    deny(
+      `\`my-command-tools ${stdin.verb} ${stdin.flag} -\` reads its prose from stdin, and the only ` +
+        `way to put multi-line prose there is a heredoc — which is refused wholesale inside an ` +
+        `isolated worktree, mid-commit, every time.\n\n` +
+        `The verb takes a path instead. Write the prose with the \`Write\` tool, then hand over ` +
+        `the file:\n` +
+        `  Write({file_path: "<absolute path>", content: "…"})\n` +
+        `  my-command-tools ${stdin.verb} ${stdin.replacement} <absolute path> …\n\n` +
+        `No shell quoting, no heredoc, and nothing to reissue a turn later.`,
+    );
+    return true;
+  }
+
   if (heredocWrite(command) && !alreadyDenied(session, 'heredoc', 'write')) {
     deny(
       `This command composes a file from a heredoc. That shape is refused wholesale inside an ` +
@@ -138,9 +269,9 @@ function badShape(event, input, session) {
         `Write the file with the \`Write\` tool instead — no shell, no quoting, no guard — then ` +
         `pass its path to whatever needs it:\n` +
         `  Write({file_path: "<absolute path>", content: "…"})\n` +
-        `  … then \`my-command-tools pr --title <text> --body-file <that path>\`, or ` +
-        `\`my-command-tools commit --message-file <that path> <paths>\`, or run the script by ` +
-        `path. Both verbs take a file precisely so this shape never has to be composed.`,
+        `  my-command-tools commit --message-file <absolute path> <path> …\n` +
+        `  my-command-tools pr --title <text> --body-file <absolute path>\n` +
+        `Both verbs take the path directly; neither needs stdin. Anything else runs by path too.`,
     );
     return true;
   }
@@ -173,14 +304,99 @@ function unreadEdit(event, name, input, session) {
   if (touched(line, path, currentUuid)) return;
   if (alreadyDenied(session, 'unread', path)) return;
 
+  // The value of this gate was always "read the whole pass at once", and asking for a list
+  // the agent has to assemble is why it was rediscovered one rejection at a time. So the
+  // list is derived here and handed over: the files this repo's own history changes
+  // alongside this one, minus the ones already read.
+  const rest = companions(path).filter((p) => !touched(line, p, currentUuid));
+
   deny(
     `This session has not read ${path}, so \`${name}\` will reject it with "File has not been ` +
       `read yet". Inherited context, a continuation summary, and shell output do not satisfy ` +
       `that precondition, and re-sending this edit cannot clear it.\n\n` +
       `Read it first — and read every *other* file this edit pass will write in the same turn, ` +
-      `as one batch of parallel \`Read\` calls. Doing it for the whole pass at once is what stops ` +
-      `this same rejection repeating file after file. A targeted \`offset\`/\`limit\` slice counts.`,
+      `as one batch of parallel \`Read\` calls. A targeted \`offset\`/\`limit\` slice counts.\n\n` +
+      (rest.length > 0
+        ? `This repo's history changes these alongside it, and this session has read none of ` +
+          `them either. If the pass writes them, they belong in the same batch:\n` +
+          `${rest.map((p) => `  Read({file_path: "${p}"})`).join('\n')}\n\n` +
+          `Send that block in one turn rather than meeting this same rejection file after file.`
+        : `Enumerate the pass's whole write set now and send it as one block, rather than ` +
+          `meeting this same rejection file after file.`),
   );
+}
+
+/**
+ * Files this repository's recent history changes in the same commit as `path`, most frequent
+ * first. Derivable rather than remembered — a command file and its built copy, its skill, its
+ * feature doc and the changelog move together every time — which is what makes discovering
+ * them one rejection at a time a removable cost rather than an unavoidable one.
+ * @param {string} path
+ * @returns {string[]}
+ */
+function companions(path) {
+  try {
+    const cwd = dirname(path);
+    const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd,
+      encoding: 'utf8',
+      timeout: 3000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    if (!root) return [];
+
+    // Ask git for the repo-relative name rather than subtracting the root from the path: on
+    // macOS the root comes back through /private/var while the event's path does not, and
+    // that difference both misses the history and leaves the file in its own companion list.
+    const self = execFileSync('git', ['ls-files', '--full-name', '--', basename(path)], {
+      cwd,
+      encoding: 'utf8',
+      timeout: 3000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+      .split('\n')[0]
+      .trim();
+    if (!self) return [];
+
+    // Two calls rather than one, because a pathspec narrows `--name-only`'s output as well as
+    // the commit set: `git log --name-only -- <self>` lists only `self`, never what moved with
+    // it. So ask which commits touched it, then ask those commits what else they carried.
+    const hashes = execFileSync('git', ['log', `--max-count=${COCHANGE_COMMITS}`, '--format=%H', '--', self], {
+      cwd: root,
+      encoding: 'utf8',
+      timeout: 5000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+      .split('\n')
+      .filter(Boolean);
+    if (hashes.length === 0) return [];
+
+    const log = execFileSync('git', ['log', '--no-walk', '--format=%x00', '--name-only', ...hashes], {
+      cwd: root,
+      encoding: 'utf8',
+      timeout: 5000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+
+    /** @type {Map<string, number>} */
+    const tally = new Map();
+    for (const commit of log.split('\0')) {
+      for (const name of new Set(commit.split('\n').filter(Boolean))) {
+        if (name === self) continue;
+        const full = resolve(root, name);
+        tally.set(full, (tally.get(full) ?? 0) + 1);
+      }
+    }
+
+    return [...tally.entries()]
+      .filter(([full]) => existsSync(full))
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, COCHANGE_MAX)
+      .map(([full]) => full);
+  } catch {
+    // Not a repo, git missing, or a slow history: the gate's advice stands without the list.
+    return [];
+  }
 }
 
 /**
@@ -211,6 +427,41 @@ function staleProbe(event, input, line, session, readOnly) {
         `\`Monitor\` with a wider one — including the failure signatures, so a crash is not ` +
         `silence — rather than checking by hand alongside it.\n\n` +
         `If that watch has already ended, say so and re-issue: this refusal happens once.`,
+    );
+    return true;
+  }
+
+  // A per-path diff after `scope --diff` already returned that same content. Narrowing is
+  // the right shape on its own — this refuses it only when the answer is already in context.
+  const narrowed = perPathDiff(command);
+  if (narrowed && scopedDiff(line, currentUuid) && !alreadyDenied(session, 'perpath', 'diff')) {
+    deny(
+      `\`my-command-tools scope --diff\` already ran in this session, and it returns the branch's ` +
+        `whole diff — every file, hunk by hunk, each line annotated with its own line number. ` +
+        `That content is in your context, so this diff fetches bytes you already have.\n\n` +
+        `Read \`diff.committed\` and \`diff.workingTree\` from that result instead. There is no ` +
+        `second diff call: the hunk you are about to narrow to is already in the first one, and ` +
+        `walking the file list one call per path is exactly the loop \`scope --diff\` replaced.\n\n` +
+        `If a file came back under \`diff.omitted\`, it passed the size cap — re-run \`scope ` +
+        `--diff --diff-limit <chars>\` once, rather than diffing that path by hand.`,
+    );
+    return true;
+  }
+
+  // An inline one-liner parsing a JSON document this session has never opened.
+  for (const path of inlineScriptJson(command, cwd)) {
+    if (touched(line, path, currentUuid)) continue;
+    if (alreadyDenied(session, 'guessedjson', path)) continue;
+
+    deny(
+      `This one-liner reaches into ${path}, which this session has never read — so the keys it ` +
+        `indexes are guessed, and the first one that is not there returns \`undefined\` or throws. ` +
+        `Recorded runs spend two or three turns converging on a shape a single read would have ` +
+        `settled.\n\n` +
+        `Read the document first, in the same turn as anything else you already know you need:\n` +
+        `  Read({file_path: "${path}"})\n` +
+        `then write the expression against the shape you saw. For a large document, one ` +
+        `\`jq 'keys'\`-style probe of the level you want is the read; guessing is not.`,
     );
     return true;
   }
@@ -252,6 +503,23 @@ function staleProbe(event, input, line, session, readOnly) {
           `\`git log --oneline <a>..<b>\`, one \`rg -n 'a|b|c'\` — instead of the same call per item.`,
       );
       return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether this session already ran `my-command-tools scope --diff`, whose result carries the
+ * branch's whole diff content.
+ * @param {(import('./lib/transcript.mjs').Turn | null)[]} line @param {string} [exceptTurnUuid]
+ * @returns {boolean}
+ */
+function scopedDiff(line, exceptTurnUuid) {
+  for (const turn of turns(line)) {
+    if (exceptTurnUuid && turn.uuid === exceptTurnUuid) continue;
+    for (const use of turn.toolUses) {
+      if (use.name !== 'Bash') continue;
+      if (ranToolkit(String(use.input?.command ?? ''), 'scope', '--diff')) return true;
     }
   }
   return false;

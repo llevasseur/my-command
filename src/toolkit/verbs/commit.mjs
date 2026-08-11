@@ -4,16 +4,17 @@ import { run as exec, must, ToolkitError, UsageError } from '../lib/proc.mjs';
 import { currentBranch, defaultBranch, porcelain, repoRoot } from '../lib/repo.mjs';
 import { textArg } from '../lib/text-arg.mjs';
 
-export const usage = `commit --message <text> | --message-file <path> — then <path> [<path>...]
+export const usage = `commit (--message-file <path> | --message <text>) <path> [<path>...]
 
 Stage the given paths and commit them.
 
-  --message <text>       Commit message as one argument. The single-line form.
-  --message-file <path>  Read the message from a file. This is the multi-line form:
-                         write the message with your file-writing tool, then pass the
-                         path. Composing a multi-line message on the command line means
-                         a heredoc, which the workflow gates refuse inside an isolated
-                         worktree — so the file form is the one to reach for.
+  --message-file <path>  Read the commit message from this file. The form to reach for
+                         whenever the message runs past one line: write the file with the
+                         \`Write\` tool and pass its path, with no shell in between.
+                         Composing a multi-line message on the command line means a
+                         heredoc, which the workflow gates refuse inside an isolated
+                         worktree.
+  --message <text>       A one-line message given inline.
 
 \`--message -\` still reads the whole message from stdin, for a real pipeline.
 

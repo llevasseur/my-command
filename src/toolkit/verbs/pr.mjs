@@ -13,11 +13,12 @@ Push the current branch and create or update its PR.
 
   --title <text>      PR title. Defaults to the branch's first commit subject.
                       Only applied to an existing PR when --retitle is given.
-  --body-file <path>  Read the description from a file. A PR body is always multi-line,
-                      so this is the form to reach for: write it with your file-writing
-                      tool, then pass that path. Composing it on the command line means
-                      a heredoc, which the workflow gates refuse inside a worktree.
-  --body <text>       A description short enough to pass as one argument.
+  --body-file <path>  Read the PR description from this file. A description is multi-line
+                      by nature, so this is the form to reach for: write the file with the
+                      \`Write\` tool and pass its path, with no shell in between.
+                      Composing it on the command line means a heredoc, which the
+                      workflow gates refuse inside a worktree.
+  --body <text>       A short description given inline.
   --draft             Create as a draft, or convert an existing non-draft PR to draft.
                       An existing draft is never taken out of draft, flag or not.
   --base <branch>     Target branch (default: the repo's default branch).
