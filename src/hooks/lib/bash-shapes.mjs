@@ -178,19 +178,17 @@ const INLINE_SCRIPT = [
   { bin: /^deno$/, flags: new Set(['eval']) },
 ];
 
-/** Tokens that end one command and begin another, so a flag past one belongs to a different
- * binary than the runner before it. */
+/** Tokens that end one command and begin another. */
 const SEGMENT_BREAK = new Set(['|', '||', '&&', ';', '&', '|&']);
 
-/** Calls whose argument names a destination rather than a source. A document this one-liner
- * only writes has no shape to have guessed wrong. */
+/** Calls whose argument names a destination rather than a source. */
 const WRITE_CALL = /(?:writeFileSync|appendFileSync|createWriteStream|writeFile|outputJson|dump)\s*\(\s*$/;
 
 /**
  * Whether an inline-script runner in this command is running a one-liner — `node -e`,
- * `python3 -c`, `deno eval`. The flag has to belong to the runner itself: only the runner's
- * own options may sit between them, so `node scripts/gen.mjs pkg.json | grep -e ERROR` names
- * a script on disk and the `-e` further along is grep's.
+ * `python3 -c`, `deno eval`. The flag has to belong to the runner itself, with only the
+ * runner's own options between them; a matching flag further along the pipeline is another
+ * binary's.
  * @param {Token[]} tokens
  * @returns {boolean}
  */

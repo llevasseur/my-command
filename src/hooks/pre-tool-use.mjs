@@ -126,9 +126,8 @@ guard(() => {
  * A watch delivers its events itself, so there is no second read to make.
  *
  * Only the watch's own output target counts — the file it redirects to, `tee`s to, or tails —
- * compared as a whole resolved path. The script a watch runs and the config it was handed are
- * named on its command line too, and a *first* read of either is discovery, not polling; a
- * basename match would refuse it, and would refuse a same-named file in another directory.
+ * compared as a whole resolved path. A first read of the script a watch runs, or of the config
+ * it was handed, is discovery rather than polling.
  * @param {Record<string, any>} input
  * @param {(import('./lib/transcript.mjs').Turn | null)[]} line @param {string} session
  * @param {string} cwd
