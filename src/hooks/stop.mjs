@@ -5,11 +5,17 @@
 // A run whose last message is a tool call records nothing, and one carrying the report
 // alongside a tool call is recorded as a decision mid-run. Both look identical to a
 // finished run in a job list, which is why they went unnoticed.
+//
+// Only the *outermost* run owes that message. A command invoked inline by another hands back
+// in the same message that carries its parent's next tool call, on purpose: a text-only turn
+// there ends the whole assistant turn and strands every step the parent still owes. So this
+// gate refuses an abandoned outermost run and stays silent on a handback and on a pipeline
+// still mid-flight — it fired on both before, demanding the very turn that does the stranding.
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { block, guard, readEvent } from './lib/io.mjs';
 import { alreadyDenied, logPath } from './lib/state.mjs';
-import { entries, timeline, turns } from './lib/transcript.mjs';
+import { entries, nestedRunOpen, returnMarker, timeline, turns } from './lib/transcript.mjs';
 
 guard(() => {
   const event = readEvent();
@@ -28,6 +34,16 @@ guard(() => {
   const saidNothing = !last.hasText;
   if (!endsOnToolCall && !saidNothing) return;
 
+  // A nested inline run hands back by putting its report and `RETURN /<command>` in the same
+  // message that carries the parent's next tool call — the prescribed handback, not an ending.
+  // An abandoned outermost run whose last message happens to carry both is allowed too: the
+  // two are indistinguishable, and a false denial costs more than a missed one.
+  if (endsOnToolCall && returnMarker(last)) return;
+
+  // A command this session invoked inline is still open, so the outermost run has steps after
+  // this one and the stop lands mid-pipeline.
+  if (nestedRunOpen(line)) return;
+
   // Keyed to the turn, so one turn can be blocked at most once however many times the
   // harness retries the stop. Without this the run cannot end at all.
   if (alreadyDenied(session, 'outcome', last.uuid || String(all.length))) return;
@@ -44,6 +60,8 @@ guard(() => {
       `An outcome is recorded only from a message carrying text and zero tool calls. Send that ` +
       `message now: one self-contained line first saying where the run stands — what shipped, or ` +
       `where it stopped and what is on the branch — then any detail.\n\n` +
+      `This is the outermost run, so that message is owed here even if a command nested inside ` +
+      `it already reported on its way out.\n\n` +
       `Make any final tool call you still owe (resolving the closing-turn todo item is the natural ` +
       `one), let it return, and only then reply with text alone. Do not attach the report to that ` +
       `tool call.${

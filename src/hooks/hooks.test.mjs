@@ -24,7 +24,7 @@ import {
   unmatchedGlob,
 } from './lib/bash-shapes.mjs';
 import { isReadOnly } from './lib/read-only.mjs';
-import { lastFullReadOf, timeline } from './lib/transcript.mjs';
+import { lastFullReadOf, nestedRunOpen, returnMarker, timeline } from './lib/transcript.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PRE_TOOL_USE = join(HERE, 'pre-tool-use.mjs');
@@ -62,8 +62,10 @@ const denied = (answer) => answer?.hookSpecificOutput?.permissionDecision === 'd
 
 /**
  * A transcript file built from a compact spec: each entry is a turn's tool calls, or the
- * string 'prompt' for a user message, or 'text' for a text-only reply.
- * @param {('prompt' | 'text' | {name: string, input: Record<string, unknown>}[])[]} spec
+ * string 'prompt' for a user message, or 'text' for a text-only reply, or `{say, calls}` for a
+ * turn whose text matters — a nested handback, whose last line carries the return marker.
+ * @param {('prompt' | 'text' | {name: string, input: Record<string, unknown>}[]
+ *   | {say: string, calls?: {name: string, input: Record<string, unknown>}[]})[]} spec
  * @param {number} [startedAt]
  * @returns {string}
  */
@@ -72,6 +74,25 @@ function transcript(spec, startedAt = Date.now() - 600_000) {
   const path = join(dir, 'transcript.jsonl');
   const lines = spec.map((item, i) => {
     const timestamp = new Date(startedAt + i * 1000).toISOString();
+    if (item && !Array.isArray(item) && typeof item === 'object') {
+      return JSON.stringify({
+        type: 'assistant',
+        uuid: `a${i}`,
+        timestamp,
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'text', text: item.say },
+            ...(item.calls ?? []).map((u, n) => ({
+              type: 'tool_use',
+              id: `t${i}-${n}`,
+              name: u.name,
+              input: u.input,
+            })),
+          ],
+        },
+      });
+    }
     if (item === 'prompt') {
       return JSON.stringify({
         type: 'user',
@@ -1012,6 +1033,121 @@ test('stop: an in-flight re-run of the same stop is left alone', () => {
   const line = transcript(['prompt', [read('Bash', { command: 'ls' })]]);
   const answer = hook(STOP, { session_id: 'f4', transcript_path: line, stop_hook_active: true });
   assert.deepEqual(answer, {});
+});
+
+// ── the outcome gate: only the outermost run owes one ───────────────────────────────
+//
+// A text-only message ends the assistant's turn, so a command invoked inline by another hands
+// back *with* the parent's next call rather than closing.
+
+test('stop: a nested inline handback is not asked for an outcome', () => {
+  const line = transcript([
+    'prompt',
+    [read('Skill', { skill: 'clean' })],
+    {
+      say: 'Comments tightened in 3 files; nothing committed.\n\nRETURN /clean',
+      calls: [read('Skill', { skill: 'pr' })],
+    },
+  ]);
+  assert.deepEqual(hook(STOP, { session_id: 'n1', transcript_path: line }), {});
+});
+
+test('stop: a namespaced handback marker counts the same', () => {
+  const line = transcript([
+    'prompt',
+    [read('Skill', { skill: 'my-command:clean' })],
+    { say: 'done\n\nRETURN /my-command:clean', calls: [read('Bash', { command: 'my-command-tools state' })] },
+  ]);
+  assert.deepEqual(hook(STOP, { session_id: 'n2', transcript_path: line }), {});
+});
+
+test('stop: a pipeline with a nested command still open is not asked for an outcome', () => {
+  // No marker has accounted for the /clean call yet, so this stop lands mid-pipeline.
+  const line = transcript([
+    'prompt',
+    [read('Skill', { skill: 'clean' })],
+    [read('Edit', { file_path: '/w/src/a.ts' })],
+  ]);
+  assert.deepEqual(hook(STOP, { session_id: 'n3', transcript_path: line }), {});
+});
+
+test('stop: an outermost run abandoned after its nested runs returned is still refused', () => {
+  // Both children handed back, so nothing is open; the parent ended on teardown and never spoke.
+  const line = transcript([
+    'prompt',
+    [read('Skill', { skill: 'clean' })],
+    { say: 'cleaned\n\nRETURN /clean', calls: [read('Skill', { skill: 'pr' })] },
+    {
+      say: 'PR #91 opened\n\nRETURN /pr',
+      calls: [read('Bash', { command: 'my-command-tools worktree end --branch x' })],
+    },
+    [read('Bash', { command: 'my-command-tools worktree end --branch x' })],
+  ]);
+  const answer = hook(STOP, { session_id: 'n4', transcript_path: line });
+  assert.equal(answer.decision, 'block');
+  assert.match(answer.reason, /outermost run/);
+});
+
+test('stop: a marker in earlier prose does not excuse a run that ends on a tool call', () => {
+  // The marker counts only on the handback message's own last line.
+  const line = transcript([
+    'prompt',
+    { say: 'RETURN /clean\n\nand now the rest of the work' },
+    [read('Bash', { command: 'my-command-tools verify' })],
+  ]);
+  assert.equal(hook(STOP, { session_id: 'n5', transcript_path: line }).decision, 'block');
+});
+
+test('the return marker reads a real invocation name and never the placeholder', () => {
+  const line = timeline([
+    {
+      type: 'assistant',
+      uuid: 'a0',
+      timestamp: new Date().toISOString(),
+      message: { role: 'assistant', content: [{ type: 'text', text: 'done\n\nRETURN /task' }] },
+    },
+  ]);
+  assert.equal(returnMarker(line[0]), '/task');
+
+  // A session that merely loaded a command file has handed nothing back.
+  const loaded = timeline([
+    {
+      type: 'assistant',
+      uuid: 'a0',
+      timestamp: new Date().toISOString(),
+      message: { role: 'assistant', content: [{ type: 'text', text: 'the rule says RETURN /<command>' }] },
+    },
+  ]);
+  assert.equal(returnMarker(loaded[0]), null);
+  assert.equal(returnMarker(undefined), null);
+});
+
+test('an open nested run is counted only within the current task', () => {
+  // A Skill call before the last prompt belongs to a finished task.
+  const before = timeline([
+    {
+      type: 'assistant',
+      uuid: 'a0',
+      timestamp: new Date().toISOString(),
+      message: {
+        role: 'assistant',
+        content: [{ type: 'tool_use', id: 't0', name: 'Skill', input: { skill: 'clean' } }],
+      },
+    },
+    {
+      type: 'user',
+      uuid: 'u1',
+      timestamp: new Date().toISOString(),
+      message: { role: 'user', content: [{ type: 'text', text: 'next thing' }] },
+    },
+    {
+      type: 'assistant',
+      uuid: 'a2',
+      timestamp: new Date().toISOString(),
+      message: { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls' } }] },
+    },
+  ]);
+  assert.equal(nestedRunOpen(before), false);
 });
 
 // ── installer wiring ────────────────────────────────────────────────────────────────

@@ -70,6 +70,22 @@ is subagents, and the outcome belongs to the session that dispatched them. Every
 ending owes that turn, including a run that stops early, is blocked or refused, or
 hands work back to an invoking workflow.
 
+Which turn that is depends on how this run was invoked, and there are exactly
+three cases. Invoked directly by the user, this is the outermost run and it
+closes in a text-only turn as above. Invoked inline by another command in the
+same session, as a step of that invoker's own pipeline, it hands back without
+spending a text-only turn: the report and the return marker go out as text in
+the same message that carries the invoker's next tool call, so the turn
+continues into the invoker's next step instead of returning control to the user.
+A text-only turn there ends the whole assistant turn and strands every step the
+invoker still owes, which is how a live pipeline comes to read as abandoned.
+Dispatched as a subagent, it closes in its own text-only turn like an outermost
+run, because its final message is a report to the parent session rather than a
+turn in the parent's conversation. The return marker is written exactly once in
+all three cases, alone on the last line of the message that hands control back —
+never weakened, deferred to a later message, or dropped because the turn
+continues.
+
 Anchor that turn before the first tool call: put "close the run in a text-only
 turn" in the todo list as its own final item, because the todo list is live
 session state that a compaction carries forward and this prompt is not. Resolve

@@ -4,7 +4,8 @@ title: Workflow gates
 description: The PreToolUse and Stop hooks, and the toolkit recoveries, that enforce the workflow rules mechanically instead of relying on an agent recalling them.
 tags: [process, hooks, toolkit, install, guardrails]
 timestamp: 2026-08-04
-updated: 2026-08-09
+updated: 2026-08-11
+dirty: true
 ---
 
 # Workflow gates
@@ -62,7 +63,7 @@ is allowed to be another sentence.
 | Unapproved signing prompt | 3 | `commit` retries once, itself |
 | `must be a collaborator` | 3 | `pr` resolves the identity, itself |
 | Hand-composed probes the classifier refuses | 4 | named read-only verbs, plus an installed allowlist |
-| A run ending with no outcome | 3 | `Stop` refuses the stop |
+| A run ending with no outcome | 3 | `Stop` refuses the stop — for the **outermost** run only |
 
 High tool churn has no gate of its own as an aggregate — but its one recorded *cause* now
 does: a session that armed `Monitor`s on a stalled install and then hand-polled the same
@@ -160,6 +161,46 @@ turn passes, which is what the commands already tell a run to do.
 `TaskUpdate` is deliberately **not** gated: its input carries a `taskId` and a status and
 never the subject, so a hook cannot tell the anchor from any other task without guessing —
 and never guessing outranks catching this on the second surface.
+
+### Only the outermost run owes an outcome
+
+The Stop gate was demanding a text-only turn from runs that must not spend one. A text-only
+assistant message ends the assistant's turn and returns control to the user, so a command
+invoked **inline** by another — `/clean` and then `/pr` inside `/task`'s Step 3, in one
+session — stranded its parent's remaining steps by closing. On this repo's PR #90 both
+`/task`'s worktree teardown and its closing report were stranded that way, and this gate
+fired mid-pipeline on top of it, demanding the very turn that does the stranding. The gate
+was arguing for the defect.
+
+So `shared/closing-turn.md` now distinguishes a nested handback from a run close (see
+[Run markers](run-markers.md)), and the gate reads the same distinction off the transcript
+rather than being told:
+
+- **A handback is not an ending.** The last turn carries a tool call *and* text whose last
+  line is a `RETURN /<command>` marker — the prescribed nested shape, report and marker
+  riding the parent's next call. Nothing is owed, so the gate is silent.
+- **A pipeline mid-flight is not an ending either.** `nestedRunOpen()` counts `Skill` calls
+  since the last real prompt against return markers seen since then; while one is unaccounted
+  for, a command this session invoked inline is still running and the outermost run has steps
+  after it. Counted rather than paired, because the parent issues the `Skill` call and the
+  child writes the marker, and one handback message carries the child's marker beside the
+  parent's *next* `Skill` call.
+- **A genuinely abandoned outermost run still gets refused**, with the message now saying
+  outright that the outcome is owed here even if a nested command already reported.
+
+Both exemptions are checked **before** `alreadyDenied`, so a legitimate handback never spends
+the one-denial-per-subject budget that a later real abandonment needs.
+
+Two misses are accepted deliberately, on the standing rule that a false denial costs more than
+a missed violation. An outermost run abandoned *while* a nested command is open is not
+refused — the evidence cannot separate it from the mid-pipeline case. And an outermost run
+whose last message happens to carry both a tool call and a trailing return marker is allowed,
+because that is indistinguishable from a handback. Neither is guessed at.
+
+**A subagent run is unaffected**, and needs no exemption: `SubagentStop` is not registered, so
+a dispatched run never reaches this gate at all. It closes in its own text-only turn because
+its final message reports *to* the parent session rather than taking a turn *in* the parent's
+conversation, so nothing of the parent's is queued behind it.
 
 ## Read-only classification
 
@@ -501,6 +542,9 @@ cannot contradict each other again.
 - **Fail open, always.** No gate does its own error handling; `guard()` is the entire
   error policy.
 - **One denial per subject per session.** A gate cannot refuse the same thing twice.
+- **Only the outermost run owes an outcome.** No gate may demand a text-only turn from a run
+  invoked inline by another, because spending one there strands the parent's remaining steps.
+  A gate that would have to guess which case it is looking at stays silent.
 - **The docs may not prescribe a shape the gates refuse.** Every fenced shell snippet a
   command, a shared include, or a skill tells an agent to run passes the gate's own shape
   checker, or declares itself not-run. Enforced by `check-commands.sh`.
@@ -585,6 +629,12 @@ cannot contradict each other again.
       degrades to the bare instruction outside a repository.
 - [x] A `TodoWrite` that completes the closing-turn anchor and carries nothing else in its
       turn is refused once; the same `TodoWrite` alongside other work in the turn passes.
+- [x] A nested inline handback — a turn carrying a tool call and text ending in a
+      `RETURN /<command>` marker — is not refused, and neither is a stop taken while a `Skill`
+      invocation since the last prompt has no marker accounting for it yet.
+- [x] An outermost run ending on a tool call with no open nested invocation and no trailing
+      marker is still refused, and the refusal says the outcome is owed there even if a nested
+      command already reported.
 - [x] Every fenced shell snippet in `src/commands/`, `src/shared/`, and `skills/` passes the
       gate's own shape checker, or carries a `<!-- not-run: … -->` declaration; a loop, a
       function definition, and a `case` branch each fail the check, while an input redirect,
