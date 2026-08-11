@@ -296,6 +296,103 @@ export function ranToolkit(command, verb, flag) {
 }
 
 /**
+ * Blank the parts of one line the shell will not read as command syntax — a quoted span and a
+ * trailing comment — keeping the line's length so an offset still points where it did. An
+ * escaped quote is not tracked: over-blanking costs a missed construct, never a false one.
+ * @param {string} line
+ * @returns {string}
+ */
+function blank(line) {
+  let out = '';
+  /** @type {'"' | "'" | null} */
+  let quote = null;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (quote) {
+      out += ch === quote ? ch : ' ';
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      out += ch;
+      continue;
+    }
+    if (ch === '#' && (i === 0 || /\s/.test(line[i - 1]))) return out + ' '.repeat(line.length - i);
+    out += ch;
+  }
+  return out;
+}
+
+/**
+ * The command with everything the shell treats as literal text blanked out: quoted spans,
+ * comments, and heredoc bodies. Prose has to be able to *contain* a keyword without being
+ * read as one, which is the whole reason a construct is matched against this rather than
+ * against the raw command.
+ * @param {string} command
+ * @returns {string}
+ */
+function syntaxOnly(command) {
+  /** @type {string[]} */
+  const out = [];
+  /** @type {string | null} */
+  let heredoc = null;
+  for (const line of command.split('\n')) {
+    if (heredoc !== null) {
+      const closes = line.trim() === heredoc;
+      out.push(closes ? line : ' '.repeat(line.length));
+      if (closes) heredoc = null;
+      continue;
+    }
+    const opened = blank(line).match(/<<-?\s*["']?([A-Za-z_]\w*)["']?/);
+    if (opened) heredoc = opened[1];
+    out.push(blank(line));
+  }
+  return out.join('\n');
+}
+
+/**
+ * Constructs that make a command a shell *program* rather than a call: the values its later
+ * words expand to are computed by its own earlier words, so reading it cannot say what paths
+ * it touches.
+ *
+ * The set is drawn from what the harness's worktree-isolation gate actually refuses, probed
+ * one shape at a time from inside an isolated worktree rather than guessed: a loop whose body
+ * uses the loop's own variable and a function definition are refused; an input redirect, an
+ * `&&` short-circuit, a bare `$(( ))`, an assignment read by the next command, and two plain
+ * commands on separate lines are all allowed. `if`/`&&` are deliberately absent for that
+ * reason — they branch, but they compute nothing a reader cannot follow.
+ */
+const PROGRAM_CONSTRUCTS = [
+  { kind: 'loop', re: /(?:^|[\n;&|(])\s*(for|while|until|select)\s/ },
+  // The subject may be quoted, and `blank()` leaves spaces inside the quotes — so it is
+  // matched as "anything up to the `in`" rather than as a single unbroken word.
+  { kind: 'case branch', re: /(?:^|[\n;&|(])\s*(case)\s+[^\n;]*?\s+in\b/ },
+  { kind: 'function definition', re: /(?:^|[\n;&|(])\s*(?:function\s+)?([A-Za-z_]\w*)\s*\(\)\s*\{/ },
+];
+
+/**
+ * The construct that makes this command a shell program, or null. Used to hold the repo's own
+ * documentation to a shape an agent can actually run: a snippet a command file tells an agent
+ * to run is run from inside an isolated worktree, where the harness refuses what it cannot
+ * statically resolve — so a snippet carrying one of these is a refusal the docs prescribed.
+ *
+ * It is not wired into the `PreToolUse` gate. The refusal it models is the harness's own and
+ * already fires there; a second gate over the same shape could only refuse what is refused
+ * anyway, and would be the one place these hooks guessed rather than knew.
+ * @param {string} command
+ * @returns {{kind: string, keyword: string} | null}
+ */
+export function shellProgram(command) {
+  const text = syntaxOnly(command);
+  for (const { kind, re } of PROGRAM_CONSTRUCTS) {
+    const m = text.match(re);
+    if (m) return { kind, keyword: m[1] };
+  }
+  return null;
+}
+
+/**
  * Absolute paths of existing files this command would dump in full or in part.
  * @param {string} command @param {string} cwd
  * @returns {string[]}
