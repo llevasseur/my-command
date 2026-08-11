@@ -1,13 +1,13 @@
 ---
-description: Survey a repo and propose features or commands worth building — cite evidence a person already wrote down, record every proposal in the ledger, and exit pointing at the dashboard's Advice page, where a human accepts the ones /improve may pick up
+description: Survey a repo and propose features or commands worth building — cite evidence a person already wrote down, record every proposal in the ledger, and exit pointing at the dashboard's Advice page, where a human accepts the ones /work may pick up
 argument-hint: "[--area <area>] [--range|-r <spec>] [--dry-run|-n]"
 ---
 
 Propose what is worth building. [improve](improve.md) reads what the agent keeps doing slowly and fixes it; this command asks a different question — what is **missing** — and answers it as advice rather than as a change.
 
-**This command proposes and nothing else.** It never implements, never opens a branch, never commits, and never calls `/task`. Its whole output is a ranked set of proposals recorded in a ledger, left at `proposed` for a human to adjudicate on claude-proxy's dashboard. Turning an accepted proposal into a PR is `/improve`'s job, not this one's.
+**This command proposes and nothing else.** It never implements, never opens a branch, never commits, and never calls `/task`. Its whole output is a ranked set of proposals recorded in a ledger, left at `proposed` for a human to adjudicate on claude-proxy's dashboard. Turning an accepted proposal into a PR is `/work`'s job, not this one's.
 
-**It also asks nothing.** There is no in-session sign-off: the run records its proposals and exits, naming where they get accepted or rejected. That is a change of *venue*, not of standard — the sign-off is still required and `/improve` still acts only on an `accepted` idea.
+**It also asks nothing.** There is no in-session sign-off: the run records its proposals and exits, naming where they get accepted or rejected. That is a change of *venue*, not of standard — the sign-off is still required and `/work` still acts only on an `accepted` idea.
 
 Your input is the text in the `<command-args>` block above. Parse leading flags off the front; there is no free-text argument — anything left over is something you meant as a flag, so say so rather than interpreting it.
 
@@ -18,8 +18,8 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 Two boundaries follow, and neither bends:
 
 - **Never write `suggestion-status.json`.** That store belongs to findings with source sessions behind them. An idea has a different evidence standard and gets its own store — a separate file in a separate namespace.
-- **An idea becomes actionable only when a human accepts it.** That sign-off *is* an accepted idea's trace, which is the amendment `/improve` carries. A `proposed` or `rejected` idea is still invention, and `/improve` never reads one. Where the accepting happens is a UI question; that it happened is not.
-- **Never accept your own proposal.** This command writes `proposed` and no other status. An agent marking its own idea `accepted` manufactures the trace instead of earning it, and hands `/improve` a criterion nobody signed off on.
+- **An idea becomes actionable only when a human accepts it.** That sign-off *is* an accepted idea's trace, which is the amendment `/work` carries. A `proposed` or `rejected` idea is still invention, and `/work` never reads one. Where the accepting happens is a UI question; that it happened is not.
+- **Never accept your own proposal.** This command writes `proposed` and no other status. An agent marking its own idea `accepted` manufactures the trace instead of earning it, and hands `/work` a criterion nobody signed off on.
 
 <!-- include: shared/closing-turn-anchor.md -->**Before the first tool call, anchor the closing turn.** Put "close the run in a text-only turn" in the harness todo/task list as its own final item — worded on its own, never folded into the work it follows. The todo list is live session state that a compaction carries forward; this prompt is not, so once this run is summarized that item is the only surviving record that an outcome is still owed. **Resolve it in the same tool-call turn as the run's last piece of real work** — the teardown, the final `verify`, the closing `gh` call — so the anchor is already marked completed when that turn returns and the only thing left for the run to do is speak. **Never leave marking it as a call of its own after the work ends.** A run whose last scheduled action is a bookkeeping tool call ends on that call: the mark lands, the message that was meant to follow it does not, and the run records no outcome — the exact failure this anchor exists to prevent, arriving through the anchor itself. Compose the closing message against a task list that is already clean, and if the anchor somehow survives the work, close it alongside whatever you are already calling rather than scheduling a turn for it — a still-open anchor is never a reason to end the run on a tool call.<!-- /include -->
 
@@ -219,7 +219,7 @@ Invoke a skill with the `Skill` tool, **at most one per proposal**, and only whe
 - **`animation-vocabulary`** — the reverse lookup from a described motion to its real name. Use it so the rationale states the term instead of describing it, which is what makes two motion ideas comparable on the dashboard.
 - **`web-perf`** — load cost, render cost, and responsiveness. For a proposal that claims a surface is slow, so the claim is measured before it is filed.
 
-**A skill informs the proposal and never turns this run into an implementation.** Some of them describe how to build the thing they judge; this command still opens no branch, writes no code, and commits nothing. Take the reading and leave the building to `/improve`. **The list is advisory**: a skill that is not installed is skipped without comment, and its absence is not an Unavailable check.
+**A skill informs the proposal and never turns this run into an implementation.** Some of them describe how to build the thing they judge; this command still opens no branch, writes no code, and commits nothing. Take the reading and leave the building to `/work`. **The list is advisory**: a skill that is not installed is skipped without comment, and its absence is not an Unavailable check.
 
 ## Step 4 — Write every proposal to the ledger as `proposed`
 
@@ -252,7 +252,7 @@ The in-session question existed for one reason: `pnpm --filter server ideas mark
 - **A rejection still carries its reason, written by whoever rejects it.** `POST /api/ideas/status` refuses a `rejected` mark with 400 unless a note comes with it, because that reason is the ledger's dedupe record. Nothing here invents one.
 - **Never mark anything `shipped`.** That status carries the PR url and stays CLI-only; this command opens no PR.
 
-Then stop, naming the Advice page as where the accepting happens. `/improve` may pick an idea up once it is `accepted`, and only then — unchanged. Acceptance is the *permission*, not the trigger: `/improve` builds an accepted idea only when asked for it by name with `--idea <slug>` (or for all of them with `--ideas`), and each one it builds gets a PR of its own.
+Then stop, naming the Advice page as where the accepting happens. `/work` may pick an idea up once it is `accepted`, and only then — unchanged. Acceptance is the *permission*, not the trigger: `/work` builds an accepted idea only when a run selects it, by name with `--idea <slug>`, by area with `--area <area>`, or with no selector at all for every available idea, and each one it builds gets a PR of its own.
 
 Report at the end: the ledger tier used and which tiers were read for dedupe, whether judge notes were available, how many proposals were composed, **the area each one was filed under** and whether `--area` was given, **which proposals were checked in the browser and what each check returned — confirmed, killed, or unavailable — naming the route and any skill the check called**, any `similarAreas` hit and the existing area it looks like, any new area this run opened, what collided and with what, that every proposal is recorded as `proposed` and awaits sign-off on the dashboard's Advice page, and that no branch or PR was opened. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
 
