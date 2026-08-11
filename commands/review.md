@@ -55,15 +55,23 @@ This is a step of the workflow, not a habit to recall. Run it whenever a phase o
 5. **Re-establish the read-before-write precondition after a compaction.** `Edit` and `Write` reject a file this *session* has not read. Inherited context, a continuation summary, and shell output do not satisfy that precondition, even though the summary reads as though they do. So after any compaction boundary, session continuation, or hand-off into this command, treat the precondition as unmet: enumerate the files the next edit pass will write, `Read` them in one batch (a targeted `offset`/`limit` slice counts), and edit only once that batch returns. Re-running the rejected `Edit` cannot clear the error — the batched `Read` is the fix, and doing it for the whole pass at once is what stops the same rejection repeating file after file.
 <!-- /include-block -->
 
+<!-- include-block: shared/one-diff-call.md -->
+**One diff call, and the content comes back with it.** `my-command-tools scope --diff` returns the branch's whole diff — every file, hunk by hunk, each line annotated `<sign><line number>\t<text>` — so a comment's file *and* its line are known before anything is opened. Read `diff.committed` and `diff.workingTree` off that one result.
+
+- **There is no second diff call.** Not `git diff -- <path>`, not `gh pr diff` narrowed to a file, not one call per entry of the file list: the hunk you would narrow to is already in the first result, and walking that list per path is the loop this call exists to replace. A `PreToolUse` gate refuses a path-narrowed diff once `scope --diff` has run in the session.
+- **A file under `diff.omitted` passed the size cap.** Re-run `scope --diff --diff-limit <chars>` once — never diff that path by hand.
+- **Open a file only when the hunk is not enough** — to see a symbol the diff does not show. That is a `Read`, batched with every other file you already know you need, never a diff.
+<!-- /include-block -->
+
 Review material:
 - PR number, title, body, base branch, head branch, and URL from Step 1.
 - Task: verify the PR does what it claims, and compare it against the existing codebase for discrepancies.
-  - Read the actual diff: `gh pr diff <number>` or `git diff <base>...<head>`.
+  - Read the actual diff in one call: `my-command-tools scope --diff --branch <headRefName>` from the Step 2 worktree, which returns every changed file's hunks with their line numbers already attached. Where the branch is not checked out, `gh pr diff <number>` is the single-call equivalent.
   - Check the diff against the PR's own title/description — does the code match what's claimed?
   - Run the repo's own verification with `my-command-tools verify` and report failures — it discovers the repo's gates itself and returns a bounded log for each one that failed.
   - Compare against surrounding code and this repo's own conventions (`AGENTS.md`/`CLAUDE.md`, existing patterns in touched files) for things that clash: inconsistent style, skipped repo-specific steps (e.g. a missing feature doc, an out-of-sync generated file), missed edge cases, dead code, anything the PR description doesn't mention but the diff does.
   - Fold in the extra context from `<command-args>` (if any) as additional review focus.
-  - The diff's file list is the enumeration the batched-discovery step above asks for: read those files and their neighbours in one turn, and ask for the whole diff in a single `git diff <base>...<head> -- <path> <path> …` rather than one call per path.
+  - The diff's file list is the enumeration the batched-discovery step above asks for: read those files and their neighbours in one turn. A recorded review walked a PR diff one probe per turn for thirty-five turns — that is the shape the one-diff-call rule above, and the gate behind it, exist to stop.
 - Required output shape — the review report MUST end with:
   1. A short bullet list of concrete findings (or a single line stating none were found).
   2. If there are findings: a fenced code block containing **exactly one** ready-to-run `/my-command:fb` line that folds every finding into a single imperative feedback request, e.g.:

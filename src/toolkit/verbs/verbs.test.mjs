@@ -109,6 +109,41 @@ test('commit leaves pre-staged carryover out of the commit', () => {
   assert.deepEqual(staged.split('\n').filter(Boolean), ['theirs.ts']);
 });
 
+test('commit takes a multi-line message from --message-file', () => {
+  const { dir, git } = repo();
+  git(['checkout', '-qb', 'feat/x']);
+  writeFileSync(join(dir, 'a.ts'), 'export const a = 5;\n');
+  const msgFile = join(dir, 'msg.txt');
+  // The shape this flag exists for: prose too long for a shell argument, handed over as a
+  // path rather than composed into a heredoc, which is refused outright inside a worktree.
+  writeFileSync(msgFile, 'feat: bump a\n\nA second paragraph, and a third line.\n');
+
+  const r = commit(ctx(dir, ['a.ts'], { 'message-file': msgFile }));
+  assert.equal(r.committed, true);
+  const subject = execFileSync('git', ['log', '-1', '--format=%B'], { cwd: dir, encoding: 'utf8' });
+  assert.match(subject, /^feat: bump a\n\nA second paragraph, and a third line\./);
+});
+
+test('commit refuses --message together with --message-file, and an unreadable file', () => {
+  const { dir, git } = repo();
+  git(['checkout', '-qb', 'feat/x']);
+  writeFileSync(join(dir, 'a.ts'), 'export const a = 6;\n');
+  const msgFile = join(dir, 'msg.txt');
+  writeFileSync(msgFile, 'feat: one way only\n');
+
+  assert.throws(() => commit(ctx(dir, ['a.ts'], { message: 'inline', 'message-file': msgFile })), /mutually exclusive/);
+  assert.throws(() => commit(ctx(dir, ['a.ts'], { 'message-file': join(dir, 'absent.txt') })), /absent\.txt/);
+});
+
+test('pr refuses --body together with --body-file', () => {
+  const { dir, git } = repo();
+  git(['checkout', '-qb', 'feat/x']);
+  const bodyFile = join(dir, 'body.md');
+  writeFileSync(bodyFile, '## Summary\n\nOne way only.\n');
+
+  assert.throws(() => pr(ctx(dir, [], { body: 'inline', 'body-file': bodyFile })), /mutually exclusive/);
+});
+
 test('a rename is one entry, not a phantom second file', () => {
   const { dir, git } = repo();
   git(['checkout', '-qb', 'feat/x']);
