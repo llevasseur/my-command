@@ -25,11 +25,12 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 ## Flags
 
 - `--delegate <command>` / `-D <command>` — which command each unit is handed to: `task` (default), `god`, or `fb`. **`task` is the default because it stops at an open PR and leaves a human the merge.** This command multiplies whatever it delegates, and eight unattended merges out of one invocation is a different risk from one, so `--delegate god` must be typed rather than inherited.
+  - **`fb` is the one delegate that cannot cut a branch**, so it does not take a planned one. `/fb` applies feedback to the branch it is already on, or with `--target <branch>` to a branch that **already exists** — which means an `fb` unit's branch is named by the goal rather than by the plan, and the unit is dispatched as `/fb --target <that existing branch>`. Handing `/fb` a `<type>/<kebab-summary>` this run invented gets the unit either a branch that does not exist or, with no `--target` at all, this session's own branch — the collision Step 3 exists to prevent. **A goal that cannot name an existing branch for an `fb` unit is a stop, not a new branch.**
 - `--parallel <n>` / `-p <n>` — how many units may be in flight at once. Default `3`, hard cap `8`; a larger value is clamped to `8` and the clamp is reported.
 - `--sequential` — dispatch one unit at a time regardless of independence. Overrides `--parallel`.
 - `--dry-run` / `-n` — print the routing plan (the units, the waves, the dependencies, the branch names, and the chosen delegate) and **spawn nothing**. No task list, no subagent, no branch.
 - `--mesh` — opt into peer-to-peer messaging between the workers. **Off by default; see the topology rule below.**
-- `--add <list>` / `-a <list>` — forwarded to **every** delegated run, in the same comma-separated `<command> <prompt>` shape `/god` forwards it in. It reaches each unit's `/task`, not this command.
+- `--add <list>` / `-a <list>` — forwarded to every `task` and `god` unit, in the same comma-separated `<command> <prompt>` shape `/god` forwards it in. It reaches that unit's own run, not this command. **`/fb` takes no `--add`**, so an `fb` unit is dispatched without it and the omission is reported in the plan — never passed anyway as a flag the delegate cannot parse.
 - Anything not a recognized flag is part of the goal.
 
 ## Step 1 — Read the goal and settle the preconditions
@@ -57,7 +58,7 @@ This is a step of the workflow, not a habit to recall. Run it whenever a phase o
 Read the repo enough to know what each unit touches, then write the plan down. Every unit gets four facts, and all four are decided **here**, before anything is spawned:
 
 - **The command it invokes**, with its flags and its criteria — one invocation of one existing command.
-- **The branch it runs on**, named `<type>/<kebab-summary>` the way `/task` names one. **Every parallel unit gets its own branch and its own worktree.** Two `/task` runs sharing a branch is a corrupted run — the second one's commits land on top of the first one's half-finished tree and neither PR describes what it contains — so the plan assigns the names up front and passes them through, rather than letting two delegates independently derive the same name from similar criteria.
+- **The branch it runs on**, named `<type>/<kebab-summary>` the way `/task` names one — except an `fb` unit, which takes an **existing** branch named by the goal, because `/fb` applies feedback onto work that is already there. **Every parallel unit gets its own branch and its own worktree.** Two `/task` runs sharing a branch is a corrupted run — the second one's commits land on top of the first one's half-finished tree and neither PR describes what it contains — so the plan assigns the names up front and passes them through, rather than letting two delegates independently derive the same name from similar criteria.
 - **The files it touches**, as concretely as the goal allows. This is not documentation; it is the input to Step 3's batching.
 - **What it depends on**, if anything.
 
@@ -88,11 +89,18 @@ Send a wave as **multiple `Agent` calls in a single assistant turn**. One subage
 
 **Keep each delegate prompt minimal.** Every delegate is a MyCommand command that is already self-contained through its own file, which the subagent loads when it is invoked. Pass the invocation, that unit's criteria, its branch, and its lane — then stop. Restating the whole plan into every subagent prompt puts a second set of instructions in front of the command's own, competes with them for attention, and makes completion **less** reliable rather than more.
 
-A unit's prompt is therefore about this shape:
+A unit's prompt is therefore about this shape, naming the **resolved** delegate rather than `/task` by default:
 
 ```
-Run /task --add <forwarded list> <this unit's criteria>.
+Run /<delegate> --add <forwarded list> <this unit's criteria>.
 Branch: <type>/<kebab-summary>. Own <paths>; do not touch <paths>.
+```
+
+An `fb` unit is the one that reads differently — the branch goes in the invocation, and there is no `--add`:
+
+```
+Run /fb --target <existing branch> <this unit's criteria>.
+Own <paths>; do not touch <paths>.
 ```
 
 `--sequential` dispatches the same units one at a time. `--parallel <n>` caps how many of a wave go out at once; a wave larger than the cap is split, and the split is reported as part of the plan rather than discovered at dispatch.

@@ -38,12 +38,12 @@ protocol, and nothing to mark afterwards.
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `--delegate <cmd>` / `-D` | `task` | Which command each unit is handed to: `task`, `god`, or `fb`. |
+| `--delegate <cmd>` / `-D` | `task` | Which command each unit is handed to: `task`, `god`, or `fb`. An `fb` unit runs on an **existing** branch named by the goal — see below. |
 | `--parallel <n>` / `-p` | `3` | Units in flight at once. **Hard cap 8**; a larger value is clamped and the clamp is reported. |
 | `--sequential` | off | One unit at a time regardless of independence. Overrides `--parallel`. |
 | `--dry-run` / `-n` | off | Print the routing plan and spawn nothing — no task list, no subagent, no branch. |
 | `--mesh` | off | Opt into peer-to-peer messaging between the workers. |
-| `--add <list>` / `-a` | — | Forwarded to **every** delegated run, in the same shape [god](god.md) forwards it. |
+| `--add <list>` / `-a` | — | Forwarded to every `task` and `god` unit, in the same shape [god](god.md) forwards it. [fb](fb.md) takes no `--add`. |
 
 Anything not a recognized flag is the goal.
 
@@ -52,12 +52,24 @@ open PR and leaves a human the merge; `/god` merges without asking. This command
 **multiplies whatever it delegates**, and eight unattended merges out of one
 invocation is a different risk from one — so `--delegate god` has to be typed.
 
+**`fb` is the one delegate that cannot cut a branch.** [fb](fb.md) applies
+feedback to the branch it is already on, or with `--target <branch>` to one that
+**already exists**. So an `fb` unit's branch is named by the goal rather than by
+the plan, and the unit is dispatched as `/fb --target <that existing branch>`.
+Handing `/fb` a `<type>/<kebab-summary>` this run invented gets either a branch
+that does not exist or — with no target at all — the orchestrator's own branch,
+which is the collision the wave batching exists to prevent. A goal that cannot
+name an existing branch for an `fb` unit is a **stop**, not a new branch. `/fb`
+also takes no `--add`, so an `fb` unit is dispatched without the forwarded list
+and the omission is reported in the plan.
+
 ## Behavior
 
 **Planning decides four facts per unit, before anything is spawned:** the command
 invocation, the branch, the files it touches, and what it depends on.
 
-**Every parallel unit gets its own branch and its own worktree.** Two `/task` runs
+**Every parallel unit gets its own branch and its own worktree** — a new one for
+`task` and `god`, an existing one for `fb`. Two `/task` runs
 sharing a branch is a corrupted run — the second one's commits land on top of the
 first one's half-finished tree and neither PR describes what it contains. The plan
 therefore assigns branch names **up front** and passes them into the delegates,
