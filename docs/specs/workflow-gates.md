@@ -47,10 +47,10 @@ is allowed to be another sentence.
 | Redundant whole-file reads | 3 | `PreToolUse` refuses a re-read of an unchanged file |
 | Re-narrowing on a file already read | 3 | `PreToolUse` refuses a shell dump of an unchanged file already read whole |
 | The same probe re-issued per item | 3 | `PreToolUse` refuses an identical read-only command whose answer cannot have changed |
-| Polling a condition already watched | 3 | `PreToolUse` refuses a probe — shell **or** `Read` — of a file a `Monitor` or backgrounded Bash call in this session is following |
+| Polling a condition already watched | 3 | `PreToolUse` refuses a probe — shell **or** `Read` — of a file a `Monitor` or backgrounded Bash call in this session is following; the `Read` half judges the watch's own output target by whole path |
 | Editing a file this session never read | 4 | `PreToolUse` refuses it and hands over the file's git co-change set, so the batch is named rather than rediscovered |
 | Prose composed on stdin | 4 | `commit`/`pr` take `--message-file`/`--body-file`; `PreToolUse` refuses `--message -`/`--body -` and names the flag |
-| A second, path-narrowed diff | 4 | `scope --diff` already returned every hunk; `PreToolUse` refuses `git diff -- <path>`/`gh pr diff <path>` once it has run |
+| A second, path-narrowed diff | 4 | `scope --diff` already returned every hunk; `PreToolUse` refuses a single-path `git diff -- <path>`/`gh pr diff <path>` once it has run, leaving the batched multi-path form the prose prescribes alone |
 | A JSON shape guessed rather than read | 3 | `PreToolUse` refuses a `node -e`/`python3 -c` one-liner naming a `.json` this session never opened |
 | A run ending on a bookkeeping call | 4 | `PreToolUse` refuses a `TodoWrite` that completes the closing-turn anchor and carries nothing else |
 | Relative `cd` that cannot resolve | 3 | `PreToolUse` refuses it, naming the absolute form |
@@ -353,15 +353,27 @@ each refusal is a statement about a command that was going to fail:
   the commands teach only that, `check-commands.sh` refuses prose that teaches the stdin
   form, and the gate's refusal names the replacement flag by name. `--message -` still
   *works*, so a pipeline that already feeds it is not broken; nothing points an agent at it.
-- **A second, path-narrowed diff.** A `git diff`/`gh pr diff` segment carrying a `--`
-  pathspec, once `my-command-tools scope --diff` has run earlier in the session. That first
-  call already returned every changed file's hunks with line numbers attached, so the
-  narrowed call can only re-fetch bytes already in context — and the recorded shape is not
-  one stray call but the whole file list walked one path per turn: thirty-three such turns in
-  one bucket, forty-six in the next, one review spending thirty-five turns on a PR diff.
-  `--name-only`, `--stat`, and `--numstat` are skipped (those are enumerations, not content),
-  and with no prior `scope --diff` the gate stays silent, since then the diff is the first
-  call rather than the second.
+- **A second, path-narrowed diff.** A `git diff`/`gh pr diff` segment narrowed to a **single**
+  path, once `my-command-tools scope --diff` has run earlier in the session. That first call
+  already returned every changed file's hunks with line numbers attached, so the narrowed call
+  can only re-fetch bytes already in context — and the recorded shape is not one stray call
+  but the whole file list walked one path per turn: thirty-three such turns in one bucket,
+  forty-six in the next, one review spending thirty-five turns on a PR diff.
+
+  The exemptions are what keep this gate from contradicting the prose beside it.
+  **Several paths in one call pass**, because that is the batched form
+  `shared/batched-discovery.md` prescribes — the fix for the walk rather than the walk, and
+  refusing it would leave a run told two different things by two surfaces of one rule. An
+  enumeration or a summary passes too (`--name-*`, `--stat`, `--numstat`, `--shortstat`,
+  `--summary`, `--quiet`, `--exit-code`, `-s`/`--no-patch`): none of them returns hunks, and
+  `--quiet` returns an exit code alone. `--cached`/`--staged` passes because it asks about the
+  index, which `scope --diff` never reported and nothing re-checks after it ran. With no prior
+  `scope --diff` the gate stays silent, since then the diff is the first call, not the second.
+
+  The prose-and-gate agreement is asserted mechanically rather than grepped for: prose has to
+  be able to *name* the shape it forbids, so no pattern can tell a prescription from a
+  prohibition. `src/hooks/hooks.test.mjs` reads the line `batched-discovery.md` prescribes and
+  runs the gate over it.
 - **A JSON shape guessed rather than read.** A `node -e` / `bun -e` / `python3 -c` /
   `deno eval` one-liner whose text names an existing `.json` file this session never opened.
   The recorded failures are all the same: a one-liner written against a field layout the
@@ -369,6 +381,12 @@ each refusal is a statement about a command that was going to fail:
   `Read` of it costs less than the failed run plus the retry. Touching the path first — by
   `Read` or by any shell dump — clears the gate, and a one-liner naming no JSON file, or one
   the session already read, is untouched.
+
+  The runner flag has to belong to the runner: only the runner's own options may sit between
+  them, so `node scripts/gen.mjs pkg.json | grep -e ERROR` runs a script on disk and the `-e`
+  further along the pipeline is grep's. And a path the one-liner only **writes** — a redirect
+  target, or the argument of `writeFileSync`/`json.dump` and friends — is skipped, because a
+  document being written was never guessed at; there is no shape to have got wrong.
 
 ### The job directory is not a gate
 
@@ -466,13 +484,22 @@ cannot contradict each other again.
 - [x] `my-command-tools commit --message -` and `pr --body -` are each refused with the
       `--message-file` / `--body-file` form named, and no command or shared snippet teaches
       the stdin form.
-- [x] A `git diff -- <path>` or `gh pr diff` narrowed to a path is refused once
+- [x] A `git diff -- <path>` or `gh pr diff` narrowed to a single path is refused once
       `scope --diff` has run in the session; the same call with no prior `scope --diff`, and a
       `--name-only`/`--stat` enumeration at any time, both pass.
+- [x] The batched multi-path `git diff <base>...HEAD -- <path> <path> …` that
+      `shared/batched-discovery.md` prescribes is never refused, asserted by running the gate
+      over the line read out of that file; nor is a `--cached`/`--staged` staged check, nor a
+      `--quiet`/`--exit-code`/`--shortstat`/`--summary`/`-s` summary.
 - [x] A `node -e` or `python3 -c` one-liner naming an existing `.json` this session never
-      opened is refused; the same one-liner after that file was read passes.
+      opened is refused; the same one-liner after that file was read passes. A script on disk
+      piped into a binary that takes its own `-e` is not a one-liner, and a `.json` the
+      one-liner only writes is not a shape it guessed.
 - [x] A `Read` of a file a `Monitor` or backgrounded Bash call in this session is following is
       refused once, naming the bounded wait; an unrelated `Read` during that watch passes.
+- [x] That `Read` gate follows the watch's own output — its redirect, `tee`, or `tail` target
+      — compared as a whole path: a first read of the script the watch runs, of the config it
+      was handed, or of a same-named file in another directory all pass.
 - [x] The unread-`Edit` denial lists the refused path's git co-change set as `Read` lines, and
       degrades to the bare instruction outside a repository.
 - [x] A `TodoWrite` that completes the closing-turn anchor and carries nothing else in its

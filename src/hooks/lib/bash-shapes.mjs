@@ -178,6 +178,38 @@ const INLINE_SCRIPT = [
   { bin: /^deno$/, flags: new Set(['eval']) },
 ];
 
+/** Tokens that end one command and begin another, so a flag past one belongs to a different
+ * binary than the runner before it. */
+const SEGMENT_BREAK = new Set(['|', '||', '&&', ';', '&', '|&']);
+
+/** Calls whose argument names a destination rather than a source. A document this one-liner
+ * only writes has no shape to have guessed wrong. */
+const WRITE_CALL = /(?:writeFileSync|appendFileSync|createWriteStream|writeFile|outputJson|dump)\s*\(\s*$/;
+
+/**
+ * Whether an inline-script runner in this command is running a one-liner — `node -e`,
+ * `python3 -c`, `deno eval`. The flag has to belong to the runner itself: only the runner's
+ * own options may sit between them, so `node scripts/gen.mjs pkg.json | grep -e ERROR` names
+ * a script on disk and the `-e` further along is grep's.
+ * @param {Token[]} tokens
+ * @returns {boolean}
+ */
+function runsInlineScript(tokens) {
+  for (let i = 0; i < tokens.length; i++) {
+    const bin = tokens[i].text.split('/').pop() ?? '';
+    const spec = INLINE_SCRIPT.find((s) => s.bin.test(bin));
+    if (!spec) continue;
+    for (let j = i + 1; j < tokens.length; j++) {
+      const next = tokens[j].text;
+      if (spec.flags.has(next)) return true;
+      if (SEGMENT_BREAK.has(next)) break;
+      // The first argument that is not one of the runner's own options is the program.
+      if (!next.startsWith('-')) break;
+    }
+  }
+  return false;
+}
+
 /**
  * Existing `.json` files an inline one-liner in this command would parse. A one-liner
  * reaching into a JSON document it has never seen is written against a guessed shape, and
@@ -187,31 +219,50 @@ const INLINE_SCRIPT = [
  */
 export function inlineScriptJson(command, cwd) {
   const tokens = tokenize(command);
-  const inline = tokens.some((t, i) => {
-    const bin = t.text.split('/').pop() ?? '';
-    const spec = INLINE_SCRIPT.find((s) => s.bin.test(bin));
-    return Boolean(spec && tokens.slice(i + 1).some((n) => spec.flags.has(n.text)));
-  });
-  if (!inline) return [];
+  if (!runsInlineScript(tokens)) return [];
 
   /** @type {string[]} */
   const out = [];
+  let prev = '';
   for (const token of tokens) {
     // The path may sit inside the script text rather than as an argument of its own, so
     // every JSON-looking substring of every token is a candidate.
     for (const m of token.text.matchAll(/[\w./-]+\.json\b/g)) {
+      // A destination, not a document: a redirect target, or the argument of a write call.
+      if (/>>?$/.test(prev) || token.text.slice(0, m.index).endsWith('>')) continue;
+      if (WRITE_CALL.test(token.text.slice(0, m.index).replace(/["'`]\s*$/, ''))) continue;
       const path = isAbsolute(m[0]) ? m[0] : resolve(cwd, m[0]);
       if (!out.includes(path) && existsSync(path)) out.push(path);
     }
+    prev = token.text;
   }
   return out;
 }
 
 /**
- * The path-narrowed `git diff` / `gh pr diff` in this command, or null. Narrowing is the
- * right form on its own — it is the shape `batched-discovery` asks for — so this reports the
- * shape and the caller decides, refusing it only once `scope --diff` has already returned
- * that same content.
+ * `git diff` options that return a summary instead of hunks. What they report is not the
+ * content `scope --diff` already returned, so narrowing one of them to a path re-fetches
+ * nothing — `--quiet`/`--exit-code` return an exit code alone.
+ */
+const DIFF_NO_CONTENT = new Set([
+  '--stat',
+  '--numstat',
+  '--shortstat',
+  '--summary',
+  '--quiet',
+  '--exit-code',
+  '--no-patch',
+  '-s',
+]);
+
+/**
+ * The single-path `git diff` / `gh pr diff` in this command, or null. Narrowing is the right
+ * form on its own, so this reports the shape and the caller decides, refusing it only once
+ * `scope --diff` has already returned that same content.
+ *
+ * Only a *single* path counts. Naming several in one call is the batched form
+ * `batched-discovery` prescribes — the fix for walking a file list, not the walk — and
+ * refusing it would leave the prose and this gate telling a run two different things.
  * @param {string} command
  * @returns {string | null}
  */
@@ -222,10 +273,13 @@ export function perPathDiff(command) {
     if (bin !== 'git' && bin !== 'gh') continue;
     if (!tokens.includes('diff')) continue;
     // A name or stat listing carries no hunk content, so it is not a re-fetch of one.
-    if (tokens.some((t) => t.startsWith('--name-') || t === '--stat' || t === '--numstat')) continue;
+    if (tokens.some((t) => t.startsWith('--name-') || DIFF_NO_CONTENT.has(t))) continue;
+    // The index is a question `scope --diff` cannot have answered: it reports the branch and
+    // the working tree, and nothing re-checks what was staged after it ran.
+    if (tokens.includes('--cached') || tokens.includes('--staged')) continue;
     const sep = tokens.indexOf('--');
     const paths = sep === -1 ? [] : tokens.slice(sep + 1).filter(Boolean);
-    if (paths.length === 0) continue;
+    if (paths.length !== 1) continue;
     return segment.trim();
   }
   return null;

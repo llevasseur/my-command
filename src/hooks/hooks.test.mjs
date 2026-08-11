@@ -7,7 +7,7 @@
 // of the same subject.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, test } from 'node:test';
@@ -686,13 +686,59 @@ test('bash shapes: the stdin prose flags, a path-narrowed diff, and a guessed JS
   assert.equal(perPathDiff('git diff origin/main'), null);
   assert.equal(perPathDiff('rg -n foo -- src/a.ts'), null);
 
+  // Several paths in one call is the batched form the shared prose prescribes — the fix for
+  // the walk rather than the walk, so it is never the shape this gate reports.
+  assert.equal(perPathDiff('git diff main...HEAD -- src/a.ts src/b.ts'), null);
+  assert.equal(perPathDiff('git diff main...HEAD -- src/a.ts src/b.ts src/c.ts'), null);
+
+  // Options that return a summary or an exit code re-fetch no hunks, and the index is a
+  // question `scope --diff` cannot have answered.
+  for (const flag of [
+    '--quiet',
+    '--exit-code',
+    '--shortstat',
+    '--summary',
+    '-s',
+    '--no-patch',
+    '--cached',
+    '--staged',
+  ]) {
+    assert.equal(perPathDiff(`git diff ${flag} -- src/a.ts`), null, `\`git diff ${flag}\` is not a re-fetch`);
+  }
+
   // An inline one-liner reaching into a JSON document that exists.
   assert.deepEqual(inlineScriptJson(`node -e "require('${join(dir, 'pkg.json')}')"`, dir), [join(dir, 'pkg.json')]);
   assert.deepEqual(inlineScriptJson('python3 -c "import json; print(1)"', dir), []);
   assert.deepEqual(inlineScriptJson(`node ${join(dir, 'pkg.json')}`, dir), []);
 
+  // The flag has to be the runner's own: a script on disk piped into a binary that happens to
+  // take `-e` is not a one-liner, and refusing it would block a legitimate command outright.
+  assert.deepEqual(inlineScriptJson(`node scripts/gen.mjs ${join(dir, 'pkg.json')} | grep -e ERROR`, dir), []);
+  // The runner's own options may still sit between it and the flag.
+  assert.deepEqual(inlineScriptJson(`node --stack-size=2000 -e "require('${join(dir, 'pkg.json')}')"`, dir), [
+    join(dir, 'pkg.json'),
+  ]);
+
+  // A document the one-liner only writes was never guessed at — there is no shape to get wrong.
+  assert.deepEqual(inlineScriptJson(`node -e "writeFileSync('${join(dir, 'pkg.json')}', out)"`, dir), []);
+  assert.deepEqual(inlineScriptJson(`node -e "console.log(1)" > ${join(dir, 'pkg.json')}`, dir), []);
+
   assert.equal(ranToolkit('my-command-tools scope --diff --branch x', 'scope', '--diff'), true);
   assert.equal(ranToolkit('my-command-tools scope --branch x', 'scope', '--diff'), false);
+});
+
+test('one diff call: the batched form the shared prose prescribes is a shape the gate allows', () => {
+  // The prose and the gate are two surfaces stating one rule, and a run carries both. Grepping
+  // the docs cannot check this — prose has to be able to name the shape it forbids — so the
+  // agreement is asserted by running the gate over the line the prose actually prescribes.
+  const prose = readFileSync(join(HERE, '..', 'shared', 'batched-discovery.md'), 'utf8');
+  const prescribed = prose.match(/Pass every path to a single `([^`]+)`/);
+  assert.ok(prescribed, 'src/shared/batched-discovery.md no longer prescribes one batched diff call');
+  assert.equal(
+    perPathDiff(prescribed[1]),
+    null,
+    `the gate refuses the very call the shared prose prescribes: ${prescribed[1]}`,
+  );
 });
 
 test('stdin prose: the refusal names the path-taking flag, and once only', () => {
@@ -763,6 +809,46 @@ test('guessed JSON: a one-liner over an unread document is refused, and reading 
     tool_input: { command },
   });
   assert.equal(denied(afterRead), false);
+});
+
+test('watched condition: the Read gate follows the watch output, not every name on its command line', () => {
+  const dir = scratch();
+  const log = join(dir, 'out.log');
+  const script = join(dir, 'build.mjs');
+  const config = join(dir, 'app.config.json');
+  for (const [path, body] of [
+    [log, 'running\n'],
+    [script, 'export default 1\n'],
+    [config, '{}\n'],
+  ]) {
+    writeFileSync(path, body);
+  }
+  const line = transcript([
+    'prompt',
+    [read('Bash', { command: `node ${script} --config ${config} > ${log} 2>&1`, run_in_background: true })],
+  ]);
+  /** @param {string} session @param {string} file */
+  const at = (session, file) =>
+    hook(PRE_TOOL_USE, {
+      session_id: session,
+      transcript_path: line,
+      cwd: dir,
+      tool_name: 'Read',
+      tool_input: { file_path: file },
+    });
+
+  // The redirect target is what the watch is writing, so reading it by hand is the polling.
+  assert.equal(denied(at('wo1', log)), true);
+
+  // The script it runs and the config it was handed are named on the same command line, and a
+  // first read of either is discovery — refusing it would cost a turn to learn nothing.
+  assert.equal(denied(at('wo2', script)), false);
+  assert.equal(denied(at('wo3', config)), false);
+
+  // Same basename, another directory: not the file the watch is writing.
+  const elsewhere = join(scratch(), 'out.log');
+  writeFileSync(elsewhere, 'unrelated\n');
+  assert.equal(denied(at('wo4', elsewhere)), false);
 });
 
 test('watched condition: a Read that polls a watched file is refused, an unrelated Read is not', () => {

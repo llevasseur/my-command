@@ -195,3 +195,40 @@ export function watchedPaths(line, exceptTurnUuid) {
   }
   return [...out];
 }
+
+/**
+ * The files a watch this session armed is actually writing or following: a backgrounded
+ * command's redirect target, a `tee` destination, a `tail -f` argument. Paths as written, for
+ * the caller to resolve against the cwd it knows.
+ *
+ * Deliberately narrower than `watchedPaths`, which keys on every filename-shaped token of the
+ * command. That breadth is right for a substring test against another *shell command* and
+ * wrong for judging a `Read`: the script a watch runs and the config it was handed are named
+ * on its command line too, and a first look at either is not polling anything.
+ * @param {(Turn | null)[]} line @param {string} [exceptTurnUuid]
+ * @returns {string[]}
+ */
+export function watchedOutputs(line, exceptTurnUuid) {
+  /** @type {Set<string>} */
+  const out = new Set();
+  /** @param {string | undefined} raw */
+  const add = (raw) => {
+    const text = String(raw ?? '').replace(/^['"]|['"]$/g, '');
+    // `2>&1` duplicates a descriptor rather than naming a file.
+    if (!text || text.startsWith('&')) return;
+    out.add(text);
+  };
+
+  for (const turn of turns(line)) {
+    if (exceptTurnUuid && turn.uuid === exceptTurnUuid) continue;
+    for (const use of turn.toolUses) {
+      const watching = use.name === 'Monitor' || (use.name === 'Bash' && use.input?.run_in_background === true);
+      if (!watching) continue;
+      const command = String(use.input?.command ?? '');
+      for (const m of command.matchAll(/\d?>>?\s*("[^"]+"|'[^']+'|[^\s;&|<>]+)/g)) add(m[1]);
+      for (const m of command.matchAll(/\btee\s+(?:-\S+\s+)*("[^"]+"|'[^']+'|[^\s;&|<>]+)/g)) add(m[1]);
+      for (const m of command.matchAll(/\btail\s+(?:-\S+\s+)*("[^"]+"|'[^']+'|[^\s;&|<>]+)/g)) add(m[1]);
+    }
+  }
+  return [...out];
+}

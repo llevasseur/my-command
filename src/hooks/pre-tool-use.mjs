@@ -47,6 +47,7 @@ import {
   timeline,
   touched,
   turns,
+  watchedOutputs,
   watchedPaths,
 } from './lib/transcript.mjs';
 
@@ -111,7 +112,8 @@ guard(() => {
   }
 
   const line = timeline(entries(event.transcript_path ?? ''));
-  if (name === 'Read' && readPolling(input, line, session)) return;
+  const cwd = typeof event.cwd === 'string' ? event.cwd : process.cwd();
+  if (name === 'Read' && readPolling(input, line, session, cwd)) return;
   if (name === 'Read' && redundantRead(input, line, session)) return;
   serialDiscovery(name, input, line, session);
 });
@@ -122,18 +124,27 @@ guard(() => {
  * `Read` half was not, and it is the half that recurred — a backgrounded verify run whose
  * output file was re-read three times while waiting, with the file unchanged between reads.
  * A watch delivers its events itself, so there is no second read to make.
+ *
+ * Only the watch's own output target counts — the file it redirects to, `tee`s to, or tails —
+ * compared as a whole resolved path. The script a watch runs and the config it was handed are
+ * named on its command line too, and a *first* read of either is discovery, not polling; a
+ * basename match would refuse it, and would refuse a same-named file in another directory.
  * @param {Record<string, any>} input
  * @param {(import('./lib/transcript.mjs').Turn | null)[]} line @param {string} session
+ * @param {string} cwd
  * @returns {boolean} true when the call was denied
  */
-function readPolling(input, line, session) {
+function readPolling(input, line, session, cwd) {
   const path = input?.file_path;
   if (typeof path !== 'string') return false;
 
   const all = turns(line);
   const current = all[all.length - 1];
   const currentUuid = current && issued(current, 'Read', input) ? current.uuid : undefined;
-  const watched = watchedPaths(line, currentUuid).find((file) => basename(path) === file);
+  const target = isAbsolute(path) ? path : resolve(cwd, path);
+  const watched = watchedOutputs(line, currentUuid).find(
+    (file) => (isAbsolute(file) ? file : resolve(cwd, file)) === target,
+  );
   if (!watched) return false;
   if (alreadyDenied(session, 'watched', watched)) return false;
 
