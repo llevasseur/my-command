@@ -420,6 +420,44 @@ if ! grep -Fq 'RETURN /<command>' src/shared/closing-turn.md; then
   fail=1
 fi
 
+# 16. The diff-walking commands each carry the one-diff-call rule, and the copy each of them
+# ships carries the expanded rule rather than an include marker that never resolved.
+# `scope --diff` already returns every hunk in one call, so a per-path `git diff -- <path>` /
+# `gh pr diff` walk is the serial-discovery shape a PreToolUse gate now refuses.
+#
+# That the *prescribed* form is one the gate leaves alone is asserted where it can be checked
+# exactly rather than grepped for: prose has to be able to name the shape it forbids, so no
+# pattern here can tell a prescription from a prohibition. `src/hooks/hooks.test.mjs` runs the
+# gate itself over the line `src/shared/batched-discovery.md` prescribes.
+for f in clean review fb; do
+  if ! grep -Fq 'include-block: shared/one-diff-call.md' "src/commands/$f.md"; then
+    echo "::error::$f.md dropped the shared/one-diff-call.md include; it would walk a branch diff one path per turn, which the PreToolUse gate refuses (docs/specs/workflow-gates.md)."
+    fail=1
+  fi
+  if ! grep -Fq 'There is no second diff call' "commands/$f.md"; then
+    echo "::error::commands/$f.md does not carry the expanded one-diff-call rule; the include never reached the copy the plugin ships, so the command states nothing the gate enforces (docs/specs/workflow-gates.md)."
+    fail=1
+  fi
+done
+
+# 17. The prose flags that read stdin invite a heredoc, and a heredoc is refused wholesale
+# inside an isolated worktree — mid-commit and mid-PR, which is where these run. The verbs take
+# a path instead; no command, shared snippet, or shipped skill may teach the stdin form. The
+# skills are the Codex half of the paired bundle and are authored alongside the commands, so
+# leaving them out of the sweep leaves a surface that can reintroduce `--body -` unchecked.
+for pair in commit:message-file pr:body-file; do
+  verb="${pair%%:*}"
+  flag="${pair##*:}"
+  if ! grep -Fq -- "--$flag" "src/toolkit/verbs/$verb.mjs"; then
+    echo "::error::src/toolkit/verbs/$verb.mjs no longer accepts --$flag; multi-line prose would have to come through a heredoc, which is refused in a worktree."
+    fail=1
+  fi
+done
+if grep -REn -- 'my-command-tools (commit|pr) [^`]*--(message|body) -' src/commands/ src/shared/ skills/; then
+  echo "::error::the lines above teach prose on stdin; write the file and pass --message-file/--body-file, which is what the gate's refusal names."
+  fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then
   echo "check-commands: all command invariants satisfied ($(ls src/commands/*.md | wc -l | tr -d ' ') commands)."
 fi

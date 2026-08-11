@@ -27,10 +27,10 @@ possible.
    cannot see this conversation — resolve pronouns, name files, branches, and PR
    numbers, keep every stated constraint, and add no scope. Keep the user's flags
    as typed. With `--verbatim` / `-v`, copy the prompt unchanged.
-3. **Copy.** One shell call. It rotates the stash ring, writes the composed line
-   to `~/.claude/cp-last.txt`, then feeds the clipboard from that file, so both
-   carry identical bytes and a later copy can be undone with step 1. The heredoc
-   is single-quoted so nothing expands:
+3. **Copy.** Rotate the stash ring, write the composed line to
+   `~/.claude/cp-last.txt`, then feed the clipboard from that file, so both carry
+   identical bytes and a later copy can be undone with step 1. Rotate the ring in
+   the shell:
 
    ```bash
    mkdir -p ~/.claude
@@ -39,13 +39,21 @@ possible.
      [ -f ~/.claude/cp-last.$i.txt ] && mv ~/.claude/cp-last.$i.txt ~/.claude/cp-last.$((i + 1)).txt
    done
    [ -f ~/.claude/cp-last.txt ] && mv ~/.claude/cp-last.txt ~/.claude/cp-last.1.txt
-   cat > ~/.claude/cp-last.txt <<'CPEOF'
-   $<skill> <composed prompt>
-   CPEOF
+   ```
+
+   Write `$<skill> <composed prompt>` to `~/.claude/cp-last.txt` with the
+   file-writing tool, spelling the home directory out, then:
+
+   ```bash
    pbcopy < ~/.claude/cp-last.txt
    ```
 
-   The stash write happens on every platform; only the last line is
+   **Write the stash with the file-writing tool, never with a heredoc.** Composing
+   a file in the shell is refused inside an isolated worktree, which is where this
+   skill is often invoked from, and a file-writing tool takes the content literally
+   so nothing expands or escapes either way.
+
+   The stash write happens on every platform; only the clipboard call is
    platform-detected. Use `wl-copy`, `xclip -selection clipboard`, or `clip.exe`
    where `pbcopy` does not exist. With no clipboard sink the stash is written
    anyway: print the composed line and say why.

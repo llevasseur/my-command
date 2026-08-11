@@ -41,7 +41,10 @@ lands every time, and the message meant to follow it never arrives.
    or repository instructions allow delegation.
 5. Add changelog work when the repository tracks it. Commit logical scoped
    changes with explicit paths through `my-command-tools commit` when available;
-   never sweep in unrelated work. `1Password: failed to fill whole buffer` with
+   never sweep in unrelated work. For a multi-line message, write it to a file and
+   pass `--message-file <absolute path>` rather than piping a heredoc on stdin — a
+   heredoc is refused wholesale inside an isolated worktree, which is where this
+   step runs. `1Password: failed to fill whole buffer` with
    `fatal: failed to write commit object` is an unapproved signing prompt, not a
    repository problem: the commit did not happen and the tree is untouched. Retry
    the same commit once after the prompt is approved. Never rewrite the commit,
@@ -99,11 +102,22 @@ Validation limitations do not stop PR creation when useful in-scope recovery is 
 
 ## Git call shape
 
-- `gh`'s GraphQL-backed writes (`gh pr create`, `gh pr edit`) resolve to an
-  account that is not a collaborator on `llevasseur`-owned repos, while REST
-  succeeds. A `must be a collaborator` GraphQL error means the wrong identity,
-  not a permission to request: select the right account (`gh auth switch`, or
-  `GH_TOKEN="$(gh auth token --user llevasseur)"`) or use the REST equivalent.
+- `gh`'s GraphQL-backed writes (`gh pr create`, `gh pr edit`) authenticate as
+  whichever account is active, and this device is logged in as more than one, so
+  a repo owned by another of them answers `must be a collaborator`. That is the
+  wrong identity, not a permission to request, and the right account is the
+  remote's owner rather than a guess: the repository helper resolves it for its
+  own PR write, and reports and selects it for any other `gh` call. Never wrap a
+  command in a `GH_TOKEN="$(gh auth token --user …)"` assignment — that shape is
+  refused on sight; REST is the remaining fallback.
+- Give a multi-line commit message or PR description to the repository helper as
+  a **file path**, written with the file-writing tool. Piping one in means
+  composing it in the shell, which is a heredoc, which is refused inside an
+  isolated worktree.
+- If the repository helper answers `command not found`, its shim is not linked
+  onto PATH. Reach it at the device install path under the Claude or Codex home
+  and run its `doctor` verb through that path, which prints the exact link
+  command; do not fall back to hand-rolled git.
 - As a narrow exception to the general rule to chain dependent mutations, issue
   branch-lifecycle operations such as checkout/switch, pull, remote-branch
   inspection, and local branch deletion as individual shell calls. Put status

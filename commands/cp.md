@@ -1,7 +1,7 @@
 ---
 description: Compose another command's invocation and copy it to the clipboard, ready to paste into another agent
 argument-hint: [--verbatim] [--again [slot]] <command> <prompt>
-allowed-tools: Bash
+allowed-tools: Bash, Write
 ---
 
 Put a ready-to-paste invocation of another command on the clipboard. **Never run that command, load its instructions, or print the composed text.** This command's whole point is to spend as few tokens as possible, so every step below is about what *not* to do.
@@ -34,7 +34,7 @@ Put a ready-to-paste invocation of another command on the clipboard. **Never run
 
    A slot number reads an older ring entry instead — `/my-command:cp --again 2` restores `~/.claude/cp-last.2.txt`, valid through slot 4. Off macOS, substitute the platform's clipboard sink exactly as in step 3. If the stash file does not exist, say so plainly and write nothing: an empty clipboard is worse than whatever is on it now. Then stop — steps 2 and 3 do not run.
 2. **Compose.** The first token of `$ARGUMENTS` is the target command (a leading `/` is optional); everything after it is the prompt. Rewrite the prompt so it stands alone for an agent that cannot see this conversation — resolve `this`/`that`/`it`, name files, branches, and PR numbers explicitly, and keep every constraint the user stated. Add no scope. Preserve any flags the user typed for the target command as typed. With `--verbatim`, use the prompt as given.
-3. **Copy.** One Bash call. It rotates the stash ring, writes the composed line to `~/.claude/cp-last.txt`, and then feeds the clipboard *from that file* — so the clipboard and the stash carry identical bytes, and a later copy from anywhere else can be undone with step 1. The heredoc is single-quoted so the shell expands and escapes nothing:
+3. **Copy.** Three calls, in this order — the stash and the clipboard end up carrying identical bytes, so a later copy from anywhere else can be undone with step 1. First rotate the ring:
 
    ```bash
    mkdir -p ~/.claude
@@ -43,13 +43,23 @@ Put a ready-to-paste invocation of another command on the clipboard. **Never run
      [ -f ~/.claude/cp-last.$i.txt ] && mv ~/.claude/cp-last.$i.txt ~/.claude/cp-last.$((i + 1)).txt
    done
    [ -f ~/.claude/cp-last.txt ] && mv ~/.claude/cp-last.txt ~/.claude/cp-last.1.txt
-   cat > ~/.claude/cp-last.txt <<'CPEOF'
-   /<command> <composed prompt>
-   CPEOF
+   ```
+
+   Then write the composed line with the `Write` tool, spelling the home directory out — the tool does not expand `~`:
+
+   ```
+   Write({file_path: "/Users/<you>/.claude/cp-last.txt", content: "/<command> <composed prompt>\n"})
+   ```
+
+   Then feed the clipboard from that file:
+
+   ```bash
    pbcopy < ~/.claude/cp-last.txt
    ```
 
-   The stash write happens on **every** platform; only the last line is platform-detected. Off macOS, substitute the platform's clipboard sink (`wl-copy`, `xclip -selection clipboard`, `clip.exe`). If none is available, the stash is already written either way: say so and print the composed line — that is the only case where printing it is correct.
+   **The stash is written with `Write`, never with a heredoc.** `cat > … <<'EOF'` composes a file in the shell, and that shape is refused outright inside an isolated worktree — which is where `/my-command:cp` is often invoked from, so the heredoc costs a refused call before anything reaches the clipboard. `Write` takes the content literally, so nothing expands or escapes either way.
+
+   The stash write happens on **every** platform; only the clipboard call is platform-detected. Off macOS, substitute the platform's clipboard sink (`wl-copy`, `xclip -selection clipboard`, `clip.exe`). If none is available, the stash is already written either way: say so and print the composed line — that is the only case where printing it is correct.
 
 ## Recovering without an agent
 

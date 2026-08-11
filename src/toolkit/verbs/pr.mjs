@@ -1,23 +1,30 @@
 // `pr` — push the branch and create or update its pull request.
 // The prose stays with the caller; this verb owns the mechanics that are identical
 // every time: push, detect an existing PR, pick create-vs-edit, report number and URL.
-import { readFileSync } from 'node:fs';
 import { bool, str } from '../lib/flags.mjs';
 import { ghWrite, originSlug } from '../lib/gh.mjs';
 import { run as exec, ToolkitError, UsageError } from '../lib/proc.mjs';
 import { commitsSince, currentBranch, defaultBranch, repoRoot, resolveBase } from '../lib/repo.mjs';
+import { textArg } from '../lib/text-arg.mjs';
 
-export const usage = `pr [--title <text>] --body <text|-> [--draft] [--base <branch>] [--retitle]
+export const usage = `pr [--title <text>] --body-file <path> [--draft] [--base <branch>] [--retitle]
 
 Push the current branch and create or update its PR.
 
-  --title <text>   PR title. Defaults to the branch's first commit subject.
-                   Only applied to an existing PR when --retitle is given.
-  --body <text>    PR description. Use \`-\` to read it from stdin.
-  --draft          Create as a draft, or convert an existing non-draft PR to draft.
-                   An existing draft is never taken out of draft, flag or not.
-  --base <branch>  Target branch (default: the repo's default branch).
-  --retitle        Also update the title of an existing PR.
+  --title <text>      PR title. Defaults to the branch's first commit subject.
+                      Only applied to an existing PR when --retitle is given.
+  --body-file <path>  Read the PR description from this file. A description is multi-line
+                      by nature, so this is the form to reach for: write the file with the
+                      \`Write\` tool and pass its path, with no shell in between.
+                      Composing it on the command line means a heredoc, which the
+                      workflow gates refuse inside a worktree.
+  --body <text>       A short description given inline.
+  --draft             Create as a draft, or convert an existing non-draft PR to draft.
+                      An existing draft is never taken out of draft, flag or not.
+  --base <branch>     Target branch (default: the repo's default branch).
+  --retitle           Also update the title of an existing PR.
+
+\`--body -\` still reads the description from stdin, for a real pipeline.
 
 Assets already in an existing PR's description — images, videos, GitHub attachment
 links — are always carried over into the new body. They are never dropped.
@@ -58,7 +65,7 @@ export function run(ctx) {
 
   if (branch === def) throw new ToolkitError(`refusing to open a PR from the default branch (${def})`, { branch });
 
-  const body = readBody(str(ctx.flags.body));
+  const body = textArg(ctx.flags, 'body', 'body-file', { usage });
   const draft = bool(ctx.flags.draft);
   const base = str(ctx.flags.base) ?? def;
   const title = str(ctx.flags.title)?.trim() || firstCommitSubject(cwd, str(ctx.flags.base));
@@ -231,15 +238,4 @@ function preserveAssets(newBody, oldBody) {
   const heading = kept.includes(ASSETS_HEADING) ? '' : `${ASSETS_HEADING}\n\n`;
   const block = missing.map((a) => a.snippet).join('\n\n');
   return { body: `${kept ? `${kept}\n\n` : ''}${heading}${block}\n`, preserved: missing.length };
-}
-
-/** @param {string | undefined} flag @returns {string} */
-function readBody(flag) {
-  if (!flag) throw new UsageError('--body is required', { usage });
-  if (flag !== '-') return flag;
-  try {
-    return readFileSync(0, 'utf8');
-  } catch {
-    throw new ToolkitError('--body - was given but stdin was empty', {});
-  }
 }
