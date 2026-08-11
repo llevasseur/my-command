@@ -100,8 +100,19 @@ set.
 and free to build for this repo:
 
 ```sh
-LOG_DIR="<logDir>" pnpm --filter server ideas list --available --repo <slug> --json
+~/.claude/my-command/hooks/ideas-read.mjs --available --repo <slug>
 ```
+
+Every ledger read, claim and mark below goes through a **store hook** in
+`~/.claude/my-command/hooks/`, installed beside the workflow gates and
+allowlisted by name so each call costs no approval round-trip. `--available` is
+passed straight to the Worker, which is what knows whose claim has gone stale —
+that rule is not re-derived here, because two implementations of it would
+disagree the first time either changed. Each hook prints **one status line and
+always exits 0**, so the run reads the line rather than the exit code. The one
+ledger-adjacent call that stays on claude-proxy's CLI is `ideas prompt`, below:
+it composes a brief client-side from the export rather than making a store call
+of its own, so hooking it would mean reimplementing claude-proxy logic here.
 
 **`--available` is the read, replacing an older `-s accepted`**: it returns
 `accepted` plus the ideas whose claim has expired, which is exactly the set a run
@@ -177,23 +188,27 @@ about design. Ideas in different repos never share a scope.
 code is written:
 
 ```sh
-LOG_DIR="<logDir>" pnpm --filter server ideas claim --slug <slug> --by <branch> --json
+~/.claude/my-command/hooks/ideas-claim.mjs <slug> <branch>
 ```
 
 The claim exists because `accepted` used to be the status an implementing run
 looked for right up until its PR existed, so two runs reading the ledger minutes
 apart both saw one idea as free — claude-proxy PRs #139 and #140 built the same
-idea eleven minutes apart and one was closed unmerged. **`--by` is the branch name
-the dispatch is about to cut**, in `/task`'s `<type>/<kebab-summary>` shape and
+idea eleven minutes apart and one was closed unmerged. **The holder is the branch
+name the dispatch is about to cut**, in `/task`'s `<type>/<kebab-summary>` shape and
 named in the brief so the subagent cuts exactly it. The branch is the holder because
 it is the one string a second run can verify by itself — `git branch -r` either
 shows it or does not — which distinguishes a claim backed by real work from one left
 by a run that vanished. **A whole wave is claimed before any of it goes out**;
-concurrency makes the claim matter more, not less. A refused claim means another run
-holds the idea: skip it, report the holder and since-when, never build it anyway and
-never retry under a different `--by`, and **drop whatever was stacked on it** rather
+concurrency makes the claim matter more, not less. **`claimed:` on the hook's first
+line is the permission to build, and every other line is a refusal** — the hook
+always exits 0, so the exit status says nothing here and is never consulted. A
+refused claim means another run holds the idea: skip it, report the holder and
+since-when, never build it anyway and never retry under a different holder, and
+**drop whatever was stacked on it** rather
 than re-basing that onto `main` to keep it moving. Once a dispatch returns a PR the
-run re-claims the same slug under the same branch with `--pr`: claiming is
+run re-claims the same slug under the same branch with the PR url as a third
+argument: claiming is
 idempotent for the same holder, and a claim carrying a PR never expires — the
 six-hour TTL is sized to *writing* the change, while review is the long part of an
 idea's life. A `--dry-run` claims nothing, because a claim is a write.
@@ -232,7 +247,7 @@ this command creates no worktree and makes no edits of its own.
 ideas ledger:
 
 ```sh
-LOG_DIR="<logDir>" pnpm --filter server ideas mark --slug <slug> -s shipped -n "<PR url>"
+~/.claude/my-command/hooks/ideas-mark.mjs <slug> shipped "<PR url>"
 ```
 
 **One call per idea, and the note is that idea's own PR.** Because each idea was
@@ -250,7 +265,7 @@ in the note. **Nothing is ever marked in the suggestions store** — that belong
 closing turn, so that is where an unshipped claim is handed back:
 
 ```sh
-LOG_DIR="<logDir>" pnpm --filter server ideas mark --slug <slug> -s accepted
+~/.claude/my-command/hooks/ideas-mark.mjs <slug> accepted
 ```
 
 Every mark other than `shipped` drops the claim, which is what makes this the

@@ -89,10 +89,26 @@ On yes, one JSON object is POSTed to the hosted concept store — a Cloudflare
 Worker over D1, not a file on the machine. The write path is
 `POST $CONCEPTS_URL/api/concepts` with an `Authorization: Bearer $CONCEPTS_TOKEN`
 header; both values come from the environment and neither is ever hardcoded or
-written to a file. The POST runs through `node` with every value passed as an
-argument and the token read from `process.env` inside the process, so a sentence
-containing quotes or backslashes cannot corrupt the record and the token never
-reaches the command line, the transcript, or the shell history.
+written to a file.
+
+The call is the **`concept-save.mjs` store hook**, installed beside the workflow
+gates in `~/.claude/my-command/hooks/` and invoked by name:
+
+```sh
+~/.claude/my-command/hooks/concept-save.mjs \
+  "<term>" "<sentence>" "<field>" "<skills>" "<notes>" "<tips>" "<sources>" "<surfaced>"
+```
+
+It used to be an inlined `node -e` block. A hook is what makes the call
+**allowlisted by name**, so it runs without an approval round-trip that an
+inlined block costs every time; it is also one implementation of the record
+shape, the retry, and the status line rather than one per command. Every value
+is an argument and the token is read from `process.env` inside the hook's own
+process, so a sentence containing quotes or backslashes cannot corrupt the record
+and the token never reaches the command line, the transcript, or the shell
+history. **The hook prints one status line and always exits 0** — `saved: 201`,
+`saved: 200`, or a `not saved:` line naming the cause — so the run reads the line
+rather than the exit code.
 
 The write is idempotent: a row id is a ULID derived from the record, so the store
 returns **201** for a new concept and **200** for a replay. The retry sits

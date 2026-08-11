@@ -162,6 +162,18 @@ prints the sentence, and still copies it — it skips only the save and says in 
 line why. See [docs/features/teach.md](./docs/features/teach.md) for the
 per-device rollout.
 
+**Every call to either store goes through a store hook**, installed alongside the
+workflow gates in `~/.claude/my-command/hooks/` (or under `$CLAUDE_CONFIG_DIR`
+where that is set — `my-command-tools doctor` reports where):
+`concept-save.mjs`, `concept-count.mjs`, `ideas-read.mjs`, `ideas-add.mjs`,
+`ideas-claim.mjs` and `ideas-mark.mjs`. They are allowlisted by name, so a
+command reaches the store without an approval round-trip, and each of them reads
+these four variables from `process.env` **inside its own process** — a token is
+never an argument, never echoed, and never written to a file. Each prints one
+status line and always exits 0, so a command reads that line rather than the exit
+code, and an unreachable store is a stated skip naming its cause rather than a
+stopped run.
+
 The `trim` command adapts the context-compaction strategy introduced by Yujiang Li,
 Zhenyu Hou, Yi Jing, Jie Tang, and Yuxiao Dong in
 [*CompactionRL: Reinforcement Learning with Context Compaction for Long-Horizon Agents*](https://arxiv.org/abs/2607.05378)

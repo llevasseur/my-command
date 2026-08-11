@@ -78,6 +78,12 @@ a row, because the row counts an install rather than a distinct skill; and a
 **no-op** install still writes one, because the question is how often the skill
 was reached for.
 
+The call is the **`concept-count.mjs` store hook** —
+`~/.claude/my-command/hooks/concept-count.mjs "<term>" "<skill>"` — installed
+beside the workflow gates and allowlisted by name, so it costs no approval
+round-trip. It prints one status line and always exits 0: `counted: <status> —
+<skill> on <term>`, or a `not counted:` line naming the cause.
+
 The `POST` re-reads the stored record inside the same call and writes it back
 with the skill appended, rather than the run retyping the fields. Reads resolve
 the newest version, so a version written without `notes`, `tips`, `sources`, or
