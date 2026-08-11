@@ -125,6 +125,22 @@ export CLAUDE_PROXY_STORE="$HOME/path/to/claude-proxy/logs/sessions"
 export CLAUDE_PROXY_ARCHIVE="$HOME/path/to/archived/claude/logs"   # optional
 ```
 
+`work` needs that same `CLAUDE_PROXY_STORE`, because the `ideas` CLI it calls
+runs out of the claude-proxy checkout above that log directory — and it needs the
+address of the ideas ledger itself, which is a hosted Worker rather than a file
+on disk:
+
+```sh
+export IDEAS_URL="https://<your-operator-worker>"
+export IDEAS_TOKEN="<the operator token from the Worker's secret store>"
+```
+
+`CONCEPTS_URL` and `CONCEPTS_TOKEN` are accepted as fallbacks for those two,
+since ideas and concepts are one dataset behind one Worker; set the `IDEAS_*`
+pair only to point them somewhere else. With any of the three unset, `/work`
+stops and says which one — the hosted ledger has no local tier to fall back to.
+See [docs/features/work.md](./docs/features/work.md).
+
 `teach` does **not** use those. It saves concepts to the hosted concept store —
 a Cloudflare Worker — so a concept taught on one machine is readable from every
 other one and from an agent with no filesystem. Export its base URL and token
