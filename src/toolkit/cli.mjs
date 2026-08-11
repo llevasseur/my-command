@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { ToolkitError } from './lib/proc.mjs';
 import { GATED_VERBS, requireArmed } from './lib/require-armed.mjs';
 import * as commit from './verbs/commit.mjs';
+import * as concepts from './verbs/concepts.mjs';
 import * as doctor from './verbs/doctor.mjs';
 import * as identity from './verbs/identity.mjs';
 import * as pr from './verbs/pr.mjs';
@@ -26,7 +27,11 @@ import * as worktree from './verbs/worktree.mjs';
  * @property {string} cwd
  */
 
-/** @type {Record<string, {usage: string, run: (ctx: Ctx) => unknown}>} */
+/**
+ * `line` is optional: a verb that declares one speaks a human status line by default,
+ * because its callers are command prose reading an outcome rather than a payload.
+ * @type {Record<string, {usage: string, run: (ctx: Ctx) => unknown, line?: (result: any) => string}>}
+ */
 const VERBS = {
   state,
   scope,
@@ -36,6 +41,7 @@ const VERBS = {
   prs,
   worktree,
   identity,
+  concepts,
   doctor,
 };
 
@@ -54,6 +60,7 @@ const SWITCHES = new Set([
   'unarmed',
   'diff',
   'select',
+  'json',
 ]);
 
 /**
@@ -126,6 +133,30 @@ function helpText() {
   ].join('\n');
 }
 
+/**
+ * Write one verb's answer. A verb that declares a `line` speaks it by default — the
+ * command prose calling /lookup, /teach and /learn reads an outcome line, not a payload —
+ * and `--json` is how a machine asks for the structured result instead.
+ * @param {{line?: (result: any) => string}} entry
+ * @param {unknown} result
+ * @param {Record<string, string | boolean | string[]>} flags
+ * @param {number | undefined} indent
+ */
+function emit(entry, result, flags, indent) {
+  if (entry.line && flags.json !== true) process.stdout.write(`${entry.line(result)}\n`);
+  else process.stdout.write(`${JSON.stringify(result, null, indent)}\n`);
+}
+
+/**
+ * @param {unknown} err @param {number | undefined} indent @returns {number}
+ */
+function emitError(err, indent) {
+  const detail = err instanceof ToolkitError ? err.detail : {};
+  const message = err instanceof Error ? err.message : String(err);
+  process.stdout.write(`${JSON.stringify({ error: message, ...detail }, null, indent)}\n`);
+  return err instanceof ToolkitError ? err.exitCode : 1;
+}
+
 /** @param {string[]} argv @returns {number} */
 export function main(argv) {
   const { verb, positionals, flags } = parseArgs(argv);
@@ -154,16 +185,25 @@ export function main(argv) {
     // Before the verb, not after: an unarmed device must not be able to start a run at all.
     requireArmed(verb, flags);
     const result = entry.run({ verb, positionals, flags, cwd });
-    process.stdout.write(`${JSON.stringify(result, null, indent)}\n`);
+    // A verb that answers over the network returns a promise. It prints and settles its
+    // own exit code once it resolves; the pending promise is what keeps the process
+    // alive until then, which is why the entry point below never forces a zero exit.
+    if (result instanceof Promise) {
+      result.then(
+        (value) => emit(entry, value, flags, indent),
+        (err) => {
+          process.exitCode = emitError(err, indent);
+        },
+      );
+      return 0;
+    }
+    emit(entry, result, flags, indent);
     // Verbs that report a verdict set `pass`; surface it as the exit code so a caller
     // can branch on the shell result without re-reading the payload.
     const pass = /** @type {{pass?: boolean}} */ (result)?.pass;
     return pass === false ? 1 : 0;
   } catch (err) {
-    const detail = err instanceof ToolkitError ? err.detail : {};
-    const message = err instanceof Error ? err.message : String(err);
-    process.stdout.write(`${JSON.stringify({ error: message, ...detail }, null, indent)}\n`);
-    return err instanceof ToolkitError ? err.exitCode : 1;
+    return emitError(err, indent);
   }
 }
 
@@ -172,5 +212,9 @@ export function main(argv) {
 // which is what import.meta.url reports.
 const entryPath = process.argv[1];
 if (entryPath && import.meta.url === pathToFileURL(realpathSync(entryPath)).href) {
-  process.exit(main(process.argv.slice(2)));
+  const code = main(process.argv.slice(2));
+  // Never `process.exit(0)`: an async verb is still settling, and exiting now would
+  // truncate the answer it is about to print. Node exits 0 on its own once nothing is
+  // pending. A non-zero code has already been decided synchronously, so it exits at once.
+  if (code !== 0) process.exit(code);
 }
