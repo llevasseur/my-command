@@ -1,15 +1,11 @@
 // `concepts` — the hosted concept store, read and written from one place.
 //
-// The same ~40-line `node -e '…'` block used to sit inlined in /lookup, /teach and /learn,
-// which meant it existed nine times once the generated plugin copies and the Codex skills
-// are counted. Nine copies is nine chances for the outcome vocabulary to drift, but the
-// reason it moved here is narrower than tidiness: `Bash(my-command-tools:*)` is allowlisted
-// in src/hooks/settings-fragment.json, and an inlined `node -e` heredoc is not allowlistable
-// — so every /lookup, /teach and /learn run paid an approval round-trip, and inside an
-// isolated worktree the heredoc shape is refused by the PreToolUse gate outright.
+// It lives here rather than inlined in /lookup, /teach and /learn because
+// `Bash(my-command-tools:*)` is allowlisted in src/hooks/settings-fragment.json and an
+// inlined `node -e` heredoc is not — the PreToolUse gate refuses that shape in a worktree.
 //
-// Every subcommand prints ONE status line and always exits 0. That is the contract the
-// command prose is written against: an unreachable store is a stated skip, never a stop.
+// Every subcommand prints ONE status line and always exits 0: an unreachable store is a
+// stated skip, never a stop.
 import { readFileSync } from 'node:fs';
 import { str } from '../lib/flags.mjs';
 
@@ -52,9 +48,8 @@ accepted as an argument or a flag, never echoed, and never written to a file.`;
 const DEFAULT_LIMIT = 10;
 
 /**
- * The store's address and credential, read from the environment and nowhere else. An
- * unset variable is reported by the name the command prose and the docs use, so the
- * cause a caller repeats matches what the README tells them to export.
+ * The store's address and credential, read from the environment and nowhere else. An unset
+ * variable is reported by the name the docs tell a caller to export.
  * @param {NodeJS.ProcessEnv} [env]
  * @returns {{ok: true, root: string, token: string} | {ok: false, unset: string}}
  */
@@ -67,7 +62,7 @@ function store(env = process.env) {
 }
 
 /**
- * A network failure's message, with the cause fetch wraps underneath it — `fetch failed`
+ * A network failure's message with the cause fetch wraps underneath it — `fetch failed`
  * alone names nothing a reader can act on.
  * @param {unknown} err @returns {string}
  */
@@ -103,10 +98,8 @@ async function get(root, token, path) {
 
 /**
  * POST one record, retried once on a 5xx or a network error. The retry reuses the same
- * record deliberately: the row id is a ULID derived from the record itself, so replaying
- * an identical body returns 200 instead of writing a second version. Re-running the whole
- * command instead would stamp a fresh `savedAt`, change the record, change the derived id,
- * and write that second version — idempotency protects a repeated request, not a repeated run.
+ * record: the row id is a ULID derived from it, so replaying an identical body returns 200
+ * instead of writing a second version.
  * @param {string} root @param {string} token @param {Record<string, unknown>} rec
  * @returns {Promise<{status: number, body: string} | {error: string}>}
  */
@@ -139,7 +132,7 @@ const same = (a, b) =>
     .trim()
     .toLowerCase();
 
-/** `find-skills` is the finder, never an applied skill — it is filtered, not rejected. */
+/** `find-skills` is the finder, never an applied skill — filtered out, not rejected. */
 const FINDER = 'find-skills';
 
 /**
@@ -165,8 +158,8 @@ async function lookup(term, field, limit) {
   const found = await get(root, token, `/api/concepts/search?q=${q}&limit=${limit}`);
   if (found.error) return unreachable(found.error);
   for (const c of found.body?.results || []) {
-    // An exact match reached through search is still a term hit; only a row that merely
-    // mentions the query is a neighbour.
+    // An exact match reached through search is still a term hit; a row that merely mentions
+    // the query is a neighbour.
     if (same(c.term, term)) return hit(c, 1);
     neighbours.set(c.term, c);
   }
@@ -293,13 +286,12 @@ async function save() {
     sentence: String(input.sentence),
     field: String(input.field).trim(),
     skills: listOf(input.skills),
-    // Stamped here, on every save. A fresh timestamp is what makes a re-teach a new
-    // version rather than a silent overwrite of the old one.
+    // A fresh timestamp on every save is what makes a re-teach a new version rather than a
+    // silent overwrite of the old one.
     savedAt: new Date().toISOString(),
   };
   // An optional field is omitted entirely when empty — never "" and never []. The detail
-  // page distinguishes absent from empty, and an absent field is what makes it show its
-  // "nothing more to show" fallback.
+  // page distinguishes absent from empty.
   const notes = String(input.notes ?? '').trim();
   if (notes) rec.notes = notes;
   for (const key of ['tips', 'sources', 'surfacedSkills']) {
@@ -349,8 +341,8 @@ async function count(term, skill) {
     skills: [...(stored.skills || []), skill].filter((s) => s !== FINDER),
     savedAt: new Date().toISOString(),
   };
-  // Carried forward unchanged rather than retyped by the caller: reads resolve the newest
-  // version, so a version written without them loses them for every later reader.
+  // Carried forward unchanged: reads resolve the newest version, so a version written
+  // without them loses them for every later reader.
   for (const key of ['notes', 'tips', 'sources', 'surfacedSkills']) {
     const v = stored[key];
     if (typeof v === 'string' ? v.trim() : Array.isArray(v) && v.length) rec[key] = v;
@@ -370,8 +362,7 @@ async function count(term, skill) {
 }
 
 /**
- * The human status line, which is what every caller reads. `--json` asks the CLI for the
- * payload instead; see `emit` in cli.mjs.
+ * The human status line every caller reads; `--json` asks the CLI for the payload instead.
  * @param {Result} result @returns {string}
  */
 export function line(result) {
@@ -405,8 +396,7 @@ export function run(ctx) {
     return count(term, skill);
   }
 
-  // Even an unknown subcommand answers on the one-line contract, so a caller that reads
-  // the first line never has to branch on whether the verb understood itself.
+  // Even an unknown subcommand answers on the one-line contract.
   return Promise.resolve(
     say('unknown', `miss: unknown subcommand ${JSON.stringify(sub ?? '')} — expected lookup, save, or count`, {
       subcommand: String(sub ?? ''),

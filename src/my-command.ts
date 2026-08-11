@@ -475,10 +475,9 @@ function reportToolkit(result: ToolkitResult) {
   }
 }
 
-// The concept store's address and token are environment variables and nothing else.
-// This reports only whether they are set and prints the export lines to paste: a wizard
-// that wrote a token into settings.json or a shell profile would put a secret somewhere
-// the user never chose and cannot easily audit, so it prints and stops.
+// The concept store's address and token are environment variables and nothing else. This
+// reports only whether they are set and prints the export lines to paste — it never writes
+// a token into settings.json, a dotfile, or anywhere else.
 function reportConceptStore() {
   const url = process.env.IDEAS_URL || process.env.CONCEPTS_URL;
   const token = process.env.IDEAS_TOKEN || process.env.CONCEPTS_TOKEN;

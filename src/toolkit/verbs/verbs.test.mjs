@@ -706,8 +706,7 @@ const STORE_ENV = ['IDEAS_URL', 'IDEAS_TOKEN', 'CONCEPTS_URL', 'CONCEPTS_TOKEN']
 
 /**
  * One `concepts` call against a stubbed store. `routes` maps a substring of the request URL
- * to the answer for it, so a test states only the probes it cares about and every other
- * probe 404s the way an empty corpus does.
+ * to the answer for it; an unmatched probe 404s the way an empty corpus does.
  * @param {string[]} positionals
  * @param {{env?: Record<string, string>, routes?: Record<string, {status?: number, body?: unknown}>, flags?: Record<string, string | boolean | string[]>}} [opts]
  */
@@ -767,8 +766,8 @@ test('concepts lookup answers a term hit with the stored sentence unmodified', a
 });
 
 test('concepts lookup promotes an exact search match, trimmed and case-insensitively', async () => {
-  // The dedicated term endpoint misses on case; search still answers with the record
-  // itself, and a row whose term *is* the query is a hit rather than a neighbour.
+  // The dedicated term endpoint misses on case; a search row whose term *is* the query is
+  // still a hit rather than a neighbour.
   const { result, line } = await conceptsRun(['lookup', '  Scrim '], {
     routes: {
       '/api/concepts/search': {
@@ -835,13 +834,13 @@ test('concepts save reads the record on stdin and omits the optionals left empty
   await new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(undefined)));
   const { port } = /** @type {import('node:net').AddressInfo} */ (server.address());
 
-  // Through the CLI, not the module: this is also the proof that the record travels on
-  // stdin and the token on the environment, so neither ever reaches a command line.
+  // Through the CLI, not the module: the proof that the record travels on stdin and the
+  // token on the environment, so neither ever reaches a command line.
   const cli = fileURLToPath(new URL('../cli.mjs', import.meta.url));
   const args = [cli, 'concepts', 'save'];
   try {
-    // Spawned, never `execFileSync`: the store answering this child is the server above,
-    // running on this same event loop, so a synchronous wait here deadlocks the pair.
+    // Spawned, never `execFileSync`: the server answering this child runs on this same
+    // event loop, so a synchronous wait here deadlocks the pair.
     const child = spawn(process.execPath, args, {
       env: {
         ...process.env,

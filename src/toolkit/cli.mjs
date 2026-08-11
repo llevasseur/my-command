@@ -28,8 +28,7 @@ import * as worktree from './verbs/worktree.mjs';
  */
 
 /**
- * `line` is optional: a verb that declares one speaks a human status line by default,
- * because its callers are command prose reading an outcome rather than a payload.
+ * `line` is optional: a verb that declares one speaks a human status line by default.
  * @type {Record<string, {usage: string, run: (ctx: Ctx) => unknown, line?: (result: any) => string}>}
  */
 const VERBS = {
@@ -134,9 +133,7 @@ function helpText() {
 }
 
 /**
- * Write one verb's answer. A verb that declares a `line` speaks it by default — the
- * command prose calling /lookup, /teach and /learn reads an outcome line, not a payload —
- * and `--json` is how a machine asks for the structured result instead.
+ * Write one verb's answer: its `line` by default, the structured result under `--json`.
  * @param {{line?: (result: any) => string}} entry
  * @param {unknown} result
  * @param {Record<string, string | boolean | string[]>} flags
@@ -185,9 +182,8 @@ export function main(argv) {
     // Before the verb, not after: an unarmed device must not be able to start a run at all.
     requireArmed(verb, flags);
     const result = entry.run({ verb, positionals, flags, cwd });
-    // A verb that answers over the network returns a promise. It prints and settles its
-    // own exit code once it resolves; the pending promise is what keeps the process
-    // alive until then, which is why the entry point below never forces a zero exit.
+    // A verb that answers over the network returns a promise. It prints and settles its own
+    // exit code once it resolves, and the pending promise keeps the process alive until then.
     if (result instanceof Promise) {
       result.then(
         (value) => emit(entry, value, flags, indent),
@@ -213,8 +209,7 @@ export function main(argv) {
 const entryPath = process.argv[1];
 if (entryPath && import.meta.url === pathToFileURL(realpathSync(entryPath)).href) {
   const code = main(process.argv.slice(2));
-  // Never `process.exit(0)`: an async verb is still settling, and exiting now would
-  // truncate the answer it is about to print. Node exits 0 on its own once nothing is
-  // pending. A non-zero code has already been decided synchronously, so it exits at once.
+  // Never `process.exit(0)`: an async verb is still settling, and exiting now would truncate
+  // the answer it is about to print. Node exits 0 on its own once nothing is pending.
   if (code !== 0) process.exit(code);
 }

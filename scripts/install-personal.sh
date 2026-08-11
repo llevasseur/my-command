@@ -99,7 +99,7 @@ if [ -d "$TOOLKIT_SRC" ]; then
 
   # `my-command-tools concepts` reads the hosted store's address and token from the
   # environment. Report only whether they are set — never print a value, and never write a
-  # token into a settings file or a dotfile. The export lines are printed for pasting.
+  # token into a settings file or a dotfile.
   if [ -n "${IDEAS_URL:-${CONCEPTS_URL:-}}" ] && [ -n "${IDEAS_TOKEN:-${CONCEPTS_TOKEN:-}}" ]; then
     echo "Concept store: address and token are both set, so 'my-command-tools concepts' can reach it."
   else
