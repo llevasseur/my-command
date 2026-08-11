@@ -34,4 +34,5 @@ Add one with `okq new feature "<title>"`.
 | teach | [teach.md](teach.md) |
 | trim | [trim.md](trim.md) |
 | truncate | [truncate.md](truncate.md) |
+| work | [work.md](work.md) |
 <!-- okq:index:end -->
