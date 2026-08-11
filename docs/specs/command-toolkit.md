@@ -31,6 +31,7 @@ noise, what a PR description should say, or whether a failure is worth fixing.
 | `prs view\|list\|checks` | read-only pull-request lookups; never writes |
 | `worktree begin\|end\|reap\|list` | the isolated-workspace lifecycle |
 | `identity` | which GitHub account this checkout's remote wants, and `--select` to switch to it |
+| `stash write\|restore\|list` | `/cp`'s five-deep clipboard ring under `~/.claude`, and the clipboard sink |
 | `doctor` | where the toolkit resolved from, what's on PATH, and which clone it tracks |
 
 `state` collapses the rev-parse / status / log / diff opening volley into one call
@@ -43,6 +44,20 @@ refused. `scope` replaces `$(git merge-base origin/main HEAD)`, `prs` replaces
 `GH_TOKEN="$(gh auth token --user <login>)" …`, and `doctor.checkout` replaces the
 nest of three command substitutions `/sync` used to derive its clone path with. See
 [Workflow gates](workflow-gates.md).
+
+`stash` is the same move made for a shape no flag could fix. `/cp` step 3 prescribed
+its five-deep ring rotation as a `for i in 3 2 1` loop composing `$((i + 1))` paths.
+Every path in it was under `~/.claude`, so the snippet carried no git operation and no
+repo-relative write — and it was refused every run regardless, because a
+worktree-isolated session cannot resolve a loop-computed path by reading it and `/cp`
+is usually invoked from inside a worktree. **The fix is the name, not the paths**: an
+inline snippet is a different string every time and can never be allowlisted, while
+`Bash(my-command-tools:*)` already is, so the rotation became a verb that a gate reads
+in one token. It takes the entry as `--content-file <path>` for the reason
+`commit --message-file` does, keeps the ring under `$CLAUDE_CONFIG_DIR` (or
+`~/.claude`) and nowhere else, and owns the platform detection — the stash is written
+everywhere, only the clipboard sink varies. A slot holding nothing is reported rather
+than copied, since clearing the clipboard is worse than leaving it.
 
 The same reasoning gives `commit` and `pr` their file forms. `--message-file <path>`
 and `--body-file <path>` are what the usage strings advertise, because the multi-line

@@ -31,6 +31,8 @@
 #      escape for a genuinely hook-less environment.
 #  15. every command carries the step marker rules, so a run states the step it enters
 #      instead of leaving the record to infer it (docs/specs/run-markers.md).
+#  18. every fenced shell snippet the docs tell an agent to run is a shape the gates accept —
+#      the repo may not prescribe a command its own harness refuses.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -472,6 +474,17 @@ for pair in commit:message-file pr:body-file; do
 done
 if grep -REn -- 'my-command-tools (commit|pr) [^`]*--(message|body) -' src/commands/ src/shared/ skills/; then
   echo "::error::the lines above teach prose on stdin; write the file and pass --message-file/--body-file, which is what the gate's refusal names."
+  fail=1
+fi
+
+# 18. The docs may not prescribe a command the harness refuses. `/cp` step 3 told every run to
+# rotate its stash ring with a `for i in 3 2 1` loop over `$((i + 1))` paths, and a
+# worktree-isolated session refused it every time — on shape, not on substance, since every
+# path in it was under ~/.claude. One bad snippet is a bug; a repo that can grow another one
+# silently is the defect, so every fenced shell block in src/commands/, src/shared/ and skills/
+# goes through the same shape checker the gate uses. A block nobody is told to run declares
+# itself with `<!-- not-run: <reason> -->`.
+if ! node scripts/check-doc-snippets.mjs; then
   fail=1
 fi
 

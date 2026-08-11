@@ -29,47 +29,42 @@ Put a ready-to-paste invocation of another command on the clipboard. **Never run
 1. **Restore, with `--again` / `-a`.** This flag short-circuits the whole command: do not compose, do not read anything, do not enrich anything, and ignore any command or prompt tokens rather than acting on them. One Bash call, which spends no tokens on the text it restores:
 
    ```bash
-   pbcopy < ~/.claude/cp-last.txt
+   my-command-tools stash restore
    ```
 
-   A slot number reads an older ring entry instead — `/cp --again 2` restores `~/.claude/cp-last.2.txt`, valid through slot 4. Off macOS, substitute the platform's clipboard sink exactly as in step 3. If the stash file does not exist, say so plainly and write nothing: an empty clipboard is worse than whatever is on it now. Then stop — steps 2 and 3 do not run.
+   A slot number reaches an older ring entry — `/cp --again 2` is `my-command-tools stash restore 2`, valid through slot 4. The verb detects the clipboard sink itself, so there is nothing to substitute per platform. If the slot holds nothing it says so and leaves the clipboard alone — an empty clipboard is worse than whatever is on it now — so repeat that plainly and write nothing. Then stop — steps 2 and 3 do not run.
 2. **Compose.** The first token of `$ARGUMENTS` is the target command (a leading `/` is optional); everything after it is the prompt. Rewrite the prompt so it stands alone for an agent that cannot see this conversation — resolve `this`/`that`/`it`, name files, branches, and PR numbers explicitly, and keep every constraint the user stated. Add no scope. Preserve any flags the user typed for the target command as typed. With `--verbatim`, use the prompt as given.
-3. **Copy.** Three calls, in this order — the stash and the clipboard end up carrying identical bytes, so a later copy from anywhere else can be undone with step 1. First rotate the ring:
+3. **Copy.** Two calls, in this order — the stash and the clipboard end up carrying identical bytes, so a later copy from anywhere else can be undone with step 1. First write the composed line with the `Write` tool, spelling the home directory out — the tool does not expand `~`:
+
+   ```
+   Write({file_path: "/Users/<you>/.claude/cp-compose.txt", content: "/<command> <composed prompt>\n"})
+   ```
+
+   Then hand that path to the stash, which rotates the ring, installs the line as the newest entry, and feeds the clipboard from it:
 
    ```bash
-   mkdir -p ~/.claude
-   rm -f ~/.claude/cp-last.4.txt
-   for i in 3 2 1; do
-     [ -f ~/.claude/cp-last.$i.txt ] && mv ~/.claude/cp-last.$i.txt ~/.claude/cp-last.$((i + 1)).txt
-   done
-   [ -f ~/.claude/cp-last.txt ] && mv ~/.claude/cp-last.txt ~/.claude/cp-last.1.txt
+   my-command-tools stash write --content-file /Users/<you>/.claude/cp-compose.txt
    ```
 
-   Then write the composed line with the `Write` tool, spelling the home directory out — the tool does not expand `~`:
+   **The entry travels as a file path, never as a shell-composed string.** `cat > … <<'EOF'` composes a file in the shell, and that shape is refused outright inside an isolated worktree — which is where `/cp` is often invoked from — while an argument would need every quote, backslash, and newline in the prompt escaped correctly. `Write` takes the content literally and the verb copies the bytes, so nothing expands or escapes either way.
 
-   ```
-   Write({file_path: "/Users/<you>/.claude/cp-last.txt", content: "/<command> <composed prompt>\n"})
-   ```
+   **The rotation belongs to the verb because a loop cannot be allowlisted.** The five-deep ring used to be a `for i in 3 2 1` loop over `$((i + 1))` paths pasted into this prompt. Every path in it was under `~/.claude`, so it carried no git operation and no repo-relative write — and it was refused every time anyway, because a worktree-isolated session cannot resolve a loop-computed path by reading it. `Bash(my-command-tools:*)` is allowlisted; a snippet that is a different string on every run never can be.
 
-   Then feed the clipboard from that file:
-
-   ```bash
-   pbcopy < ~/.claude/cp-last.txt
-   ```
-
-   **The stash is written with `Write`, never with a heredoc.** `cat > … <<'EOF'` composes a file in the shell, and that shape is refused outright inside an isolated worktree — which is where `/cp` is often invoked from, so the heredoc costs a refused call before anything reaches the clipboard. `Write` takes the content literally, so nothing expands or escapes either way.
-
-   The stash write happens on **every** platform; only the clipboard call is platform-detected. Off macOS, substitute the platform's clipboard sink (`wl-copy`, `xclip -selection clipboard`, `clip.exe`). If none is available, the stash is already written either way: say so and print the composed line — that is the only case where printing it is correct.
+   The stash write happens on **every** platform; only the clipboard call is platform-detected, and the verb does that itself — `pbcopy`, `wl-copy`, `xclip -selection clipboard`, `clip.exe`, in that order. With no sink available the entry is stashed anyway and the result says so: repeat that and print the composed line — that is the only case where printing it is correct.
 
 ## Recovering without an agent
 
 The stash is a plain file, so the cheapest recovery spends no tokens at all. Add to `~/.zshrc`:
+
+<!-- not-run: a shell function the user pastes into ~/.zshrc; no agent ever executes it -->
 
 ```bash
 cpagain() { pbcopy < ~/.claude/cp-last.txt; }
 ```
 
 Or the variant that takes an optional slot number matching the ring:
+
+<!-- not-run: a shell function the user pastes into ~/.zshrc; no agent ever executes it -->
 
 ```bash
 cpagain() { pbcopy < "$HOME/.claude/cp-last${1:+.$1}.txt"; }

@@ -30,21 +30,44 @@ line of context.
 Rewrites the prompt so it stands alone for an agent with no view of this
 conversation (pronouns resolved; files, branches, and PR numbers named; stated
 constraints kept; the user's flags preserved as typed), then writes
-`/<command> <prompt>` to a plain-text stash at `~/.claude/cp-last.txt` **with the
-`Write` tool** and feeds the clipboard from that file, so both carry identical
-bytes. The stash is never composed with a heredoc: `cat > … <<'EOF'` composes a
-file in the shell, which is refused outright inside an isolated worktree — and
-`/cp` is invoked from inside one often — so that form cost a refused call before
-anything reached the clipboard. `Write` also takes the content literally, which
-is what the single-quoted heredoc was for. The clipboard sink is platform-detected — `pbcopy`, or
-`wl-copy`, `xclip -selection clipboard`, or `clip.exe` off macOS — while the
-stash write happens everywhere. With no clipboard sink available it prints the
-line instead, the only case where printing is correct.
+`/<command> <prompt>` to `~/.claude/cp-compose.txt` **with the `Write` tool** and
+hands that path to `my-command-tools stash write --content-file <path>`, which
+rotates the ring, installs the line as the newest entry, and feeds the clipboard
+from it — so the stash and the clipboard carry identical bytes.
+
+**The entry travels as a file path, never as a shell-composed string.**
+`cat > … <<'EOF'` composes a file in the shell, which is refused outright inside
+an isolated worktree — and `/cp` is invoked from inside one often — while an
+argument would need every quote, backslash, and newline in the prompt escaped
+correctly. `Write` takes the content literally and the verb copies the bytes.
+
+The clipboard sink is platform-detected — `pbcopy`, `wl-copy`,
+`xclip -selection clipboard`, `clip.exe`, in that order — and the verb does that
+detection itself, while the stash write happens everywhere. With no clipboard
+sink available the entry is stashed anyway and `/cp` prints the line instead, the
+only case where printing is correct.
 
 The stash is a five-deep ring: each copy rotates `cp-last.txt` into
 `cp-last.1.txt`, shifts `cp-last.1.txt` through `cp-last.3.txt` down one slot,
-and drops what was in `cp-last.4.txt`. It is plain text under `~/.claude` only —
-no markdown, no doc artifact, nothing written into the repository.
+and drops what was in `cp-last.4.txt`. It is plain text under `~/.claude` only
+(or `$CLAUDE_CONFIG_DIR` where that is set) — no markdown, no doc artifact,
+nothing written into the repository the session happens to be in.
+
+### Why the ring is a verb
+
+That rotation used to be a `for i in 3 2 1` loop over `$((i + 1))` paths, pasted
+into this command's prompt. Every path in it was under `~/.claude`, so it carried
+no git operation and no repo-relative write — and it was **refused on every run**,
+because a worktree-isolated session cannot resolve a loop-computed path by
+reading it, and `/cp` runs from inside a worktree most of the time.
+
+The fix is the name rather than the paths. `Bash(my-command-tools:*)` is
+allowlisted in `src/hooks/settings-fragment.json`, so a verb call is one
+approval-free command a gate can read, while a snippet that is a different string
+on every run can never be allowlisted. It is the same move that put the concept
+store in `concepts` and prose in `commit --message-file`. `check-commands.sh` now
+holds every command file to it: see
+[Workflow gates](../specs/workflow-gates.md).
 
 ## Recovering a clobbered copy
 
@@ -52,15 +75,21 @@ Any later copy from any application overwrites the clipboard, and recomposing
 would spend the tokens again. `--again` restores the stash without recomposing,
 reading, or enriching anything: `/cp --again` puts `~/.claude/cp-last.txt` back,
 `/cp --again 2` reaches `~/.claude/cp-last.2.txt`. A missing stash file is
-reported plainly rather than copied as an empty clipboard.
+reported plainly rather than copied as an empty clipboard — `my-command-tools
+stash restore` leaves the clipboard alone rather than clearing it, since an empty
+clipboard is worse than whatever is on it now.
 
 Recovery needs no agent at all. In `~/.zshrc`:
+
+<!-- not-run: a shell function the user pastes into ~/.zshrc; no agent ever executes it -->
 
 ```bash
 cpagain() { pbcopy < ~/.claude/cp-last.txt; }
 ```
 
 or, accepting an optional slot number matching the ring naming above:
+
+<!-- not-run: a shell function the user pastes into ~/.zshrc; no agent ever executes it -->
 
 ```bash
 cpagain() { pbcopy < "$HOME/.claude/cp-last${1:+.$1}.txt"; }

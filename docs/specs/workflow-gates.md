@@ -57,6 +57,7 @@ is allowed to be another sentence.
 | Unquoted glob matching nothing | 3 | `PreToolUse` refuses it — zsh would abort the whole command |
 | Foreground `sleep` | 3 | `PreToolUse` refuses it, naming `Monitor` and `run_in_background` |
 | Heredoc composing a file | 3 | `PreToolUse` refuses it, naming the `Write` tool |
+| Docs prescribing a command the harness refuses | 4 | `check-commands.sh` runs every fenced shell snippet in `src/commands/`, `src/shared/` and `skills/` through the gate's own shape checker |
 | The gates not being armed at all | 4 | `state`/`scope`/`commit`/`pr` refuse to run, so an unarmed device cannot start a run |
 | Unapproved signing prompt | 3 | `commit` retries once, itself |
 | `must be a collaborator` | 3 | `pr` resolves the identity, itself |
@@ -395,6 +396,76 @@ each refusal is a statement about a command that was going to fail:
   target, or the argument of `writeFileSync`/`json.dump` and friends — is skipped, because a
   document being written was never guessed at; there is no shape to have got wrong.
 
+### The docs may not prescribe a refusal
+
+The gates judge what a run sends, and what a run sends is usually what a command file told
+it to send. So a snippet in this repo's own documentation is not documentation to the
+harness — it is the command, one substitution away.
+
+`/cp` step 3 prescribed its five-deep stash rotation as a `for i in 3 2 1` loop over
+`$((i + 1))` paths, and **it was refused on every run that followed it**. The refusal was a
+false positive on substance: every path in the snippet was under `~/.claude`, so it
+contained no git operation and no repo-relative write. It was a true positive on shape — a
+worktree-isolated session cannot resolve a loop-computed path by reading the command, and
+`/cp` says itself that it is usually invoked from inside a worktree, which is where `/task`
+puts every run. The docs prescribed a call the harness would not run.
+
+One bad snippet is a bug. **A repo that can grow another one silently is the defect**, and
+that is what is gated: `scripts/check-doc-snippets.mjs` extracts every fenced shell block
+from `src/commands/`, `src/shared/`, and `skills/`, and runs each one through the same
+`bash-shapes.mjs` the `PreToolUse` gate uses, plus `shellProgram()`. `commands/` is
+generated from `src/commands/`, so it is deliberately not swept — it would report every
+snippet twice. Running it over the repo as it stood found the `/cp` loop in **both** the
+command and its Codex skill, which is the argument for the sweep rather than a fix: the
+paired bundle means one prescribed refusal is always at least two files.
+
+**A block nobody is being told to run declares itself**, with `<!-- not-run: <reason> -->`
+on the line above the fence. That is not a suppression hatch — it is the one distinction a
+fence cannot carry on its own. The real cases are a shell function a human pastes into
+`~/.zshrc` and a file template an agent writes rather than executes, and both look exactly
+like an instruction.
+
+Two design rules carried over from the gates themselves. **The construct set is observed,
+not guessed**: each shape in `PROGRAM_CONSTRUCTS` was sent to a real Bash call from inside
+an isolated worktree and watched. A loop whose body uses its own variable and a function
+definition are refused; an input redirect, an `&&` short-circuit, a bare `$(( ))`, an
+assignment the next command reads, two plain commands on separate lines, and a heredoc
+feeding stdin all run — so `if` and `&&` are deliberately **absent**, because they branch
+without computing anything a reader cannot follow. And **a placeholder is substituted before
+anything is judged**, because a doc snippet is not yet a command: `<the sentence>` ends in
+`>`, which read as a redirect and turned `/teach`'s working stdin heredoc into a reported
+"heredoc composes a file". Judging the unsubstituted text reports shapes that never reach a
+shell.
+
+`shellProgram()` lives in `bash-shapes.mjs` with the rest of the shape logic but is
+**deliberately not wired into the `PreToolUse` gate**. The refusal it models is the
+harness's own and already fires there; a second gate over the same shape could only refuse
+what is refused anyway, and would be the one place these hooks guessed rather than knew.
+
+### The worktree-isolation refusal is not ours to narrow
+
+The refusal that motivated all of the above —
+
+> this command is too complex to verify that it stays inside the worktree; break it into
+> plain, separate commands
+
+— is emitted by **Claude Code's own built-in** worktree gate, not by anything in
+`src/hooks/`. Neither that sentence nor the rule it states appears anywhere in this
+repository; `pre-tool-use.mjs` has no worktree-isolation check to scope, and the heredoc
+refusal it *does* carry describes that external mechanism rather than implementing it.
+
+So "narrow the isolation check to git operations and repo-relative writes, with a
+safe-prefix allowance for `~/.claude/` and `$CLAUDE_JOB_DIR/`" is a change to the harness,
+and cannot be made here. What is available from this side is rung 4, which is what shipped:
+remove the affordance. The `stash` verb means `/cp` no longer sends a shape that has to be
+judged at all, and the doc-snippet invariant means no other command can start.
+
+This repo has been here once before, from the other direction. The `$CLAUDE_JOB_DIR` gate
+below was **ours**, it refused the path the harness prescribes, and it was deleted rather
+than softened. Both entries are the same lesson: where a shape is safe and a gate cannot see
+it, the answer is to stop sending the shape or to stop gating it — never to teach a parser
+to unroll loops.
+
 ### The job directory is not a gate
 
 There was a fifth shape here: `$CLAUDE_JOB_DIR` addressed from inside a worktree, refused
@@ -430,6 +501,9 @@ cannot contradict each other again.
 - **Fail open, always.** No gate does its own error handling; `guard()` is the entire
   error policy.
 - **One denial per subject per session.** A gate cannot refuse the same thing twice.
+- **The docs may not prescribe a shape the gates refuse.** Every fenced shell snippet a
+  command, a shared include, or a skill tells an agent to run passes the gate's own shape
+  checker, or declares itself not-run. Enforced by `check-commands.sh`.
 - **Zero dependencies, Node 22+**, matching the toolkit — the hooks run from a bare
   clone with nothing installed.
 
@@ -511,6 +585,18 @@ cannot contradict each other again.
       degrades to the bare instruction outside a repository.
 - [x] A `TodoWrite` that completes the closing-turn anchor and carries nothing else in its
       turn is refused once; the same `TodoWrite` alongside other work in the turn passes.
+- [x] Every fenced shell snippet in `src/commands/`, `src/shared/`, and `skills/` passes the
+      gate's own shape checker, or carries a `<!-- not-run: … -->` declaration; a loop, a
+      function definition, and a `case` branch each fail the check, while an input redirect,
+      an `&&` chain, a bare `$(( ))`, an assignment, two plain lines, and a stdin heredoc
+      all pass.
+- [x] A `<placeholder>` is substituted before the shapes are judged, so `/teach`'s
+      `pbcopy <<'EOF'` / `<the sentence>` / `EOF` is not reported as a file-composing heredoc.
+- [x] The form `/cp` now prescribes — `my-command-tools stash write --content-file <path>` —
+      is not refused, asserted by running the checker over it.
+- [x] `stash write` rotates a five-deep ring, drops the oldest, and preserves an entry
+      containing quotes, backslashes, and newlines byte for byte; `stash restore` reads a
+      named slot, and a slot holding nothing is reported with the clipboard left alone.
 
 ## What was rejected
 
