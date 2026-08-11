@@ -4,7 +4,7 @@ title: Run markers
 description: The STEP and RETURN markers every command emits, so a recorded run's steps and a nested run's span are read from what the run stated rather than inferred from its prose.
 tags: [process, commands, observability]
 timestamp: 2026-08-09
-updated: 2026-08-09
+updated: 2026-08-11
 dirty: true
 ---
 
@@ -59,13 +59,47 @@ its terminal step. It needs no include of its own.
 **Format:** the word `RETURN` in capitals, a space, then the name the run was
 invoked under with its leading slash — `RETURN /task`, `RETURN /clean`, or
 `RETURN /my-command:clean` where the invocation carried the plugin namespace. It
-is the last line of the closing turn.
+is the last line of the message that hands control back.
 
-The closing turn is the one place a nested run provably passes on its way out,
-which is what makes the span exact. Without the marker a nested run's span ran to
-the next nested invocation, or to the end of the transcript for the last one, so
-a `/clean` nested under a `/task` was charged with everything `/task` did after
+That message is the one place a nested run provably passes on its way out, which
+is what makes the span exact. Without the marker a nested run's span ran to the
+next nested invocation, or to the end of the transcript for the last one, so a
+`/clean` nested under a `/task` was charged with everything `/task` did after
 `/clean` returned.
+
+## The nested handback, and why it is not a closing turn
+
+**A nested inline run does not close — it hands back, and the marker rides that
+handback.** The original rule said the marker sits on the last line of a
+*closing turn*, defined as one message carrying text and zero tool calls. In
+Claude Code a text-only assistant message ends the assistant's turn and returns
+control to the user, so a command invoked inline by another ended its parent's
+turn on the way out and stranded every step the parent still owed. Observed end
+to end on this repo's PR #90: `/task` ran `/clean` and then `/pr` inline in one
+session, `/clean`'s text-only close returned control before `/task` could invoke
+`/pr`, and `/pr`'s returned control before `/task`'s worktree teardown and
+closing report ever ran — a live run reading as abandoned with its remaining
+steps still owed.
+
+So the rule is stated per case, and `shared/closing-turn.md` names all three
+along with how a run tells which it is in:
+
+| Case | How the run knows | How it ends |
+|---|---|---|
+| Outermost | the user invoked it directly, as the prompt this turn answers | one message with text and **zero** tool calls |
+| Nested inline | another command invoked it with the `Skill` tool in this session, and that parent has steps left | report + marker as text **in the same message as the parent's next tool call** |
+| Subagent | dispatched with the `Agent` tool (`--sub`, a delegated unit) | one message with text and zero tool calls, like an outermost run |
+
+The subagent case closes in its own text-only turn because its final message is
+a report *to* the parent session rather than a turn *in* the parent's
+conversation — nothing of the parent's is queued behind it, so spending the turn
+strands nothing.
+
+**The marker contract is unchanged by this.** It is still written exactly once,
+still alone on the last line, and still carries whatever namespace prefix the
+invocation carried. Only the message it rides differs, and it is never weakened,
+deferred to a later message, or dropped because the turn continues — nested-span
+attribution in claude-proxy's commands eval depends on it being exact.
 
 ## Limits, both deliberate
 
@@ -97,6 +131,12 @@ belongs to claude-proxy and is not part of this.
 - [ ] Neither snippet's own text matches either marker's pattern.
 - [ ] `check-commands.sh` fails when a command drops the step marker include or
       the closing turn drops the return marker.
+- [ ] `src/shared/closing-turn.md` names all three invocation cases and says how
+      a run tells which it is in, and a nested inline run is told to hand back
+      without spending a text-only turn.
+- [ ] Every generated `commands/<name>.md` carries that expanded rule, and every
+      `skills/<name>/SKILL.md` states it in its own words.
+- [ ] `check-commands.sh` fails when any of those three surfaces drops it.
 
 ## Related
 

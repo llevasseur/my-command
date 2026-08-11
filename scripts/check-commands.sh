@@ -31,6 +31,9 @@
 #      escape for a genuinely hook-less environment.
 #  15. every command carries the step marker rules, so a run states the step it enters
 #      instead of leaving the record to infer it (docs/specs/run-markers.md).
+#  18. the closing turn distinguishes a nested inline handback from a run close, on all three
+#      surfaces, and the Stop gate reads the same distinction — a nested run that spends a
+#      text-only turn strands its parent's remaining steps (docs/specs/run-markers.md).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -474,6 +477,48 @@ if grep -REn -- 'my-command-tools (commit|pr) [^`]*--(message|body) -' src/comma
   echo "::error::the lines above teach prose on stdin; write the file and pass --message-file/--body-file, which is what the gate's refusal names."
   fail=1
 fi
+
+# 18. Only the outermost run closes in a text-only turn. A text-only assistant message ends the
+# assistant's turn, so a command invoked inline by another strands its parent's remaining steps
+# by closing — observed on PR #90, where /task's teardown and closing report were both stranded
+# by /clean's and /pr's closes. This is gated on all three surfaces the way 6 and 15 gate the
+# closing turn and the return marker: the canonical snippet, the generated copy the plugin
+# ships, and the hand-written Codex translation that cannot inherit an include.
+NESTED='hands back without spending a text-only turn'
+if ! grep -Fq "$NESTED" src/shared/closing-turn.md; then
+  echo "::error::src/shared/closing-turn.md no longer distinguishes a nested inline handback from a run close; every nested command would end its parent's turn and strand the rest of the parent's pipeline (docs/specs/run-markers.md)."
+  fail=1
+fi
+# The three cases have to be tellable apart by the run itself, or the rule states an outcome
+# with no way to reach it.
+for needle in 'Skill` tool' 'Agent` tool'; do
+  if ! grep -Fq "$needle" src/shared/closing-turn.md; then
+    echo "::error::src/shared/closing-turn.md no longer names '$needle' as how a run tells which of the three invocation cases it is in; the handback rule would be unactionable (docs/specs/run-markers.md)."
+    fail=1
+  fi
+done
+for f in commands/*.md; do
+  if ! grep -Fq "$NESTED" "$f"; then
+    echo "::error::$f does not carry the expanded nested-handback rule; the include never reached the copy the plugin ships, so the command states nothing about it (docs/specs/run-markers.md)."
+    fail=1
+  fi
+done
+for f in skills/*/SKILL.md; do
+  # Hard-wrapped prose, so the phrase can straddle a line break — flatten whitespace first.
+  if ! tr '\n' ' ' <"$f" | tr -s ' ' | grep -Fq "$NESTED"; then
+    echo "::error::$f no longer mirrors the nested-handback rule; the Codex translation would tell a nested run to close and strand its invoker's remaining steps (docs/specs/run-markers.md)."
+    fail=1
+  fi
+done
+# The gate has to agree with the prose. It fired mid-pipeline on PR #90 demanding the very
+# text-only turn that does the stranding, so both exemptions must still be read from the
+# transcript rather than removed (docs/specs/workflow-gates.md).
+for needle in returnMarker nestedRunOpen; do
+  if ! grep -q "$needle" src/hooks/stop.mjs; then
+    echo "::error::src/hooks/stop.mjs no longer reads $needle(); the outcome gate would demand a text-only turn from a nested handback or from a pipeline still mid-flight, which is what strands the parent's steps (docs/specs/workflow-gates.md)."
+    fail=1
+  fi
+done
 
 if [ "$fail" -eq 0 ]; then
   echo "check-commands: all command invariants satisfied ($(ls src/commands/*.md | wc -l | tr -d ' ') commands)."

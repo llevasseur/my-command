@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs';
  * @property {number} at          Epoch ms of the turn's timestamp.
  * @property {{name: string, input: Record<string, any>, id?: string}[]} toolUses
  * @property {boolean} hasText    The turn said something, not only called tools.
+ * @property {string} text        What it said, blocks joined in order and trimmed.
  */
 
 /**
@@ -72,9 +73,13 @@ export function timeline(records) {
     const toolUses = content
       .filter((b) => b?.type === 'tool_use' && typeof b.name === 'string')
       .map((b) => ({ name: b.name, input: b.input ?? {}, id: b.id }));
-    const hasText = content.some((b) => b?.type === 'text' && typeof b.text === 'string' && b.text.trim().length > 0);
+    const text = content
+      .filter((b) => b?.type === 'text' && typeof b.text === 'string')
+      .map((b) => b.text)
+      .join('\n')
+      .trim();
 
-    out.push({ uuid: rec.uuid ?? '', at: epoch(rec.timestamp), toolUses, hasText });
+    out.push({ uuid: rec.uuid ?? '', at: epoch(rec.timestamp), toolUses, hasText: text.length > 0, text });
   }
   return out;
 }
@@ -82,6 +87,46 @@ export function timeline(records) {
 /** @param {(Turn | null)[]} line @returns {Turn[]} */
 export function turns(line) {
   return /** @type {Turn[]} */ (line.filter((t) => t !== null));
+}
+
+/**
+ * The command name a turn handed control back from, or null. `shared/closing-turn.md` puts
+ * `RETURN /<command>` alone on the last line of the message that hands back — a text-only
+ * close for an outermost or subagent run, and for a nested inline run the same message that
+ * carries the parent's next tool call. Only a real invocation name matches: the angle-bracket
+ * placeholder the snippet itself is written with cannot, so a session that merely loaded a
+ * command file has not handed anything back.
+ * @param {Turn | null | undefined} turn @returns {string | null}
+ */
+export function returnMarker(turn) {
+  const lines = String(turn?.text ?? '').split('\n');
+  const last = (lines[lines.length - 1] ?? '').trim();
+  const match = /^RETURN (\/[A-Za-z0-9_:-]+)$/.exec(last);
+  return match ? match[1] : null;
+}
+
+/**
+ * Whether a command this session invoked inline is still running — a `Skill` call since the
+ * last user prompt with no return marker yet accounting for it. While one is open the run the
+ * user invoked has steps owed after it, so a stop here is mid-pipeline rather than an ending.
+ *
+ * Counted rather than paired, because the two are emitted from different places: the parent
+ * issues the `Skill` call and the child writes the marker, and a nested handback carries the
+ * child's marker alongside the parent's *next* `Skill` call in one message. Only turns since
+ * the last real prompt count — a new prompt starts a new task, and an earlier task's nesting
+ * says nothing about this one.
+ * @param {(Turn | null)[]} line @returns {boolean}
+ */
+export function nestedRunOpen(line) {
+  let invoked = 0;
+  let returned = 0;
+  for (let i = line.length - 1; i >= 0; i--) {
+    const turn = line[i];
+    if (turn === null) break;
+    invoked += turn.toolUses.filter((u) => u.name === 'Skill').length;
+    if (returnMarker(turn)) returned += 1;
+  }
+  return invoked > returned;
 }
 
 /**
