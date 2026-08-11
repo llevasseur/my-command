@@ -10,6 +10,7 @@ import { ToolkitError } from './lib/proc.mjs';
 import { GATED_VERBS, requireArmed } from './lib/require-armed.mjs';
 import * as commit from './verbs/commit.mjs';
 import * as doctor from './verbs/doctor.mjs';
+import * as identity from './verbs/identity.mjs';
 import * as pr from './verbs/pr.mjs';
 import * as prs from './verbs/prs.mjs';
 import * as scope from './verbs/scope.mjs';
@@ -34,6 +35,7 @@ const VERBS = {
   pr,
   prs,
   worktree,
+  identity,
   doctor,
 };
 
@@ -41,7 +43,18 @@ const VERBS = {
 // below eats the token after a switch — `commit --compact a.md b.md` silently drops
 // a.md from the commit, which is precisely the class of mistake this CLI exists to stop.
 // A switch that wants an explicit value can still be spelled `--compact=false`.
-const SWITCHES = new Set(['help', 'compact', 'draft', 'retitle', 'force', 'bootstrap', 'existing', 'unarmed', 'diff']);
+const SWITCHES = new Set([
+  'help',
+  'compact',
+  'draft',
+  'retitle',
+  'force',
+  'bootstrap',
+  'existing',
+  'unarmed',
+  'diff',
+  'select',
+]);
 
 /**
  * @param {string[]} argv

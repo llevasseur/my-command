@@ -1,10 +1,10 @@
 ---
 type: feature
 title: ideate
-description: Surveys a repo and proposes features or commands worth building, citing only evidence a person already wrote down, recording every proposal in a ledger, and exiting with a pointer to the dashboard Advice page where a human accepts the ideas improve may act on.
+description: Surveys a repo and proposes features or commands worth building, citing only evidence a person already wrote down, recording every proposal in a ledger, and exiting with a pointer to the dashboard Advice page where a human accepts the ideas work may act on.
 tags: [commands, advice, ideas, claude-proxy]
 timestamp: 2026-08-05
-updated: 2026-08-09
+updated: 2026-08-10
 dirty: true
 ---
 
@@ -12,7 +12,7 @@ dirty: true
 
 ## Summary
 
-`/ideate` surveys a repo and proposes features or commands worth building. It is **proposal only** — it never implements, never opens a branch or worktree, never commits, and never calls [task](task.md). Its output is a ranked set of proposals recorded in a ledger, all at `proposed`, and it **asks nothing**: the run exits naming claude-proxy's dashboard Advice page as where a human accepts or rejects them. [improve](improve.md) is what turns an accepted proposal into a PR — on request, since acceptance is the permission rather than the trigger: that command builds an accepted idea only when named with `--idea <slug>` (or all of them with `--ideas`), one PR per idea.
+`/ideate` surveys a repo and proposes features or commands worth building. It is **proposal only** — it never implements, never opens a branch or worktree, never commits, and never calls [task](task.md). Its output is a ranked set of proposals recorded in a ledger, all at `proposed`, and it **asks nothing**: the run exits naming claude-proxy's dashboard Advice page as where a human accepts or rejects them. [work](work.md) is what turns an accepted proposal into a PR — on selection, since acceptance is the permission rather than the trigger: that command builds an accepted idea when a run selects it by slug (`--idea`), by area (`--area`), or with no selector at all for every available idea, one PR per idea.
 
 ## Motivation
 
@@ -23,7 +23,7 @@ That gap needs invention, and `/improve` is forbidden from inventing — on a ru
 Two boundaries carry that separation:
 
 - **`/ideate` never writes `suggestion-status.json`.** That store belongs to findings with source sessions behind them.
-- **`/improve` may only act on an `accepted` idea.** That is an amendment to its "never invent" note rather than a weakening of it: the rule is about the *trace*, and an accepted idea traces to a recorded human sign-off. A `proposed` or `rejected` idea is still invention and `/improve` never reads it.
+- **`/work` may only act on an `accepted` idea.** That is an amendment to the "never invent" rule rather than a weakening of it: the rule is about the *trace*, and an accepted idea traces to a recorded human sign-off. A `proposed` or `rejected` idea is still invention and `/work` never reads it.
 - **`/ideate` writes `proposed` and no other status.** It never accepts its own proposal, which would manufacture the trace rather than earn it.
 
 ## Flags / Parameters
@@ -87,7 +87,7 @@ Two rules keep a shared ledger usable as a dedupe key:
 
 The rationale is a list of bullets rather than a paragraph, and `shared/plain-rationale.md` is where that shape is stated once. A person reads it on the dashboard to decide one thing — accept, or reject — usually without having run the survey and usually with several cards open. A paragraph makes that reader parse prose for the claim they are deciding on. A fixed list makes two ideas comparable line for line.
 
-Six bullets, written as literal `- ` lines: **what it is**, **the problem**, **how it works**, **what it replaces or simplifies**, **size**, and **depends on `<slug>`** — the last written only when the idea consumes something a named idea introduces, since its absence is what tells `/improve` the idea declares no dependency. Three of Step 3's six required statements live here; the other three — the evidence, the repo, and the area — are fields of their own.
+Six bullets, written as literal `- ` lines: **what it is**, **the problem**, **how it works**, **what it replaces or simplifies**, **size**, and **depends on `<slug>`** — the last written only when the idea consumes something a named idea introduces, since its absence is what tells `/work` the idea declares no dependency. Three of Step 3's six required statements live here; the other three — the evidence, the repo, and the area — are fields of their own.
 
 Each bullet follows [ASD-STE100](https://asd-ste100.org) Simplified Technical English: one idea per sentence and at most twenty words, active voice and present tense, one word per concept, no idiom, at most three nouns in a row, an abbreviation written out the first time or not used at all, an article before each countable noun, and no pronoun pointing at another bullet — a reader scans a card out of order.
 
@@ -130,7 +130,7 @@ The in-session question existed for exactly one reason: `pnpm --filter server id
 
 What did **not** change is everything the trace rests on:
 
-- **`/improve` still acts only on an `accepted` idea.** The sign-off is still required; only its venue moved.
+- **`/work` still acts only on an `accepted` idea.** The sign-off is still required; only its venue moved.
 - **A `proposed` row is the adjudication queue, not an unanswered question.** It is also what dedupe reads, so it is not re-proposed next run on any device — a slug present on the ledger in **any** status is refused, `proposed` included.
 - **A rejection still carries its reason.** `POST /api/ideas/status` refuses a `rejected` mark with 400 unless a note comes with it, because that reason is the ledger's dedupe record. The human writes it; nothing invents one.
 - **`shipped` stays CLI-only**, because it carries a PR url, and `/ideate` never sets it either way.
@@ -140,16 +140,21 @@ What did **not** change is everything the trace rests on:
 - **Do not restate an Open Question as a proposal.** The question is already written down; the proposal has to add a design. "Should we offer a rolling last-10 view?" is not a proposal; "add a rolling window alongside the fixed one, sharing the rule engine, with the fixed buckets keeping the flag store" is.
 - **Never propose work `/improve` would find.** A suggestion rule tripping belongs there, with its source sessions. `/ideate` covers what the rules structurally cannot see.
 
-## What changed in improve
+## Where an accepted idea goes
 
-- Step 2 is now "Read the pending suggestions **and the accepted ideas**", reading `ideas list --available --repo <slug> --json` from the same hosted ledger. `--available` is `accepted` plus any `claimed` idea whose claim has expired, and `--range` does not apply to it.
-- Step 4 composes idea-sourced criteria **alongside** the suggestion ones, labelled as such and never merged into a suggestion's criterion group — they argue from different evidence, and a merged group can defend itself with only one of them.
-- Step 6 gains `ideas mark --slug <slug> -s shipped -n "<PR url>"`, on the same terms as `suggestions mark`: only what actually landed. An idea whose PR did not land stays `accepted` and returns next run.
-- `--dry-run` reports the accepted ideas it would act on and marks nothing in either store.
-- The "Never invent an improvement" note is **extended, not replaced**: an accepted idea is a second way of satisfying the trace requirement, while an idea thought of mid-run, still `proposed`, or `rejected` remains invention and may never become a criterion.
+[work](work.md) is the whole consumer, and it is a separate command rather than a
+track inside [improve](improve.md): the ideas half was split out so that neither
+command needs a flag to decide which store it reads.
+
+- It reads **the same hosted ledger this command writes to** — the `operator` Worker reached with `IDEAS_URL` and `IDEAS_TOKEN`, not a device-local file — so an idea proposed on one machine is built from another with nothing copied between them.
+- It reads the ideas **available to build** for the repo — `accepted` plus the ones whose claim expired — and nothing outside that set.
+- It **claims each idea before any code is written**, under the branch the dispatch is about to cut, then runs one `/task` per idea: one idea, one branch, one PR. The claim is what a second device checks, which is why it only works on a shared store.
+- It marks a shipped idea with `ideas mark --slug <slug> -s shipped -n "<PR url>"`, only for what actually landed. An idea whose PR did not land stays `accepted` and returns next run.
+- The "never invent an improvement" rule is **extended, not replaced**: an accepted idea satisfies the trace requirement through a recorded human sign-off, while an idea thought of mid-run, still `proposed`, or `rejected` remains invention and may never become a criterion.
 
 ## Related
 
-- [improve](improve.md) — turns accepted ideas and confirmed suggestions into a PR.
+- [work](work.md) — turns an accepted idea into a PR, one per idea.
+- [improve](improve.md) — turns confirmed suggestions into a PR; advice only, and it never reads this ledger.
 - [judge](judge.md) — produces the enrichment notes that are evidence source 2.
-- [task](task.md) — what `/improve` dispatches to, and what `/ideate` deliberately never calls.
+- [task](task.md) — what `/work` and `/improve` dispatch to, and what `/ideate` deliberately never calls.

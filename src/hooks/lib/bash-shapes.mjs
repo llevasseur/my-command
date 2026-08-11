@@ -144,6 +144,158 @@ export function heredocWrite(command) {
 }
 
 /**
+ * The toolkit verbs that used to take their prose on stdin, and the flag that takes a path
+ * instead. Reading stdin is what invites a heredoc, and a heredoc is refused wholesale in a
+ * worktree — so the stdin form is named here in order to be refused before it is composed.
+ */
+const PROSE_FLAGS = [
+  { verb: 'commit', flag: '--message', replacement: '--message-file' },
+  { verb: 'pr', flag: '--body', replacement: '--body-file' },
+];
+
+/**
+ * A `my-command-tools <verb> … <flag> -` invocation asking for its prose on stdin, or null.
+ * The path-taking flag named in the result does the same job with no shell in the way.
+ * @param {string} command
+ * @returns {{verb: string, flag: string, replacement: string} | null}
+ */
+export function stdinProseFlag(command) {
+  if (!command.includes('my-command-tools')) return null;
+  const tokens = tokenize(command).map((t) => t.text);
+  for (const spec of PROSE_FLAGS) {
+    if (!tokens.includes(spec.verb)) continue;
+    const at = tokens.indexOf(spec.flag);
+    if (at !== -1 && tokens[at + 1] === '-') return spec;
+    if (tokens.includes(`${spec.flag}=-`)) return spec;
+  }
+  return null;
+}
+
+/** Inline-script runners: the whole program is an argument, so nothing on disk records it. */
+const INLINE_SCRIPT = [
+  { bin: /^(node|bun)$/, flags: new Set(['-e', '--eval', '-p', '--print']) },
+  { bin: /^python3?$/, flags: new Set(['-c']) },
+  { bin: /^deno$/, flags: new Set(['eval']) },
+];
+
+/** Tokens that end one command and begin another. */
+const SEGMENT_BREAK = new Set(['|', '||', '&&', ';', '&', '|&']);
+
+/** Calls whose argument names a destination rather than a source. */
+const WRITE_CALL = /(?:writeFileSync|appendFileSync|createWriteStream|writeFile|outputJson|dump)\s*\(\s*$/;
+
+/**
+ * Whether an inline-script runner in this command is running a one-liner — `node -e`,
+ * `python3 -c`, `deno eval`. The flag has to belong to the runner itself, with only the
+ * runner's own options between them; a matching flag further along the pipeline is another
+ * binary's.
+ * @param {Token[]} tokens
+ * @returns {boolean}
+ */
+function runsInlineScript(tokens) {
+  for (let i = 0; i < tokens.length; i++) {
+    const bin = tokens[i].text.split('/').pop() ?? '';
+    const spec = INLINE_SCRIPT.find((s) => s.bin.test(bin));
+    if (!spec) continue;
+    for (let j = i + 1; j < tokens.length; j++) {
+      const next = tokens[j].text;
+      if (spec.flags.has(next)) return true;
+      if (SEGMENT_BREAK.has(next)) break;
+      // The first argument that is not one of the runner's own options is the program.
+      if (!next.startsWith('-')) break;
+    }
+  }
+  return false;
+}
+
+/**
+ * Existing `.json` files an inline one-liner in this command would parse. A one-liner
+ * reaching into a JSON document it has never seen is written against a guessed shape, and
+ * fails on the first key that is not there.
+ * @param {string} command @param {string} cwd
+ * @returns {string[]}
+ */
+export function inlineScriptJson(command, cwd) {
+  const tokens = tokenize(command);
+  if (!runsInlineScript(tokens)) return [];
+
+  /** @type {string[]} */
+  const out = [];
+  let prev = '';
+  for (const token of tokens) {
+    // The path may sit inside the script text rather than as an argument of its own, so
+    // every JSON-looking substring of every token is a candidate.
+    for (const m of token.text.matchAll(/[\w./-]+\.json\b/g)) {
+      // A destination, not a document: a redirect target, or the argument of a write call.
+      if (/>>?$/.test(prev) || token.text.slice(0, m.index).endsWith('>')) continue;
+      if (WRITE_CALL.test(token.text.slice(0, m.index).replace(/["'`]\s*$/, ''))) continue;
+      const path = isAbsolute(m[0]) ? m[0] : resolve(cwd, m[0]);
+      if (!out.includes(path) && existsSync(path)) out.push(path);
+    }
+    prev = token.text;
+  }
+  return out;
+}
+
+/**
+ * `git diff` options that return a summary instead of hunks. What they report is not the
+ * content `scope --diff` already returned, so narrowing one of them to a path re-fetches
+ * nothing — `--quiet`/`--exit-code` return an exit code alone.
+ */
+const DIFF_NO_CONTENT = new Set([
+  '--stat',
+  '--numstat',
+  '--shortstat',
+  '--summary',
+  '--quiet',
+  '--exit-code',
+  '--no-patch',
+  '-s',
+]);
+
+/**
+ * The single-path `git diff` / `gh pr diff` in this command, or null. Narrowing is the right
+ * form on its own, so this reports the shape and the caller decides, refusing it only once
+ * `scope --diff` has already returned that same content.
+ *
+ * Only a *single* path counts. Naming several in one call is the batched form
+ * `batched-discovery` prescribes — the fix for walking a file list, not the walk — and
+ * refusing it would leave the prose and this gate telling a run two different things.
+ * @param {string} command
+ * @returns {string | null}
+ */
+export function perPathDiff(command) {
+  for (const segment of command.split(/[;&|]+/)) {
+    const tokens = tokenize(segment).map((t) => t.text);
+    const bin = tokens[0]?.split('/').pop() ?? '';
+    if (bin !== 'git' && bin !== 'gh') continue;
+    if (!tokens.includes('diff')) continue;
+    // A name or stat listing carries no hunk content, so it is not a re-fetch of one.
+    if (tokens.some((t) => t.startsWith('--name-') || DIFF_NO_CONTENT.has(t))) continue;
+    // The index is a question `scope --diff` cannot have answered: it reports the branch and
+    // the working tree, and nothing re-checks what was staged after it ran.
+    if (tokens.includes('--cached') || tokens.includes('--staged')) continue;
+    const sep = tokens.indexOf('--');
+    const paths = sep === -1 ? [] : tokens.slice(sep + 1).filter(Boolean);
+    if (paths.length !== 1) continue;
+    return segment.trim();
+  }
+  return null;
+}
+
+/**
+ * Whether this command invoked a toolkit verb with a given flag — `scope --diff`, say.
+ * Used to tell "the content was already fetched" from "it never was".
+ * @param {string} command @param {string} verb @param {string} flag
+ * @returns {boolean}
+ */
+export function ranToolkit(command, verb, flag) {
+  if (!command.includes('my-command-tools')) return false;
+  const tokens = tokenize(command).map((t) => t.text);
+  return tokens.includes(verb) && tokens.includes(flag);
+}
+
+/**
  * Absolute paths of existing files this command would dump in full or in part.
  * @param {string} command @param {string} cwd
  * @returns {string[]}

@@ -30,17 +30,27 @@ noise, what a PR description should say, or whether a failure is worth fixing.
 | `pr` | push, then create or update the branch's PR |
 | `prs view\|list\|checks` | read-only pull-request lookups; never writes |
 | `worktree begin\|end\|reap\|list` | the isolated-workspace lifecycle |
+| `identity` | which GitHub account this checkout's remote wants, and `--select` to switch to it |
 | `doctor` | where the toolkit resolved from, what's on PATH, and which clone it tracks |
 
 `state` collapses the rev-parse / status / log / diff opening volley into one call
 and settles `/task`'s no-change gate with a single `hasWork` boolean.
 
-`scope`, `prs`, and `doctor.checkout` exist for a second reason beyond call count: a
-probe with a name is never composed as the shell shape that gets refused. `scope`
-replaces `$(git merge-base origin/main HEAD)`, `prs` replaces
-`gh pr list … | jq …`, and `doctor.checkout` replaces the nest of three command
-substitutions `/sync` used to derive its clone path with. See
+`scope`, `prs`, `identity`, and `doctor.checkout` exist for a second reason beyond
+call count: a probe with a name is never composed as the shell shape that gets
+refused. `scope` replaces `$(git merge-base origin/main HEAD)`, `prs` replaces
+`gh pr list … | jq …`, `identity` replaces
+`GH_TOKEN="$(gh auth token --user <login>)" …`, and `doctor.checkout` replaces the
+nest of three command substitutions `/sync` used to derive its clone path with. See
 [Workflow gates](workflow-gates.md).
+
+The same reasoning gives `commit` and `pr` their file forms. `--message-file <path>`
+and `--body-file <path>` are what the usage strings advertise, because the multi-line
+alternative is a heredoc and a heredoc composing a file is refused wholesale inside a
+worktree — the shape those two verbs are called from most. The file pairs with the
+tool that refusal already names: write the prose to a path, pass the path. `--message -`
+and `--body -` still read stdin for a real pipeline; they are simply no longer the
+advertised route, since every recorded use of them spent a refused call first.
 
 `scope --diff` returns that branch's diff **content** in the same call, split into
 `diff.committed` and `diff.workingTree` and annotated per line — `<sign><line number>\t<text>`,
@@ -83,6 +93,11 @@ failure a workflow run has actually hit:
   token belonging to the repository owner, then over REST, whose endpoints accept the
   credential GraphQL refused. It reports the `identity` that worked. A wrong-identity
   condition with one known answer is not a caller's problem.
+- `identity` answers the same question for the `gh` calls that are not `pr` — a
+  `gh pr edit` appending to a description, a `gh api` write. It reads the owner off the
+  remote rather than guessing a login, and `--select` runs the one plain
+  `gh auth switch --user <owner>`. This device is logged in as two accounts, so the
+  pick is per repository and it is not a judgment call.
 - `prs` has no write path at all, so a read-only lookup can never be the thing that
   changes a PR.
 

@@ -37,6 +37,74 @@ export function ownerToken(owner) {
 }
 
 /**
+ * Every account this device is logged in as, and which one `gh` is currently using. Read
+ * from `gh auth status` rather than `gh api user`, so it costs no network call and still
+ * answers while the active account is the wrong one.
+ * @param {string} [cwd]
+ * @returns {{login: string, active: boolean}[]}
+ */
+export function accounts(cwd) {
+  const r = exec('gh', ['auth', 'status'], { cwd });
+  // gh has printed this block to stderr in some versions and stdout in others.
+  return parseAccounts(`${r.stdout}\n${r.stderr}`);
+}
+
+/**
+ * The account list `gh auth status` describes, split out from the call so it is testable
+ * without a logged-in device. Two spellings, because both ship: current `gh` prints
+ * `account <login>` with an `Active account:` line under it, older `gh` prints
+ * `Logged in to <host> as <login>`.
+ * @param {string} text
+ * @returns {{login: string, active: boolean}[]}
+ */
+export function parseAccounts(text) {
+  /** @type {{login: string, active: boolean}[]} */
+  const found = [];
+  /** @type {{login: string, active: boolean} | null} */
+  let current = null;
+  for (const line of text.split('\n')) {
+    const named = line.match(/(?:account|Logged in to \S+ as) (\S+)/);
+    if (named) {
+      current = { login: named[1], active: false };
+      found.push(current);
+      continue;
+    }
+    const active = line.match(/Active account:\s*(true|false)/i);
+    if (active && current) current.active = active[1].toLowerCase() === 'true';
+  }
+  // A single login with no `Active account:` line is the active one by definition.
+  if (found.length === 1) found[0].active = true;
+  return found;
+}
+
+/**
+ * Which account this checkout's remote wants, which one `gh` is using, and the single
+ * plain command that reconciles them. Replaces a hand-rolled
+ * `GH_TOKEN="$(gh auth token --user <login>)" …`, which the gates refuse on shape.
+ * @param {string} cwd
+ * @returns {{owner: string | null, repo: string | null, active: string | null,
+ *            matches: boolean, loggedIn: boolean, select: string | null,
+ *            accounts: {login: string, active: boolean}[]}}
+ */
+export function identity(cwd) {
+  const slug = originSlug(cwd);
+  const owner = slug?.owner ?? null;
+  const list = accounts(cwd);
+  const active = list.find((a) => a.active)?.login ?? null;
+  const loggedIn = owner !== null && list.some((a) => a.login === owner);
+  const matches = owner !== null && active === owner;
+  return {
+    owner,
+    repo: slug?.repo ?? null,
+    active,
+    matches,
+    loggedIn,
+    select: !matches && loggedIn && owner ? `gh auth switch --user ${owner}` : null,
+    accounts: list,
+  };
+}
+
+/**
  * Run a `gh` write, recovering from a wrong-identity rejection without involving the
  * caller. Attempts, in order:
  *
