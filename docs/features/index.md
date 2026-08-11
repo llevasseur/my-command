@@ -23,6 +23,7 @@ Add one with `okq new feature "<title>"`.
 | judge | [judge.md](judge.md) |
 | learn | [learn.md](learn.md) |
 | lookup | [lookup.md](lookup.md) |
+| manage | [manage.md](manage.md) |
 | mc | [mc.md](mc.md) |
 | merge-deps | [merge-deps.md](merge-deps.md) |
 | pr | [pr.md](pr.md) |
