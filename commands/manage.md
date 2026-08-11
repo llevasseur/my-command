@@ -1,6 +1,6 @@
 ---
 description: Orchestrate one multi-part goal across existing commands — decompose it into units, assign a branch to each, and delegate every unit to its own subagent in waves that cannot collide
-argument-hint: "[--delegate|-D task|god|fb] [--parallel|-p <n>] [--sequential] [--dry-run|-n] [--mesh] [--add|-a <command + prompt>[, <command + prompt>]] <goal>"
+argument-hint: "[--delegate|-D task|god|fb] [--parallel|-p <n>] [--sequential] [--dry-run|-n] [--mesh] [--here|-h] [--base <branch>] [--draft|-d] [--sub|-s] [--add|-a <command + prompt>[, <command + prompt>]] <goal>"
 ---
 
 Take one multi-part goal, decompose it into units of work, and delegate each unit to an **existing** MyCommand command running in its own subagent — in parallel where the units are independent, in sequence where they are not.
@@ -28,18 +28,40 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
   - **`fb` is the one delegate that cannot cut a branch**, so it does not take a planned one. `/my-command:fb` applies feedback to the branch it is already on, or with `--target <branch>` to a branch that **already exists** — which means an `fb` unit's branch is named by the goal rather than by the plan, and the unit is dispatched as `/my-command:fb --target <that existing branch>`. Handing `/my-command:fb` a `<type>/<kebab-summary>` this run invented gets the unit either a branch that does not exist or, with no `--target` at all, this session's own branch — the collision Step 3 exists to prevent. **A goal that cannot name an existing branch for an `fb` unit is a stop, not a new branch.**
 - `--parallel <n>` / `-p <n>` — how many units may be in flight at once. Default `3`, hard cap `8`; a larger value is clamped to `8` and the clamp is reported.
 - `--sequential` — dispatch one unit at a time regardless of independence. Overrides `--parallel`.
-- `--dry-run` / `-n` — print the routing plan (the units, the waves, the dependencies, the branch names, and the chosen delegate) and **spawn nothing**. No task list, no subagent, no branch.
+- `--dry-run` / `-n` — print the routing plan (the units, the waves, the dependencies, the branch names, each unit's base, the forwarded flags each unit carries and the ones dropped for it, and the chosen delegate) and **spawn nothing**. No task list, no subagent, no branch.
 - `--mesh` — opt into peer-to-peer messaging between the workers. **Off by default; see the topology rule below.**
-- `--add <list>` / `-a <list>` — forwarded to every `task` and `god` unit, in the same comma-separated `<command> <prompt>` shape `/my-command:god` forwards it in. It reaches that unit's own run, not this command. **`/my-command:fb` takes no `--add`**, so an `fb` unit is dispatched without it and the omission is reported in the plan — never passed anyway as a flag the delegate cannot parse.
+- `--add <list>` / `-a <list>` — forwarded to every `task` and `god` unit, in the same comma-separated `<command> <prompt>` shape `/my-command:god` forwards it in. It reaches that unit's own run, not this command.
+- Anything not listed above that `/my-command:task` recognizes is **forwarded to every `task` and `god` unit this run dispatches** — currently `--here` / `-h`, `--base <branch>`, `--draft` / `-d`, `--sub` / `-s`, and `--add` / `-a <list>`. Read `/my-command:task`'s own Flags section rather than duplicating its list here; this command does not interpret a forwarded flag itself, beyond the three rules below.
 - Anything not a recognized flag is part of the goal.
+
+### Forwarded flags
+
+A forwarded flag is typed **once, on this invocation**, and lands in every unit's own run rather than in this one. That is what separates it from a constraint written into the goal: the goal is prose a planner reads and can honour loosely, while a forwarded flag is composed into the unit's invocation in Step 4 and printed in Step 3's plan before anything spawns. **So a behaviour `/my-command:task` already has a flag for is asked for with that flag, never described in the goal text** — describing it leaves nothing to check the plan against.
+
+**A delegate is never handed a flag it does not accept.** For every unit, compare this run's forwarded set against the **resolved** delegate's own Flags section, and for a flag that delegate does not document:
+
+- **Drop it from that unit's invocation**, and report the drop in the plan — per unit and per flag, naming the delegate that cannot parse it. This is the rule the `--add`-on-an-`fb`-unit omission was always a case of, and it now covers the whole forwarded set.
+- **Never pass it anyway.** A delegate that cannot parse a flag does not error on it; it reads it as criteria, so `-d` silently becomes a word in the feedback request.
+- **Never re-express it in the criteria either.** Folding a dropped flag back in as a sentence reintroduces exactly the prose constraint the flag replaced, and hides it inside text that reads like scope.
+
+What each delegate takes:
+
+- **`task`** — the whole forwarded set. Nothing is dropped.
+- **`god`** — `--here` / `-h`, `--base <branch>`, and `--add` / `-a`. It adds `--sub` to its own `/my-command:task` call whatever you pass, so forwarding `--sub` is accepted and redundant rather than dropped. **`--draft` / `-d` with `--delegate god` is a stop in Step 1**, not a per-unit drop: `/my-command:god` rejects `--draft` outright because a draft cannot merge, so dispatching it would be N units each stopping on their own. Say to use `--delegate task -d`.
+- **`fb`** — `--target <branch>` alone, which the plan already fills from the goal, so **no forwarded flag survives an `fb` unit**. Every one of them is dropped and listed as dropped. That is not a gap to work around: `/my-command:fb` cuts no branch, and it hands its own `--here` to `/my-command:task` internally, so the flags that would matter are already settled by what `/my-command:fb` is.
+
+**`--base <branch>` sets the root of the branch plan, and only the root.** It replaces the `defaultBranch` that Step 1 would otherwise name every unit's branch against, and it reaches the units at the **root of the dependency graph** — the ones waiting on nothing. **A stacked unit keeps the base Step 3 gave it: the branch of the unit it depends on, never `main` and never this root base.** Cutting a stacked unit from the root base instead would leave it without the interface it consumes and buy a conflict at merge time — the failure stacking exists to avoid. So a root `--base` moves where the plan starts; it does not collapse or override the per-unit bases Step 2 and Step 3 build, and the plan prints every unit's base so a root one and an inherited one are told apart before anything spawns.
+
+**`--here` / `-h` forces `--sequential`, and collapses the branch plan.** What makes concurrency safe here is that `/my-command:task` cuts a fresh worktree per run, so two units are two working trees; `--here` removes exactly that and puts every unit in one checkout on one branch. So units go out one at a time regardless of independence, Step 2 plans no branch name for them, and the run yields **one** branch and one PR rather than one per unit — say all of that in the plan and in the closing report. `--base` is ignored alongside it, the way `/my-command:task` already documents.
 
 ## Step 1 — Read the goal and settle the preconditions
 
 **Never stop to ask what you can answer from the goal, the repo, or this session.** Reserve `AskUserQuestion` for a true branch point: an irreversible action the goal does not authorize, or a requirement genuinely missing rather than merely unstated. A question asked to feel certain costs the run its unattendedness and buys nothing.
 
-1. `my-command-tools state` — one call gives `branch`, `defaultBranch`, `root`, and `worktree`. Every unit's branch is named against that `defaultBranch`; nothing here is derived from the session's startup snapshot.
+1. `my-command-tools state` — one call gives `branch`, `defaultBranch`, `root`, and `worktree`. That `defaultBranch` is this run's **root base** unless `--base <branch>` was given, in which case the given branch is; either way every unit's branch is named against the root base, and nothing here is derived from the session's startup snapshot.
 2. Resolve the delegate named by `--delegate` the way `/my-command:task` Step 0 resolves an added command: from what is actually installed on this device, never from the name looking plausible. An unresolvable delegate is a stop, not a fallback to `/my-command:task`.
-3. Confirm the goal is genuinely multi-part. **A goal that decomposes into fewer than three units is not worth an orchestrator** — say so and hand it to the delegate directly as a single run, rather than wrapping one `/my-command:task` in a planning layer.
+3. **Settle the forwarded flags against that resolved delegate before planning anything.** Which of them it accepts, which are dropped for it, and whether any is refused outright — `--draft` / `-d` under `--delegate god` is the one stop, and `--here` / `-h` forces `--sequential`. Record the surviving set: Step 4 composes it into every invocation and Step 3's plan prints it alongside every drop. Reading the delegate's own Flags section is what settles this; a flag's fate is never guessed from its name.
+4. Confirm the goal is genuinely multi-part. **A goal that decomposes into fewer than three units is not worth an orchestrator** — say so and hand it to the delegate directly as a single run, rather than wrapping one `/my-command:task` in a planning layer.
 
 ## Step 2 — Decompose the goal into units
 
@@ -57,8 +79,8 @@ This is a step of the workflow, not a habit to recall. Run it whenever a phase o
 
 Read the repo enough to know what each unit touches, then write the plan down. Every unit gets four facts, and all four are decided **here**, before anything is spawned:
 
-- **The command it invokes**, with its flags and its criteria — one invocation of one existing command.
-- **The branch it runs on**, named `<type>/<kebab-summary>` the way `/my-command:task` names one — except an `fb` unit, which takes an **existing** branch named by the goal, because `/my-command:fb` applies feedback onto work that is already there. **Every parallel unit gets its own branch and its own worktree.** Two `/my-command:task` runs sharing a branch is a corrupted run — the second one's commits land on top of the first one's half-finished tree and neither PR describes what it contains — so the plan assigns the names up front and passes them through, rather than letting two delegates independently derive the same name from similar criteria.
+- **The command it invokes**, with its flags and its criteria — one invocation of one existing command. Its flags are this run's forwarded set minus whatever the resolved delegate does not accept, and the drops are written down here rather than noticed at dispatch.
+- **The branch it runs on and the base it is cut from**, the branch named `<type>/<kebab-summary>` the way `/my-command:task` names one — except an `fb` unit, which takes an **existing** branch named by the goal, because `/my-command:fb` applies feedback onto work that is already there. The base is this run's **root base** for a unit that waits on nothing, and the **branch of the unit it depends on** for a stacked one; under `--here` no branch is planned at all, because every unit runs in place on the current one. **Every parallel unit gets its own branch and its own worktree.** Two `/my-command:task` runs sharing a branch is a corrupted run — the second one's commits land on top of the first one's half-finished tree and neither PR describes what it contains — so the plan assigns the names up front and passes them through, rather than letting two delegates independently derive the same name from similar criteria.
 - **The files it touches**, as concretely as the goal allows. This is not documentation; it is the input to Step 3's batching.
 - **What it depends on**, if anything.
 
@@ -81,6 +103,8 @@ Give every unit in a wave an explicit **lane**: the paths it owns and the paths 
 
 Under `--dry-run` / `-n`, print the plan and **stop here** — before `TaskCreate`, before any spawn.
 
+**The printed plan is what makes a forwarded flag checkable rather than hoped for**, so every flag is visible in it before a subagent exists. Per unit: the **full invocation Step 4 would compose**, flags included and in order; the branch and the base it is cut from; its lane; what it waits on; and every forwarded flag **dropped** for it, with the delegate that cannot parse it. Then for the run as a whole: the resolved delegate, the waves, the `--parallel` cap with any clamp, and any flag that changed the schedule rather than a unit — `--here` forcing `--sequential`, and the single branch and PR that follows from it. A plan that reports a unit's criteria but not the flags it will carry is the failure this print exists to close.
+
 ## Step 4 — Dispatch each wave
 
 Send a wave as **multiple `Agent` calls in a single assistant turn**. One subagent per unit. Star topology: every worker talks to this session and to nothing else.
@@ -92,11 +116,13 @@ Send a wave as **multiple `Agent` calls in a single assistant turn**. One subage
 A unit's prompt is therefore about this shape, naming the **resolved** delegate rather than `/my-command:task` by default:
 
 ```
-Run /<delegate> --add <forwarded list> <this unit's criteria>.
-Branch: <type>/<kebab-summary>. Own <paths>; do not touch <paths>.
+Run /<delegate> <this unit's forwarded flags> <this unit's criteria>.
+Branch: <type>/<kebab-summary>, cut from <base>. Own <paths>; do not touch <paths>.
 ```
 
-An `fb` unit is the one that reads differently — the branch goes in the invocation, and there is no `--add`:
+**The flags in that invocation are the surviving set Step 1 settled and Step 3 printed** — this run's forwarded flags minus the ones the delegate cannot parse, composed exactly as they were printed. `--add <list>` is one of them rather than a special case, and `--base` carries **this unit's** base: the root base for a unit that waits on nothing, and the branch it depends on for a stacked one. Never re-derive the set here, and never add a flag the plan did not show.
+
+An `fb` unit is the one that reads differently — the branch goes in the invocation, and **no forwarded flag survives**, `/my-command:fb` documenting `--target` alone:
 
 ```
 Run /my-command:fb --target <existing branch> <this unit's criteria>.
@@ -121,12 +147,12 @@ Then dispatch the next wave, until every wave is done or the plan is exhausted.
 
 **Synthesis is mandatory, and raw subagent reports are not the deliverable.** A subagent's report is never visible to me and is never the run's outcome — the outcome belongs to this session. So end with **one** summary naming, per unit:
 
-- the command that ran,
-- the branch,
+- the command that ran, with the forwarded flags it actually carried,
+- the branch, and the base it was cut from when that was not this run's root base,
 - the PR number or URL,
 - the outcome (shipped / merged / failed with its cause / not dispatched).
 
-Then one line for the run as a whole: how many units, how many landed, what is left for a human.
+Then one line for the run as a whole: how many units, how many landed, what is left for a human. **Name every forwarded flag that was dropped, and for which units** — a flag typed on this invocation and silently missing from a unit's run is indistinguishable, in a report that lists only outcomes, from one that was honoured.
 
 **Never batch-merge the resulting branches onto `main`.** If the run was meant to land as one thing, the way to do that is an integration branch: merge the unit branches there, verify there, and open **one** PR from it. Merging each branch straight onto the default branch skips every gate the PR exists to run.
 
@@ -134,6 +160,7 @@ Then one line for the run as a whole: how many units, how many landed, what is l
 
 - **This command implements nothing.** No branch, no commit, no PR, no merge, no worktree teardown — those belong to the delegate, and a second owner for any of them corrupts the run.
 - `--delegate god` merges each unit's PR without asking. That is the flag's whole meaning; require it to be typed and say in the opening announcement that the run will merge.
+- **A forwarded flag is for the delegate's run, never for this one.** This command cuts no branch and opens no PR, so `--base`, `--draft`, `--sub`, and `--here` change nothing here directly: `--base` is an input to the branch plan, `--here` is an input to the schedule, and the rest are carried through untouched. **Ask for a delegate's behaviour with its flag rather than with a sentence in the goal** — a flag is composed into the invocation and printed in the plan, while a sentence is only as reliable as the planner's reading of it.
 - <!-- include: shared/approval-own-call.md -->**A command that may need approval goes in its own Bash call** — `git fetch`, `git config`, and, as a narrow exception to the general rule to chain dependent mutations, branch-lifecycle operations such as checkout/switch, pull, remote-branch inspection, and local branch deletion. Folding one into an `&&` chain escalates approval to the whole compound command and costs a turn plus a retry. Put status output, pipes, and follow-up verification in separate read-only calls.<!-- /include -->
 - Report each unit's branch up front and its PR at the end. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
 
