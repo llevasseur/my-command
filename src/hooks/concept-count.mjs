@@ -5,10 +5,8 @@
 // Usage: concept-count.mjs <term> <skill>
 //
 // The count is a **version of the concept record**, not a counter of its own: the newest
-// stored version is read, the skill is appended to its `skills`, every other field is
-// carried forward, and the whole record is written back. Carrying the rest forward inside
-// the same call is what stops a version written here from erasing `notes`, `tips`,
-// `sources` or `surfacedSkills` for every later reader.
+// stored version is read, the skill is appended to its `skills`, and every other field is
+// carried forward so this version erases none of them for a later reader.
 //
 // A repeat lease and a no-op install both still write a row, deliberately — the row counts
 // an install rather than a distinct skill.

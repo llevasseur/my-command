@@ -4,9 +4,8 @@
 // Usage: ideas-claim.mjs <slug> <holder> [pr-url]
 //
 // **A claim refused by a live holder is an answer, not a failure.** The ledger spans every
-// device, so the holder may be a run on a machine this one has never talked to, and there
-// is nothing local to check the refusal against: the caller walks away and picks a
-// different idea rather than reading a refusal as permission.
+// device, so the holder may be a run on a machine this one has never talked to and there is
+// nothing local to check the refusal against — the caller picks a different idea.
 //
 // Re-claiming as the same holder is idempotent, and that is how a run attaches its PR url
 // later. A different holder is refused like anyone else's.

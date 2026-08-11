@@ -8,8 +8,7 @@
 // record entirely** rather than written as "" or [] — reads resolve the newest version, so
 // a version carrying an empty value would erase a real one for every later reader.
 //
-// The store is append-only: re-teaching a term adds a version, and nothing here ever
-// rewrites or migrates a stored record.
+// The store is append-only: re-teaching a term adds a version.
 import { guard, request, resolve, say, unresolved } from './lib/store.mjs';
 
 const [term, sentence, field, skills, notes, tips, sources, surfaced] = process.argv.slice(2);

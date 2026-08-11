@@ -5,13 +5,11 @@
 // Usage: ideas-read.mjs [--available] [--repo <owner/name>] [--area <area>] [--status <a,b>]
 //
 // Prints the status line first and, on success only, the ledger's JSON after it. A caller
-// reads line 1 to learn whether it has a ledger at all, because **an empty ledger and an
-// unread one are indistinguishable from the rows alone** — and only the second of those
-// means a following write may duplicate something already stored.
+// reads line 1 because **an empty ledger and an unread one are indistinguishable from the
+// rows alone**, and only the unread one means a following write may duplicate.
 //
 // **`--available` is answered by the Worker**, which knows which claims have gone stale.
-// Re-deriving that here would be a second implementation of the ledger's own staleness
-// rule, and the two would disagree the first time either changed.
+// Re-deriving it here would be a second implementation of the ledger's staleness rule.
 import { guard, request, resolve, say, unresolved } from './lib/store.mjs';
 
 const args = process.argv.slice(2);

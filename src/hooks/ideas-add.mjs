@@ -8,9 +8,8 @@
 // a command line is the heredoc shape this repo's gates refuse.
 //
 // **The dedupe check happens on the server**, against every device's ideas and every status
-// including `rejected` — so near matches come back under `similar` and a non-empty list is
-// a collision even when the exact slug was free. The caller looks at those before insisting
-// on a slug; a free slug is not a clear field.
+// including `rejected`. Near matches come back under `similar`, and a non-empty `similar` is
+// a collision even when the exact slug was free.
 import { readFileSync } from 'node:fs';
 import { guard, request, resolve, say, unresolved, why } from './lib/store.mjs';
 

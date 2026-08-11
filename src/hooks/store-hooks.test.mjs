@@ -2,9 +2,8 @@
 //
 // Each hook is checked on the three outcomes a caller has to tell apart, because the
 // caller reads a **line** rather than an exit status: the success line, the line for an
-// unset variable, and the line for an error status. A hook that exits non-zero, or that
-// prints nothing on a failure, turns an unreachable store into a stopped run — which is
-// the behaviour these files exist to prevent.
+// unset variable, and the line for an error status. A hook that exits non-zero, or prints
+// nothing on a failure, turns an unreachable store into a stopped run.
 //
 // The hooks are run by path rather than through `node`, so the executable bit is part of
 // what every case asserts. They are also run **asynchronously**: the store answers on this
@@ -130,8 +129,6 @@ test('every store hook is executable, so a command can call it by path', () => {
   }
 });
 
-// --- concept-save -----------------------------------------------------------------
-
 test('concept-save: a stored concept reports the status and that it is new', async () => {
   const { origin, seen } = await store(always(201, { id: 'x' }));
   assert.equal(await first('concept-save.mjs', SAVE_ARGS, concepts(origin)), 'saved: 201 (new)');
@@ -164,8 +161,6 @@ test('concept-save: an empty optional field is omitted rather than written empty
   await run('concept-save.mjs', [...SAVE_ARGS, '', '', '', ''], concepts(origin));
   assert.deepEqual(Object.keys(seen[0].body).sort(), ['field', 'savedAt', 'sentence', 'skills', 'term']);
 });
-
-// --- concept-count ----------------------------------------------------------------
 
 test('concept-count: a counted install names the skill and the term', async () => {
   const stored = {
@@ -208,8 +203,6 @@ test('concept-count: find-skills is never recorded, and costs no round trip', as
   assert.equal(seen.length, 0);
 });
 
-// --- ideas-read -------------------------------------------------------------------
-
 test('ideas-read: a read reports the count and prints the ledger after it', async () => {
   const rows = { ideas: [{ slug: 'a' }, { slug: 'b' }] };
   const { origin, seen } = await store(always(200, rows));
@@ -234,8 +227,6 @@ test('ideas-read: an error status is reported with its short reason', async () =
   const { origin } = await store(always(401, { error: 'unauthorized' }));
   assert.match(await first('ideas-read.mjs', [], ideas(origin)), /^not read: 401\b/);
 });
-
-// --- ideas-add --------------------------------------------------------------------
 
 const PROPOSAL = {
   slug: 'a-new-idea',
@@ -265,8 +256,6 @@ test('ideas-add: an error status is reported with its short reason', async () =>
   assert.match(line, /cites nothing/);
 });
 
-// --- ideas-claim ------------------------------------------------------------------
-
 test('ideas-claim: a taken idea names the slug and the holder', async () => {
   const { origin, seen } = await store(always(200, { claimed: ['a-new-idea'], refused: [], unknown: [] }));
   const line = await first('ideas-claim.mjs', ['a-new-idea', 'feat/a-new-idea'], ideas(origin));
@@ -289,8 +278,6 @@ test('ideas-claim: an error status is reported with its short reason', async () 
   const { origin } = await store(always(401, { error: 'unauthorized' }));
   assert.match(await first('ideas-claim.mjs', ['a-new-idea', 'feat/x'], ideas(origin)), /^not claimed: 401\b/);
 });
-
-// --- ideas-mark -------------------------------------------------------------------
 
 test('ideas-mark: a marked idea names the slug and its new status', async () => {
   const { origin, seen } = await store(always(200, { updated: ['a-new-idea'], unknown: [] }));
@@ -321,8 +308,6 @@ test('ideas-mark: a rejection with no reason is refused here rather than spent a
   assert.equal(line, 'not marked: a rejected mark needs a note saying why');
   assert.equal(seen.length, 0);
 });
-
-// --- the contract every hook shares -----------------------------------------------
 
 test('the token is sent as a bearer header and never printed', async () => {
   const { origin, seen } = await store(always(200, { ideas: [] }));

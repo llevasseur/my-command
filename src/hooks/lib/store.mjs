@@ -1,14 +1,11 @@
-// The hosted stores, reached the same way from every hook that touches them.
-//
-// Two datasets sit behind one Cloudflare Worker and one token: the append-only concept
-// store and the append-only ideas ledger. Every call they receive from this repo goes
-// through here, so the address resolution, the retry, and the shape of the one line a
-// hook prints are decided once rather than per command.
+// The hosted stores, reached the same way from every hook that touches them: the
+// append-only concept store and the append-only ideas ledger, two datasets behind one
+// Cloudflare Worker and one token.
 //
 // **Credentials come from `process.env` and go nowhere else.** They are read per call
-// rather than captured at import, they are never accepted as an argument or a flag, and
-// no value here is ever printed, written to a file, or put in a status line. A URL is
-// never printed either — a configured address can carry one in its query string.
+// rather than captured at import, never accepted as an argument or a flag, and never
+// printed, written to a file, or put in a status line. A URL is never printed either — a
+// configured address can carry one in its query string.
 
 /** How long a hook waits on the store before giving up on an attempt. */
 const TIMEOUT_MS = 15000;
@@ -38,8 +35,7 @@ export function resolve(dataset) {
 }
 
 /**
- * True when this resolution failed. Declared as a type guard so a caller that returns on
- * it is holding a resolved store on the line after, without asserting anything by hand.
+ * True when this resolution failed.
  * @param {Store | Unresolved} r @returns {r is Unresolved}
  */
 export function unresolved(r) {
@@ -60,13 +56,11 @@ export function why(err) {
 /**
  * One call to a hosted store, retried **once** on a network error or a 5xx.
  *
- * The retry replays the identical request rather than recomposing it. That matters for
- * the concept store, which is append-only and derives a row id from the record: a caller
- * that recovered by re-running would stamp a fresh `savedAt`, change the id, and write a
- * second version instead of replaying the first.
+ * The retry replays the identical request rather than recomposing it: the concept store is
+ * append-only and derives a row id from the record, so a recomposed retry would stamp a
+ * fresh `savedAt` and write a second version instead of replaying the first.
  *
- * Never throws — every outcome is a value, because a hook's whole contract is one line
- * and exit 0.
+ * Never throws — every outcome is a value.
  *
  * @param {Store} store
  * @param {string} path Path and query, beginning with a slash.
@@ -114,9 +108,8 @@ export async function request(store, path, init = {}) {
 /**
  * Say the one thing this hook has to say, and exit 0.
  *
- * **Every hook here exits 0, always.** An unreachable store costs the call and nothing
- * else — the run that invoked the hook continues and reports the cause in one line — so a
- * non-zero exit would turn a stated skip into a stop.
+ * **Every hook here exits 0, always.** A non-zero exit would turn an unreachable store
+ * from a stated skip into a stop.
  *
  * @param {string} line The single status line.
  * @param {string} [payload] Data to print after it, on success only.
@@ -128,8 +121,8 @@ export function say(line, payload) {
 
 /**
  * Run a hook body, turning any unforeseen failure into a stated skip rather than a crash.
- * The same policy `lib/io.mjs` sets for the workflow gates, with the difference that a
- * caller here is owed a line: silence would read as a store that answered.
+ * Unlike the workflow gates in `lib/io.mjs`, a caller here is owed a line: silence would
+ * read as a store that answered.
  * @param {string} verb The hook's negative prefix, e.g. `not saved`.
  * @param {() => Promise<void>} body
  */

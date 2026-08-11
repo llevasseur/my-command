@@ -390,8 +390,8 @@ const HOOK_SCRIPTS = [
   'stop.mjs',
   'install-hooks.mjs',
   // The store hooks. A command invokes these itself rather than the harness running them,
-  // but the failure is the same shape and quieter: a lost mode bit turns the call into a
-  // "permission denied" the run reports as an unreachable store.
+  // but a lost mode bit fails the same way, quieter: a "permission denied" the run reports
+  // as an unreachable store.
   'concept-save.mjs',
   'concept-count.mjs',
   'ideas-read.mjs',
