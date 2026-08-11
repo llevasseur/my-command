@@ -197,7 +197,14 @@ Ask whether to save the concept. On yes, POST one JSON object to the hosted
 concept store — a Cloudflare Worker, not a file on this machine. A concept
 taught on one device is then readable from every other one.
 
-Both halves of the address come from the environment:
+The write goes through one toolkit verb, `my-command-tools concepts save`. Never
+hand-roll a `node -e` block or a `curl` against the store: the verb is what the
+`my-command-tools` allowlist covers, so it runs without an approval round-trip.
+
+Both halves of the address come from the environment, and the verb reads them
+itself. `IDEAS_URL` and `IDEAS_TOKEN` are read first; `CONCEPTS_URL` and
+`CONCEPTS_TOKEN` are the documented fallbacks, because ideas and concepts are one
+dataset behind one Worker.
 
 - **`CONCEPTS_URL`** — the base URL of the Worker. The write path is
   `POST <CONCEPTS_URL>/api/concepts`.
@@ -205,13 +212,14 @@ Both halves of the address come from the environment:
   `Authorization: Bearer <token>` header.
 
 **Never hardcode either value, never write either one into a file, and never put
-the token on a command line.** The snippet below reads both from the process
-environment, so the token stays out of the command, the transcript, and the
-shell history. Do not echo it, and do not print it back in the reply.
+the token on a command line or in a URL.** The verb reads both from the process
+environment inside its own process, so the token stays out of the command, the
+transcript, and the shell history. Do not echo it, and do not print it back in
+the reply.
 
 **The write is idempotent, and the retry belongs inside the call.** A row id is
 derived from the record itself, so the store returns **201** when the concept is
-new and **200** when the identical record is replayed. The snippet below retries
+new and **200** when the identical record is replayed. The verb retries
 once on a network error or a `5xx`, reusing the same record. **Never re-run the
 whole command to retry a failed save.** Every run stamps a fresh `savedAt`, which
 changes the record, which changes the derived id — so a second run writes a
@@ -303,55 +311,38 @@ from empty, and an absent field is what makes it show its "nothing more to show"
 fallback. Records written before these fields existed carry none of them and stay
 valid — a stored concept is never rewritten or migrated.
 
-Post with Node and pass every value as an argument, so no shell quoting or JSON
-escaping can corrupt a sentence containing quotes, backslashes, or newlines.
-Lists are **newline-separated**, one entry per line, because a tip or a note
-reliably contains a comma and never contains a newline:
+The record travels as **JSON in a file**, so no field ever reaches a command line
+and no shell quoting or JSON escaping can corrupt a sentence containing quotes,
+backslashes, or newlines. Lists are real JSON arrays, one entry per element.
+Write the file first, then hand over its path — never compose the record inline
+with a heredoc, which is refused inside an isolated worktree:
 
-```bash
-node -e '
-const [term, sentence, field, skills, notes, tips, sources, surfaced] = process.argv.slice(1);
-const base = process.env.CONCEPTS_URL;
-const token = process.env.CONCEPTS_TOKEN;
-if (!base || !token) {
-  console.log("not saved: " + (base ? "CONCEPTS_TOKEN" : "CONCEPTS_URL") + " is not set");
-  process.exit(0);
+```json
+{
+  "term": "<term>",
+  "sentence": "<sentence>",
+  "field": "<field>",
+  "skills": ["<an applied skill>"],
+  "notes": "<notes as Markdown>",
+  "tips": ["<a tip>"],
+  "sources": ["<a source>"],
+  "surfacedSkills": ["<a surfaced skill>"]
 }
-const list = (v) => (v ? v.split("\n").map((s) => s.trim()).filter(Boolean) : []);
-const rec = { term, sentence, field, skills: list(skills), savedAt: new Date().toISOString() };
-const put = (k, v) => { if (typeof v === "string" ? v.trim() : v.length) rec[k] = v; };
-put("notes", notes ?? "");
-put("tips", list(tips));
-put("sources", list(sources));
-put("surfacedSkills", list(surfaced));
-const why = (e) => e.message + (e.cause && e.cause.message ? " (" + e.cause.message + ")" : "");
-(async () => {
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      const res = await fetch(base.replace(/\/+$/, "") + "/api/concepts", {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: "Bearer " + token },
-        body: JSON.stringify(rec),
-      });
-      const body = (await res.text()).trim().slice(0, 200);
-      if (res.ok) return console.log("saved: " + res.status + (res.status === 200 ? " (already stored)" : " (new)"));
-      if (res.status >= 500 && attempt === 1) continue;
-      return console.log("not saved: " + res.status + " " + body);
-    } catch (err) {
-      if (attempt === 1) continue;
-      return console.log("not saved: " + why(err));
-    }
-  }
-})();
-' "<term>" "<sentence>" "<field>" "<applied skills, one per line>" \
-  "<notes as Markdown>" "<tips, one per line>" "<sources, one per line>" "<surfaced skills, one per line>"
 ```
 
-`put` is what enforces the omit rule: an empty string and an empty list both fall
-through and the key is never written. Pass an empty string for anything the run
-did not produce; do not drop the argument, or the values after it shift.
+```bash
+my-command-tools concepts save --record-file <the absolute path just written>
+```
 
-The snippet always exits `0` and always prints one line, because the save is the
+With nowhere to write a scratch file, the verb still reads the record on standard
+input from a real pipeline — but the file path is the form to reach for.
+
+The verb stamps `savedAt` itself and enforces the omit rule: an empty string and
+an empty list both fall through and the key is never written, so an optional
+field the run did not produce can be passed empty or left out of the object
+entirely. It drops the skill-discovery workflow from both skill lists.
+
+The verb always exits `0` and always prints one line, because the save is the
 optional half of this step. Read that line and repeat its cause in the reply.
 
 The store is append-only. Re-teaching a term adds a version rather than replacing

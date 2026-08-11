@@ -101,35 +101,30 @@ Then write the lease into the harness todo/task list, as its own item, immediate
 
 **Only on a term hit.** The count is one `POST` to the same hosted concept store, adding the leased skill to the record's `skills` and carrying every other field forward unchanged. The store is append-only, so this lands as a **new version of the same concept** — which is the count. Grouping those rows by `skill` on the read side is "how often did we download this", and it needs nothing this command maintains.
 
-Both halves of the address come from the environment, exactly as `/teach` and `/lookup` read them. `printenv CONCEPTS_URL` is safe. **Never run `printenv CONCEPTS_TOKEN`** — that prints the token into the transcript. **Never hardcode either value, never write either one into a file, and never put the token on a command line.** The hook reads both from `process.env` inside its own process.
+<!-- include-block: shared/concepts-store.md -->
+### The concept store
 
-**The hook re-reads the stored record and writes it back, rather than the run retyping it.** A hand-composed record is where a paraphrased sentence or a dropped `notes` field comes from, and because reads resolve the newest version, a version written without them loses them for every later reader. Carrying them forward inside the same call is what makes that mechanical rather than remembered.
+**The store is a hosted service, and every call into it goes through one toolkit verb.** It is a Cloudflare Worker over D1, and it is the source of truth for every concept `/teach` has ever saved. `my-command-tools concepts` is the only thing that speaks to it — never hand-roll a `node -e` block or a `curl` against it. The verb is what `Bash(my-command-tools:*)` allowlists, so it runs without an approval round-trip, and an inlined snippet costs one on every run.
 
-```bash
-~/.claude/my-command/hooks/concept-count.mjs \
-  "<the stored term, exactly as /lookup returned it>" "<the leased skill name>"
-```
+**Both halves of the address come from the environment, and the verb reads them itself.**
 
-<!-- include-block: shared/store-hooks.md -->
-### Reach the hosted stores through the store hooks
+- **`CONCEPTS_URL`** — the base URL of the Worker. `IDEAS_URL` is read first and `CONCEPTS_URL` is the documented fallback, because ideas and concepts are one dataset behind one Worker.
+- **`CONCEPTS_TOKEN`** — the shared bearer token, sent as an `Authorization: Bearer <token>` header. `IDEAS_TOKEN` is read first and `CONCEPTS_TOKEN` is the fallback, for the same reason.
 
-**Every read and write of the hosted concept store and the hosted ideas ledger goes through a hook in `~/.claude/my-command/hooks/`**, never through an inlined `node -e` block. The hooks are installed beside the workflow gates and **allowlisted by name**, so each call runs without an approval round-trip; an inlined block is not allowlisted and costs one. On a device with `CLAUDE_CONFIG_DIR` set, they sit under that directory's `my-command/hooks/` instead — `my-command-tools doctor` reports where.
+**Never print the token, never write it into a file, and never put it on a command line or in a URL** — a token in a query string lands in the transcript, in shell history, and in the Worker's request log. `printenv CONCEPTS_URL` is safe to read; **never run `printenv CONCEPTS_TOKEN`**. The verb reads both variables from `process.env` inside its own process, so neither value ever reaches an argument, and a record being saved travels **as a file path or on stdin** rather than as arguments for the same reason. Prefer `--record-file <path>`: write the JSON with the `Write` tool and hand over the path, with no shell in between, exactly as `commit --message-file` and `pr --body-file` already work. Composing the record inline means a heredoc, and that shape is refused inside an isolated worktree.
 
-- `concept-save.mjs <term> <sentence> <field> <skills> [notes] [tips] [sources] [surfaced]` — write a concept. List arguments are newline-separated.
-- `concept-count.mjs <term> <skill>` — count one skill install on that concept's record.
-- `ideas-read.mjs [--available] [--repo <owner/name>] [--area <area>] [--status <a,b>]` — read the ledger.
-- `ideas-add.mjs <path-to-json>` — record proposals from a JSON array in a file.
-- `ideas-claim.mjs <slug> <holder> [pr-url]` — take an idea.
-- `ideas-mark.mjs <slug> <status> [note]` — set an idea's status.
+**Every subcommand prints exactly one status line on stdout and always exits `0`.** Read that line; it is the outcome, and nothing else in the run overrides it. `--json` returns the structured result instead, for a caller that wants the fields rather than the line.
 
-**Never pass a token to one of these, and never print one.** Each hook reads `CONCEPTS_URL`/`CONCEPTS_TOKEN` — and for the ledger `IDEAS_URL`/`IDEAS_TOKEN`, falling back to the concepts pair — from `process.env` inside its own process. A token on a command line reaches the transcript and the shell history; `printenv CONCEPTS_TOKEN` and `printenv IDEAS_TOKEN` are never run.
-
-**Read the first line of the output, and only the first line, as the outcome.** Every hook prints at most one status line and always **exits 0**, so the exit status says nothing — `saved:`, `counted:`, `read:`, `added:`, `claimed:`, `marked:` are the successes, and a line beginning `not ` carries the cause after the colon: which variable was unset, the HTTP status with its short reason, or the network error. `ideas-read.mjs` and `ideas-add.mjs` print their JSON on the lines after that one, on success only.
-
-**An unreachable store is a stated skip, never a stop** — except where the command says otherwise. The call is lost and nothing else: the run continues and says in one short line why, naming the cause the hook gave it. Each hook already retries once on a network error or a 5xx, reusing the identical record, so **never recover by re-running a whole command**: a fresh run stamps a new `savedAt`, which changes the derived row id and writes a second version instead of replaying the first.
+**An unreachable store is a stated skip, never a stop.** Name the cause in one short line — which variable was unset, the status code and the short reason it returned, or the network error — and carry on. Never stop the run over it, and never ask the user to fix it mid-run. **Never work around it by touching a local file**: `logs/concepts.jsonl` is a backup of the store, not a second copy of it, so writing to it forks the corpus and reading it answers from a snapshot of unknown age.
 <!-- /include-block -->
 
-It always exits `0` and always prints one line. Read that line and repeat its cause in the reply.
+**The verb re-reads the stored record and writes it back, rather than the run retyping it.** A hand-composed record is where a paraphrased sentence or a dropped `notes` field comes from, and because reads resolve the newest version, a version written without them loses them for every later reader. Carrying them forward inside the same call is what makes that mechanical rather than remembered.
+
+```bash
+my-command-tools concepts count "<the stored term, exactly as /lookup returned it>" "<the leased skill name>"
+```
+
+It carries `notes`, `tips`, `sources`, and `surfacedSkills` forward unchanged, stamps a fresh `savedAt`, and never records `find-skills` as an applied skill. It always exits `0` and always prints one line. Read that line and repeat its cause in the reply.
 
 - **A repeat lease is still a count.** The skill already sitting in the record's `skills` is not a reason to skip the write: the row counts an install, not a distinct skill.
 - **A no-op install is still a count.** The question the group-by answers is how often this skill was reached for, and a run that reached for one it already had reached for it.

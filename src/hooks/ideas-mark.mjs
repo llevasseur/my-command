@@ -20,7 +20,7 @@ guard('not marked', async () => {
   // row on it — so the refusal is stated here rather than spent as a 400.
   if (status === 'rejected' && !note?.trim()) return say('not marked: a rejected mark needs a note saying why');
 
-  const store = resolve('ideas');
+  const store = resolve();
   if (unresolved(store)) return say(`not marked: ${store.missing}`);
 
   const mark = { slug, status, ...(note ? { note } : {}) };

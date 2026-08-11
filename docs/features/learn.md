@@ -78,18 +78,18 @@ a row, because the row counts an install rather than a distinct skill; and a
 **no-op** install still writes one, because the question is how often the skill
 was reached for.
 
-The call is the **`concept-count.mjs` store hook** —
-`~/.claude/my-command/hooks/concept-count.mjs "<term>" "<skill>"` — installed
-beside the workflow gates and allowlisted by name, so it costs no approval
-round-trip. It prints one status line and always exits 0: `counted: <status> —
-<skill> on <term>`, or a `not counted:` line naming the cause.
-
-The `POST` re-reads the stored record inside the same call and writes it back
-with the skill appended, rather than the run retyping the fields. Reads resolve
-the newest version, so a version written without `notes`, `tips`, `sources`, or
+The `POST` is made by one toolkit verb,
+`my-command-tools concepts count "<term>" "<skill>"`, shared with `/lookup` and
+`/teach` rather than inlined here — `Bash(my-command-tools:*)` is allowlisted in
+`src/hooks/settings-fragment.json`, so it runs without an approval round-trip.
+The verb re-reads the stored record inside that same call and writes it back with
+the skill appended, rather than the run retyping the fields. Reads resolve the
+newest version, so a version written without `notes`, `tips`, `sources`, or
 `surfacedSkills` would lose them for every later reader; carrying them forward
 inside the call makes that mechanical rather than remembered. `find-skills` is
-never recorded, on `/teach`'s existing rule.
+never recorded, on `/teach`'s existing rule. The verb prints one line —
+`counted:` or `not counted: <cause>` — and always exits `0`, which is what makes
+an unreachable store cost the count and nothing else.
 
 ### The lookup is the first step
 
@@ -150,7 +150,9 @@ that run ends.
 - Opens with [lookup](lookup.md), whose outcome selects the concept and the
   candidate skills
 - Reads the `surfacedSkills` [teach](teach.md) records and writes the count back
-  to the same hosted concept store (`CONCEPTS_URL` / `CONCEPTS_TOKEN`)
+  to the same hosted concept store (`CONCEPTS_URL` / `CONCEPTS_TOKEN`), through
+  the shared `my-command-tools concepts` verb (`src/toolkit/verbs/concepts.mjs`)
+  and the `src/shared/concepts-store.md` include
 - Composes into [task](task.md) with `--add`, as [diagram](diagram.md) does
 - Reuses the closing-turn release path [improve](improve.md) settled for an idea
   claim

@@ -124,14 +124,26 @@ Off macOS, substitute `wl-copy`, `xclip -selection clipboard`, or `clip.exe`. Wi
 
 Ask whether to save the concept. On yes, POST one JSON object to the hosted concept store — a Cloudflare Worker, not a file on this machine. A concept taught on one device is then readable from every other one.
 
-Both halves of the address come from the environment. `printenv CONCEPTS_URL` is safe to read. **Never run `printenv CONCEPTS_TOKEN`** — that prints the token into the transcript. Check only that it is set, without echoing it, or let the hook below report an unset one:
+<!-- include-block: shared/concepts-store.md -->
+### The concept store
 
-- **`CONCEPTS_URL`** — the base URL of the Worker. The write path is `POST <CONCEPTS_URL>/api/concepts`.
-- **`CONCEPTS_TOKEN`** — the bearer token, sent as an `Authorization: Bearer <token>` header.
+**The store is a hosted service, and every call into it goes through one toolkit verb.** It is a Cloudflare Worker over D1, and it is the source of truth for every concept `/teach` has ever saved. `my-command-tools concepts` is the only thing that speaks to it — never hand-roll a `node -e` block or a `curl` against it. The verb is what `Bash(my-command-tools:*)` allowlists, so it runs without an approval round-trip, and an inlined snippet costs one on every run.
 
-**Never hardcode either value, never write either one into a file, and never put the token on a command line.** The hook below reads both from `process.env` inside its own process, so the token stays out of the command, the transcript, and the shell history. Do not echo it, and do not print it back in the reply.
+**Both halves of the address come from the environment, and the verb reads them itself.**
 
-**The write is idempotent, and the retry belongs inside the call.** A row id is a ULID derived from the record itself, so the store returns **201** when the concept is new and **200** when the identical record is replayed. The hook below therefore retries once on a network error or a `5xx`, reusing the same record. **Never re-run the whole command to retry a failed save.** Every run stamps a fresh `savedAt`, which changes the record, which changes the derived id — so a second run writes a *second version* of the concept instead of replaying the first. Idempotency protects a repeated request, not a repeated run.
+- **`CONCEPTS_URL`** — the base URL of the Worker. `IDEAS_URL` is read first and `CONCEPTS_URL` is the documented fallback, because ideas and concepts are one dataset behind one Worker.
+- **`CONCEPTS_TOKEN`** — the shared bearer token, sent as an `Authorization: Bearer <token>` header. `IDEAS_TOKEN` is read first and `CONCEPTS_TOKEN` is the fallback, for the same reason.
+
+**Never print the token, never write it into a file, and never put it on a command line or in a URL** — a token in a query string lands in the transcript, in shell history, and in the Worker's request log. `printenv CONCEPTS_URL` is safe to read; **never run `printenv CONCEPTS_TOKEN`**. The verb reads both variables from `process.env` inside its own process, so neither value ever reaches an argument, and a record being saved travels **as a file path or on stdin** rather than as arguments for the same reason. Prefer `--record-file <path>`: write the JSON with the `Write` tool and hand over the path, with no shell in between, exactly as `commit --message-file` and `pr --body-file` already work. Composing the record inline means a heredoc, and that shape is refused inside an isolated worktree.
+
+**Every subcommand prints exactly one status line on stdout and always exits `0`.** Read that line; it is the outcome, and nothing else in the run overrides it. `--json` returns the structured result instead, for a caller that wants the fields rather than the line.
+
+**An unreachable store is a stated skip, never a stop.** Name the cause in one short line — which variable was unset, the status code and the short reason it returned, or the network error — and carry on. Never stop the run over it, and never ask the user to fix it mid-run. **Never work around it by touching a local file**: `logs/concepts.jsonl` is a backup of the store, not a second copy of it, so writing to it forks the corpus and reading it answers from a snapshot of unknown age.
+<!-- /include-block -->
+
+The write path is `POST <CONCEPTS_URL>/api/concepts`, and `my-command-tools concepts save` is what makes it.
+
+**The write is idempotent, and the retry belongs inside the call.** A row id is a ULID derived from the record itself, so the store returns **201** when the concept is new and **200** when the identical record is replayed. The verb therefore retries once on a network error or a `5xx`, reusing the same record. **Never re-run the whole command to retry a failed save.** Every run stamps a fresh `savedAt`, which changes the record, which changes the derived id — so a second run writes a *second version* of the concept instead of replaying the first. Idempotency protects a repeated request, not a repeated run.
 
 **An unreachable store is not fatal.** `/improve` cannot run without the proxy because the suggestions *are* the input; `/teach`'s input is the user. Step 6 already printed the sentence and copied it, and that stands whatever this step does. So when `CONCEPTS_URL` or `CONCEPTS_TOKEN` is unset, or the POST fails, keep the sentence, keep the clipboard, skip only the save, and never stop the run over it.
 
@@ -181,34 +193,32 @@ Four more are **optional**, and claude-proxy's detail page renders each one it f
 
 **Omit an optional field entirely when there is nothing to record.** Never write `""` or `[]` for one: the detail page distinguishes absent from empty, and an absent field is what makes it show its "nothing more to show" fallback. Records written before these fields existed carry none of them and stay valid — a stored concept is never rewritten or migrated.
 
-Write it with the `concept-save` hook, passing every value as an argument, so no shell quoting or JSON escaping can corrupt a sentence containing quotes, backslashes, or newlines. Lists are **newline-separated**, one entry per line, because a tip or a note reliably contains a comma and never contains a newline:
+The record travels as **JSON in a file**, so no field ever reaches a command line and no shell quoting or JSON escaping can corrupt a sentence containing quotes, backslashes, or newlines. Lists are real JSON arrays, one entry per element. Write it with the `Write` tool, then pass the path — never compose it inline with a heredoc, which is refused inside an isolated worktree:
 
-```bash
-~/.claude/my-command/hooks/concept-save.mjs \
-  "<term>" "<sentence>" "<field>" "<applied skills, one per line>" \
-  "<notes as Markdown>" "<tips, one per line>" "<sources, one per line>" "<surfaced skills, one per line>"
+```
+Write({file_path: "$CLAUDE_JOB_DIR/tmp/concept.json", content: "…"})
 ```
 
-<!-- include-block: shared/store-hooks.md -->
-### Reach the hosted stores through the store hooks
+```json
+{
+  "term": "<term>",
+  "sentence": "<sentence>",
+  "field": "<field>",
+  "skills": ["<an applied skill>"],
+  "notes": "<notes as Markdown>",
+  "tips": ["<a tip>"],
+  "sources": ["<a source>"],
+  "surfacedSkills": ["<a surfaced skill>"]
+}
+```
 
-**Every read and write of the hosted concept store and the hosted ideas ledger goes through a hook in `~/.claude/my-command/hooks/`**, never through an inlined `node -e` block. The hooks are installed beside the workflow gates and **allowlisted by name**, so each call runs without an approval round-trip; an inlined block is not allowlisted and costs one. On a device with `CLAUDE_CONFIG_DIR` set, they sit under that directory's `my-command/hooks/` instead — `my-command-tools doctor` reports where.
+```bash
+my-command-tools concepts save --record-file <the absolute path just written>
+```
 
-- `concept-save.mjs <term> <sentence> <field> <skills> [notes] [tips] [sources] [surfaced]` — write a concept. List arguments are newline-separated.
-- `concept-count.mjs <term> <skill>` — count one skill install on that concept's record.
-- `ideas-read.mjs [--available] [--repo <owner/name>] [--area <area>] [--status <a,b>]` — read the ledger.
-- `ideas-add.mjs <path-to-json>` — record proposals from a JSON array in a file.
-- `ideas-claim.mjs <slug> <holder> [pr-url]` — take an idea.
-- `ideas-mark.mjs <slug> <status> [note]` — set an idea's status.
+With no scratch directory to write to, `concepts save` still reads the record on stdin from a real pipeline — but `--record-file` is the form to reach for.
 
-**Never pass a token to one of these, and never print one.** Each hook reads `CONCEPTS_URL`/`CONCEPTS_TOKEN` — and for the ledger `IDEAS_URL`/`IDEAS_TOKEN`, falling back to the concepts pair — from `process.env` inside its own process. A token on a command line reaches the transcript and the shell history; `printenv CONCEPTS_TOKEN` and `printenv IDEAS_TOKEN` are never run.
-
-**Read the first line of the output, and only the first line, as the outcome.** Every hook prints at most one status line and always **exits 0**, so the exit status says nothing — `saved:`, `counted:`, `read:`, `added:`, `claimed:`, `marked:` are the successes, and a line beginning `not ` carries the cause after the colon: which variable was unset, the HTTP status with its short reason, or the network error. `ideas-read.mjs` and `ideas-add.mjs` print their JSON on the lines after that one, on success only.
-
-**An unreachable store is a stated skip, never a stop** — except where the command says otherwise. The call is lost and nothing else: the run continues and says in one short line why, naming the cause the hook gave it. Each hook already retries once on a network error or a 5xx, reusing the identical record, so **never recover by re-running a whole command**: a fresh run stamps a new `savedAt`, which changes the derived row id and writes a second version instead of replaying the first.
-<!-- /include-block -->
-
-The hook enforces the omit rule — an empty string and an empty list both fall through and the key is never written. Pass `""` for anything the run did not produce; do not drop the argument, or the values after it shift.
+The verb stamps `savedAt` itself and enforces the omit rule — an empty string and an empty list both fall through and the key is never written — so an optional field the run did not produce can be passed empty or left out of the object entirely. It drops `find-skills` from both skill lists, since that one is the finder and never an applied skill.
 
 It always exits `0` and always prints one line, because the save is the optional half of this step. Read that line and repeat its cause in the reply.
 

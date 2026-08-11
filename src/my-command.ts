@@ -389,11 +389,9 @@ const HOOK_SCRIPTS = [
   'pre-tool-use.mjs',
   'stop.mjs',
   'install-hooks.mjs',
-  // The store hooks. A command invokes these itself rather than the harness running them,
+  // The ideas hooks. A command invokes these itself rather than the harness running them,
   // but a lost mode bit fails the same way, quieter: a "permission denied" the run reports
-  // as an unreachable store.
-  'concept-save.mjs',
-  'concept-count.mjs',
+  // as an unreachable ledger.
   'ideas-read.mjs',
   'ideas-add.mjs',
   'ideas-claim.mjs',
@@ -488,6 +486,25 @@ function reportToolkit(result: ToolkitResult) {
   }
 }
 
+// The concept store's address and token are environment variables and nothing else. This
+// reports only whether they are set and prints the export lines to paste — it never writes
+// a token into settings.json, a dotfile, or anywhere else.
+function reportConceptStore() {
+  const url = process.env.IDEAS_URL || process.env.CONCEPTS_URL;
+  const token = process.env.IDEAS_TOKEN || process.env.CONCEPTS_TOKEN;
+  if (url && token) {
+    console.log(`\nConcept store: address and token are both set, so \`${TOOLKIT_BIN} concepts\` can reach it.`);
+    return;
+  }
+  console.log('\nConcept store not configured, so /lookup, /teach and /learn will each report a');
+  console.log('stated skip rather than reading or writing the corpus. Add these two lines to your');
+  console.log('own shell profile — this wizard writes neither, and never stores a token anywhere:');
+  console.log('  export CONCEPTS_URL="https://<your-worker-host>"');
+  console.log('  export CONCEPTS_TOKEN="<the shared bearer token>"');
+  console.log('IDEAS_URL and IDEAS_TOKEN are read first and cover both, since /work reads that same');
+  console.log('Worker — one dataset, one token, two documented names.');
+}
+
 function reportHooks(result: HooksResult) {
   if (result.installed) {
     if (result.symlinked) {
@@ -527,14 +544,17 @@ async function main() {
   if (choice === '1') {
     await installPlugin();
     reportToolkit(installToolkit());
+    reportConceptStore();
     reportHooks(await installHooks());
   } else if (choice === '2') {
     await installPersonal();
     reportToolkit(installToolkit());
+    reportConceptStore();
     reportHooks(await installHooks());
   } else if (choice === '3') {
     await installCodexSkills();
     reportToolkit(installToolkit(deviceRoot('codex')));
+    reportConceptStore();
     // No gates on the Codex path, deliberately. Codex's hook engine is a different
     // mechanism end to end: opt-in behind a `[features]` flag in ~/.codex/config.toml,
     // configured as TOML rather than settings.json, and firing PreToolUse for the shell

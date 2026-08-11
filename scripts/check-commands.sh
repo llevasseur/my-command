@@ -269,7 +269,7 @@ if [ -f src/hooks/settings-fragment.json ]; then
     missing_allow=$(node -e '
       const f = JSON.parse(require("node:fs").readFileSync("src/hooks/settings-fragment.json", "utf8"));
       const allow = new Set(f.permissions?.allow ?? []);
-      const scripts = ["concept-save", "concept-count", "ideas-read", "ideas-add", "ideas-claim", "ideas-mark"];
+      const scripts = ["ideas-read", "ideas-add", "ideas-claim", "ideas-mark"];
       const wanted = scripts.flatMap((s) => [
         `Bash({{HOOKS_DIR}}/${s}.mjs:*)`,
         `Bash(~/.claude/my-command/hooks/${s}.mjs:*)`,

@@ -157,22 +157,32 @@ export CONCEPTS_TOKEN="<the token from the Worker's secret store>"
 ```
 
 Read the token from the Worker's secret store or your password manager; never
-commit it. With either variable unset, `/teach` still names the term, still
-prints the sentence, and still copies it — it skips only the save and says in one
-line why. See [docs/features/teach.md](./docs/features/teach.md) for the
-per-device rollout.
+commit it. `IDEAS_URL` and `IDEAS_TOKEN` are read first here too, so a device
+that already set the pair above needs nothing more. With either variable unset,
+`/teach` still names the term, still prints the sentence, and still copies it —
+it skips only the save and says in one line why. See
+[docs/features/teach.md](./docs/features/teach.md) for the per-device rollout.
 
-**Every call to either store goes through a store hook**, installed alongside the
-workflow gates in `~/.claude/my-command/hooks/` (or under `$CLAUDE_CONFIG_DIR`
-where that is set — `my-command-tools doctor` reports where):
-`concept-save.mjs`, `concept-count.mjs`, `ideas-read.mjs`, `ideas-add.mjs`,
-`ideas-claim.mjs` and `ideas-mark.mjs`. They are allowlisted by name, so a
-command reaches the store without an approval round-trip, and each of them reads
-these four variables from `process.env` **inside its own process** — a token is
-never an argument, never echoed, and never written to a file. Each prints one
-status line and always exits 0, so a command reads that line rather than the exit
-code, and an unreachable store is a stated skip naming its cause rather than a
-stopped run.
+`/lookup`, `/teach`, and `/learn` reach that store through one shared toolkit
+verb, `my-command-tools concepts` (`lookup`, `save`, `count`), rather than
+through a snippet pasted into each command. It reads both variables from
+`process.env` inside its own process, takes the record to save as JSON on
+standard input so no field reaches a command line, prints exactly one status line
+and always exits `0`. **Neither installer ever writes a token**: both
+`scripts/install-personal.sh` and the `npx` wizard report only whether the pair
+is set and print the two export lines for you to paste.
+
+**Every call to the ideas ledger goes through an ideas hook**, installed
+alongside the workflow gates in `~/.claude/my-command/hooks/` (or under
+`$CLAUDE_CONFIG_DIR` where that is set — `my-command-tools doctor` reports
+where): `ideas-read.mjs`, `ideas-add.mjs`, `ideas-claim.mjs` and
+`ideas-mark.mjs`. They are allowlisted by name, so `/ideate` and `/work` reach
+the ledger without an approval round-trip, and each of them reads `IDEAS_URL`
+and `IDEAS_TOKEN` — falling back to the `CONCEPTS_*` pair — from `process.env`
+**inside its own process**; a token is never an argument, never echoed, and
+never written to a file. Each prints one status line and always exits 0, so a
+command reads that line rather than the exit code, and an unreachable ledger is
+a stated skip naming its cause rather than a stopped run.
 
 The `trim` command adapts the context-compaction strategy introduced by Yujiang Li,
 Zhenyu Hou, Yi Jing, Jie Tang, and Yuxiao Dong in

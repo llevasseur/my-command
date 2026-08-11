@@ -1,4 +1,4 @@
-// The store hooks, exercised against a real HTTP server on a loopback port.
+// The ideas hooks, exercised against a real HTTP server on a loopback port.
 //
 // Each hook is checked on the three outcomes a caller has to tell apart, because the
 // caller reads a **line** rather than an exit status: the success line, the line for an
@@ -23,14 +23,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const exec = promisify(execFile);
 
 /** Every hook a command calls. `install-hooks`, `pre-tool-use` and `stop` are not these. */
-const HOOKS = [
-  'concept-save.mjs',
-  'concept-count.mjs',
-  'ideas-read.mjs',
-  'ideas-add.mjs',
-  'ideas-claim.mjs',
-  'ideas-mark.mjs',
-];
+const HOOKS = ['ideas-read.mjs', 'ideas-add.mjs', 'ideas-claim.mjs', 'ideas-mark.mjs'];
 
 /** The variables a hook reads. Cleared for every run so the device's own never leak in. */
 const ADDRESS = ['CONCEPTS_URL', 'CONCEPTS_TOKEN', 'IDEAS_URL', 'IDEAS_TOKEN'];
@@ -121,86 +114,10 @@ function proposalsFile(proposals) {
   return path;
 }
 
-const SAVE_ARGS = ['rubber-banding', 'The list moves back after you pull it.', 'UI motion', 'animation-vocabulary'];
-
-test('every store hook is executable, so a command can call it by path', () => {
+test('every ideas hook is executable, so a command can call it by path', () => {
   for (const hook of HOOKS) {
     assert.equal(statSync(join(HERE, hook)).mode & 0o111, 0o111, `${hook} is not executable`);
   }
-});
-
-test('concept-save: a stored concept reports the status and that it is new', async () => {
-  const { origin, seen } = await store(always(201, { id: 'x' }));
-  assert.equal(await first('concept-save.mjs', SAVE_ARGS, concepts(origin)), 'saved: 201 (new)');
-  assert.equal(seen[0].method, 'POST');
-  assert.equal(seen[0].url, '/api/concepts');
-  assert.equal(seen[0].body.term, 'rubber-banding');
-  assert.deepEqual(seen[0].body.skills, ['animation-vocabulary']);
-});
-
-test('concept-save: a replay of the identical record reports that it was already stored', async () => {
-  const { origin } = await store(always(200, { id: 'x' }));
-  assert.equal(await first('concept-save.mjs', SAVE_ARGS, concepts(origin)), 'saved: 200 (already stored)');
-});
-
-test('concept-save: an unset variable is named, and nothing else is', async () => {
-  assert.equal(await first('concept-save.mjs', SAVE_ARGS), 'not saved: CONCEPTS_URL is not set');
-  const address = { CONCEPTS_URL: 'https://example.invalid' };
-  assert.equal(await first('concept-save.mjs', SAVE_ARGS, address), 'not saved: CONCEPTS_TOKEN is not set');
-});
-
-test('concept-save: an error status is reported with its short reason', async () => {
-  const { origin } = await store(always(401, { error: 'unauthorized' }));
-  const line = await first('concept-save.mjs', SAVE_ARGS, concepts(origin));
-  assert.match(line, /^not saved: 401\b/);
-  assert.match(line, /unauthorized/);
-});
-
-test('concept-save: an empty optional field is omitted rather than written empty', async () => {
-  const { origin, seen } = await store(always(201, {}));
-  await run('concept-save.mjs', [...SAVE_ARGS, '', '', '', ''], concepts(origin));
-  assert.deepEqual(Object.keys(seen[0].body).sort(), ['field', 'savedAt', 'sentence', 'skills', 'term']);
-});
-
-test('concept-count: a counted install names the skill and the term', async () => {
-  const stored = {
-    term: 'rubber-banding',
-    sentence: 'The list moves back after you pull it.',
-    field: 'UI motion',
-    skills: ['animation-vocabulary'],
-    notes: 'Prior research.',
-    surfacedSkills: ['apple-design'],
-  };
-  const { origin, seen } = await store((req) =>
-    req.method === 'GET' ? [200, { concept: stored }] : [200, { id: 'x' }],
-  );
-  const line = await first('concept-count.mjs', ['rubber-banding', 'apple-design'], concepts(origin));
-  assert.equal(line, 'counted: 200 — apple-design on rubber-banding');
-
-  // The write carries every field of the stored version forward, because reads resolve the
-  // newest one and a version written without them erases them for every later reader.
-  const write = seen[1].body;
-  assert.deepEqual(write.skills, ['animation-vocabulary', 'apple-design']);
-  assert.equal(write.notes, 'Prior research.');
-  assert.deepEqual(write.surfacedSkills, ['apple-design']);
-});
-
-test('concept-count: an unset variable is named', async () => {
-  const line = await first('concept-count.mjs', ['rubber-banding', 'apple-design']);
-  assert.equal(line, 'not counted: CONCEPTS_URL is not set');
-});
-
-test('concept-count: an error status on the read is reported as the store answering', async () => {
-  const { origin } = await store(always(403, { error: 'forbidden' }));
-  const line = await first('concept-count.mjs', ['rubber-banding', 'apple-design'], concepts(origin));
-  assert.match(line, /^not counted: the store answered 403\b/);
-});
-
-test('concept-count: find-skills is never recorded, and costs no round trip', async () => {
-  const { origin, seen } = await store(always(200, { concept: {} }));
-  const line = await first('concept-count.mjs', ['rubber-banding', 'find-skills'], concepts(origin));
-  assert.match(line, /^not counted: find-skills is never recorded/);
-  assert.equal(seen.length, 0);
 });
 
 test('ideas-read: a read reports the count and prints the ledger after it', async () => {
@@ -322,8 +239,6 @@ test('every hook exits 0 and prints a status line on an unreachable store', asyn
   const dead = 'http://127.0.0.1:1';
   /** @type {[string, string[], Record<string, string>, string][]} */
   const cases = [
-    ['concept-save.mjs', SAVE_ARGS, concepts(dead), 'not saved: '],
-    ['concept-count.mjs', ['a', 'b'], concepts(dead), 'not counted: '],
     ['ideas-read.mjs', [], ideas(dead), 'not read: '],
     ['ideas-add.mjs', [proposalsFile([PROPOSAL])], ideas(dead), 'not added: '],
     ['ideas-claim.mjs', ['a', 'feat/x'], ideas(dead), 'not claimed: '],

@@ -15,7 +15,7 @@ import { guard, request, resolve, say, unresolved } from './lib/store.mjs';
 const args = process.argv.slice(2);
 
 guard('not read', async () => {
-  const store = resolve('ideas');
+  const store = resolve();
   if (unresolved(store)) return say(`not read: ${store.missing}`);
 
   const query = new URLSearchParams();

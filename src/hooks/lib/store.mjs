@@ -1,6 +1,6 @@
-// The hosted stores, reached the same way from every hook that touches them: the
-// append-only concept store and the append-only ideas ledger, two datasets behind one
-// Cloudflare Worker and one token.
+// The hosted ideas ledger, reached the same way from every hook that touches it. The
+// concept store sits behind the same Worker but is reached through
+// `my-command-tools concepts`, which is why only the ledger is addressed here.
 //
 // **Credentials come from `process.env` and go nowhere else.** They are read per call
 // rather than captured at import, never accepted as an argument or a flag, and never
@@ -14,23 +14,21 @@ const TIMEOUT_MS = 15000;
 /** @typedef {{ missing: string }} Unresolved */
 
 /**
- * The address of a hosted store, or the name of the variable that is missing.
+ * The address of the ledger, or the name of the variable that is missing.
  *
- * `CONCEPTS_URL`/`CONCEPTS_TOKEN` are the documented fallback for the ideas pair, because
- * ideas and concepts are one dataset behind one Worker — a device configured for concepts
- * is already configured for ideas. `IDEAS_*` wins where both are set, so the two can be
- * split later without a migration.
+ * `CONCEPTS_URL`/`CONCEPTS_TOKEN` are the documented fallback, because ideas and concepts
+ * are one dataset behind one Worker — a device configured for concepts is already
+ * configured for ideas. `IDEAS_*` wins where both are set, so the two can be split later
+ * without a migration.
  *
- * @param {'concepts' | 'ideas'} dataset
  * @returns {Store | Unresolved}
  */
-export function resolve(dataset) {
-  const ideas = dataset === 'ideas';
-  const origin = (ideas ? (process.env.IDEAS_URL ?? process.env.CONCEPTS_URL) : process.env.CONCEPTS_URL)?.trim();
-  const token = (ideas ? (process.env.IDEAS_TOKEN ?? process.env.CONCEPTS_TOKEN) : process.env.CONCEPTS_TOKEN)?.trim();
-  const suffix = ideas ? ' (CONCEPTS_URL and CONCEPTS_TOKEN are accepted as fallbacks)' : '';
-  if (!origin) return { missing: `${ideas ? 'IDEAS_URL' : 'CONCEPTS_URL'} is not set${suffix}` };
-  if (!token) return { missing: `${ideas ? 'IDEAS_TOKEN' : 'CONCEPTS_TOKEN'} is not set${suffix}` };
+export function resolve() {
+  const suffix = ' (CONCEPTS_URL and CONCEPTS_TOKEN are accepted as fallbacks)';
+  const origin = (process.env.IDEAS_URL ?? process.env.CONCEPTS_URL)?.trim();
+  const token = (process.env.IDEAS_TOKEN ?? process.env.CONCEPTS_TOKEN)?.trim();
+  if (!origin) return { missing: `IDEAS_URL is not set${suffix}` };
+  if (!token) return { missing: `IDEAS_TOKEN is not set${suffix}` };
   return { origin: origin.replace(/\/+$/, ''), token };
 }
 
@@ -54,11 +52,11 @@ export function why(err) {
 }
 
 /**
- * One call to a hosted store, retried **once** on a network error or a 5xx.
+ * One call to the ledger, retried **once** on a network error or a 5xx.
  *
- * The retry replays the identical request rather than recomposing it: the concept store is
- * append-only and derives a row id from the record, so a recomposed retry would stamp a
- * fresh `savedAt` and write a second version instead of replaying the first.
+ * The retry replays the identical request rather than recomposing it. The ledger is an
+ * append-only event log, so a recomposed retry appends a second event rather than
+ * replaying the first — which is also why a caller must never recover by re-running.
  *
  * Never throws — every outcome is a value.
  *

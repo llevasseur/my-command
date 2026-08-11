@@ -16,7 +16,7 @@ const [slug, by, pr] = process.argv.slice(2);
 guard('not claimed', async () => {
   if (!slug || !by) return say('not claimed: a slug and a holder are both required');
 
-  const store = resolve('ideas');
+  const store = resolve();
   if (unresolved(store)) return say(`not claimed: ${store.missing}`);
 
   const claim = { slug, by, ...(pr ? { pr } : {}) };

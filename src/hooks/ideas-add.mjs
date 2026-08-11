@@ -26,7 +26,7 @@ guard('not added', async () => {
   }
   if (!Array.isArray(ideas) || ideas.length === 0) return say('not added: the file must hold a non-empty JSON array');
 
-  const store = resolve('ideas');
+  const store = resolve();
   if (unresolved(store)) return say(`not added: ${store.missing}`);
 
   const result = await request(store, '/api/ideas', { method: 'POST', body: { ideas } });
