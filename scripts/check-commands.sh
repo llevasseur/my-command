@@ -478,13 +478,12 @@ if grep -REn -- 'my-command-tools (commit|pr) [^`]*--(message|body) -' src/comma
 fi
 
 # 18. The docs may not prescribe a command the harness refuses. `/cp` step 3 told every run to
-# rotate its stash ring with a `for i in 3 2 1` loop over `$((i + 1))` paths; every path in it
-# was under ~/.claude, so it carried no git operation and no repo-relative write, and it was
-# refused every time regardless because a worktree-isolated session cannot resolve a
-# loop-computed path by reading it — and /cp is usually invoked from inside a worktree. One bad
-# snippet is a bug; a repo that can grow another one silently is the defect, so every fenced
-# shell block in src/commands/, src/shared/ and skills/ goes through the same shape checker the
-# gate uses. A block nobody is told to run declares itself with `<!-- not-run: <reason> -->`.
+# rotate its stash ring with a `for i in 3 2 1` loop over `$((i + 1))` paths, and a
+# worktree-isolated session refused it every time — on shape, not on substance, since every
+# path in it was under ~/.claude. One bad snippet is a bug; a repo that can grow another one
+# silently is the defect, so every fenced shell block in src/commands/, src/shared/ and skills/
+# goes through the same shape checker the gate uses. A block nobody is told to run declares
+# itself with `<!-- not-run: <reason> -->`.
 if ! node scripts/check-doc-snippets.mjs; then
   fail=1
 fi

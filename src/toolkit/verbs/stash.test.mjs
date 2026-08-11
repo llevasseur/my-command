@@ -62,7 +62,6 @@ test('stash write installs the content file as the newest entry, byte for byte',
 
 test('stash write rotates a five-deep ring and drops the oldest', () => {
   const dir = sandbox();
-  // Six writes: the ring holds the newest five, and the first is gone.
   for (const n of [1, 2, 3, 4, 5, 6]) {
     stash(ctx(['write'], { 'content-file': source(dir, `entry ${n}\n`) }));
   }

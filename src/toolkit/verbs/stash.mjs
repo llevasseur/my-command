@@ -8,9 +8,9 @@
 // worktree-isolated session because a loop-computed path cannot be resolved by reading it.
 // Every path here was always under `~/.claude`; the shape was the whole problem.
 //
-// The ring, the write, and the clipboard sink all live in one call so `/cp` spends two calls
-// on a copy rather than three, and so "the stash is written on every platform, only the
-// clipboard is platform-detected" is a property of the code rather than a rule to recall.
+// The ring, the write, and the clipboard sink live in one call, so "the stash is written on
+// every platform, only the clipboard is platform-detected" is a property of the code rather
+// than a rule to recall.
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -125,9 +125,7 @@ function toClipboard(path) {
 }
 
 /**
- * Shift every entry one slot older and drop what falls off the end. Written as a plain
- * descending walk here, in a file, precisely because the same walk in a shell is what a
- * worktree-isolated session refuses.
+ * Shift every entry one slot older and drop what falls off the end.
  * @param {string} dir
  * @returns {{rotated: Array<{from: number, to: number}>, dropped: string | null}}
  */
@@ -188,8 +186,6 @@ function write(dir, contentFile, clipboard) {
 function restore(dir, slot, clipboard) {
   const path = slotPath(dir, slot);
   if (!existsSync(path)) {
-    // Reported, never papered over: copying a missing entry would clear the clipboard, which
-    // is strictly worse than leaving whatever is on it.
     throw new ToolkitError(`slot ${slot} holds nothing — ${path} does not exist, so the clipboard was left alone`, {
       subcommand: 'restore',
       slot,

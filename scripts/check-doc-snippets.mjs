@@ -2,10 +2,9 @@
 // Hold this repo's own documentation to the shapes this repo's own gates accept.
 //
 // `/cp` step 3 prescribed a five-deep stash rotation as a `for i in 3 2 1` loop over
-// `$((i + 1))` paths. Every path in it was under `~/.claude`, so it contained no git
-// operation and no repo-relative write — and it was refused anyway, every time, because
-// `/cp` is usually invoked from inside an isolated worktree and the harness cannot resolve
-// a loop-computed path by reading it. The docs prescribed a refusal.
+// `$((i + 1))` paths, and a worktree-isolated session refused it on every run — not for its
+// paths, which were all under `~/.claude`, but for its shape, which cannot be resolved by
+// reading it. The docs prescribed a refusal.
 //
 // One offending snippet is a bug; a repo that can grow another one silently is the defect.
 // So every fenced shell block in the command sources, the shared snippets, and the Codex
