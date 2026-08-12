@@ -52,6 +52,16 @@ export function block(reason) {
 }
 
 /**
+ * Say something to the human without keeping the turn open. `systemMessage` is the harness's
+ * warning channel: it is shown and then the run ends, where `decision: 'block'` refuses the
+ * ending outright and `additionalContext` feeds the model and continues the conversation.
+ * @param {string} message
+ */
+export function warn(message) {
+  process.stdout.write(`${JSON.stringify({ systemMessage: message })}\n`);
+}
+
+/**
  * Run a hook body, allowing the call on any failure — exit 0 with no output is how the
  * harness spells "no opinion". No gate does its own error handling; this is the whole
  * error policy.

@@ -24,7 +24,7 @@ import {
   unmatchedGlob,
 } from './lib/bash-shapes.mjs';
 import { isReadOnly } from './lib/read-only.mjs';
-import { entries, lastFullReadOf, nestedRunOpen, returnMarker, timeline } from './lib/transcript.mjs';
+import { entries, headlessClaude, lastFullReadOf, nestedRunOpen, returnMarker, timeline } from './lib/transcript.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PRE_TOOL_USE = join(HERE, 'pre-tool-use.mjs');
@@ -52,7 +52,19 @@ function hook(script, event, state = scratch()) {
   const out = execFileSync('node', [script], {
     input: JSON.stringify(event),
     encoding: 'utf8',
-    env: { ...process.env, MY_COMMAND_HOOK_STATE: state, MY_COMMAND_HOOKS: '1' },
+    env: {
+      ...process.env,
+      MY_COMMAND_HOOK_STATE: state,
+      MY_COMMAND_HOOKS: '1',
+      // Two things must not be inherited from whoever ran the suite. The gates append their
+      // log under `CLAUDE_CONFIG_DIR`, so these fixtures would write into the human's own
+      // `hooks.log`. And the outcome gate stands down in a non-interactive session, so a suite
+      // run from inside a background job would exempt every case below from the gate it asserts.
+      CLAUDE_CONFIG_DIR: state,
+      CLAUDE_JOB_DIR: '',
+      MY_COMMAND_NON_INTERACTIVE: '',
+      CI: '',
+    },
   });
   return out.trim() ? JSON.parse(out) : {};
 }
@@ -1242,12 +1254,30 @@ test('a malformed event allows the call rather than failing it', () => {
 });
 
 // ── the outcome gate (F1) ───────────────────────────────────────────────────────────
+//
+// A Stop hook fires at every yield of the turn, not only at an ending, so the cases that
+// matter most here are the ones asserting the gate stays *silent*.
 
-test('stop: a run ending on a tool call is told the outcome is owed', () => {
-  const line = transcript(['prompt', [read('Bash', { command: 'my-command-tools worktree end --branch x' })]]);
+/**
+ * A turn that called a tool and said nothing at all: the one shape still refused.
+ * @param {...{name: string, input: Record<string, unknown>}} calls
+ */
+const wordless = (...calls) => ({ say: '', calls });
+
+test('stop: a run whose last message has no text at all is blocked', () => {
+  const line = transcript(['prompt', wordless(read('Bash', { command: 'my-command-tools worktree end --branch x' }))]);
   const answer = hook(STOP, { session_id: 'f1', transcript_path: line });
   assert.equal(answer.decision, 'block');
   assert.match(answer.reason, /text and zero tool calls/);
+});
+
+test('stop: a report carrying a tool call is warned about, never blocked', () => {
+  // The run did say where it stood and the report simply rode a tool call, so the log line is
+  // the durable part rather than the refusal.
+  const line = transcript(['prompt', [read('Bash', { command: 'my-command-tools worktree end --branch x' })]]);
+  const answer = hook(STOP, { session_id: 'f1b', transcript_path: line });
+  assert.equal(answer.decision, undefined);
+  assert.match(answer.systemMessage, /decision mid-run/);
 });
 
 test('stop: a text-only closing turn ends the run', () => {
@@ -1256,18 +1286,115 @@ test('stop: a text-only closing turn ends the run', () => {
   assert.deepEqual(answer, {});
 });
 
-test('stop: the same turn is never blocked twice, so a run can always end', () => {
+test('stop: a prompt a text-only turn already closed is not asked for a second outcome', () => {
+  // The run reported, kept working, and the stop at the next yield demanded the report it
+  // had already given.
+  const line = transcript(['prompt', 'text', [read('Bash', { command: 'gh pr view 91' })]]);
+  assert.deepEqual(hook(STOP, { session_id: 'f2b', transcript_path: line }), {});
+});
+
+test('stop: the same turn is never spoken to twice, so a run can always end', () => {
   const state = scratch();
-  const line = transcript(['prompt', [read('Bash', { command: 'ls' })]]);
+  const line = transcript(['prompt', wordless(read('Bash', { command: 'ls' }))]);
   const event = { session_id: 'f3', transcript_path: line };
   assert.equal(hook(STOP, event, state).decision, 'block');
   assert.deepEqual(hook(STOP, event, state), {});
 });
 
 test('stop: an in-flight re-run of the same stop is left alone', () => {
-  const line = transcript(['prompt', [read('Bash', { command: 'ls' })]]);
+  const line = transcript(['prompt', wordless(read('Bash', { command: 'ls' }))]);
   const answer = hook(STOP, { session_id: 'f4', transcript_path: line, stop_hook_active: true });
   assert.deepEqual(answer, {});
+});
+
+test('stop: a subagent transcript beside the one handed over stands the gate down', () => {
+  // The event carries the *parent's* path, so without this the gate judges one run by
+  // another's history.
+  const line = transcript(['prompt', wordless(read('Bash', { command: 'ls' }))]);
+  const sub = join(dirname(line), 'transcript', 'subagents');
+  mkdirSync(sub, { recursive: true });
+  writeFileSync(join(sub, 'a.jsonl'), '{}\n');
+  // The gate reads recency, and two writes this close together share one mtime wherever the
+  // filesystem's granularity is coarser than the gap — so the parent is aged deliberately
+  // rather than left to be the older file by luck.
+  const aged = new Date(Date.now() - 5000);
+  utimesSync(line, aged, aged);
+  assert.deepEqual(hook(STOP, { session_id: 'fr1', transcript_path: line }), {});
+});
+
+test('stop: a non-interactive session is left to the harness that already enforces this', () => {
+  const state = scratch();
+  const line = transcript(['prompt', wordless(read('Bash', { command: 'ls' }))]);
+  const out = execFileSync('node', [STOP], {
+    input: JSON.stringify({ session_id: 'j1', transcript_path: line }),
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      MY_COMMAND_HOOK_STATE: state,
+      MY_COMMAND_HOOKS: '1',
+      CLAUDE_CONFIG_DIR: state,
+      CLAUDE_JOB_DIR: join(state, 'job'),
+    },
+  });
+  assert.equal(out.trim(), '');
+});
+
+test('stop: a transcript whose last turn just landed is re-read before it is judged', () => {
+  // The records are appended live, so a closing message written moments earlier may not be
+  // on disk yet — and a transcript missing its last turn refuses the very message it asked for.
+  const line = transcript(['prompt', wordless(read('Bash', { command: 'ls' }))], Date.now() - 1000);
+  const started = Date.now();
+  assert.equal(hook(STOP, { session_id: 'fl1', transcript_path: line }).decision, 'block');
+  assert.ok(Date.now() - started >= 200, 'the gate paused and read the transcript a second time');
+});
+
+// ── the outcome gate: why the loop stopped, not only what was last ──────────────────
+
+test('stop: a turn whose every call was refused stopped for that reason, not by ending', () => {
+  const line = splitTranscript(['prompt', [read('Bash', { command: 'gh pr merge 3' })]], { failed: ['1-0'] });
+  assert.deepEqual(hook(STOP, { session_id: 'y1', transcript_path: line }), {});
+});
+
+test('stop: a turn ending on a tool that yields by design is a pause, not an ending', () => {
+  /** @type {[string, {name: string, input: Record<string, unknown>}][]} */
+  const yielding = [
+    ['question', read('AskUserQuestion', { questions: [] })],
+    ['plan', read('ExitPlanMode', { plan: 'do it' })],
+    ['watch', read('Monitor', { description: 'ci', timeout_ms: 1000, persistent: false })],
+    ['background', read('Bash', { command: 'pnpm test', run_in_background: true })],
+    ['dispatch', read('Agent', { description: 'review', prompt: 'review it' })],
+  ];
+  for (const [name, call] of yielding) {
+    const line = transcript(['prompt', wordless(call)]);
+    assert.deepEqual(hook(STOP, { session_id: `y-${name}`, transcript_path: line }), {}, name);
+  }
+});
+
+test('stop: an Agent dispatch with no completion notice yet is an open nested run', () => {
+  const line = transcript([
+    'prompt',
+    [read('Agent', { description: 'clean', prompt: 'clean it' })],
+    [read('Bash', { command: 'ls' })],
+  ]);
+  assert.deepEqual(hook(STOP, { session_id: 'g1', transcript_path: line }), {});
+});
+
+test('stop: a headless claude -p shell out is an open nested run too', () => {
+  const line = transcript([
+    'prompt',
+    [read('Bash', { command: 'claude -p "summarize the diff" > out.txt', run_in_background: true })],
+    [read('Bash', { command: 'ls' })],
+  ]);
+  assert.deepEqual(hook(STOP, { session_id: 'g2', transcript_path: line }), {});
+});
+
+test('stop: a Skill call that was refused is not an open nested run', () => {
+  // Counting a failed call leaves `invoked` permanently ahead of the markers and the gate
+  // silent for the rest of the prompt.
+  const line = splitTranscript(['prompt', [read('Skill', { skill: 'clean' })], [read('Bash', { command: 'ls' })]], {
+    failed: ['1-0'],
+  });
+  assert.match(hook(STOP, { session_id: 'g3', transcript_path: line }).systemMessage, /decision mid-run/);
 });
 
 // ── the outcome gate: only the outermost run owes one ───────────────────────────────
@@ -1316,7 +1443,7 @@ test('stop: an outermost run abandoned after its nested runs returned is still r
       say: 'PR #91 opened\n\nRETURN /pr',
       calls: [read('Bash', { command: 'my-command-tools worktree end --branch x' })],
     },
-    [read('Bash', { command: 'my-command-tools worktree end --branch x' })],
+    wordless(read('Bash', { command: 'my-command-tools worktree end --branch x' })),
   ]);
   const answer = hook(STOP, { session_id: 'n4', transcript_path: line });
   assert.equal(answer.decision, 'block');
@@ -1324,13 +1451,52 @@ test('stop: an outermost run abandoned after its nested runs returned is still r
 });
 
 test('stop: a marker in earlier prose does not excuse a run that ends on a tool call', () => {
-  // The marker counts only on the handback message's own last line.
+  // The marker counts only on the handback message's own last line. The turn carrying it
+  // also carries a call, so the prompt is still open and the gate is still entitled to look.
   const line = transcript([
     'prompt',
-    { say: 'RETURN /clean\n\nand now the rest of the work' },
-    [read('Bash', { command: 'my-command-tools verify' })],
+    { say: 'RETURN /clean\n\nand now the rest of the work', calls: [read('Edit', { file_path: '/w/a.ts' })] },
+    wordless(read('Bash', { command: 'my-command-tools verify' })),
   ]);
   assert.equal(hook(STOP, { session_id: 'n5', transcript_path: line }).decision, 'block');
+});
+
+test('a headless claude shell out is recognized and another program’s -p is not', () => {
+  assert.equal(headlessClaude('claude -p "do it"'), true);
+  assert.equal(headlessClaude('claude --print --model opus "do it"'), true);
+  assert.equal(headlessClaude('/usr/local/bin/claude -p x'), true);
+  assert.equal(headlessClaude('mkdir -p tmp/out'), false);
+  assert.equal(headlessClaude('claude --help'), false);
+  assert.equal(headlessClaude(undefined), false);
+});
+
+test('a background task notification is the harness reporting back, not a user prompt', () => {
+  // It arrives as a `user` record carrying prose and says outright that it is not user input.
+  // Read as a prompt it restarts a discovery run nobody restarted and opens a task no one
+  // can close.
+  const line = timeline([
+    {
+      type: 'user',
+      uuid: 'u0',
+      timestamp: new Date().toISOString(),
+      message: { role: 'user', content: [{ type: 'text', text: 'do the thing' }] },
+    },
+    {
+      type: 'user',
+      uuid: 'u1',
+      timestamp: new Date().toISOString(),
+      message: {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: '[SYSTEM NOTIFICATION - NOT USER INPUT]\n<task-notification><tool-use-id>t9</tool-use-id></task-notification>',
+          },
+        ],
+      },
+    },
+  ]);
+  assert.equal(line.filter((item) => item === null).length, 1);
 });
 
 test('the return marker reads a real invocation name and never the placeholder', () => {

@@ -258,7 +258,7 @@ src/toolkit/        Shared CLI every command calls — raw .mjs, shipped as-is (
   bin/my-command-tools The shim that resolves the toolkit device-wide
 src/hooks/          Workflow gates the harness runs (see docs/specs/workflow-gates.md)
   pre-tool-use.mjs     Refuses serial discovery, redundant reads, and an unresolvable relative cd
-  stop.mjs             Refuses to end a run that recorded no outcome
+  stop.mjs             Refuses a run that ends wordless; warns about a report riding a tool call
   settings-fragment.json  What gets merged into settings.json (hooks + read-only allowlist)
   install-hooks.mjs    The idempotent merge; --uninstall removes it again
 dist/               GENERATED wizard build (tsc output; gitignored, built on install via `prepare`)
@@ -354,9 +354,12 @@ script once per machine; both are path-agnostic.
 
 Both Claude install paths register the [workflow gates](./docs/specs/workflow-gates.md)
 in `~/.claude/settings.json` — the hooks that refuse serial discovery, a redundant
-whole-file re-read, a relative `cd` that cannot resolve, and a run that ends with no
-outcome. They fail open, never refuse the same thing twice, and always name the faster
-form. `install-personal.sh` symlinks them out of the clone; the `npx` wizard copies them
+whole-file re-read, a relative `cd` that cannot resolve, and a run that ends without
+saying anything at all. They fail open, never refuse the same thing twice, and always
+name the faster form. The outcome gate is the careful one: a Stop hook fires at every
+yield of the turn rather than only at an ending, so it establishes *why* the loop
+stopped before it speaks, and everything short of a wordless ending gets a warning
+rather than a refusal. `install-personal.sh` symlinks them out of the clone; the `npx` wizard copies them
 onto the device instead, because npx runs from a cache directory that is cleaned up after
 it exits. Either way `my-command-tools doctor` reports `hooks.armed`, which is the only
 thing that says a gate can actually fire. Skip registering them with

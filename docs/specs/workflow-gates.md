@@ -256,6 +256,68 @@ a dispatched run never reaches this gate at all. It closes in its own text-only 
 its final message reports *to* the parent session rather than taking a turn *in* the parent's
 conversation, so nothing of the parent's is queued behind it.
 
+### A Stop hook fires at every yield, not only at an ending
+
+The exemptions above were the right idea and far too few. In the week after they shipped the
+gate fired **138 times**, and the log says none of it was the failure it was built for:
+
+- Every firing took the `endsOnToolCall` branch. The branch for a last message with **no text
+  at all** — the shape that genuinely records nothing — never fired once.
+- **53** of them logged `unclosed=0`: a text-only turn had already closed the current prompt,
+  and the gate demanded a second report for a question already answered.
+- **88 of the 140 log lines were not sessions at all.** `f1`, `f3`, `n4` and `n5` are fixture
+  ids from `hooks.test.mjs`, which inherited `CLAUDE_CONFIG_DIR` and wrote into the human's
+  real `~/.claude/my-command/hooks.log` on every `pnpm test`. The gate's own evidence file was
+  filling up with the gate testing itself. The suite now points that variable, and
+  `CLAUDE_JOB_DIR`, at a scratch directory.
+
+The root cause is structural: **a Stop hook fires whenever the agent yields the turn**, and
+yielding is not ending. The gate had two proxies for "still mid-pipeline" — a `RETURN /<cmd>`
+marker on the last line, and unmatched `Skill` calls — and real pipelines pause in shapes
+neither one sees. So the gate now establishes *why the loop stopped* before it says anything,
+and each of these returns silently:
+
+- **Nothing is owed.** `unclosedPrompts(line) === 0` means a text-only turn already answered
+  the current prompt. Checked first, because it is the largest single class of false firing.
+- **The transcript is not this run's.** `foreignTranscript()` — which every other gate already
+  called and this one did not — so a run is never judged from a subagent's parent transcript.
+- **The session is not interactive.** `CLAUDE_JOB_DIR`, `MY_COMMAND_NON_INTERACTIVE`, or `CI`:
+  a background job's harness enforces its own outcome line, and there is nobody at a terminal
+  for a warning to reach.
+- **The loop stopped for a reason of its own.** Every call in the last turn came back
+  `ok: false`, so nothing it tried actually ran; or the turn ended on a tool that hands
+  control back by design — `AskUserQuestion`, `ExitPlanMode`, `Monitor`, a `run_in_background`
+  Bash, an `Agent` dispatch with no completion notice yet.
+- **A run this session set going is still open.** `nestedRunOpen()` now counts three shapes,
+  not one: an inline `Skill` call, an `Agent` dispatch, and a headless `claude -p` shell out.
+  A dispatch is never counted against a return marker, because it writes none into this
+  transcript — its report comes back as a tool result, and a backgrounded one as a completion
+  notice, so it is open until whichever has arrived. **A refused or errored call is no longer
+  counted at all**: it started nothing, and counting it left `invoked` permanently ahead of
+  `returned` and the gate silent for the rest of the prompt. A gate that cannot fire is worse
+  than one that fires wrongly, because nothing reports it.
+
+Two further changes follow from the same evidence:
+
+- **`block()` is reserved for the one unambiguous shape** — a last message carrying **no text
+  at all**. A message that did say where the run stands and merely carried a tool call along
+  with it gets a `systemMessage` warning and the log line, which is where the durable value
+  was all along. The log line keeps its existing shape, so the record stays comparable across
+  the change.
+- **The transcript is re-read once when its last turn is fresh.** The records are appended
+  live, and a text-only closing message was observed being blocked anyway — written moments
+  before the hook read the file and not yet flushed. When the last turn's timestamp is within
+  2s of the stop *and* the gate is about to speak, it pauses 250ms and judges a second time.
+  Only then, so the pause is paid on the rare stop rather than on every one.
+
+One shared correction came with it. `timeline()` now drops a `user` record that is a **harness
+notice** — one carrying `<task-notification>` or the `[SYSTEM NOTIFICATION - NOT USER INPUT]`
+preamble — exactly as it already drops one carrying only `tool_result` blocks, and for the
+identical reason given there: it is the harness handing back work the assistant set going, not
+a person giving new instructions. Read as a prompt it restarted a discovery run nobody
+restarted and opened a task nothing could close, which is why `unclosed` climbed in every
+backgrounded session.
+
 ## Read-only classification
 
 `src/hooks/lib/read-only.mjs` decides whether a call only reads. Its bias is asymmetric
@@ -621,7 +683,18 @@ cannot contradict each other again.
       a targeted slice, and a whole-file read following only a slice all pass.
 - [x] A relative `cd` that does not resolve is refused; a resolving, absolute,
       home-relative, expanded, or `cd -` form passes.
-- [x] A run ending on a tool call is blocked once; a text-only closing turn ends it.
+- [x] A run whose last message has no text at all is blocked once; a text-only closing turn
+      ends it, and a report that merely carries a tool call is warned about rather than refused.
+- [x] The outcome gate stays silent on a prompt a text-only turn already closed, on a
+      subagent's parent transcript, in a non-interactive session, on a turn whose every call
+      was refused, and on a turn ending in a question, a plan, a watch, a backgrounded
+      command, or a dispatch.
+- [x] An `Agent` dispatch and a `claude -p` shell out are open nested runs; a refused `Skill`
+      call is not, so the gate cannot be wedged permanently silent.
+- [x] A transcript whose last turn landed within 2s of the stop is read a second time before
+      the gate speaks.
+- [x] A background task notification is not counted as a user prompt.
+- [x] The suite writes no line into the human's real `hooks.log`.
 - [x] No gate refuses the same subject twice, and a malformed event allows the call.
 - [x] `MY_COMMAND_HOOKS=0` silences every gate.
 - [x] The installer merge is idempotent and preserves foreign hooks and settings.
