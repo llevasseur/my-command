@@ -10,7 +10,8 @@ import { basename, dirname, join } from 'node:path';
  * @property {string} uuid
  * @property {string} msgId       The assistant message id every block of this turn shares.
  * @property {number} at          Epoch ms of the turn's timestamp.
- * @property {{name: string, input: Record<string, any>, id?: string, ok: boolean}[]} toolUses
+ * @property {{name: string, input: Record<string, any>, id?: string, ok: boolean,
+ *   answered: boolean, notified: boolean}[]} toolUses
  * @property {boolean} hasText    The turn said something, not only called tools.
  * @property {string} text        What it said, blocks joined in order and trimmed.
  */
@@ -54,7 +55,8 @@ function epoch(value) {
  *
  * A `user` record carrying only `tool_result` blocks is not a prompt — it is the harness
  * handing back what the assistant just asked for, so it is dropped rather than treated as
- * a boundary.
+ * a boundary. A harness notice is dropped for the same reason and is the same thing wearing
+ * text: a background task's completion arrives as a `user` record carrying prose.
  * @param {Record<string, any>[]} records
  * @returns {(Turn | null)[]}
  */
@@ -63,11 +65,21 @@ export function timeline(records) {
   // is always written after the call it answers.
   /** @type {Set<string>} */
   const failed = new Set();
+  /** Calls a `tool_result` has come back for at all, error or not. */
+  /** @type {Set<string>} */
+  const answered = new Set();
+  /** Backgrounded calls a completion notice has since reported on. */
+  /** @type {Set<string>} */
+  const notified = new Set();
   for (const rec of records) {
     if (rec?.type !== 'user' || !Array.isArray(rec?.message?.content)) continue;
     for (const b of rec.message.content) {
-      if (b?.type === 'tool_result' && b.is_error === true && typeof b.tool_use_id === 'string') {
-        failed.add(b.tool_use_id);
+      if (b?.type === 'tool_result' && typeof b.tool_use_id === 'string') {
+        answered.add(b.tool_use_id);
+        if (b.is_error === true) failed.add(b.tool_use_id);
+      }
+      if (b?.type === 'text' && typeof b.text === 'string') {
+        for (const m of b.text.matchAll(/<tool-use-id>([^<]+)<\/tool-use-id>/g)) notified.add(m[1].trim());
       }
     }
   }
@@ -79,7 +91,7 @@ export function timeline(records) {
     if (!Array.isArray(content)) continue;
 
     if (rec.type === 'user') {
-      const isPrompt = content.some((b) => b?.type !== 'tool_result');
+      const isPrompt = content.some((b) => b?.type !== 'tool_result') && !harnessNotice(content);
       if (isPrompt) out.push(null);
       continue;
     }
@@ -92,6 +104,8 @@ export function timeline(records) {
         input: b.input ?? {},
         id: b.id,
         ok: !(typeof b.id === 'string' && failed.has(b.id)),
+        answered: typeof b.id === 'string' && answered.has(b.id),
+        notified: typeof b.id === 'string' && notified.has(b.id),
       }));
     const text = content
       .filter((b) => b?.type === 'text' && typeof b.text === 'string')
@@ -116,6 +130,23 @@ export function timeline(records) {
     out.push({ uuid: rec.uuid ?? '', msgId, at: epoch(rec.timestamp), toolUses, hasText: text.length > 0, text });
   }
   return out;
+}
+
+/**
+ * Whether a `user` record is the harness reporting on work this session already set going,
+ * rather than a person giving new instructions. A backgrounded task's completion and a system
+ * notification both arrive as `user` records carrying text, and each says outright that it is
+ * not user input — so each is taken at its word instead of being read as a prompt.
+ * @param {any[]} content
+ * @returns {boolean}
+ */
+function harnessNotice(content) {
+  for (const b of content) {
+    if (b?.type !== 'text' || typeof b.text !== 'string') continue;
+    if (b.text.includes('<task-notification>')) return true;
+    if (b.text.includes('[SYSTEM NOTIFICATION - NOT USER INPUT]')) return true;
+  }
+  return false;
 }
 
 /**
@@ -169,26 +200,73 @@ export function returnMarker(turn) {
 }
 
 /**
- * Whether a command this session invoked inline is still running — a `Skill` call since the
- * last user prompt with no return marker yet accounting for it. While one is open the run the
- * user invoked has steps owed after it, so a stop here is mid-pipeline rather than an ending.
+ * Whether a run this session set going is still running, so a stop here lands mid-pipeline
+ * rather than at an ending. Three shapes count, because a pipeline pauses in all three: a
+ * command invoked inline with `Skill`, a subagent dispatched with `Agent`, and a headless
+ * `claude -p` shell out.
  *
- * Counted rather than paired, because the two are emitted from different places: the parent
- * issues the `Skill` call and the child writes the marker, and a nested handback carries the
- * child's marker alongside the parent's *next* `Skill` call in one message. Only turns since
- * the last real prompt count, since an earlier task's nesting says nothing about this one.
+ * The inline half is counted rather than paired, because the two halves are emitted from
+ * different places: the parent issues the `Skill` call and the child writes the marker, and a
+ * nested handback carries the child's marker alongside the parent's *next* `Skill` call in one
+ * message. Only turns since the last real prompt count, since an earlier task's nesting says
+ * nothing about this one.
+ *
+ * A dispatched run is counted differently and never against a marker, because it writes none
+ * into this transcript: its report comes back as a tool result, and a backgrounded one reports
+ * later as a completion notice. So it is open until whichever of those has arrived.
+ *
+ * A call that was refused or errored started nothing at all, so it is not open. Counting one
+ * leaves `invoked` permanently ahead of `returned` and the gate silent for the rest of the
+ * prompt.
  * @param {(Turn | null)[]} line @returns {boolean}
  */
 export function nestedRunOpen(line) {
-  let invoked = 0;
+  let open = 0;
   let returned = 0;
   for (let i = line.length - 1; i >= 0; i--) {
     const turn = line[i];
     if (turn === null) break;
-    invoked += turn.toolUses.filter((u) => u.name === 'Skill').length;
+    for (const use of turn.toolUses) {
+      if (use.ok === false) continue;
+      if (use.name === 'Skill') open += 1;
+      else if (dispatchOpen(use)) open += 1;
+    }
     if (returnMarker(turn)) returned += 1;
   }
-  return invoked > returned;
+  return open > returned;
+}
+
+/**
+ * Whether a tool use dispatched a run of its own that has not reported back yet. A foreground
+ * dispatch is open until its tool result arrives; a backgrounded one answers immediately with
+ * an id and is open until its completion notice names that id.
+ * @param {Turn['toolUses'][number]} use
+ * @returns {boolean}
+ */
+function dispatchOpen(use) {
+  const headless = use.name === 'Bash' && headlessClaude(use.input?.command);
+  if (use.name !== 'Agent' && !headless) return false;
+  // `Agent` backgrounds by default and `Bash` does not, so each is asked its own question.
+  const background =
+    use.name === 'Agent' ? use.input?.run_in_background !== false : use.input?.run_in_background === true;
+  return background ? use.notified !== true : use.answered !== true;
+}
+
+/**
+ * Whether a shell command starts a headless Claude run — `claude -p`, or `--print`. Split into
+ * segments and matched word by word rather than by one regex over the whole command, so a
+ * `-p` belonging to some other program in the same pipeline is not read as this one's.
+ * @param {unknown} command
+ * @returns {boolean}
+ */
+export function headlessClaude(command) {
+  for (const segment of String(command ?? '').split(/[;&|]+|\$\(|`/)) {
+    const words = segment.trim().split(/\s+/).filter(Boolean);
+    const at = words.findIndex((w) => w === 'claude' || w.endsWith('/claude'));
+    if (at === -1) continue;
+    if (words.slice(at + 1).some((w) => w === '-p' || w === '--print' || w.startsWith('--print='))) return true;
+  }
+  return false;
 }
 
 /**
