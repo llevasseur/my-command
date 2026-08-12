@@ -1314,6 +1314,11 @@ test('stop: a subagent transcript beside the one handed over stands the gate dow
   const sub = join(dirname(line), 'transcript', 'subagents');
   mkdirSync(sub, { recursive: true });
   writeFileSync(join(sub, 'a.jsonl'), '{}\n');
+  // The gate reads recency, and two writes this close together share one mtime wherever the
+  // filesystem's granularity is coarser than the gap — so the parent is aged deliberately
+  // rather than left to be the older file by luck.
+  const aged = new Date(Date.now() - 5000);
+  utimesSync(line, aged, aged);
   assert.deepEqual(hook(STOP, { session_id: 'fr1', transcript_path: line }), {});
 });
 
