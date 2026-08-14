@@ -1,14 +1,15 @@
 ---
 description: >
-  Merge the latest main into open PR branches (or a single target/current branch),
+  Merge each branch's own PR base branch into it (or a single target/current branch),
   resolve every merge conflict one by one, and push to origin. Invoke on /mc.
-  Default: merge main into every open PR branch based on main. --here / -h: only the
-  current branch. --target / -t <branch>: only the named branch, in an isolated worktree.
+  Default: every open PR in this repo, each merged with its own base — stacked PRs
+  included. --here / -h: only the current branch. --target / -t <branch>: only the
+  named branch, in an isolated worktree.
 argument-hint: "[--here | -h] [--target | -t <branch>]"
 allowed-tools: Bash(git:*), Bash(gh:*), Bash(my-command-tools:*), Read, Edit, Write
 ---
 
-# mc — Merge main & resolve conflicts
+# mc — Merge each branch's PR base & resolve conflicts
 
 **Announce at start** which mode you are running (all PRs / here / target `<branch>`).
 
@@ -32,16 +33,46 @@ Parse `$ARGUMENTS`:
 - `--here` or `-h` → **HERE mode**: operate only on the currently checked-out branch.
 - `--target <branch>` or `-t <branch>` → **TARGET mode**: operate only on `<branch>`, in an
   **isolated worktree** — the current checkout is never touched.
-- Neither → **ALL mode** (default): operate on every open PR that bases off `main`.
+- Neither → **ALL mode** (default): operate on **every** same-repo open PR, whatever branch
+  each one bases off.
 
 `--here` and `--target` are mutually exclusive — if both are given, stop and ask which one.
+
+**No mode takes a base branch, because the base is never yours to choose** — it is a fact
+about each branch's own open PR, resolved per branch by the section below. A flag that
+overrode it would merge a branch with something its PR will never be diffed against, which
+is the exact defect this command was corrected for.
+
+## Resolving the branch to merge in
+
+**`BASE` is a property of each branch, not of the repo.** Resolve it once per branch, from
+that branch's own open PR, and never assume the default branch:
+
+```bash
+gh pr list --state open --head <branch> --json baseRefName --limit 1
+```
+
+- **A `baseRefName` came back** → that is this branch's `BASE`. For a stacked PR it is
+  another feature branch, and that feature branch is what gets merged in.
+- **Empty list** (no open PR for `<branch>`) → fall back to `MAIN`, the repo's
+  `defaultBranch` from the preconditions. That is the only case where the default branch is
+  the right answer by default.
+
+Merging anything other than a branch's own base is the bug this rule exists to prevent: a PR
+stacked on `feat/x` that gets the default branch merged into it conflicts against changes
+that were never in its base, and the resolution work is thrown away when the stack lands.
+Whenever the text below says `BASE` or `origin/<BASE>`, it means the value resolved here for
+the branch currently being processed — a different value per branch in ALL mode.
+
+**Announce each branch's resolved `BASE` and where it came from** (its PR, or the
+default-branch fallback) before merging it, so a wrong base is visible before the merge is.
 
 ## Preconditions (do these once, up front)
 
 1. `my-command-tools state` — it errors if you are not inside a git repo, and one call
-   settles the next three preconditions. Read `branch` as `START_BRANCH` (the branch to
-   return to at the end), `defaultBranch` as `MAIN`, and `changes` for the clean-tree
-   check below.
+   settles the preconditions that follow. Read `branch` as `START_BRANCH` (the branch to
+   return to at the end), `defaultBranch` as `MAIN` — the **fallback** base, not the base —
+   and `changes` for the clean-tree check below.
 2. **Working tree must be clean — HERE and ALL modes only.** Both `changes.tracked` and
    `changes.untracked` must be empty. **TARGET mode skips this check**: it merges inside its
    own worktree and never moves this checkout's `HEAD`, so uncommitted work here is none of
@@ -49,7 +80,8 @@ Parse `$ARGUMENTS`:
    work, first check for an in-progress merge before stopping: if `.git/MERGE_HEAD` exists,
    a prior merge was interrupted before completing or aborting. Read `.git/MERGE_MSG` to see
    what was being merged. If that pending merge is **exactly the operation this invocation
-   would perform** (HERE mode with `main` merging into the current branch), **finish it** —
+   would perform** (HERE mode with this branch's resolved `BASE` merging into the current
+   branch — resolve it first and compare against that, not against `main`), **finish it** —
    resolve the remaining conflicts per
    the per-branch loop below (steps 4–7) rather than aborting; aborting would discard partial
    resolution already staged. Only if the pending merge is unrelated, or there is dirty work
@@ -57,33 +89,61 @@ Parse `$ARGUMENTS`:
    abort on their behalf.
    - TARGET mode's equivalent recovery lives in its worktree, not here — see
      "TARGET mode workspace" below.
-3. Everything below uses `main` as shorthand for the `defaultBranch` from step 1.
-4. Update remotes, and fast-forward local main **for HERE and ALL modes**:
-   - `git fetch --all --prune`
-   - `git checkout main && git pull --ff-only origin main`
-   - If the fast-forward fails, stop and report — local `main` has diverged and needs a human.
-   - **TARGET mode does neither of these.** `worktree begin` fetches for you, and the merge
-     there uses `origin/main` directly, so there is no reason to check out or move local
-     `main` in the user's checkout.
+3. Everything below uses `MAIN` for the `defaultBranch` from step 1, and `BASE` for the
+   branch resolved from the *current* branch's own open PR. `MAIN` is only ever the
+   fallback `BASE`, never the thing every branch merges.
+4. Update remotes: `git fetch --all --prune`. This is unconditional and mode-independent —
+   every `BASE` a branch resolves to is read through `origin/<BASE>`, so they all need the
+   fetch.
+5. **Fast-forward local `MAIN` only when a resolved `BASE` actually is `MAIN`, and only in
+   HERE and ALL modes.** Resolve the bases first (see the section above), then:
+   - No branch in this run resolved to `MAIN` → **skip this entirely.** Checking out and
+     pulling the default branch does nothing for a stack of feature branches, and it moves
+     the user's `HEAD` for no reason.
+   - At least one did → `git checkout MAIN` in its own call, then
+     `git pull --ff-only origin MAIN`. If the fast-forward fails, stop and report — local
+     `MAIN` has diverged and needs a human. That failure blocks only the branches whose
+     `BASE` is `MAIN`; a branch stacked on a feature branch is unaffected, so carry on with
+     the rest.
+   - **A non-default `BASE` is never fast-forwarded into a local branch.** Merge
+     `origin/<BASE>` directly; there is nothing to check out and nothing to pull.
+   - **TARGET mode does none of this.** `worktree begin` fetches for you, and the merge there
+     uses `origin/<BASE>` directly, so there is no reason to check out or move any branch in
+     the user's checkout.
 
 ## Building the branch list
 
-- **HERE mode** → the single branch = `START_BRANCH` (must not be `main`; if it is, stop).
+- **HERE mode** → the single branch = `START_BRANCH` (must not be `MAIN`; if it is, stop).
 - **TARGET mode** → the single branch = the provided `<branch>`. Verify it exists
   (`git rev-parse --verify <branch>` or `origin/<branch>`); if neither has it, stop and
   report. Do **not** create a local tracking branch by hand — the worktree setup below
   checks the branch out for you.
-- **ALL mode** → list open PRs based on main:
-  `gh pr list --state open --base main --json number,headRefName,headRepositoryOwner,isCrossRepository,title --limit 200`
+- **ALL mode** → list **every** open PR in this repo and read each one's base off the same
+  call — no `--base` filter:
+  `gh pr list --state open --json number,headRefName,baseRefName,headRepositoryOwner,isCrossRepository,title --limit 200`
+  - **Do not pass `--base main`** (or any `--base`). That filter silently dropped every PR
+    stacked on another feature branch, so a whole stack went un-merged and the run reported
+    success. Every open PR is in scope; the base varies per PR rather than selecting them.
   - **Skip cross-repo / fork PRs** (`isCrossRepository == true`) — you cannot push to a fork.
     Collect their branch names and report them as skipped at the end.
-  - The branch list = the `headRefName` of each remaining PR.
+  - The branch list = the `headRefName` of each remaining PR, **paired with that PR's own
+    `baseRefName` as its `BASE`.** This call already answers the resolution above for every
+    branch in ALL mode, so do not re-query per branch — carry the pairs through the loop.
+  - **Merge order follows the stack.** When one listed PR's `baseRefName` is another listed
+    PR's `headRefName`, merge the lower branch first, so the upper one merges a base that
+    already carries what just landed below it. A cycle is not a stack — report it and merge
+    those branches in listed order.
 
 ## TARGET mode workspace
 
 TARGET mode never checks `<branch>` out in the current tree. It gets its own worktree, so a
 dirty working tree, an unrelated in-progress merge, or a branch you are mid-edit on all stay
 untouched, and `HEAD` here never moves.
+
+Resolve `<branch>`'s `BASE` from its own open PR before merging anything — TARGET mode is
+where the stacked-PR case shows up most, because a single named branch gives no hint that it
+sits on another feature branch. The merge inside the worktree is `origin/<BASE>`, so the
+worktree needs no local copy of the base branch either.
 
 1. `my-command-tools worktree begin --branch <branch> --existing --bootstrap`. It fetches
    first, then checks out that **existing** branch into a worktree and reports the `path`.
@@ -103,7 +163,8 @@ untouched, and `HEAD` here never moves.
    is stale: `git worktree prune` and retry once.
 4. **Finish an interrupted merge rather than restarting it.** If `<path>/.git/MERGE_HEAD`
    exists, a previous TARGET run stopped mid-merge. Read `<path>/.git/MERGE_MSG`; if it is
-   `main` merging into `<branch>` — the operation this invocation would perform — resolve
+   `origin/<BASE>` merging into `<branch>` — the operation this invocation would perform —
+   resolve
    the remaining conflicts per steps 4–7 below instead of aborting, since aborting discards
    resolution already staged. If it is anything else, stop and report the path.
 
@@ -130,17 +191,25 @@ In TARGET mode there is exactly one branch and it is already checked out in the 
 **skip step 1** and prefix every git call below with `-C <path>`. HERE and ALL modes run the
 steps as written, in the current checkout.
 
+0. Resolve this branch's `BASE` — from the `baseRefName` the ALL-mode listing already
+   returned, or with the per-branch `gh pr list --head <branch>` call above in HERE and
+   TARGET modes — and say which base you resolved and how. `MAIN` is the fallback for a
+   branch with no open PR, never the assumption.
 1. `git checkout <branch>` then `git pull --ff-only origin <branch>` (skip the pull if the
    branch has no upstream yet).
-2. Merge main in: `git merge --no-edit main` — or, in TARGET mode,
-   `git -C <path> merge --no-edit origin/main`, which needs no fast-forwarded local `main`
-   and so leaves the user's checkout alone. Conflict markers then read `>>>>>>> origin/main`
-   for the incoming side.
+2. Merge the resolved base in: `git merge --no-edit origin/<BASE>` — or, in TARGET mode,
+   `git -C <path> merge --no-edit origin/<BASE>`. Reading the base through `origin/` is what
+   makes a non-default base work at all: there may be no local branch for it, and it needs no
+   fast-forwarded local copy, so the user's checkout is left alone either way. The forms in
+   the block above are written with `origin/main` because that is the common case — substitute
+   `origin/<BASE>`; the addressing they demonstrate (`git -C <path>`, never `cd`) is what
+   matters. Conflict markers then read `>>>>>>> origin/<BASE>` for the incoming side.
 3. **If the merge succeeds cleanly** (exit 0, no conflicts) → go to step 6 (push).
 4. **If there are conflicts** (`git merge` exits non-zero), resolve them **one file at a time**:
    - List conflicts: `git diff --name-only --diff-filter=U`.
    - For each conflicted file, `Read` it, understand **both** sides (`<<<<<<< HEAD` is the PR
-     branch, `>>>>>>> main` — `origin/main` in TARGET mode — is incoming main), and edit to a
+     branch, `>>>>>>> origin/<BASE>` is the incoming base — `origin/main` only when `MAIN` is
+     what this branch resolved to, and `origin/feat/…` for a stacked PR), and edit to a
      correct combined result. In TARGET mode read and edit the copy **under `<path>`**, never
      the same file in the original checkout:
      - When the two sides touch **independent** things (e.g. different imports, unrelated
@@ -148,7 +217,8 @@ steps as written, in the current checkout.
      - When they edit the **same** logic, reconcile them so the intent of *both* changes
        survives — do not blindly pick one side. Re-derive the correct code from context.
      - For generated / lock files (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`,
-       `*.snap`), prefer regenerating over hand-merging: take main's version, then re-run
+       `*.snap`), prefer regenerating over hand-merging: take the incoming base's version,
+       then re-run
        the generator (e.g. `npm install`) if the toolchain is available; otherwise flag it.
      - **Machine-generated index/listing files** (e.g. okq-generated `docs/**/index.md`)
        that conflict `AA`/`UU` on both sides are regeneration noise, not content: check
@@ -187,24 +257,33 @@ steps as written, in the current checkout.
    nothing this run authored, just a clean checkout of `<branch>`. If removal refuses there —
    `<branch>` carried unpushed commits before this run — that is the user's work, not yours
    to force away: leave the worktree in place and report its path.
-2. Report a concise summary:
+2. Report a concise summary. **Name the base each branch was merged with**, `<branch> ←
+   <BASE>`, and mark the ones that fell back to `MAIN` for want of an open PR — a summary that
+   only says "merged main" cannot be checked against the stack it claims to have merged:
    - ✅ branches merged cleanly and pushed
    - 🟡 branches that had conflicts you resolved and pushed (name the files you touched)
-   - 🔴 branches left for a human (fork PRs, diverged, or unresolved conflicts) + the reason
+   - 🔴 branches left for a human (fork PRs, diverged local `MAIN`, or unresolved conflicts)
+     + the reason
 3. Never mark the task complete if any branch is in the 🔴 list without saying so explicitly.
 4. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
 
 ## Rules
 
 - To pre-check which branches conflict, test locally with
-  `git merge-tree --write-tree main <branch>` (`origin/main` in TARGET mode, which never
-  fast-forwards local `main`) — do **not** trust GitHub's
-  `mergeable`/`mergeStateStatus`: it is computed lazily and reports `UNKNOWN` for
-  recently pushed or freshly created PRs.
+  `git merge-tree --write-tree origin/<BASE> <branch>`, using the base that branch's own PR
+  names — a pre-check against the default branch answers a question nobody asked for a
+  stacked PR, reporting conflicts the real merge will not produce and missing the ones it
+  will. `origin/<BASE>` also keeps the pre-check working with no local copy of the base and
+  no fast-forward. Do **not** trust GitHub's `mergeable`/`mergeStateStatus`: it is computed
+  lazily and reports `UNKNOWN` for recently pushed or freshly created PRs.
 
-- **TARGET mode must not mutate the current checkout.** No `git checkout`, no local `main`
-  fast-forward, no stashing. Running `git checkout <branch>` in TARGET mode means you have
-  lost the worktree — go back and use `git -C <path>`.
+- **The base is read, never chosen.** It comes from `gh pr list --state open --head <branch>
+  --json baseRefName`, and the only substitute is `MAIN` for a branch with no open PR. Do not
+  infer it from the branch name, from what the last branch resolved to, or from the repo's
+  default.
+- **TARGET mode must not mutate the current checkout.** No `git checkout`, no fast-forward of
+  local `MAIN` or of any base branch, no stashing. Running `git checkout <branch>` in TARGET
+  mode means you have lost the worktree — go back and use `git -C <path>`.
 - Never leave a TARGET worktree behind on a path that succeeded. The only worktree that
   survives the run is one `worktree end` explicitly refused to remove, and you must report
   that path.
