@@ -19,7 +19,7 @@
 | `review` | Independently review an open PR against the codebase, then apply its findings via `fb`. Spawns a fresh reviewer by default; `--here` reviews directly in the current agent. |
 | `pr` | Create/update the PR for the current branch with a concise bulleted description, written straight to GitHub. |
 | `clean` | Clean up comments across a branch's changes — lean and to the point, comments only, never code. |
-| `mc` | Merge the latest `main` into open PR branches (or one branch), resolve every conflict, and push. |
+| `mc` | Merge each branch's own PR base into it (or one branch), resolve every conflict, and push. Stacked PRs get their real base, not `main`. |
 | `merge-deps` | Batch-merge open non-draft Dependabot PRs into `main` — resolve each with `/mc`, verify in a worktree, merge, and clean up. |
 | `task-bootstrap` | One-time per repo: interview the stack and generate that repo's own `scripts/bootstrap-worktree.sh` so `task` can bootstrap fresh worktrees. |
 | `sync` | Update this device's installed commands to the latest version from GitHub. |
@@ -62,7 +62,7 @@ skill syntax—for example, `$task -h ...`, `$review -t 42`, or `$mc -t feat/sea
 | `review` | `/review` | Default — review the current branch's open PR in a fresh worktree with a new agent, then apply its findings via `/fb`, run **inline** rather than in another agent. |
 | `review` | `/review -h` | `--here` / `-h` — the current agent reviews the current branch's PR directly: no worktree and no spawned reviewer. Use when already running in a fresh review agent. |
 | `review` | `/review -t 42` | `--target` / `-t <PR-number-or-branch>` — review PR #42 (or a named branch) instead of the current branch's PR. |
-| `mc` | `/mc` | Default — merge latest `main` into **every** open PR branch, resolve conflicts, push. |
+| `mc` | `/mc` | Default — for **every** open PR, merge that PR's own base branch into its head, resolve conflicts, push. |
 | `mc` | `/mc -h` | `--here` / `-h` — only the **current branch**. |
 | `mc` | `/mc -t feat/search` | `--target` / `-t <branch>` — only the named branch `feat/search`, merged in an **isolated worktree** so the current checkout is never touched. |
 | `merge-deps` | `/merge-deps` | Default — merge every open non-draft `dependencies`-labeled PR into `main`, one by one (`/mc` first, verify, `gh pr merge --squash`, clean the worktree). |

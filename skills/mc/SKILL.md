@@ -1,20 +1,40 @@
 ---
 name: mc
-description: Merge the latest default branch into one or more pull-request branches, resolve conflicts, verify, and push.
+description: Merge each pull request's own base branch into its head branch, resolve conflicts, verify, and push.
 ---
 
-# Merge Default Branch
+# Merge Each Branch's PR Base
 
-Parse `--here` / `-h`, `--target <branch>` / `-t <branch>`, or default to all same-repository open PRs based on the default branch. Announce the mode. Target mode does its merge in an isolated worktree; the other two modes work in the current checkout.
+Parse `--here` / `-h`, `--target <branch>` / `-t <branch>`, or default to every same-repository open PR, whatever branch each one bases off. Announce the mode. Target mode does its merge in an isolated worktree; the other two modes work in the current checkout.
+
+**The branch to merge in is resolved per branch, from that branch's own open pull request — never assumed to be the default branch.** Ask the forge for the head branch's open PR and read its base branch off the answer; with the GitHub CLI that is `gh pr list --state open --head <branch> --json baseRefName --limit 1`. A branch with no open PR falls back to the repository's default branch, and that fallback is the only case where the default branch is the right answer. Wherever the steps below say the base, they mean the value resolved for the branch being processed — a different value per branch in the all-PRs mode, and a remote-tracking ref (`origin/<base>`) at merge time, so a base with no local branch still works and nothing local has to be fast-forwarded.
+
+Merging anything other than a branch's own base is the defect this rule exists to prevent: a pull request stacked on another feature branch that gets the default branch merged into it conflicts against changes that were never in its base, and the resolution is discarded when the stack lands. Announce each branch's resolved base and where it came from before merging it.
 
 1. Use `my-command-tools doctor` and `state` when available to confirm the
    repository and record the starting branch. For the current-branch and all-PRs
    modes, require a clean working tree after first checking for an in-progress
    merge; finish only a pending merge that exactly matches this invocation.
    Target mode skips that requirement — it never touches this checkout, so
-   uncommitted work here stays exactly as it is.
-2. Discover the remote default branch and fetch all remotes. Fast-forward the local default branch for the current-branch and all-PRs modes only, and stop if local history diverged; target mode merges the remote-tracking default branch directly and leaves the local one alone.
-3. Resolve the branch list. Exclude forks. In target mode, confirm the branch exists locally or on the remote and stop if it does not — do not create a tracking branch by hand, since step 3a checks it out for you.
+   uncommitted work here stays exactly as it is. A pending merge matches only when
+   it is this branch's resolved base merging in, so resolve the base before
+   comparing — not against the default branch.
+2. Discover the remote default branch (the fallback base) and fetch all remotes.
+   The fetch is unconditional, because every base is read through its
+   remote-tracking ref. **Fast-forward the local default branch only when a branch
+   in this run actually resolved to it**, and then only in the current-branch and
+   all-PRs modes; stop if local history diverged, which blocks just the branches
+   whose base is the default branch. A non-default base is never checked out or
+   fast-forwarded — it is merged from its remote-tracking ref. Target mode does
+   none of this and leaves every local branch alone.
+3. Resolve the branch list, pairing each branch with its own base. **List every open
+   pull request without filtering by base** — filtering to the default branch drops
+   every stacked pull request silently, and the listing already reports each PR's
+   base branch, which answers the resolution for all-PRs mode in one call. Exclude
+   forks. Where one listed PR's base is another listed PR's head, merge the lower
+   branch first so the upper one merges a base that already carries it. In target
+   mode, confirm the branch exists locally or on the remote and stop if it does not
+   — do not create a tracking branch by hand, since step 3a checks it out for you.
    - 3a. **Target mode only.** Check the branch out into its own worktree —
      `my-command-tools worktree begin --branch <branch> --existing --bootstrap`
      when the toolkit is available, otherwise `git worktree add`. Checking out an
@@ -26,7 +46,7 @@ Parse `--here` / `-h`, `--target <branch>` / `-t <branch>`, or default to all sa
      already held by another worktree, inspect the registered list and use that
      checkout rather than forcing or removing it. If a previous run left a merge
      in progress there, finish it rather than aborting.
-4. For each branch, pull it with `--ff-only` (target mode is already checked out, so skip the pull), merge the default branch with a merge commit, and resolve conflicts one file at a time. Preserve both sides' intent; regenerate lockfiles, generated indexes, and snapshots instead of hand-merging them.
+4. For each branch, pull it with `--ff-only` (target mode is already checked out, so skip the pull), merge **that branch's own base** from its remote-tracking ref with a merge commit, and resolve conflicts one file at a time. The incoming side of every conflict marker is that base, which is another feature branch for a stacked pull request rather than the default branch. Preserve both sides' intent; regenerate lockfiles, generated indexes, and snapshots instead of hand-merging them, taking the incoming base's version first.
 5. If a conflict is genuinely ambiguous, abort that branch's merge and report it for a human. Never leave a branch mid-merge.
 6. Run `my-command-tools verify --fast` when available — in target mode with the
    worktree as the working directory, or it grades the wrong checkout, and treat
@@ -38,9 +58,11 @@ Parse `--here` / `-h`, `--target <branch>` / `-t <branch>`, or default to all sa
    path including the aborted one. That removal is refused while the branch has
    commits the remote lacks: push them, or if they predate this run leave the
    worktree in place and report its path — never force it away. Report clean
-   merges, resolved conflicts with file names, and human-blocked branches.
+   merges, resolved conflicts with file names, and human-blocked branches, **naming
+   the base each branch was merged with** and marking the ones that fell back to the
+   default branch for want of an open pull request.
 
-Use `git merge-tree --write-tree` for conflict prechecks rather than GitHub's lazy mergeability state. Never rewrite history, stash user work, or discard a side merely to compile.
+Use `git merge-tree --write-tree origin/<base> <branch>` for conflict prechecks — against the base that branch's own pull request names, since a precheck against the default branch answers a question nobody asked for a stacked pull request — rather than GitHub's lazy mergeability state. The base is read, never chosen: it comes from the branch's open pull request, and the only substitute is the default branch for a branch that has none. Never rewrite history, stash user work, or discard a side merely to compile.
 
 ## Git call shape
 
