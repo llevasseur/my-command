@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-08-15
+
+### Added
+
+- **`/read-tweet` — read a public X/Twitter post through a reader proxy.** X blocks direct automated reads, so the post is never fetched from `x.com`: it goes through a **reader proxy**, a forward proxy that fetches the URL from its own address and returns readability-extracted text. The command holds an **ordered list of prefixes** and falls through to the next one whenever a response is a bot-check page, a login wall, or an empty body — that is the proxy failing, not the post missing, because reachability depends on the proxy operator holding a live X session, so the working prefix rotates over time and the list is a starting point rather than a guarantee. `https://r.jina.ai/<full x.com URL>` is verified working as of 2026-08-15; `xcancel.com` returned a bot-check interstitial on the same date and sits below it. Two hard limits: **never attempt a captcha** (a bot check means try the next prefix, and an exhausted list means handing the URL back to be opened by hand), and **never send a private or signed URL to a reader proxy**, since the operator sees every URL it is given. Ships with the Codex skill, the feature doc, and both README rows.
+
 ## 2026-08-14
 
 ### Fixed
