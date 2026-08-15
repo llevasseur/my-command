@@ -27,6 +27,7 @@ Add one with `okq new feature "<title>"`.
 | mc | [mc.md](mc.md) |
 | merge-deps | [merge-deps.md](merge-deps.md) |
 | pr | [pr.md](pr.md) |
+| read-tweet | [read-tweet.md](read-tweet.md) |
 | review | [review.md](review.md) |
 | revive | [revive.md](revive.md) |
 | sync | [sync.md](sync.md) |
