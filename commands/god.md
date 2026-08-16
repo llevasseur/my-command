@@ -1,6 +1,6 @@
 ---
 description: Take a task all the way to merged — run /my-command:task (with /my-command:review woven in), resolve conflicts with /my-command:mc, wait for CI, merge the PR into main, and pull main. No human in the loop.
-argument-hint: "[--here|-h] [--base <branch>] [--add|-a <list>] [--squash|--merge|--rebase] [--auto] [--fix <n>] [--no-review] <task criteria>"
+argument-hint: "[--here|-h] [--base <branch>] [--into <branch>] [--add|-a <list>] [--squash|--merge|--rebase] [--auto] [--fix <n>] [--no-review] <task criteria>"
 ---
 
 `/my-command:task` plus the last mile: `/my-command:task` takes the criteria to a reviewed, open PR; this command gets that PR mergeable and green, merges it into `main`, and pulls the new `main` down. No human in the loop.
@@ -24,12 +24,13 @@ Input is the text in the `<command-args>` block above. Parse leading flags off t
 
 ## Flags
 
-Forwarded to `/my-command:task` untouched: `--here` / `-h`, `--base <branch>`, `--add` / `-a <list>` (this command appends its own `review` entry after any entries you pass).
+Forwarded to `/my-command:task` untouched: `--here` / `-h`, `--base <branch>` (the **cut point** — where the branch is cut from, and nothing else), `--add` / `-a <list>` (this command appends its own `review` entry after any entries you pass).
 
 Always added to the `/my-command:task` invocation, whether or not you pass it: **`--sub`** — `/my-command:task` runs `/my-command:clean` + `/my-command:pr` inline by default, and this command needs that stage to be one subagent, because that is where the woven-in `review` entry lands and where an unattended run should keep the reviewer's context off this conversation. Passing `--sub` / `-s` yourself is accepted and redundant.
 
 Owned here:
 
+- `--into <branch>` — the **merge target**: the branch this run's PR is merged into, and the branch Step 7 pulls. **Independent of `--base`, and never inherited from it** — `--base` says where the branch was cut, `--into` says where it lands, and a run that wants both says both (`--base release/2.0 --into release/2.0`). Absent `--into` the merge target is the default branch, so every invocation written before this flag behaves exactly as it did. With `--into <branch>`: Step 4 conflict-tests against `<branch>`, retargets the PR onto it if `/my-command:pr` opened it elsewhere, Step 6 merges into it, and Step 7 pulls it.
 - `--squash` (default) / `--merge` / `--rebase` — method handed to `gh pr merge`. Mutually exclusive.
 - `--auto` — don't wait on CI. Enable auto-merge and finish; the `main` pull is skipped and the PR is reported as queued.
 - `--fix <n>` — auto-repair rounds spent on red CI. Default `1`; `0` disables repair.
@@ -42,7 +43,8 @@ Owned here:
 **Never ask a question — this command runs unattended.** If any precondition below is unmet or unresolvable, error out and explain what is missing and why the run cannot proceed.
 
 1. `my-command-tools doctor` — confirms `git` and `gh` are both available. Then `gh auth status` for authentication, which `doctor` doesn't check.
-2. `my-command-tools state` — one call covers the rest: it errors if this isn't a git repo, and reports `branch` (the starting branch), `root` (the **main checkout path** — Step 7 pulls `main` there, and by then `/my-command:task` may have torn down the worktree this started in), and `defaultBranch`. `main` below is shorthand for that.
+2. `my-command-tools state` — one call covers the rest: it errors if this isn't a git repo, and reports `branch` (the starting branch), `root` (the **main checkout path** — Step 7 pulls the merge target there, and by then `/my-command:task` may have torn down the worktree this started in), and `defaultBranch`. `main` below is shorthand for that.
+   - **Resolve the merge target here, once**: `<branch>` from `--into` when it was given, the default branch otherwise. Steps 4, 6 and 7 all act on that one branch, and nothing else in the run reads `--into`.
    - When `worktree` is true, `root` is the worktree's root, not the main checkout. Resolve the main checkout separately in that case: `git rev-parse --path-format=absolute --git-common-dir`, minus `/.git`.
 3. The criteria are specific enough to act on and no mutually exclusive flags conflict.
 
@@ -85,7 +87,9 @@ Re-resolve from git rather than trusting the hand-off text: `gh pr view <branch>
 
 ## Step 4 — Make it mergeable (`/my-command:mc` on conflict)
 
-`main` may have moved while `/my-command:task` worked. Test **locally** — `git fetch origin`, then `git merge-tree --write-tree main <branch>`; GitHub's `mergeable` is lazy and reports `UNKNOWN` for a fresh branch.
+**Point the PR at the merge target first.** Step 3 already read `baseRefName`; when it is not the merge target, retarget the PR with `gh pr edit <number> --base <merge target>` in its own call before anything below. `/my-command:pr` opens every PR against the default branch by design and is left untouched as the PR wrapper, so under `--into` this is the step that makes the PR's base true. It has to run before `/my-command:mc`, which resolves a branch's base from that same open PR. A PR already based on the merge target is left alone.
+
+The merge target may have moved while `/my-command:task` worked. Test **locally** — `git fetch origin`, then `git merge-tree --write-tree <merge target> <branch>`; GitHub's `mergeable` is lazy and reports `UNKNOWN` for a fresh branch.
 
 - **No conflict** → Step 5.
 - **Conflict** → run **`/my-command:mc -t <branch>`**. If it puts the branch in its 🔴 "needs human" list, **stop**: report the branch, the files, and why, and leave the PR open. That is the one failure this command cannot drive through.
@@ -105,9 +109,9 @@ Red, with repair budget (`--fix <n>`, default `1`) left:
 
 Budget exhausted with CI still red → **stop**: report the failing checks and rounds spent, leave the PR open. Never merge a red PR; never reach for `--admin`.
 
-## Step 6 — Merge into `main`
+## Step 6 — Merge into the merge target
 
-Merge through GitHub so branch protection is honored — never push to `main` directly:
+Merge through GitHub so branch protection is honored — never push to the merge target directly. `gh pr merge` merges the PR into its own base, and Step 4 has already made that base the merge target, so the merge command itself takes no extra flag:
 
 <!-- include-block: shared/merge-command-forms.md -->
 ### Merge command forms
@@ -127,30 +131,30 @@ The merge steps are where this pipeline's failed shell calls concentrate, and al
 - `--auto` → `gh pr merge <number> --<method> --auto`; record as **queued**.
 - Otherwise → `gh pr merge <number> --<method>`; record as **merged**.
   - Rejected for pending required checks → re-run the same command **with `--auto`** and record as queued.
-  - Rejected as **not mergeable** (`main` moved) → back to Step 4 once, then retry. Twice in a row means a human is needed — stop and report.
+  - Rejected as **not mergeable** (the merge target moved) → back to Step 4 once, then retry. Twice in a row means a human is needed — stop and report.
 - Then delete the merged branch, in its own call: `git push origin --delete <branch>` for the remote ref. Skip it for a **queued** PR — nothing has landed yet.
 
-## Step 7 — Pull `main`
+## Step 7 — Pull the merge target
 
 Skip for a **queued** PR — nothing has landed; say so in the report instead.
 
-In the **main checkout** recorded in Step 1 (not a worktree — `/my-command:task` removed the one it made):
+In the **main checkout** recorded in Step 1 (not a worktree — `/my-command:task` removed the one it made), acting on the merge target resolved in Step 1 — the default branch, or `<branch>` under `--into`:
 
-1. `git checkout main`
-2. `git pull --ff-only origin main` — if the fast-forward fails, stop and report; local `main` has diverged and needs a human.
+1. `git checkout <merge target>`
+2. `git pull --ff-only origin <merge target>` — if the fast-forward fails, stop and report; the local merge target has diverged and needs a human.
 3. `git fetch --prune`, and delete the merged local branch if one is left behind (`git branch -d <branch>`; never `-D`).
 
-Under `--here` this leaves you on `main` rather than the branch you started on — that branch is merged and deleted. Say so in the report.
+Under `--here` this leaves you on the merge target rather than the branch you started on — that branch is merged and deleted. Say so in the report.
 
 ## Step 8 — Report
 
-One concise summary. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include --> It covers: branch and PR number/URL; what `/my-command:review` found and what was applied (or clean / skipped); whether `/my-command:mc` ran and on which files; CI green first try or the repair rounds spent; and the outcome — ✅ merged into `main` and pulled, ⏳ queued for auto-merge, or 🔴 stopped with the reason and the PR left open. On a no-change run: no PR was opened, and what established that.
+One concise summary. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include --> It covers: branch and PR number/URL; the merge target, named, and whether the PR had to be retargeted onto it; what `/my-command:review` found and what was applied (or clean / skipped); whether `/my-command:mc` ran and on which files; CI green first try or the repair rounds spent; and the outcome — ✅ merged into the merge target and pulled, ⏳ queued for auto-merge, or 🔴 stopped with the reason and the PR left open. On a no-change run: no PR was opened, and what established that.
 
 ## Notes
 
-- **No human in the loop is the point.** Never stop to confirm anything you have a defined path for — including the merge. Do stop for the four things with no safe automatic answer: an unresolvable `/my-command:mc` conflict, CI still red after the repair budget, a diverged local `main`, and a PR that isn't this run's.
+- **No human in the loop is the point.** Never stop to confirm anything you have a defined path for — including the merge. Do stop for the four things with no safe automatic answer: an unresolvable `/my-command:mc` conflict, CI still red after the repair budget, a diverged local merge target, and a PR that isn't this run's.
 - **`/my-command:task` owns the branch, the commits, the PR, and the teardown.** This command adds only the last mile — never implement, commit, or clean up here.
-- Never commit or push to `main` directly, never use `--admin`, never force-push.
+- Never commit or push to the merge target directly, never use `--admin`, never force-push.
 - <!-- include: shared/approval-own-call.md -->**A command that may need approval goes in its own Bash call** — `git fetch`, `git config`, and, as a narrow exception to the general rule to chain dependent mutations, branch-lifecycle operations such as checkout/switch, pull, remote-branch inspection, and local branch deletion. Folding one into an `&&` chain escalates approval to the whole compound command and costs a turn plus a retry. Put status output, pipes, and follow-up verification in separate read-only calls.<!-- /include -->
 - <!-- include: shared/classifier-refusal.md -->A classifier refusal is not evidence that repository protections should be weakened. Inspect the refused command first; when the intended operation is safe and the refusal looks incidental to the command's shape — an over-broad chain, pipe, or extra flag — retry only the smallest exact command, never an allowlisted Bash pattern or a permission-settings change.<!-- /include -->
 - <!-- include: shared/refusal-final.md -->A refusal of a **PR merge or a remote-ref deletion is final.** Surface it to the human and carry on with the rest of the work. Re-expressing the same operation is refused for the same reason and costs a second turn: `gh api -X PUT .../pulls/N/merge` is `gh pr merge`, and `gh api --method DELETE .../git/refs/heads/...` is `git push origin --delete`, so neither is a narrow retry — nor is re-running one under `GH_TOKEN=...`.<!-- /include --> Steps 6 and 7 are where this fires: `gh pr merge`, `git push origin --delete`, and `git branch -d`.
