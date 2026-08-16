@@ -4,7 +4,7 @@ title: manage
 description: Orchestrate one multi-part goal across existing commands — decompose it into units, assign a branch to each, delegate every unit to its own subagent in waves that cannot collide, and synthesize one report.
 tags: [command, workflow, agents]
 timestamp: 2026-08-11
-updated: 2026-08-11
+updated: 2026-08-15
 dirty: true
 ---
 
@@ -41,11 +41,12 @@ protocol, and nothing to mark afterwards.
 | `--delegate <cmd>` / `-D` | `task` | Which command each unit is handed to: `task`, `god`, or `fb`. An `fb` unit runs on an **existing** branch named by the goal — see below. |
 | `--parallel <n>` / `-p` | `3` | Units in flight at once. **Hard cap 8**; a larger value is clamped and the clamp is reported. |
 | `--sequential` | off | One unit at a time regardless of independence. Overrides `--parallel`. |
-| `--dry-run` / `-n` | off | Print the routing plan and spawn nothing — no task list, no subagent, no branch. Every unit's invocation, base, and forwarded flags are in the print. |
+| `--dry-run` / `-n` | off | Print the routing plan and spawn nothing — no task list, no subagent, no branch. Every unit's invocation, cut point, merge target, and forwarded flags are in the print. |
 | `--mesh` | off | Opt into peer-to-peer messaging between the workers. |
 | `--add <list>` / `-a` | — | Forwarded to every `task` and `god` unit, in the same shape [god](god.md) forwards it. |
 | `--here` / `-h` | off | Forwarded. Also forces `--sequential` and collapses the branch plan — see below. |
-| `--base <branch>` | `defaultBranch` | The **root** base of the branch plan. Reaches the units that wait on nothing; a stacked unit keeps its own base. |
+| `--base <branch>` | `defaultBranch` | The **root** base of the branch plan — the **cut point**. Reaches the units that wait on nothing; a stacked unit keeps its own base. |
+| `--into <branch>` | `defaultBranch` | The **merge target** every `god` unit's PR merges into. **Uniform across all units and never inherited down a stack** — see below. Owned here, not forwarded from `/task`, which does not document it; dropped and reported for a `task` or `fb` unit. |
 | `--draft` / `-d` | off | Forwarded to `task` units. With `--delegate god` it is a **stop** — a draft cannot merge. |
 | `--sub` / `-s` | off | Forwarded. `god` adds it anyway, so it is redundant there rather than dropped. |
 
@@ -86,7 +87,8 @@ does not document is **dropped from that unit's invocation and reported as dropp
 does not error on an unknown flag, it reads it as criteria, so `-d` becomes a word
 in the request) and never re-expressed as a sentence in the criteria (which
 reintroduces the prose constraint the flag replaced, hidden inside text that reads
-like scope). `task` drops nothing; `god` drops nothing but treats `--sub` as
+like scope). `task` drops only `--into`, which `/task` does not document because it
+stops at an open PR and merges nothing; `god` drops nothing but treats `--sub` as
 redundant and turns `--draft` into a **stop before planning**, since a draft cannot
 merge and dispatching it would be one stop per unit; `fb` drops the whole set.
 
@@ -101,17 +103,62 @@ base moves where the plan starts without collapsing the per-unit bases, and the
 plan prints every unit's base so a root one and an inherited one are told apart
 before anything spawns.
 
+**That inheritance is for the delegates that do not merge. Under `--delegate god`
+a stacked unit is cut from the run's merge target instead**, because [god](god.md)
+merges each unit's PR and then deletes its remote branch — and waves run in order,
+so the branch a stacked unit would inherit is already deleted **before that unit is
+dispatched**, not merely before it merges. Cutting from it would name a branch that
+no longer exists, and nothing is lost by cutting from the merge target: the
+dependency's PR merged into it, so the interface the stacked unit consumes is
+already there, which is the only thing the inheritance was ever for.
+
+**`--into <branch>` is uniform across every unit and is never inherited down a
+stack.** `--base` and `--into` look like a pair and behave nothing alike: every
+`god` unit carries the **same** `--into` — the one typed on the `/manage`
+invocation — whether it waits on nothing or is stacked three deep, and a stacked
+unit does **not** merge into the branch it was cut from. Three reasons, the third
+deciding it:
+
+- [god](god.md) defines the two as independent — `--base` is the cut point,
+  `--into` the merge target, and `--into` is never inherited from `--base`.
+  Inheriting it here *because* `--base` inherits would re-couple, one level up,
+  exactly what that flag separates.
+- `--base` inherits for a reason that is only about the **cut point**: a stacked
+  unit must be cut from the branch carrying the interface it consumes or it cannot
+  build against it. The merge target has no equivalent need — the stacked unit
+  already holds its dependency's commits by having been cut from them.
+- Under `--delegate god`, the only delegate that takes `--into`, **the branch a
+  stacked unit would inherit is already gone.** Waves run in order, and `/god`
+  merges each unit's PR and then deletes its remote branch — so by the time a
+  stacked unit reaches its own merge step, the unit it depends on has merged and
+  its branch is deleted. An inherited `--into` would name a branch that no longer
+  exists; the run's single merge target is the only one guaranteed to still be
+  there.
+
+So the plan shows **cut points fanning out down the stack while merge targets all
+read the same**. Two units with different merge targets is a planning bug, not a
+stack.
+
 **`--here` forces `--sequential` and collapses the branch plan.** What makes
 concurrency safe at all is that `/task` cuts a fresh worktree per run, so two units
 are two working trees; `--here` removes exactly that. Units go out one at a time
 regardless of independence, no per-unit branch is planned, and the run yields **one**
 branch and one PR rather than one per unit — stated in the plan and in the report.
+`--base` is ignored alongside it; **`--into` is not**, since the run still merges
+under `--delegate god` and that one branch and one PR still need a merge target.
 
 ## Behavior
 
 **Planning decides four facts per unit, before anything is spawned:** the command
 invocation with its surviving forwarded flags, the branch and the base it is cut
 from, the files it touches, and what it depends on.
+
+**The printed plan names the cut point and the merge target as two separate
+fields**, never one "base". They are the two things a reader most needs told apart
+before a subagent exists — and the words for them are otherwise interchangeable,
+which is the whole reason the plan is printed at all. A `god` unit prints the run's
+`--into`, or the default branch when none was typed; a `task` or `fb` unit prints no
+merge target and shows `--into` among its drops.
 
 **Every parallel unit gets its own branch and its own worktree** — a new one for
 `task` and `god`, an existing one for `fb`. Two `/task` runs
