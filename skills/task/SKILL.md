@@ -29,19 +29,29 @@ lands every time, and the message meant to follow it never arrives.
    `my-command-tools worktree begin --bootstrap` when available to fetch and
    create a dedicated `.codex/worktrees/<type>/<summary>` worktree from the
    latest requested base. Verify the branch, worktree, and base; never implement
-   on the default branch. When a session-level tool moves the session into that
-   checkout, address it by the absolute path the helper just reported, copied
-   byte for byte — entering an existing checkout, never asking for a new one by
-   name, and never with a relative or reconstructed path. Make that one call and
-   read its result: a refusal describes how the worktree was created, so do not
-   retry it and do not reinvent a workaround, just work through absolute paths
-   under the reported path. Decide teardown with entry — it is the repository
-   helper's `worktree end` from outside the path, after stepping the session
-   back out without removing anything.
+   on the default branch. **The path the helper reports is this run's working
+   root: resolve every read, edit, commit and working-directory flag beneath it
+   as an absolute path, whether or not the session itself ever moves.** That is
+   the normal mode, not a recovery from something refused. A session-level move
+   into the checkout is optional and belongs to one kind of run only — one the
+   user invoked directly, in the repo the session started in; a dispatched run
+   starts at a repository root, where that tool refuses outright, so it does not
+   call it at all. Where it is called, address the checkout by the absolute path
+   just reported, copied byte for byte, entering the existing checkout rather
+   than asking for a new one by name. Teardown is the repository helper's
+   `worktree end` from outside the path, after stepping the session back out
+   without removing anything.
 3. Run repository bootstrap when available. Otherwise link only ignored environment files, install dependencies separately, and regenerate touched artifacts in the worktree.
 4. State the criteria, inspect existing targets, follow `AGENTS.md`, plan
    non-trivial work, reproduce bugs, implement completely, and run
-   `my-command-tools verify` when available. Use Codex-native tools in the
+   `my-command-tools verify` when available. **Wait for it with one call, never
+   by polling:** start it with `--background`, then send the
+   `my-command-tools verify --wait <verdict>` command it reports under
+   `wait.blocking` as a plain foreground shell call with a 600-second timeout. It
+   blocks until the gates finish and prints that run's whole report. Do not read
+   the report while the run is going — it is written atomically at exit, so until
+   then it does not exist and every early read returns the same nothing. Use
+   Codex-native tools in the
    session, including shell/filesystem tools, installed skills, browser or
    computer-use tools for required visual proof, and subagents only when the user
    or repository instructions allow delegation.

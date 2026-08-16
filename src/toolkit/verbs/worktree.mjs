@@ -262,6 +262,17 @@ function report(ctx, made) {
 
   return {
     ...made,
+    // The same absolute path as `path`, named for what the caller is supposed to do with it.
+    // `path` alone was read as somewhere to *move the session to*: ten recorded runs answered
+    // it with `EnterWorktree` and took a refusal that was certain, because a dispatched run's
+    // working directory is already a repository root, which that tool declines outright. Every
+    // one of them then worked by absolute path and finished fine. Saying so in the result puts
+    // the answer where the mistake was made.
+    workingRoot: path,
+    enterWorktree:
+      'not needed — resolve every read, edit, commit and --cwd as an absolute path under ' +
+      'workingRoot. EnterWorktree only moves the session, and it is refused outright when the ' +
+      'session started at a repository root, which is every dispatched run.',
     // Reported either way so the caller knows whether the repo has its own bootstrap
     // or needs the generic install/env-symlink fallback.
     bootstrapScript: existsSync(bootstrap) ? BOOTSTRAP : null,
