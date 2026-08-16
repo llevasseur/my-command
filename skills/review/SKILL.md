@@ -22,6 +22,11 @@ Parse `--target <PR-number-or-branch>`, `--here`, and optional focus. Resolve th
 5. Report the final PR state in a text-only outcome.
 
 Use `my-command-tools state`, `verify`, and worktree operations when available.
+Wait for `verify` with one call rather than by polling: start it with
+`--background`, then send the `my-command-tools verify --wait <verdict>` command
+it reports under `wait.blocking` as a foreground shell call with a 600-second
+timeout. The report is written atomically at exit, so reading it while the run is
+going returns the same nothing every time.
 
 ## Closing turn
 

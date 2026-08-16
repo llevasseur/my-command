@@ -149,6 +149,38 @@ failure a workflow run has actually hit:
   caller polling anyway unless something else does the waiting, and every
   recorded case of a run reading its own output file five times began with a
   refusal it had no replacement for.
+- `verify --wait [<verdict>]` **is** the wait, in one call. `--background` hands
+  back a *notified* wait — three calls, an armed watch, and a report to read
+  afterwards — and a run with nothing else to do spent the interval reading that
+  report instead: twenty times in one recorded session, fifteen in another, four
+  announcements of "I will stop polling" each followed by another poll on the
+  next turn, and two sessions that ended still inside the loop with the work
+  unreported. `--wait` blocks until the detached run exits, then prints that
+  run's whole report and exits on its verdict, so the answer is in the result of
+  the call that did the waiting. `--background` now returns it ready to send
+  under `wait.blocking` and `wait.blockingCall` (a foreground Bash call carrying
+  `timeout: 600000`), the watched-condition denials name it, and
+  `--wait-timeout <s>` bounds it at 570s by default — timing out reports the run
+  as still going and never kills it. `wait.input` stays for a run that must
+  remain free while the gates run.
+- The report is written **atomically at exit, before the verdict file**, and both
+  the usage text and the denials say so. That is what makes the polling provably
+  futile rather than merely wasteful: until the run is over the report does not
+  exist, so every early read returns the same nothing. A refusal that only says
+  "stop polling" leaves a caller with a reason to try once more.
+- `worktree begin` reports `workingRoot` — the same absolute path as `path`,
+  named for what the caller does with it — and an `enterWorktree` line stating
+  that entering it is not needed. `path` alone read as somewhere to move the
+  session to: ten recorded runs answered it with `EnterWorktree` and took a
+  refusal that was certain, because a dispatched run's working directory is
+  already a repository root, which that tool declines. Each then worked by
+  absolute path and finished fine.
+- `stash write --consume` deletes the content file once its bytes are in the
+  ring. `/cp` composes into one fixed path every run, so without it the file
+  survives to the next run, whose `Write` lands on a path that session never read
+  — which `Write` rejects. A recorded run hit that same rejection on that same
+  file every time it ran. The flag removes the pre-existing file rather than
+  asking every future run to remember to read it first.
 - `commit` retries **once** on an unapproved signing prompt. The failed attempt wrote
   nothing, so re-issuing the same commit is the entire fix — and it is a fix nobody has
   to recall. Never a rewrite, never `--no-gpg-sign`, never a config change.

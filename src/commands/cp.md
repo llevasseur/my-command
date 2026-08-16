@@ -43,8 +43,10 @@ Put a ready-to-paste invocation of another command on the clipboard. **Never run
    Then hand that path to the stash, which rotates the ring, installs the line as the newest entry, and feeds the clipboard from it:
 
    ```bash
-   my-command-tools stash write --content-file /Users/<you>/.claude/cp-compose.txt
+   my-command-tools stash write --content-file /Users/<you>/.claude/cp-compose.txt --consume
    ```
+
+   **`--consume` is not optional, and it is why the path above can be a fixed one.** The compose file is a hand-off, not a document: once the verb has copied its bytes into the ring it deletes it. Without that, the file survives to the *next* `/cp`, whose `Write` then lands on a path that session never read — which `Write` rejects outright, and a recorded run hit that same rejection on that same file every single time it ran. Deleting it removes the pre-existing file rather than asking every future run to remember to read it first.
 
    **The entry travels as a file path, never as a shell-composed string.** `cat > … <<'EOF'` composes a file in the shell, and that shape is refused outright inside an isolated worktree — which is where `/cp` is often invoked from — while an argument would need every quote, backslash, and newline in the prompt escaped correctly. `Write` takes the content literally and the verb copies the bytes, so nothing expands or escapes either way.
 

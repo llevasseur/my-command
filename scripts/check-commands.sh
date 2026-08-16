@@ -576,7 +576,7 @@ done
 # 22. The Stop gate judges the closing turn's shape. Keying on a tool name put the previous fix
 # on TodoWrite while the recorded runs ended on batches of TaskUpdate, which PreToolUse cannot
 # tell apart from any other row and Stop does not have to.
-for needle in BOOKKEEPING TaskUpdate; do
+for needle in BOOKKEEPING TaskUpdate TEARDOWN_BASH; do
   if ! grep -q "$needle" src/hooks/stop.mjs; then
     echo "::error::src/hooks/stop.mjs no longer names $needle; a closing turn made only of task-list bookkeeping would end the run with no outcome recorded, which is the shape the gate exists to refuse (docs/specs/workflow-gates.md)."
     fail=1
@@ -591,6 +591,46 @@ if ! grep -q "bool(ctx.flags.background)" src/toolkit/verbs/verify.mjs; then
 fi
 if ! grep -q 'verify --background' src/hooks/pre-tool-use.mjs; then
   echo "::error::src/hooks/pre-tool-use.mjs no longer names 'verify --background' in its watched-condition denials; the refusal would state no alternative (docs/specs/workflow-gates.md)."
+  fail=1
+fi
+
+# 23a. `--background` alone was still not somewhere to go: it hands back a *notified* wait, so a
+# run that has nothing else to do arms a watch and then reads the report anyway — recorded at
+# twenty reads in one session and fifteen in another, with two sessions ending inside the loop.
+# The blocking wait is the affordance, so it has to exist, the denials have to name it, and the
+# commands that prescribe verify have to prescribe it.
+if ! grep -q "ctx.flags.wait" src/toolkit/verbs/verify.mjs; then
+  echo "::error::src/toolkit/verbs/verify.mjs no longer implements --wait; a run with nothing else to do would have no blocking wait and would poll the report instead (docs/specs/workflow-gates.md)."
+  fail=1
+fi
+if ! grep -q 'verify --wait' src/hooks/pre-tool-use.mjs; then
+  echo "::error::src/hooks/pre-tool-use.mjs no longer names 'verify --wait' in its watched-condition denials; the refusal would offer only a wait that still has to be polled (docs/specs/workflow-gates.md)."
+  fail=1
+fi
+if ! grep -Fq 'include-block: shared/verify-wait.md' src/commands/task.md; then
+  echo "::error::src/commands/task.md dropped the shared/verify-wait.md include; its verify step would prescribe a call it never says how to wait on."
+  fail=1
+fi
+if ! grep -Fq 'verify --wait' src/commands/review.md; then
+  echo "::error::src/commands/review.md no longer names 'verify --wait'; its verification step would leave the run polling a report that does not exist until the run is over."
+  fail=1
+fi
+
+# 23b. A dispatched run's working directory is a repository root, which is exactly where
+# EnterWorktree refuses — so a command that tells one to call it prescribes a certain refusal.
+# Ten recorded runs across five buckets took it and then worked by absolute path anyway. The
+# reported path is the working root; the verb has to say so, and the prose must not frame the
+# absolute-path form as the fallback after a refusal.
+if ! grep -q 'workingRoot' src/toolkit/verbs/worktree.mjs; then
+  echo "::error::src/toolkit/verbs/worktree.mjs no longer reports workingRoot from 'worktree begin'; the path would again read as somewhere to move the session to (docs/specs/workflow-gates.md)."
+  fail=1
+fi
+if grep -Fq 'fall back to working through absolute paths' src/shared/enter-worktree.md; then
+  echo "::error::src/shared/enter-worktree.md again frames absolute paths as a fallback after a refusal; for a dispatched run that refusal is certain, so the absolute-path form is the normal mode and must be stated as such."
+  fail=1
+fi
+if ! grep -Fq 'working root' src/shared/enter-worktree.md; then
+  echo "::error::src/shared/enter-worktree.md no longer names the reported path as the run's working root; entering the worktree would read as the prescribed step again."
   fail=1
 fi
 

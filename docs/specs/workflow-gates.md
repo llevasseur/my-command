@@ -49,14 +49,15 @@ is allowed to be another sentence.
 | Re-narrowing on a file already read | 3 | `PreToolUse` refuses a shell dump of an unchanged file already read whole |
 | The same probe re-issued per item | 3 | `PreToolUse` refuses an identical read-only command whose answer cannot have changed |
 | Polling a condition already watched | 3 | `PreToolUse` refuses a probe — shell **or** `Read` — of a file a **still-running** `Monitor` or backgrounded Bash call in this session is following; the `Read` half judges the watch's own output target by whole path, and a backgrounded command whose completion notice already arrived no longer counts as a watch, so reading its output afterwards is the one read the gate was asking for |
-| Having nothing to wait *on* | 4 | `verify --background` runs the gates detached and returns `wait.input`, a single backgrounded `Bash` call that ends by itself and prints the verdict — so the wait is one armed call and one notification, with nothing to poll and no watch to duplicate |
+| Having nothing to wait *on* | 4 | `verify --wait` **is** the wait: one foreground `Bash` call that blocks until the detached run exits, then prints its whole report and exits on its verdict. `--background` returns that exact command under `wait.blocking`, and `wait.input` remains for a run that must stay free |
 | Prose composed on stdin | 4 | `commit`/`pr` take `--message-file`/`--body-file`; `PreToolUse` refuses `--message -`/`--body -` and names the flag |
 | A second, path-narrowed diff | 4 | `scope --diff` already returned every hunk; `PreToolUse` refuses a single-path `git diff -- <path>`/`gh pr diff <path>` once it has run, leaving the batched multi-path form the prose prescribes alone |
 | A JSON shape guessed rather than read | 3 | `PreToolUse` refuses a `node -e`/`python3 -c` one-liner naming a `.json` this session never opened |
 | A run ending on a bookkeeping call | 4 | `PreToolUse` refuses a `TodoWrite` that completes the closing-turn anchor and carries nothing else |
-| A closing turn made only of bookkeeping | 4 | `Stop` refuses a final turn whose every call is `TodoWrite`/`TaskUpdate`/`TaskCreate`, judged on the turn's shape rather than any tool's input — which is how `TaskUpdate`, ungateable at `PreToolUse`, is reached at all |
+| A closing turn made only of chores | 4 | `Stop` refuses a final turn whose every call is `TodoWrite`/`TaskUpdate`/`TaskCreate` **or workspace teardown** (`worktree end`, `worktree reap`, `cleanup`, `ExitWorktree`), judged on the turn's shape rather than any tool's input — which is how `TaskUpdate`, ungateable at `PreToolUse`, is reached at all |
 | Post-merge branch deletion failing predictably | 4 | `my-command-tools cleanup` settles both halves from the PR: a squash merge's "not fully merged" is deleted on the PR's evidence, an auto-deleted remote ref reports `already-absent` rather than exiting 1 |
 | A dispatched unit making its own worktree | 4 | the dispatching command runs `worktree begin` and hands over `--worktree <path>`; concurrent siblings cannot learn from each other, so the affordance moves to the caller rather than the advice to the callee |
+| A dispatched unit told to *enter* a worktree | 4 | the instruction is gone. `worktree begin` reports `workingRoot` and an `enterWorktree` line saying it is not needed, and the prose makes the absolute-path form the normal mode rather than the fallback after a refusal |
 | Relative `cd` that cannot resolve | 3 | `PreToolUse` refuses it, naming the absolute form |
 | Unquoted glob matching nothing | 3 | `PreToolUse` refuses it — zsh would abort the whole command |
 | Foreground `sleep` | 3 | `PreToolUse` refuses it, naming `Monitor` and `run_in_background` |
@@ -159,6 +160,29 @@ A read is also recorded only when it **returned content**. A `tool_result` marke
 means the call was refused or failed, and a refused read delivers no bytes, so it can never
 make a later read redundant.
 
+### The correction itself must never be refused
+
+Grouping by `message.id` fixed the *history*, not the **current** turn, and one case survived
+it for five more days. `PreToolUse` fires while the assistant message is still being emitted,
+so when the first call of a batch reaches the gate the other eleven are not written yet: the
+turn is indistinguishable from a single-call one, and the counter treats it as one. A recorded
+session took the refusal on its fourth single-call turn, did exactly what the refusal asked —
+collapsed twelve probes into one turn — and was refused again on the first call of that batch.
+That is worse than not gating, because it teaches that batching does not help.
+
+The counter is not the thing to change. It already refuses to count a batched turn, and a long
+phase of correctly batched turns — judging, review, doc audit — is never refused for its
+length, only a run of genuinely single-call turns is. What failed is the standing rule that a
+gate **speaks once per subject and never wedges a run**: `alreadyDenied` was meant to carry it
+and cannot do so alone, because its scratch file is best-effort and the calls of one batch race
+each other through it.
+
+So the once-per-run guarantee is now read off the **transcript**, which can be neither lost nor
+raced: a failed read-only call anywhere in the current run means this run already took its
+correction, and the gate stays silent for the rest of it. A probe that failed for an unrelated
+reason suppresses the gate too. That is deliberate — fail open is the standing rule, and a run
+that is already erroring needs a second refusal least of all.
+
 ### A subagent's call carries the parent's transcript
 
 A tool call made inside a subagent arrives with the **parent session's** `transcript_path`,
@@ -236,8 +260,19 @@ never recorded. The existing exemptions all still win, and in this order: a comp
 owes nothing, a nested run's return marker hands back rather than closing, and a turn whose
 every call failed was interrupted rather than finished.
 
-Anything the closing turn carries besides bookkeeping passes, unchanged — a report that
+Anything the closing turn carries besides a chore passes, unchanged — a report that
 rides along with real work was never the failure.
+
+**And the shape is not only bookkeeping.** Reading the turn rather than the tool name is what
+made that visible: a recorded run pushed its PR, then closed on a lone `my-command-tools
+worktree end` and recorded no outcome, which is the identical failure reached through the
+identical shape. Tearing down the workspace is no more the work than marking a row is — it is
+the other closing chore, it sits in exactly the same position, it returns quietly, and the
+message that was meant to follow it never gets sent. `shared/closing-turn.md` already names
+`ExitWorktree`, `worktree end`, `verify` and a closing `gh` call as the calls that swallow the
+outcome; the gate now refuses the two of those that are pure teardown, on the same evidence
+and with the same exemptions. `verify` and `gh` are deliberately not in the set: both can be
+real work, so a turn ending on one is judged by the existing rules rather than by this one.
 
 ### Only the outermost run owes an outcome
 
@@ -822,8 +857,18 @@ cannot contradict each other again.
 - [x] A `Read` of a backgrounded Bash command's output **after** its completion notice has
       arrived passes; the same `Read` while that command is still running is refused, and a
       `Monitor` is treated as live throughout, its notices being its events rather than its end.
-- [x] Both watched-condition denials state that the watch they name is still running, and
-      point at `verify --background` as the affordance that replaces the poll.
+- [x] Both watched-condition denials state that the watch they name is still running, point at
+      `verify --wait` as the one call that *is* the wait, and state that the report is written
+      atomically at exit so there is nothing to see before then.
+- [x] `verify --wait [<verdict>]` blocks until the detached run's verdict file is non-empty,
+      then prints that run's whole report and exits on its verdict; with no argument it waits
+      on the most recent detached run; it reports a clear error when there is no run to wait
+      on; and `--wait-timeout <s>` gives up without killing the run.
+- [x] A final turn whose every call is workspace teardown — `worktree end`, `worktree reap`,
+      `cleanup`, `ExitWorktree` — is blocked on the same terms as a bookkeeping-only turn, and
+      the refusal names what it saw.
+- [x] `worktree begin` reports `workingRoot` and an `enterWorktree` line saying entry is not
+      needed, and no command tells a dispatched run to call `EnterWorktree`.
 - [x] `verify --background` returns a `wait.input` that is a single `run_in_background` Bash
       call, plus the `result` path to read once its notice arrives; the detached run writes its
       JSON result before the verdict file, so a waiter that sees the verdict reads a complete
@@ -847,6 +892,22 @@ cannot contradict each other again.
   aggregate of other gates' violations has no failure of its own.
 - **Counting probes rather than turns**, anywhere. It would refuse the batched form these
   gates exist to produce.
+- **Re-adding the read-before-edit gate so it can fire once for a whole parallel batch.** The
+  reported failure is real — six parallel `Edit`s at never-opened files took three separate
+  denials inside one turn — but the fix is unavailable on this surface for the reason the gate
+  was removed in the first place: inside a subagent the hook event carries the *parent's*
+  transcript, so a file the subagent just read looks unread. A batch-wide denial needs the same
+  missing evidence the per-call one did, only more of it. **A gate whose evidence is not
+  available does not ship**, and `Edit` and `Write` already reject a genuinely unread file
+  themselves. What is left is prose, and `shared/batched-discovery.md` already carries it:
+  enumerate the files the edit pass will write and `Read` them in one batch first.
+- **Refusing a `Read` of the main checkout's copy of a file while a worktree holds that path.**
+  The recorded session read the main-checkout copy and then edited the worktree copy, so the
+  intent is sound. But the only evidence a `PreToolUse` hook has for "this run is working in a
+  worktree" is `event.cwd` — and for a dispatched run, which is where this happened, `cwd` is
+  the repository root by construction, precisely the fact the `EnterWorktree` climb above rests
+  on. A gate keyed on `cwd` would be silent for every run that has the problem and would fire
+  only on runs that do not. Same invariant, same answer.
 
 ## Known remainder
 

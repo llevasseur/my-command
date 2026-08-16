@@ -35,8 +35,14 @@ possible.
    the clipboard carry identical bytes and a later copy can be undone with step 1:
 
    ```bash
-   my-command-tools stash write --content-file /Users/<you>/.claude/cp-compose.txt
+   my-command-tools stash write --content-file /Users/<you>/.claude/cp-compose.txt --consume
    ```
+
+   **`--consume` is not optional, and it is why that path can be a fixed one.** The
+   compose file is a hand-off, not a document: once its bytes are in the ring the
+   verb deletes it. Left behind, it survives to the next run of this skill, whose
+   write then lands on a path that session never read — which the file-writing tool
+   rejects, and a recorded run hit that same rejection on that same file every time.
 
    **The entry travels as a file path, never as a shell-composed string.**
    Composing a file in the shell is refused inside an isolated worktree, which is
