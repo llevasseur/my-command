@@ -209,7 +209,8 @@ done
 # commands and this gate keeps it there.
 for f in src/commands/task.md src/commands/fb.md src/commands/review.md src/commands/god.md \
   src/commands/docs.md src/commands/clean.md src/commands/truncate.md src/commands/revive.md \
-  src/commands/improve.md src/commands/work.md src/commands/judge.md src/commands/ideate.md; do
+  src/commands/improve.md src/commands/work.md src/commands/judge.md src/commands/ideate.md \
+  src/commands/dev.md; do
   if ! grep -Fq 'include-block: shared/batched-discovery.md' "$f"; then
     echo "::error::$f dropped the shared/batched-discovery.md include; its discovery phase would go back to one read per turn and to re-reading files already in context."
     fail=1
@@ -219,7 +220,8 @@ done
 # 9. The merge commands state the working command forms at the step that runs them. Bash
 # supplied over 90% of this pipeline's failed calls, concentrated in a rejected merge re-issued
 # verbatim and in `cd <path> &&` where the toolkit takes a `--cwd` flag.
-for f in src/commands/mc.md src/commands/god.md src/commands/merge-deps.md src/commands/wayfinder.md; do
+for f in src/commands/mc.md src/commands/god.md src/commands/merge-deps.md src/commands/wayfinder.md \
+  src/commands/dev.md; do
   if ! grep -Fq 'include-block: shared/merge-command-forms.md' "$f"; then
     echo "::error::$f dropped the shared/merge-command-forms.md include; its merge step would have no working command forms and a rejected merge would be re-issued verbatim."
     fail=1
