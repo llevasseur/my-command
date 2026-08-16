@@ -932,7 +932,7 @@ test('watched condition: hand-polling a file a Monitor is already following is r
     tool_input: { command: `tail -20 ${log}` },
   });
   assert.equal(denied(answer), true);
-  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /already following/);
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /is \*\*still running\*\*/);
 
   // One refusal only: if the watch really has ended, the agent has to be able to proceed.
   const state = scratch();
@@ -1162,7 +1162,7 @@ test('watched condition: a Read that polls a watched file is refused, an unrelat
     tool_input: { file_path: log },
   });
   assert.equal(denied(answer), true);
-  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /already following/);
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /is \*\*still running\*\*/);
 
   const unrelated = hook(PRE_TOOL_USE, {
     session_id: 'rp2',
@@ -1172,6 +1172,94 @@ test('watched condition: a Read that polls a watched file is refused, an unrelat
     tool_input: { file_path: join(dir, 'other.md') },
   });
   assert.equal(denied(unrelated), false);
+});
+
+test('watched condition: a backgrounded command that already reported is no longer a watch', () => {
+  // The false refusal that made the recorded sessions route around the gate. Once the
+  // completion notice has arrived the wait is over, and reading the output is the single read
+  // the gate was asking for all along.
+  const dir = scratch();
+  const log = join(dir, 'verify.log');
+  writeFileSync(log, 'running\n');
+  const path = join(scratch(), 'transcript.jsonl');
+  const stamp = new Date(Date.now() - 600_000).toISOString();
+  writeFileSync(
+    path,
+    `${[
+      JSON.stringify({
+        type: 'user',
+        uuid: 'u0',
+        timestamp: stamp,
+        message: { role: 'user', content: [{ type: 'text', text: 'do the thing' }] },
+      }),
+      JSON.stringify({
+        type: 'assistant',
+        uuid: 'a1',
+        timestamp: stamp,
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'text', text: 'starting' },
+            {
+              type: 'tool_use',
+              id: 'bg-1',
+              name: 'Bash',
+              input: { command: `pnpm verify > ${log} 2>&1`, run_in_background: true },
+            },
+          ],
+        },
+      }),
+      JSON.stringify({
+        type: 'user',
+        uuid: 'u2',
+        timestamp: stamp,
+        message: {
+          role: 'user',
+          content: [
+            { type: 'text', text: '<task-notification><tool-use-id>bg-1</tool-use-id> exited 0</task-notification>' },
+          ],
+        },
+      }),
+    ].join('\n')}\n`,
+  );
+
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'rp3',
+    transcript_path: path,
+    cwd: dir,
+    tool_name: 'Read',
+    tool_input: { file_path: log },
+  });
+  assert.equal(denied(answer), false);
+
+  // A shell probe of the same file is equally free once the run it followed has ended.
+  const probe = hook(PRE_TOOL_USE, {
+    session_id: 'rp4',
+    transcript_path: path,
+    cwd: dir,
+    tool_name: 'Bash',
+    tool_input: { command: `tail -20 ${log}` },
+  });
+  assert.equal(denied(probe), false);
+});
+
+test('watched condition: the denial names the affordance that replaces the poll', () => {
+  const dir = scratch();
+  const log = join(dir, 'verify.log');
+  writeFileSync(log, 'running\n');
+  const line = transcript([
+    'prompt',
+    [read('Bash', { command: `pnpm verify > ${log} 2>&1`, run_in_background: true })],
+  ]);
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'rp5',
+    transcript_path: line,
+    cwd: dir,
+    tool_name: 'Read',
+    tool_input: { file_path: log },
+  });
+  assert.equal(denied(answer), true);
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /verify --background/);
 });
 
 // ── the closing-turn anchor ─────────────────────────────────────────────────────────
@@ -1278,6 +1366,68 @@ test('stop: a report carrying a tool call is warned about, never blocked', () =>
   const answer = hook(STOP, { session_id: 'f1b', transcript_path: line });
   assert.equal(answer.decision, undefined);
   assert.match(answer.systemMessage, /decision mid-run/);
+});
+
+// ── a closing turn made of nothing but task-list bookkeeping ────────────────────────
+
+test('stop: a final turn of only TaskUpdate calls is blocked', () => {
+  // The recorded shape: four rows marked in a row, and the report that was meant to follow
+  // never sent. `TaskUpdate` carries a taskId and a status and nothing else, so no PreToolUse
+  // gate can see this coming — Stop reads the finished turn instead.
+  const line = transcript([
+    'prompt',
+    [read('Bash', { command: 'my-command-tools verify' })],
+    [
+      read('TaskUpdate', { taskId: 2, status: 'completed' }),
+      read('TaskUpdate', { taskId: 3, status: 'completed' }),
+      read('TaskUpdate', { taskId: 4, status: 'completed' }),
+    ],
+  ]);
+  const answer = hook(STOP, { session_id: 'bk1', transcript_path: line });
+  assert.equal(answer.decision, 'block');
+  assert.match(answer.reason, /TaskUpdate/);
+  assert.match(answer.reason, /bookkeeping/);
+});
+
+test('stop: TodoWrite and TaskCreate mixed into that turn are the same shape', () => {
+  const line = transcript([
+    'prompt',
+    [read('Edit', { file_path: '/x/a.ts' })],
+    [read('TodoWrite', { todos: [] }), read('TaskCreate', { subject: 'next' }), read('TaskUpdate', { taskId: 1 })],
+  ]);
+  assert.equal(hook(STOP, { session_id: 'bk2', transcript_path: line }).decision, 'block');
+});
+
+test('stop: a bookkeeping call riding along with real work is not blocked', () => {
+  // The rule is about a turn that did nothing else, never about the tool. A run that marks its
+  // rows in the same turn as the teardown is doing exactly what the commands prescribe.
+  const line = transcript([
+    'prompt',
+    [
+      read('TaskUpdate', { taskId: 1, status: 'completed' }),
+      read('Bash', { command: 'my-command-tools worktree end --branch x' }),
+    ],
+  ]);
+  const answer = hook(STOP, { session_id: 'bk3', transcript_path: line });
+  assert.equal(answer.decision, undefined);
+});
+
+test('stop: a bookkeeping turn whose every call failed was interrupted, not finished', () => {
+  const line = splitTranscript(
+    ['prompt', [read('Bash', { command: 'pnpm test' })], [read('TaskUpdate', { taskId: 1 })]],
+    {
+      failed: ['2-0'],
+    },
+  );
+  assert.equal(hook(STOP, { session_id: 'bk4', transcript_path: line }).decision, undefined);
+});
+
+test('stop: a bookkeeping turn carrying a return marker is a handback, not a close', () => {
+  const line = transcript([
+    'prompt',
+    { say: 'done here.\n\nRETURN /task', calls: [read('TaskUpdate', { taskId: 1, status: 'completed' })] },
+  ]);
+  assert.equal(hook(STOP, { session_id: 'bk5', transcript_path: line }).decision, undefined);
 });
 
 test('stop: a text-only closing turn ends the run', () => {

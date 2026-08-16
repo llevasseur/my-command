@@ -29,7 +29,7 @@ non-default cut point and a non-default landing branch states each one.
    `$mc --target <branch>` when needed and stop on unresolved conflicts.
 3. Unless `--auto`, watch required checks without foreground sleeps. For red CI, inspect the failing job log and spend at most the requested repair rounds through `$fb --target <branch>`.
 4. Merge with `gh pr merge` using the requested method and branch protection; the PR's base is already the merge target, so the merge takes no extra flag. Never use `--admin`, force-push, or push directly to the merge target. If checks are pending, enable auto-merge; if the base moved, refresh conflicts once.
-5. Check out and fast-forward the local merge target in the recorded main checkout. Stop on divergence.
+5. Check out and fast-forward the local merge target in the recorded main checkout. Stop on divergence. Then retire the task branch with the repository helper's `cleanup` verb rather than by hand: a squash merge leaves no shared history, so git calls the branch unmerged and refuses to delete it, and the platform's auto-delete setting has usually already taken the remote ref, so deleting it again fails too. The verb settles both halves against the merged pull request instead of against git's error, and reports which of them was already done.
 6. Report task, merge target and any retarget, review, repairs, checks, merge, and local update in a final text-only outcome.
 
 Use `my-command-tools doctor`, `state`, and `verify` for deterministic repository checks when available.
@@ -49,8 +49,8 @@ Use `my-command-tools doctor`, `state`, and `verify` for deterministic repositor
 - A refusal of a PR merge or a remote-ref deletion is final. Surface it to the
   human and carry on with the rest of the work; re-expressing the same operation
   through a raw API call or a different credential is refused for the same reason
-  and costs a second turn. Steps 4 and 5 are where this fires: the branch-deleting
-  merge and the local branch cleanup that follows it.
+  and costs a second turn. Steps 4 and 5 are where this fires: the merge, and the
+  remote half of the `cleanup` call that follows it.
 
 ## Closing turn
 

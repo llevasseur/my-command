@@ -121,7 +121,10 @@ if [ -f src/toolkit/cli.mjs ]; then
   for verb in src/toolkit/verbs/*.mjs; do
     case "$verb" in *.test.mjs) continue ;; esac
     name="$(basename "$verb" .mjs)"
-    if ! printf '%s\n' "$registered" | grep -qx "  $name"; then
+    # A here-string rather than a pipe: `grep -q` exits at the first match and closes the
+    # pipe under it, and with `pipefail` on that SIGPIPE becomes the pipeline's status — so
+    # the alphabetically first verb reported itself unregistered while being registered.
+    if ! grep -qx "  $name" <<<"$registered"; then
       echo "::error::verb '$name' is not registered in src/toolkit/cli.mjs — it can never be invoked."
       fail=1
     fi
@@ -342,7 +345,7 @@ done
 # checked out. The merge lands and the call still exits 1, so the prescribed form drops the
 # flag and deletes the branch as its own step.
 if grep -REn -- 'gh pr merge[^`]*--delete-branch' src/commands/ src/shared/; then
-  echo "::error::a command or shared snippet still prescribes 'gh pr merge … --delete-branch'; its local cleanup fails wherever the default branch is checked out, reporting a failure for a merge that succeeded. Merge without the flag and delete the branch separately ('my-command-tools worktree end --branch <branch>', 'git push origin --delete <branch>')."
+  echo "::error::a command or shared snippet still prescribes 'gh pr merge … --delete-branch'; its local cleanup fails wherever the default branch is checked out, reporting a failure for a merge that succeeded. Merge without the flag and delete the branch separately, with 'my-command-tools cleanup --branch <branch>'."
   fail=1
 fi
 
@@ -532,6 +535,60 @@ for needle in returnMarker nestedRunOpen; do
     fail=1
   fi
 done
+
+# 20. Post-merge branch deletion goes through the verb, not through the raw pair. Both halves
+# fail in a way that is decided by the merge method rather than by anything the caller did — a
+# squash merge makes `git branch -d` call the branch unmerged, and GitHub's auto-delete makes
+# `git push origin --delete` exit 1 on a ref that is already gone. Prescribing the raw calls is
+# prescribing those errors. The remote half is the checkable one: `git branch -d` appears in
+# prose *about* the failure, and `git branch -D <b>` also has an unrelated legitimate use
+# (`/merge-deps` drops a stale local branch so `/mc` can recreate it from origin), so matching
+# on it would flag the explanation along with the prescription. A line that already names the
+# verb is describing it rather than routing around it, and `shared/refusal-final.md` names the
+# remote deletion only as what a `gh api` retry is equivalent to.
+if grep -REn -- '`git push [a-z]+ --delete' src/commands/ src/shared/ |
+  grep -v 'my-command-tools cleanup' | grep -v 'gh api'; then
+  echo "::error::a command or shared snippet still prescribes a raw post-merge branch deletion; a squash merge makes 'git branch -d' refuse and an auto-deleted remote ref makes 'git push … --delete' exit 1. Prescribe 'my-command-tools cleanup --branch <branch>', which settles both halves from the PR (docs/specs/workflow-gates.md)."
+  fail=1
+fi
+
+# 21. The dispatching commands make each unit's workspace and hand over the path. Siblings in a
+# wave run concurrently, so one unit's refusal teaches the other four nothing — the fix cannot
+# live at the callee, and a note it reads only after being dispatched into the repo root is the
+# same fix in a worse place.
+for f in src/commands/manage.md src/commands/work.md; do
+  if ! grep -Fq 'include-block: shared/dispatch-worktree.md' "$f"; then
+    echo "::error::$f no longer carries shared/dispatch-worktree.md; its units would create or enter their own worktrees from the repo root, which is the refusal every sibling in a wave hits at once (docs/specs/workflow-gates.md)."
+    fail=1
+  fi
+done
+for f in src/commands/task.md src/commands/fb.md; do
+  if ! grep -Fq '`--worktree <path>`' "$f"; then
+    echo "::error::$f no longer documents --worktree <path>; the dispatch-site handover has nothing to hand over to (docs/specs/workflow-gates.md)."
+    fail=1
+  fi
+done
+
+# 22. The Stop gate judges the closing turn's shape. Keying on a tool name put the previous fix
+# on TodoWrite while the recorded runs ended on batches of TaskUpdate, which PreToolUse cannot
+# tell apart from any other row and Stop does not have to.
+for needle in BOOKKEEPING TaskUpdate; do
+  if ! grep -q "$needle" src/hooks/stop.mjs; then
+    echo "::error::src/hooks/stop.mjs no longer names $needle; a closing turn made only of task-list bookkeeping would end the run with no outcome recorded, which is the shape the gate exists to refuse (docs/specs/workflow-gates.md)."
+    fail=1
+  fi
+done
+
+# 23. Refusing the poll only helps if the wait has somewhere to go. Without the affordance the
+# recorded sessions re-issued the watch and then read the file by hand anyway.
+if ! grep -q "bool(ctx.flags.background)" src/toolkit/verbs/verify.mjs; then
+  echo "::error::src/toolkit/verbs/verify.mjs no longer implements --background; the watched-condition gates would refuse a poll while offering nothing in its place (docs/specs/workflow-gates.md)."
+  fail=1
+fi
+if ! grep -q 'verify --background' src/hooks/pre-tool-use.mjs; then
+  echo "::error::src/hooks/pre-tool-use.mjs no longer names 'verify --background' in its watched-condition denials; the refusal would state no alternative (docs/specs/workflow-gates.md)."
+  fail=1
+fi
 
 if [ "$fail" -eq 0 ]; then
   echo "check-commands: all command invariants satisfied ($(ls src/commands/*.md | wc -l | tr -d ' ') commands)."

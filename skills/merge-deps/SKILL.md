@@ -15,7 +15,10 @@ Parse `--label <name>` (default `dependencies`), one merge method (default squas
 4. Verify in `.codex/worktrees/deps-<safe-branch>` using
    `my-command-tools worktree begin --existing`, repository bootstrap, and
    `my-command-tools verify --fast` when available. End it with the toolkit only
-   after confirming it has no authored or unpushed work.
+   after confirming it has no authored or unpushed work. Retire the merged PR's
+   remote branch with the helper's `cleanup` verb, keeping the local ref, rather
+   than deleting the ref by hand — the platform's auto-delete setting has usually
+   already taken it, and the verb reports that as an outcome instead of a failure.
 5. Merge through `gh pr merge`, respecting branch protection. Refresh the default branch between PRs and report merged, queued, conflict-resolved, and blocked items.
 
 ## Git call shape
@@ -27,7 +30,8 @@ Parse `--label <name>` (default `dependencies`), one merge method (default squas
 - A refusal of a PR merge or a remote-ref deletion is final. Surface it to the
   human and carry on with the remaining PRs; re-expressing the same operation
   through a raw API call or a different credential is refused for the same reason
-  and costs a second turn. Step 5's branch-deleting merge is where this fires.
+  and costs a second turn. The merge, and the remote half of the `cleanup` call
+  beside it, are where this fires.
 
 ## Closing turn
 

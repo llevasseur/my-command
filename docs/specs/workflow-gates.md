@@ -48,11 +48,15 @@ is allowed to be another sentence.
 | Redundant whole-file reads | 3 | `PreToolUse` refuses a re-read of an unchanged file |
 | Re-narrowing on a file already read | 3 | `PreToolUse` refuses a shell dump of an unchanged file already read whole |
 | The same probe re-issued per item | 3 | `PreToolUse` refuses an identical read-only command whose answer cannot have changed |
-| Polling a condition already watched | 3 | `PreToolUse` refuses a probe — shell **or** `Read` — of a file a `Monitor` or backgrounded Bash call in this session is following; the `Read` half judges the watch's own output target by whole path |
+| Polling a condition already watched | 3 | `PreToolUse` refuses a probe — shell **or** `Read` — of a file a **still-running** `Monitor` or backgrounded Bash call in this session is following; the `Read` half judges the watch's own output target by whole path, and a backgrounded command whose completion notice already arrived no longer counts as a watch, so reading its output afterwards is the one read the gate was asking for |
+| Having nothing to wait *on* | 4 | `verify --background` runs the gates detached and returns `wait.input`, a single backgrounded `Bash` call that ends by itself and prints the verdict — so the wait is one armed call and one notification, with nothing to poll and no watch to duplicate |
 | Prose composed on stdin | 4 | `commit`/`pr` take `--message-file`/`--body-file`; `PreToolUse` refuses `--message -`/`--body -` and names the flag |
 | A second, path-narrowed diff | 4 | `scope --diff` already returned every hunk; `PreToolUse` refuses a single-path `git diff -- <path>`/`gh pr diff <path>` once it has run, leaving the batched multi-path form the prose prescribes alone |
 | A JSON shape guessed rather than read | 3 | `PreToolUse` refuses a `node -e`/`python3 -c` one-liner naming a `.json` this session never opened |
 | A run ending on a bookkeeping call | 4 | `PreToolUse` refuses a `TodoWrite` that completes the closing-turn anchor and carries nothing else |
+| A closing turn made only of bookkeeping | 4 | `Stop` refuses a final turn whose every call is `TodoWrite`/`TaskUpdate`/`TaskCreate`, judged on the turn's shape rather than any tool's input — which is how `TaskUpdate`, ungateable at `PreToolUse`, is reached at all |
+| Post-merge branch deletion failing predictably | 4 | `my-command-tools cleanup` settles both halves from the PR: a squash merge's "not fully merged" is deleted on the PR's evidence, an auto-deleted remote ref reports `already-absent` rather than exiting 1 |
+| A dispatched unit making its own worktree | 4 | the dispatching command runs `worktree begin` and hands over `--worktree <path>`; concurrent siblings cannot learn from each other, so the affordance moves to the caller rather than the advice to the callee |
 | Relative `cd` that cannot resolve | 3 | `PreToolUse` refuses it, naming the absolute form |
 | Unquoted glob matching nothing | 3 | `PreToolUse` refuses it — zsh would abort the whole command |
 | Foreground `sleep` | 3 | `PreToolUse` refuses it, naming `Monitor` and `run_in_background` |
@@ -212,9 +216,28 @@ thing its turn carries — the exact signature of "mark it done, then speak", wh
 sequence that loses the message. A `TodoWrite` that rides along with real work in the same
 turn passes, which is what the commands already tell a run to do.
 
-`TaskUpdate` is deliberately **not** gated: its input carries a `taskId` and a status and
-never the subject, so a hook cannot tell the anchor from any other task without guessing —
-and never guessing outranks catching this on the second surface.
+`TaskUpdate` is still not gated at `PreToolUse`, and for the reason it never could be: its
+input carries a `taskId` and a status and never the subject, so nothing there tells the
+anchor's row from any other row without guessing. What was wrong was the conclusion drawn
+from that — the limit was recorded as "this surface cannot catch it" and left there, while
+the recorded runs went on ending on `TaskUpdate` rather than on `TodoWrite`. Six of six
+buckets in one range, whole closing turns made of four and five `TaskUpdate` calls in a row.
+A gate aimed at the tool nobody was calling is a gate that does not exist.
+
+The limit is narrower than it was written. It binds `PreToolUse`, which sees one call before
+it happens and has only that call's input to judge; it does not bind Stop, which sees a turn
+that already finished. So Stop stops asking which tool was called and asks **what the turn
+was made of**: a final turn whose every tool call is task-list bookkeeping — `TodoWrite`,
+`TaskUpdate`, `TaskCreate`, in any combination and any count — is refused. No subject is
+needed for that judgement, which is precisely why it is available here and not there.
+Marking rows is not work, so a turn containing nothing else did nothing else, whatever those
+rows happened to say; the run's last real action was the turn before it, and its outcome was
+never recorded. The existing exemptions all still win, and in this order: a completed run
+owes nothing, a nested run's return marker hands back rather than closing, and a turn whose
+every call failed was interrupted rather than finished.
+
+Anything the closing turn carries besides bookkeeping passes, unchanged — a report that
+rides along with real work was never the failure.
 
 ### Only the outermost run owes an outcome
 
@@ -792,6 +815,23 @@ cannot contradict each other again.
       `pbcopy <<'EOF'` / `<the sentence>` / `EOF` is not reported as a file-composing heredoc.
 - [x] The form `/cp` now prescribes — `my-command-tools stash write --content-file <path>` —
       is not refused, asserted by running the checker over it.
+- [x] A final turn whose every call is `TodoWrite`, `TaskUpdate`, or `TaskCreate` — in any
+      combination and any count — is blocked, and the refusal names the tools it saw; the same
+      call alongside any other tool in the turn is not blocked, nor is a bookkeeping-only turn
+      whose every call failed, nor one carrying a `RETURN /<command>` marker.
+- [x] A `Read` of a backgrounded Bash command's output **after** its completion notice has
+      arrived passes; the same `Read` while that command is still running is refused, and a
+      `Monitor` is treated as live throughout, its notices being its events rather than its end.
+- [x] Both watched-condition denials state that the watch they name is still running, and
+      point at `verify --background` as the affordance that replaces the poll.
+- [x] `verify --background` returns a `wait.input` that is a single `run_in_background` Bash
+      call, plus the `result` path to read once its notice arrives; the detached run writes its
+      JSON result before the verdict file, so a waiter that sees the verdict reads a complete
+      result.
+- [x] `cleanup` deletes a squash-merged branch git calls "not fully merged" and reports
+      `squash-merged` with the PR number; refuses it as `not-merged` when no merged PR exists;
+      reports an already-auto-deleted remote ref as `already-absent` with `pass: true`; and
+      refuses a branch checked out in a worktree, naming the path.
 - [x] `stash write` rotates a five-deep ring, drops the oldest, and preserves an entry
       containing quotes, backslashes, and newlines byte for byte; `stash restore` reads a
       named slot, and a slot holding nothing is reported with the clipboard left alone.

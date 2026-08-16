@@ -244,7 +244,13 @@ six-hour TTL is sized to *writing* the change, while review is the long part of 
 idea's life. A `--dry-run` claims nothing, because a claim is a write.
 
 **Scheduling and dispatch.** One fresh subagent per idea runs
-`/task <pass-through flags> <that idea's brief>`. **Ideas that do not conflict are
+`/task --worktree <path> <pass-through flags> <that idea's brief>`. The branch name
+was settled at the claim, so there is something to cut from: `/work` runs
+`worktree begin` itself at this step and hands the path over, rather than letting the
+subagent make one from the repo root — where `EnterWorktree` is refused, and where a
+wave of concurrent siblings all hit that refusal at once with no way to learn from
+each other. The brief carries one literal line saying to work through absolute paths
+beneath that path and create no worktree; teardown stays with `/work`. **Ideas that do not conflict are
 dispatched concurrently**, a wave at a time with every result read before the next
 wave opens; ideas that genuinely depend on one another run in order, and **a
 dependent idea branches off the branch it depends on** rather than off `main`,

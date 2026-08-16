@@ -87,13 +87,20 @@ rounds of `/fb -t <branch>` against the failure log before stopping. The merge i
 already the merge target, so nothing extra is passed — falling back to `--auto`
 when GitHub blocks on pending checks and looping back to the conflict stage once
 if the merge target moved underneath. Finally the merge target is checked out and
-fast-forward pulled in the main checkout, and the merged local branch pruned.
+fast-forward pulled in the main checkout, and the branch retired with
+`my-command-tools cleanup --branch <branch>`. That is a verb rather than a
+`git branch -d` because both halves of the hand-run form fail on states this stage
+produces: a squash merge leaves the branch with no commits on the target, so git
+calls it unmerged and refuses, and GitHub's auto-delete has usually already taken
+the remote ref, so deleting it again errors. The verb decides each half against the
+merged PR and reports which was already done.
 
 Four situations stop the run rather than being driven through: an unresolvable
 `/mc` conflict, CI still red after the repair budget, a diverged local merge
 target, and a PR that isn't this run's. Nothing is ever merged with `--admin`, the
 merge target is never pushed to directly, and nothing is force-pushed. A refused merge or remote-ref
-deletion is final — it is surfaced, not re-expressed through `gh api`.
+deletion is final — it is surfaced, not re-expressed through `gh api`; `cleanup`'s
+remote half is the second place that can fire.
 
 ## Related
 

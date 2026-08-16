@@ -140,18 +140,38 @@ function readPolling(input, line, session, cwd) {
   if (alreadyDenied(session, 'watched', watched)) return false;
 
   deny(
-    `A watch armed earlier in this session is already following ${watched}, and this \`Read\` is ` +
-      `polling it by hand. Waiting is the watch's job: its events arrive as notifications on ` +
-      `their own schedule, so a second and third read of the same file return the same bytes ` +
-      `and a stalled condition is polled forever.\n\n` +
-      `Do not read it again to find out whether it moved. Let the notification arrive, or — if ` +
-      `the filter is not catching what you need — arm a bounded wait that ends by itself:\n` +
-      `  Bash({run_in_background: true, command: "until grep -q '<done marker>' ${path}; do sleep 1; done"})\n` +
-      `widening the pattern to the failure signatures too, so a crash is not silence.\n\n` +
-      `Read it once, after the wait reports. If that watch has already ended, say so and ` +
-      `re-issue: this refusal happens once.`,
+    `${liveness(watched)}, and this \`Read\` is polling it by hand. Waiting is the watch's job, ` +
+      `so a second and third read of the same file return the same bytes and a stalled ` +
+      `condition is polled forever.\n\n` +
+      `You are waiting, not discovering, so ask for a wait rather than for the file. If this is ` +
+      `the repo's verification, there is a wait built for it:\n` +
+      `  my-command-tools verify --background\n` +
+      `which returns the exact one-shot \`Bash({run_in_background: true, …})\` call to send under ` +
+      `\`wait.call\`. That call ends by itself when the gates finish and reports the verdict in ` +
+      `its completion notice, so there is no file to poll and no second watch to arm.\n\n` +
+      `For anything else, arm one bounded wait that ends on its own:\n` +
+      `  Bash({run_in_background: true, command: "until grep -qE '<done>|<failure>' ${path}; do sleep 1; done"})\n` +
+      `widening the pattern to the failure signatures too, so a crash is not silence. Then read ` +
+      `the file once, after that wait reports.`,
   );
   return true;
+}
+
+/**
+ * How a refusal names the watch it is refusing against. Only a **live** watch reaches either
+ * of these gates — `watchedPaths`/`watchedOutputs` drop one whose completion notice has already
+ * arrived — so the state is stated outright rather than left for the caller to guess at. Not
+ * saying it is what the recorded sessions did next: three duplicate-watch refusals in one run,
+ * then a fall back to reading the file by hand, because nothing said whether waiting would
+ * ever end.
+ * @param {string} watched
+ * @returns {string}
+ */
+function liveness(watched) {
+  return (
+    `A watch armed earlier in this session is following ${watched} and is **still running** — ` +
+    `no completion notice for it has arrived, so its events are still coming`
+  );
 }
 
 /**
@@ -294,13 +314,15 @@ function staleProbe(event, input, line, session, readOnly) {
   const watched = watchedPaths(line, currentUuid).find((file) => command.includes(file));
   if (watched && !alreadyDenied(session, 'watched', watched)) {
     deny(
-      `A watch armed earlier in this session is already following ${watched}. Its events arrive ` +
-        `as notifications on their own schedule — polling the same file by hand repeats work ` +
-        `that is already happening, and a stalled condition polls forever.\n\n` +
-        `Wait for the notification. If the filter is not catching what you need, arm a new ` +
-        `\`Monitor\` with a wider one — including the failure signatures, so a crash is not ` +
-        `silence — rather than checking by hand alongside it.\n\n` +
-        `If that watch has already ended, say so and re-issue: this refusal happens once.`,
+      `${liveness(watched)}. Polling the same file by hand repeats work that is already ` +
+        `happening, and a stalled condition polls forever.\n\n` +
+        `You are waiting, not discovering. For the repo's verification, ask for the wait ` +
+        `itself:\n` +
+        `  my-command-tools verify --background\n` +
+        `whose \`wait.call\` is the exact backgrounded call that ends when the gates do and ` +
+        `carries the verdict in its completion notice — one watch, no polling, no log to read.\n\n` +
+        `Otherwise let this watch's notification arrive; if its filter is not catching what you ` +
+        `need, widen that filter to the failure signatures rather than checking by hand beside it.`,
     );
     return true;
   }

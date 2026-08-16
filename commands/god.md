@@ -118,11 +118,12 @@ Merge through GitHub so branch protection is honored — never push to the merge
 
 The merge steps are where this pipeline's failed shell calls concentrate, and almost every one is a rejected merge re-issued verbatim. Read the error text and branch on it; never send the same call twice.
 
-- **Merging a PR into the default branch** is `gh pr merge <number> --<method>`, issued **once**, and **never with `--delete-branch`**. That flag runs a local branch cleanup after the merge, which fails with `fatal: '<default>' is already used by worktree at …` on any device that keeps the default branch checked out — so the merge lands and the call still exits 1, reporting a failure for work that succeeded. Delete the branch as its own step instead: `my-command-tools worktree end --branch <branch>` for the local worktree and branch, and `git push origin --delete <branch>` for the remote ref, each in its own call. Its rejections are states, not usage errors:
+- **Merging a PR into the default branch** is `gh pr merge <number> --<method>`, issued **once**, and **never with `--delete-branch`**. That flag runs a local branch cleanup after the merge, which fails with `fatal: '<default>' is already used by worktree at …` on any device that keeps the default branch checked out — so the merge lands and the call still exits 1, reporting a failure for work that succeeded. Delete the branch as its own step instead — see the cleanup bullet below. Its rejections are states, not usage errors:
   - `Merge already in progress`, or a failing `mergePullRequest` GraphQL call — GitHub accepted a merge and is still processing it. **Do not re-issue it.** Read the outcome instead: `my-command-tools prs view <number>`, whose result already carries `state`, `mergedAt`, and `mergeStateStatus`. `MERGED` is success, and the run continues at its next step. Only a PR that settles back to `OPEN` is merged again, and then once.
   - Pending required checks — a wait, not a refusal. Re-issue the identical command **with `--auto`** and record the PR as queued.
   - `not mergeable`, `BLOCKED`, or `BEHIND` — the default branch moved. Run `/my-command:mc -t <branch>`, then retry the merge once.
   - Never reach for `--admin`, `gh api -X PUT .../merge`, or a `GH_TOKEN=` re-run to get past any of these.
+- **Deleting a branch once its PR is merged** is `my-command-tools cleanup --branch <branch>`, and it replaces composing the local and remote deletions by hand. It settles both halves from the PR rather than from git's answer, which is what makes the two recurring post-merge errors unreachable rather than merely explained: a squash merge leaves no shared history, so `git branch -d` calls the branch unmerged and the verb deletes it on the PR's evidence instead; GitHub's auto-delete setting takes the remote ref at merge time, so the verb asks `git ls-remote` first and reports `already-absent` as an outcome rather than pushing a delete that exits 1. Its answer names both halves — read `local.reason` and `remote.reason` and move on. `local.reason: "not-merged"` is the one refusal that means something: no merged PR was found and the branch's commits exist nowhere else, so escalating to `git branch -D` by hand would discard them. `--keep-remote` and `--keep-local` skip a half deliberately. A worktree still holding the branch reports `checked-out` with the path; `my-command-tools worktree end --branch <branch>` removes that first.
 - **Merging the default branch into a branch** addresses a worktree by path rather than by changing directory: `git -C <path> merge --no-edit origin/main`, `git -C <path> diff --name-only --diff-filter=U`, `git -C <path> push origin HEAD`. `cd <dir> && git …` is the recorded failure, because a worktree session is rarely where that path resolves. The toolkit takes the path as a flag for the same reason: `my-command-tools verify --cwd <path>`.
 - A refusal that comes from the harness rather than from `gh` is final. Surface it and carry on with the rest of the run.
 <!-- /include-block -->
@@ -132,7 +133,7 @@ The merge steps are where this pipeline's failed shell calls concentrate, and al
 - Otherwise → `gh pr merge <number> --<method>`; record as **merged**.
   - Rejected for pending required checks → re-run the same command **with `--auto`** and record as queued.
   - Rejected as **not mergeable** (the merge target moved) → back to Step 4 once, then retry. Twice in a row means a human is needed — stop and report.
-- Then delete the merged branch, in its own call: `git push origin --delete <branch>` for the remote ref. Skip it for a **queued** PR — nothing has landed yet.
+- Then delete the merged branch, in its own call: `my-command-tools cleanup --branch <branch>`, which settles the local and remote halves together. Skip it for a **queued** PR — nothing has landed yet.
 
 ## Step 7 — Pull the merge target
 
@@ -142,7 +143,7 @@ In the **main checkout** recorded in Step 1 (not a worktree — `/my-command:tas
 
 1. `git checkout <merge target>`
 2. `git pull --ff-only origin <merge target>` — if the fast-forward fails, stop and report; the local merge target has diverged and needs a human.
-3. `git fetch --prune`, and delete the merged local branch if one is left behind (`git branch -d <branch>`; never `-D`).
+3. `git fetch --prune`. Step 6's `cleanup` already reported both halves; re-run it here only if it was skipped, and never reach for `git branch -d`/`-D` by hand — a squash merge makes `-d` refuse and the verb is what tells the two cases apart.
 
 Under `--here` this leaves you on the merge target rather than the branch you started on — that branch is merged and deleted. Say so in the report.
 
@@ -157,7 +158,7 @@ One concise summary. <!-- include: shared/text-only-turn.md -->Deliver that repo
 - Never commit or push to the merge target directly, never use `--admin`, never force-push.
 - <!-- include: shared/approval-own-call.md -->**A command that may need approval goes in its own Bash call** — `git fetch`, `git config`, and, as a narrow exception to the general rule to chain dependent mutations, branch-lifecycle operations such as checkout/switch, pull, remote-branch inspection, and local branch deletion. Folding one into an `&&` chain escalates approval to the whole compound command and costs a turn plus a retry. Put status output, pipes, and follow-up verification in separate read-only calls.<!-- /include -->
 - <!-- include: shared/classifier-refusal.md -->A classifier refusal is not evidence that repository protections should be weakened. Inspect the refused command first; when the intended operation is safe and the refusal looks incidental to the command's shape — an over-broad chain, pipe, or extra flag — retry only the smallest exact command, never an allowlisted Bash pattern or a permission-settings change.<!-- /include -->
-- <!-- include: shared/refusal-final.md -->A refusal of a **PR merge or a remote-ref deletion is final.** Surface it to the human and carry on with the rest of the work. Re-expressing the same operation is refused for the same reason and costs a second turn: `gh api -X PUT .../pulls/N/merge` is `gh pr merge`, and `gh api --method DELETE .../git/refs/heads/...` is `git push origin --delete`, so neither is a narrow retry — nor is re-running one under `GH_TOKEN=...`.<!-- /include --> Steps 6 and 7 are where this fires: `gh pr merge`, `git push origin --delete`, and `git branch -d`.
+- <!-- include: shared/refusal-final.md -->A refusal of a **PR merge or a remote-ref deletion is final.** Surface it to the human and carry on with the rest of the work. Re-expressing the same operation is refused for the same reason and costs a second turn: `gh api -X PUT .../pulls/N/merge` is `gh pr merge`, and `gh api --method DELETE .../git/refs/heads/...` is `git push origin --delete`, so neither is a narrow retry — nor is re-running one under `GH_TOKEN=...`.<!-- /include --> Step 6 is where this fires: `gh pr merge`, and the remote half of `my-command-tools cleanup`.
 
 ## Close the run in a text-only turn
 
