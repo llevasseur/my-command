@@ -52,10 +52,9 @@ done
 echo "Linked $linked command(s) into $DEST_DIR (skipped $skipped)."
 echo "They run as bare slash commands (e.g. /task). Run 'git pull' in $REPO_ROOT to update."
 
-# The subagent definitions every dispatch site names. A command that says
-# `subagent_type: "mycommand-delegate"` gets the default agent instead when the definition is
-# absent, and says nothing about it — so the definitions have to reach the device alongside the
-# commands that name them. Symlinked for the same reason the commands are: `git pull` updates them.
+# The subagent definitions every dispatch site names. A command naming one the device does not
+# have takes the default agent instead and says nothing about it, so these have to land alongside
+# the commands. Symlinked like them, so `git pull` updates them.
 AGENTS_SRC="$REPO_ROOT/agents"
 AGENTS_DEST="${CLAUDE_AGENTS_DIR:-$CLAUDE_DIR/agents}"
 if [ -d "$AGENTS_SRC" ]; then

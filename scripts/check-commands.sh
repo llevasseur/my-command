@@ -537,13 +537,10 @@ for needle in returnMarker nestedRunOpen; do
   fi
 done
 
-# 20. The subagent definitions. Every dispatch used to take the default agent because no command
-# named a type, and the role each delegate was supposed to play was restated in the dispatch
-# prompt instead — once per site, drifting per site. The definitions are now the single statement
-# of each role, which only holds while three things are true together: each definition declares
-# what it is (a model and a tool list), each dispatch site names one, and every Claude install
-# surface puts them where Claude reads them. Miss the last and a named dispatch silently falls
-# back to the default agent, reporting nothing.
+# 20. The subagent definitions are the single statement of each delegate's role, which holds only
+# while three things are true together: each definition declares a model and a tool list, each
+# dispatch site names one, and every Claude install surface puts them where Claude reads them.
+# Miss the last and a named dispatch silently falls back to the default agent, reporting nothing.
 if [ ! -d agents ]; then
   echo "::error::missing agents/ — the subagent definitions every dispatch site names by subagent_type (docs/specs/subagent-definitions.md)."
   fail=1
@@ -569,8 +566,8 @@ else
     fi
   done
 
-  # Each site that says it dispatches with the Agent tool must say which definition. This is the
-  # regression the definitions exist to close, so it is checked per command rather than in total.
+  # Each site that dispatches with the Agent tool must say which definition, checked per command
+  # rather than in total.
   for f in src/commands/task.md src/commands/review.md src/commands/docs.md \
     src/commands/truncate.md src/commands/dev.md src/commands/work.md \
     src/commands/manage.md src/commands/improve.md; do
@@ -589,9 +586,8 @@ else
     fi
   done
 
-  # Both Claude install surfaces, for the same reason invariants 10 and 13 gate the gates: a
-  # definition that never reaches the device makes a correctly named dispatch behave exactly like
-  # an unnamed one.
+  # Both Claude install surfaces: a definition that never reaches the device makes a correctly
+  # named dispatch behave exactly like an unnamed one.
   if ! grep -q 'installAgents(' src/my-command.ts; then
     echo "::error::src/my-command.ts no longer calls installAgents(); an npx install would ship commands naming definitions the device does not have."
     fail=1

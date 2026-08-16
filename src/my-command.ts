@@ -299,10 +299,8 @@ interface AgentsResult {
 // BOTH Claude modes, like the toolkit and the gates: a command that names a definition the
 // device does not have silently takes the default agent instead and reports nothing.
 //
-// COPIED rather than symlinked, for the same reason installHooks() copies — npx runs from an
-// ephemeral cache directory that is cleaned up after the wizard exits, so a link into it would
-// dangle and every definition would disappear. A file already on the device under one of our
-// names is left alone: it may be the user's own agent.
+// COPIED rather than symlinked, like installHooks() — npx runs from an ephemeral cache directory
+// cleaned up after the wizard exits, so a link into it would dangle.
 function installAgents(root = deviceRoot()): AgentsResult {
   // deviceRoot() is `<config dir>/my-command`, and Claude reads agents from `<config dir>/agents`.
   const dest = process.env.CLAUDE_AGENTS_DIR || join(dirname(root), 'agents');
@@ -564,8 +562,7 @@ function reportAgents(result: AgentsResult) {
     console.log(agents.map((a) => `  ${a}`).join('\n'));
     console.log('Commands name these at every dispatch; without them a dispatch takes the default agent.');
   } else {
-    // Deliberately not fatal: every command still runs, its dispatches simply fall back to the
-    // default agent, which is the behaviour that predates these definitions.
+    // Not fatal: every command still runs, its dispatches falling back to the default agent.
     console.log(`\nSubagent definitions not installed (${result.reason}).`);
     console.log('The commands still work — each dispatch takes the default agent instead.');
   }
