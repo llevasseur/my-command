@@ -4,7 +4,7 @@ title: manage
 description: Orchestrate one multi-part goal across existing commands — decompose it into units, assign a branch to each, delegate every unit to its own subagent in waves that cannot collide, and synthesize one report.
 tags: [command, workflow, agents]
 timestamp: 2026-08-11
-updated: 2026-08-15
+updated: 2026-08-16
 dirty: true
 ---
 
@@ -38,17 +38,17 @@ protocol, and nothing to mark afterwards.
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `--delegate <cmd>` / `-D` | `task` | Which command each unit is handed to: `task`, `god`, or `fb`. An `fb` unit runs on an **existing** branch named by the goal — see below. |
+| `--delegate <cmd>` / `-D` | `task` | Which command each unit is handed to: `task`, `god`, `fb`, `work`, or `work:god`. An `fb` unit runs on an **existing** branch named by the goal; a `work` unit is planned around an **area** and cuts no branch of its own; `work:god` puts every downstream run inside it in god command mode — see below. |
 | `--parallel <n>` / `-p` | `3` | Units in flight at once. **Hard cap 8**; a larger value is clamped and the clamp is reported. |
 | `--sequential` | off | One unit at a time regardless of independence. Overrides `--parallel`. |
 | `--dry-run` / `-n` | off | Print the routing plan and spawn nothing — no task list, no subagent, no branch. Every unit's invocation, cut point, merge target, and forwarded flags are in the print. |
 | `--mesh` | off | Opt into peer-to-peer messaging between the workers. |
-| `--add <list>` / `-a` | — | Forwarded to every `task` and `god` unit, in the same shape [god](god.md) forwards it. |
+| `--add <list>` / `-a` | — | Forwarded to every `task`, `god`, and `work` unit, in the same shape [god](god.md) forwards it. |
 | `--here` / `-h` | off | Forwarded. Also forces `--sequential` and collapses the branch plan — see below. |
 | `--base <branch>` | `defaultBranch` | The **root** base of the branch plan — the **cut point**. Reaches the units that wait on nothing; a stacked unit keeps its own base. |
-| `--into <branch>` | `defaultBranch` | The **merge target** every `god` unit's PR merges into. **Uniform across all units and never inherited down a stack** — see below. Owned here, not forwarded from `/task`, which does not document it; dropped and reported for a `task` or `fb` unit. |
-| `--draft` / `-d` | off | Forwarded to `task` units. With `--delegate god` it is a **stop** — a draft cannot merge. |
-| `--sub` / `-s` | off | Forwarded. `god` adds it anyway, so it is redundant there rather than dropped. |
+| `--into <branch>` | `defaultBranch` | The **merge target** every `god` unit's PR merges into, and — under `work:god` — forwarded to `/work`, which passes it to each `/god` it dispatches. **Uniform across all units and never inherited down a stack** — see below. Owned here, not forwarded from `/task`, which does not document it; dropped and reported for a `task`, `fb`, or plain `work` unit. |
+| `--draft` / `-d` | off | Forwarded to `task` and `work` units. With `--delegate god` **or `work:god`** it is a **stop** — a draft cannot merge. |
+| `--sub` / `-s` | off | Forwarded. `god` adds it anyway, so it is redundant there rather than dropped; a `work` unit drops it, since it spawns its own subagent per idea. |
 
 Anything not a recognized flag is the goal. Anything `/task` recognizes and this
 command does not own is forwarded rather than reinterpreted — read
@@ -69,6 +69,34 @@ which is the collision the wave batching exists to prevent. A goal that cannot
 name an existing branch for an `fb` unit is a **stop**, not a new branch. `/fb`
 documents `--target` alone, so **no forwarded flag survives an `fb` unit** — each
 one is dropped and reported as dropped in the plan.
+
+**`work` cuts no branch either — for the opposite reason: it cuts many.**
+[work](work.md) claims each accepted idea under the branch name it is about to
+cut and then dispatches its own downstream run per idea, so branch naming lives
+*inside* the unit. A `work` unit is therefore planned around **one area** rather
+than one branch, and its file scope is not knowable when the plan is printed.
+**`work:god` puts every one of those downstream runs in god command mode**
+(`/work --delegate god`) — areas × ideas merged unattended out of one
+invocation — so like `--delegate god` it must be typed and is never inherited.
+
+### The `work on` form
+
+**`/manage work on <area 1>[, <area 2>, ...]` selects the `work` delegate and
+takes the comma-separated list as the areas** — one unit per area, one
+`/work --area <area>` each, dispatched in the ordinary waves.
+`--delegate work` with a goal naming areas means the same thing; typed together
+they do not conflict.
+
+- **The area is the unit and the lane.** Each idea is filed under exactly one
+  area, so two units select disjoint idea sets. Never compose `--idea` here —
+  picking ideas is `/work`'s job.
+- **A `work` unit's file scope is undetermined at plan time**, so the batching
+  cannot prove two areas disjoint. Every idea still lands in its own `/task`
+  worktree, so the failure mode is two PRs to reconcile rather than one corrupted
+  branch — the plan says so, and `--sequential` is the escape hatch.
+- **`--parallel` bounds units in flight, not ideas per unit**, and `/work`'s own
+  `--max` does not cap an area-selected unit.
+- **An area that does not exist is `/work`'s stop**, recorded as one failed unit.
 
 ### Forwarded flags
 
