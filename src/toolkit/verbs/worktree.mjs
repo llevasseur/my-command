@@ -58,8 +58,9 @@ function listWorktrees(cwd) {
  * holding it can be removed without losing anything.
  *
  * `null` means "cannot be judged" rather than "no": a detached worktree has no branch
- * whose merge could be read, and with no local `origin/<default>` there is nothing to
- * compare against. `false` there would read as live work and hide a reclaimable worktree.
+ * whose merge could be read, with no local `origin/<default>` there is nothing to compare
+ * against, and a ref git cannot resolve answers neither way. `false` there would read as
+ * live work and hide a reclaimable worktree.
  * @param {string} cwd
  * @param {string|null} branch
  * @param {string} fallback  The default branch, which is never its own reclaim candidate.
@@ -71,7 +72,11 @@ function isReclaimable(cwd, branch, fallback, against) {
   // refuses to target the default branch.
   if (branch === fallback) return false;
   if (against === null || branch === null) return null;
-  return exec('git', ['merge-base', '--is-ancestor', `refs/heads/${branch}`, against], { cwd }).ok;
+  const r = exec('git', ['merge-base', '--is-ancestor', `refs/heads/${branch}`, against], { cwd });
+  // git exits 1 for "not an ancestor" but 128 when it cannot resolve the ref at all, so only
+  // 1 is a real negative — anything else is another way of failing to judge.
+  if (r.code === 0) return true;
+  return r.code === 1 ? false : null;
 }
 
 /**

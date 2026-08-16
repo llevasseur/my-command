@@ -360,6 +360,18 @@ test('worktree list cannot judge a detached worktree', () => {
   assert.equal(r.worktrees.find((w) => w.branch === null)?.reclaimable, null);
 });
 
+test('worktree list cannot judge a branch ref git can no longer resolve', () => {
+  const { dir, git } = repoWithOrigin();
+  git(['branch', 'feat/gone']);
+  worktree(ctx(dir, ['begin'], { branch: 'feat/gone', existing: true }));
+  // The worktree outlives its ref: git still lists the branch, but merge-base exits 128
+  // instead of answering, and 128 is not a "no".
+  git(['update-ref', '-d', 'refs/heads/feat/gone']);
+
+  const r = listed(worktree(ctx(dir, ['list'])));
+  assert.equal(r.worktrees.find((w) => w.branch === 'feat/gone')?.reclaimable, null);
+});
+
 test('worktree list says it could not compare rather than claiming nothing is reclaimable', () => {
   const { dir, git } = repo();
   git(['branch', 'feat/x']);

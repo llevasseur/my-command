@@ -89,8 +89,10 @@ fresh branch from abandoning existing commits.
 answered that question, and the manual alternative is a `git merge-base --is-ancestor`
 per worktree. The comparison ref is reported once as `comparedWith`, and `reclaimable`
 is `null` rather than `false` wherever it could not be judged — a detached worktree,
-which has no branch whose merge could be read, and every entry when `origin/<default>`
-is absent locally. That distinction is the point of the tri-state: `false` everywhere
+which has no branch whose merge could be read, a branch ref git can no longer resolve,
+and every entry when `origin/<default>` is absent locally. Only git's exit 1 counts as a
+real "not merged"; any other exit is a failure to judge. That distinction is the point
+of the tri-state: `false` everywhere
 would read as "all live work" when the truth is "fetch first". The default branch is
 always `false`, never `true`, even though it is trivially its own ancestor — reporting
 it reclaimable would contradict the guard that refuses to target it.
@@ -243,7 +245,8 @@ with `allowJs` + `checkJs` + `noEmit`, run as `pnpm run check:toolkit`.
 - [ ] `worktree list` marks a branch already merged into `origin/<default>` as
       `reclaimable: true`, live work as `false`, and the default branch as `false`;
       with no `origin/<default>` on disk it reports `comparedWith: null` and
-      `reclaimable: null` rather than claiming nothing is reclaimable.
+      `reclaimable: null` rather than claiming nothing is reclaimable, and a branch
+      ref git cannot resolve reads `null` rather than `false`.
 - [ ] `pnpm run check:toolkit` and `pnpm test` pass in CI.
 - [ ] A fresh `npx` install lands a runnable shim on the device root **and** leaves a
       bare `my-command-tools` call working in a new shell.
