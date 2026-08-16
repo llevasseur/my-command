@@ -29,7 +29,7 @@ noise, what a PR description should say, or whether a failure is worth fixing.
 | `commit` | stage an explicit path list and commit, with guards |
 | `pr` | push, then create or update the branch's PR |
 | `prs view\|list\|checks` | read-only pull-request lookups; never writes |
-| `worktree begin\|end\|reap\|list` | the isolated-workspace lifecycle |
+| `worktree begin\|end\|reap\|list` | the isolated-workspace lifecycle, and which worktrees have outlived their branch |
 | `identity` | which GitHub account this checkout's remote wants, and `--select` to switch to it |
 | `stash write\|restore\|list` | `/cp`'s five-deep clipboard ring under `~/.claude`, and the clipboard sink |
 | `doctor` | where the toolkit resolved from, what's on PATH, and which clone it tracks |
@@ -82,6 +82,26 @@ branch diff to judge comments; pre-filtering would remove that context.
 checks one out (`/fb --target`, `/review`, `/revive`, `/merge-deps`). It refuses
 an existing branch without that flag and refuses `--base` with it, preventing a
 fresh branch from abandoning existing commits.
+
+`worktree list` reports each worktree as `root`, `path`, `branch`, `head`, and
+`reclaimable` — the last being `true` when that branch is already an ancestor of
+`origin/<default-branch>`, so removing the worktree loses nothing. Nothing previously
+answered that question, and the manual alternative is a `git merge-base --is-ancestor`
+per worktree. The comparison ref is reported once as `comparedWith`, and `reclaimable`
+is `null` rather than `false` wherever it could not be judged — a detached worktree,
+which has no branch whose merge could be read, and every entry when `origin/<default>`
+is absent locally. That distinction is the point of the tri-state: `false` everywhere
+would read as "all live work" when the truth is "fetch first". The default branch is
+always `false`, never `true`, even though it is trivially its own ancestor — reporting
+it reclaimable would contradict the guard that refuses to target it.
+
+The verb stays **offline**: it reads the remote-tracking ref already on disk rather than
+fetching, so `list` remains a cheap local lookup and its answer is as fresh as the last
+fetch (`begin` fetches). There is deliberately **no size field**. `du` overstates a
+worktree severalfold on APFS because pnpm clones package files from its store rather
+than copying them — a measured install producing a 197 MB tree cost 0 MB of real disk —
+so apparent size measures the store, not what removing the worktree would return. The
+reclaim signal is the merged branch.
 
 ## Guards
 
@@ -220,6 +240,10 @@ with `allowJs` + `checkJs` + `noEmit`, run as `pnpm run check:toolkit`.
 - [ ] `worktree begin --existing` checks a branch out at its own tip; without the flag an
       existing branch is refused.
 - [ ] `worktree end` refuses a worktree with unpushed commits absent `--force`.
+- [ ] `worktree list` marks a branch already merged into `origin/<default>` as
+      `reclaimable: true`, live work as `false`, and the default branch as `false`;
+      with no `origin/<default>` on disk it reports `comparedWith: null` and
+      `reclaimable: null` rather than claiming nothing is reclaimable.
 - [ ] `pnpm run check:toolkit` and `pnpm test` pass in CI.
 - [ ] A fresh `npx` install lands a runnable shim on the device root **and** leaves a
       bare `my-command-tools` call working in a new shell.
