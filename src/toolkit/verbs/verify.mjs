@@ -81,8 +81,7 @@ const DEFAULT_WAIT_SECONDS = 570;
 const POLL_MS = 400;
 
 /**
- * Block this process for `ms`. A tool may sleep; an agent may not, which is the whole reason
- * this verb exists — the wait happens once, here, instead of as a loop of agent turns.
+ * Block this process for `ms`. A tool may sleep; an agent may not.
  * @param {number} ms
  */
 function pause(ms) {
@@ -131,12 +130,10 @@ function verdictPath(given) {
 /**
  * Block until a detached verify run finishes, then return its whole report.
  *
- * This is the primitive the wait never had. Refusing the poll was rung 3 and it held; what it
- * left behind was an agent with nothing to do but poll again, so recorded sessions read the
- * same report fifteen and twenty times, stated four separate times that they would stop, and
- * two of them died inside the loop. The report is written atomically at exit — the detached
- * wrapper writes the JSON *before* the verdict — so every one of those reads was guaranteed to
- * return nothing new. There was never anything to see; there was only something to wait for.
+ * Refusing the poll left an agent with nothing to do but poll again: recorded sessions read the
+ * same report fifteen and twenty times, and two died inside the loop. The report is written
+ * atomically at exit — the detached wrapper writes the JSON *before* the verdict — so every one
+ * of those reads was guaranteed to return nothing new.
  * @param {string | undefined} given @param {number} timeoutMs
  * @returns {Record<string, unknown>}
  */
@@ -151,7 +148,7 @@ function waitFor(given, timeoutMs) {
     try {
       ready = statSync(verdict).size > 0;
     } catch {
-      // Not written yet, which is the normal case for most of this loop.
+      // Not written yet.
     }
     if (ready) break;
     pause(POLL_MS);
