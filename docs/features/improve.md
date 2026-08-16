@@ -115,7 +115,7 @@ LOG_DIR="<logDir>" pnpm --filter server suggestions buckets --dirty -r 2-9 --jso
 Nothing dirty means every bucket already has verdicts and this phase is done.
 Otherwise `/judge -r <the dirty buckets>` does the transcript reading, the
 verdicts and the recording; `/improve` reads no transcripts of its own, then
-re-reads the suggestions so they carry their verdicts. Two limits govern it:
+re-reads the suggestions so they carry their verdicts. Two rules govern it:
 
 - **A failed judge run stops the command.** An errored call, a bucket recording
   fewer verdicts than it had fired suggestions, or a `/judge` run that could not
@@ -124,12 +124,15 @@ re-reads the suggestions so they carry their verdicts. Two limits govern it:
   checked these findings against reality, and a silent fallback makes a failed
   judge run indistinguishable from a clean bill of health, producing a PR that
   looks exactly like a well-evidenced one and is not.
-- **The judging is capped at 5 buckets.** More than five dirty buckets in the
-  range stops the run with the bucket count and rough read cost, and the two ways
-  forward: narrow `--range`, or draw a line under the history with
-  `suggestions judge --amnesty`. The default range is *every* bucket and the
-  unjudged backlog runs to dozens, so at roughly 55 KB per bucket an uncapped
-  first run reads megabytes of transcript before composing a single criterion.
+- **There is no bucket cap.** Whatever range you give is the range that gets
+  judged; the run never narrows it or drops buckets to save reading. It reports
+  the dirty bucket count and rough read cost up front — roughly 55 KB of
+  transcripts per bucket, about 180 KB worst case — then judges at most five
+  buckets per `/judge` call, sequentially, until the range is done. That chunking
+  paces the reading and keeps a failure pointed at a small set; it does not stop
+  the run. `suggestions judge --amnesty` still draws a line under the history
+  without reading it, but that is yours to ask for — `/improve` never runs it to
+  shorten a run.
 
 **Confirmed suggestions only.** A dismissed row is excluded entirely — not a
 weaker criterion, not a note on another one; a dismissal says the finding was never

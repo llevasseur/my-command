@@ -112,7 +112,7 @@ LOG_DIR="<logDir>" pnpm --filter server suggestions buckets --dirty -r 2-9 --jso
 ```
 
 - **If nothing in the range is dirty, this step is already done.** Every bucket has verdicts; go straight to Step 4. That is the ordinary case once the history is caught up.
-- Otherwise run `/my-command:judge -r <the dirty buckets>` and let it do the reading, the verdicts, and the recording. Do not read transcripts or compose verdicts here — `/my-command:judge` owns that pipeline, and duplicating it produces two sets of verdicts for one bucket.
+- Otherwise run `/my-command:judge -r <the dirty buckets>` — chunked as below when there are many — and let it do the reading, the verdicts, and the recording. Do not read transcripts or compose verdicts here — `/my-command:judge` owns that pipeline, and duplicating it produces two sets of verdicts for one bucket.
 - Re-read the suggestions after judging, so Step 4 composes from rows that carry their verdicts and notes rather than from the pre-judgement read in Step 2.
 
 ### A failed judge run stops the command
@@ -121,17 +121,15 @@ LOG_DIR="<logDir>" pnpm --filter server suggestions buckets --dirty -r 2-9 --jso
 
 **Never fall back to composing criteria from unjudged rule output.** That fallback is the one failure mode this whole step exists to prevent: the dirty flag is the record that nobody has checked these findings against reality, and a silent fallback makes a failed judge run indistinguishable from a clean bill of health. A run that proceeds anyway produces a PR that looks exactly like a well-evidenced one and is not.
 
-### Cap the judging at five buckets
+### Judge the whole range, however large
 
-**If more than 5 buckets in the range are dirty, stop.** Tell me to narrow `--range`, or to draw a line under the history with an explicit backfill:
+**There is no bucket cap.** The range I gave is the range this run judges — never stop, narrow it yourself, or drop buckets to save reading. Backlog size is a cost to report, not a reason to refuse.
 
-```sh
-LOG_DIR="<logDir>" pnpm --filter server suggestions judge --amnesty
-```
+- **State the dirty bucket count and rough read cost before starting** — roughly 55 KB of transcripts per bucket, about 180 KB worst case — so a long run is a known one.
+- **Dispatch at most 5 buckets per `/my-command:judge` call, sequentially, until every dirty bucket is judged.** Chunking is pacing, not a limit: it bounds one run's reading and makes a failure name a small set, and the run carries on to the next chunk. Re-read the suggestions once, after the last chunk.
+- **Amnesty is mine to ask for, never yours to run.** `LOG_DIR="<logDir>" pnpm --filter server suggestions judge --amnesty` records verdicts for transcripts nobody read; name it as an option only if I ask to skip the backlog.
 
-`/my-command:improve`'s default range is **every bucket**, and the unjudged backlog runs to dozens of buckets — at roughly 55 KB of transcripts per bucket typically and about 180 KB worst case, an uncapped first run sits there reading megabytes of transcript before it composes a single criterion. Name the dirty bucket count and the rough read cost when you stop, so the choice between narrowing and amnesty is an informed one.
-
-**`--dry-run` / `-n` does not skip this step.** Judging is not marking — it records verdicts about transcripts, not claims that a fix shipped — and the criteria a dry run reports are only worth reporting if they came from confirmed findings. A dry run that skipped judging would report exactly the unjudged criteria this step exists to refuse. The cap and the failure stop apply to a dry run unchanged.
+**`--dry-run` / `-n` does not skip this step.** Judging is not marking — it records verdicts about transcripts, not claims that a fix shipped — and the criteria a dry run reports are only worth reporting if they came from confirmed findings. A dry run that skipped judging would report exactly the unjudged criteria this step exists to refuse. The failure stop applies to a dry run unchanged.
 
 ## Step 4 — Compose the task criteria
 
