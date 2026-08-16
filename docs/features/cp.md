@@ -30,10 +30,29 @@ line of context.
 Rewrites the prompt so it stands alone for an agent with no view of this
 conversation (pronouns resolved; files, branches, and PR numbers named; stated
 constraints kept; the user's flags preserved as typed), then writes
-`/<command> <prompt>` to `~/.claude/cp-compose.txt` **with the `Write` tool** and
-hands that path to `my-command-tools stash write --content-file <path>`, which
-rotates the ring, installs the line as the newest entry, and feeds the clipboard
-from it — so the stash and the clipboard carry identical bytes.
+`/<command> <prompt>` to `~/.claude/cp-compose-<unique>.txt` **with the `Write`
+tool** and hands that path to
+`my-command-tools stash write --content-file <path> --consume`, which rotates the
+ring, installs the line as the newest entry, and feeds the clipboard from it — so
+the stash and the clipboard carry identical bytes.
+
+### Why the compose path is unique per invocation
+
+`Write` refuses to overwrite a file the current session has not read. A single
+fixed compose path is therefore rejected on the first write of every session
+after the first — the previous run's file is still sitting there — and the only
+way past the rejection is to `Read` roughly two kilobytes of a completely
+unrelated composed prompt into context, then retry the identical write. That is
+one guaranteed failed tool call plus a stale read on every invocation of the one
+command whose stated purpose is to spend as few tokens as possible.
+
+Minting the filename per invocation — the UTC date and time to the second plus a
+few random characters — means the path cannot already exist, so the
+read-before-overwrite precondition never applies and no stale bytes are ever
+read. `--consume` then deletes the file once its bytes are in the ring, which is
+what keeps one compose file per run from accumulating under `~/.claude`. The
+entry still travels as a **path** rather than a shell-composed string, and the
+five-deep rotation still lives inside the verb; only the filename changed.
 
 **The entry travels as a file path, never as a shell-composed string.**
 `cat > … <<'EOF'` composes a file in the shell, which is refused outright inside

@@ -37,16 +37,18 @@ Put a ready-to-paste invocation of another command on the clipboard. **Never run
 3. **Copy.** Two calls, in this order — the stash and the clipboard end up carrying identical bytes, so a later copy from anywhere else can be undone with step 1. First write the composed line with the `Write` tool, spelling the home directory out — the tool does not expand `~`:
 
    ```
-   Write({file_path: "/Users/<you>/.claude/cp-compose.txt", content: "/<command> <composed prompt>\n"})
+   Write({file_path: "/Users/<you>/.claude/cp-compose-<unique>.txt", content: "/<command> <composed prompt>\n"})
    ```
 
-   Then hand that path to the stash, which rotates the ring, installs the line as the newest entry, and feeds the clipboard from it:
+   Then hand that same path to the stash, which rotates the ring, installs the line as the newest entry, and feeds the clipboard from it:
 
    ```bash
-   my-command-tools stash write --content-file /Users/<you>/.claude/cp-compose.txt --consume
+   my-command-tools stash write --content-file /Users/<you>/.claude/cp-compose-<unique>.txt --consume
    ```
 
-   **`--consume` is not optional, and it is why the path above can be a fixed one.** The compose file is a hand-off, not a document: once the verb has copied its bytes into the ring it deletes it. Without that, the file survives to the *next* `/cp`, whose `Write` then lands on a path that session never read — which `Write` rejects outright, and a recorded run hit that same rejection on that same file every single time it ran. Deleting it removes the pre-existing file rather than asking every future run to remember to read it first.
+   **`<unique>` is a token you mint for this invocation and never reuse** — the UTC date and time to the second plus a few random characters, so `cp-compose-20260816-142455-9f2c.txt`. It costs nothing to produce and it is what makes the `Write` succeed on the first try. `Write` refuses to overwrite a file this session has not read, so a *fixed* compose path fails on every run that follows any earlier run: the file is still there from last time, the write is rejected, and the only way forward is to `Read` a couple of kilobytes of a completely unrelated prompt just to earn permission to overwrite it — one guaranteed failed call plus a stale read, in the command whose whole point is to spend as few tokens as possible. A path that cannot already exist never meets that precondition at all.
+
+   **`--consume` is not optional.** The compose file is a hand-off, not a document: once the verb has copied its bytes into the ring it deletes it. A unique name is what makes the write succeed; deleting it is what keeps one file per `/cp` from piling up under `~/.claude` forever.
 
    **The entry travels as a file path, never as a shell-composed string.** `cat > … <<'EOF'` composes a file in the shell, and that shape is refused outright inside an isolated worktree — which is where `/cp` is often invoked from — while an argument would need every quote, backslash, and newline in the prompt escaped correctly. `Write` takes the content literally and the verb copies the bytes, so nothing expands or escapes either way.
 

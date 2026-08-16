@@ -29,20 +29,28 @@ possible.
    numbers, keep every stated constraint, and add no scope. Keep the user's flags
    as typed. With `--verbatim` / `-v`, copy the prompt unchanged.
 3. **Copy.** Two calls. Write `$<skill> <composed prompt>` to
-   `~/.claude/cp-compose.txt` with the file-writing tool, spelling the home
-   directory out, then hand that path to the stash — it rotates the ring, installs
-   the line as the newest entry, and feeds the clipboard from it, so the stash and
-   the clipboard carry identical bytes and a later copy can be undone with step 1:
+   `~/.claude/cp-compose-<unique>.txt` with the file-writing tool, spelling the home
+   directory out, then hand that same path to the stash — it rotates the ring,
+   installs the line as the newest entry, and feeds the clipboard from it, so the
+   stash and the clipboard carry identical bytes and a later copy can be undone
+   with step 1:
 
    ```bash
-   my-command-tools stash write --content-file /Users/<you>/.claude/cp-compose.txt --consume
+   my-command-tools stash write --content-file /Users/<you>/.claude/cp-compose-<unique>.txt --consume
    ```
 
-   **`--consume` is not optional, and it is why that path can be a fixed one.** The
-   compose file is a hand-off, not a document: once its bytes are in the ring the
-   verb deletes it. Left behind, it survives to the next run of this skill, whose
-   write then lands on a path that session never read — which the file-writing tool
-   rejects, and a recorded run hit that same rejection on that same file every time.
+   **`<unique>` is minted for this invocation and never reused** — the UTC date and
+   time to the second plus a few random characters, so
+   `cp-compose-20260816-142455-9f2c.txt`. A file-writing tool that refuses to
+   overwrite what the session has not read turns a *fixed* compose path into a
+   guaranteed failed call on every run after the first, followed by a read of the
+   previous — unrelated — prompt just to earn the overwrite. A path that cannot
+   already exist never meets that precondition.
+
+   **`--consume` is not optional.** The compose file is a hand-off, not a document:
+   once its bytes are in the ring the verb deletes it. The unique name is what makes
+   the write succeed; deleting it keeps one file per run from piling up under
+   `~/.claude`.
 
    **The entry travels as a file path, never as a shell-composed string.**
    Composing a file in the shell is refused inside an isolated worktree, which is

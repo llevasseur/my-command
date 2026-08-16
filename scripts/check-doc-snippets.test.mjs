@@ -69,7 +69,10 @@ test('a foreground sleep is refused', () => {
 test('the replacement /cp now prescribes is not refused', () => {
   // The prose and the invariant have to agree, or a run is told two different things by two
   // surfaces of one rule. Asserted by running the checker over the prescribed form itself.
-  assert.equal(flagged('my-command-tools stash write --content-file /Users/you/.claude/cp-compose.txt'), false);
+  assert.equal(
+    flagged('my-command-tools stash write --content-file /Users/you/.claude/cp-compose-20260816-142455-9f2c.txt'),
+    false,
+  );
   assert.equal(flagged('my-command-tools stash restore'), false);
   assert.equal(flagged('my-command-tools stash restore 2'), false);
 });
