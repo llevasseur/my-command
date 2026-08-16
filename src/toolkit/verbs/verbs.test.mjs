@@ -325,7 +325,7 @@ const listed = (r) => /** @type {never} */ (r);
 
 test('worktree list marks a merged branch reclaimable and leaves live work alone', () => {
   const { dir, git } = repoWithOrigin();
-  // Never moved off main's tip, so it is already an ancestor of origin/main — merged.
+  // Never moved off main's tip, so already an ancestor of origin/main.
   git(['branch', 'feat/merged']);
   // Carries a commit origin/main has never seen.
   git(['checkout', '-qb', 'feat/live']);
@@ -346,8 +346,7 @@ test('worktree list marks a merged branch reclaimable and leaves live work alone
 
 test('worktree list never marks the default branch reclaimable', () => {
   const { dir } = repoWithOrigin();
-  // `main` sits exactly on origin/main, so it is trivially its own ancestor. Reporting it
-  // reclaimable would contradict the guard that refuses to target the default branch.
+  // `main` sits exactly on origin/main, so it is trivially its own ancestor.
   const r = listed(worktree(ctx(dir, ['list'])));
   assert.equal(r.worktrees.find((w) => w.branch === 'main')?.reclaimable, false);
 });
@@ -367,8 +366,7 @@ test('worktree list says it could not compare rather than claiming nothing is re
   worktree(ctx(dir, ['begin'], { branch: 'feat/x', existing: true }));
 
   const r = listed(worktree(ctx(dir, ['list'])));
-  // With no origin/main on disk the honest answer is "unknown — fetch first". Reporting
-  // `false` everywhere would hide a merged branch behind a missing remote-tracking ref.
+  // With no origin/main on disk the answer is "unknown — fetch first", not `false`.
   assert.equal(r.comparedWith, null);
   assert.equal(r.worktrees.find((w) => w.branch === 'feat/x')?.reclaimable, null);
   // The default branch still needs no ref to judge.

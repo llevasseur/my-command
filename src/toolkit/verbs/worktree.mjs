@@ -5,7 +5,7 @@
 // path to enter; `end` verifies the work is on origin before removing the local copy.
 // `end` also stops the processes still running out of the worktree; `reap` is that
 // step alone, for the teardowns ExitWorktree owns. `list` reports which of them have
-// outlived their branch, so reclaiming one stops being a per-worktree manual check.
+// outlived their branch.
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { bool, str } from '../lib/flags.mjs';
@@ -59,8 +59,7 @@ function listWorktrees(cwd) {
  *
  * `null` means "cannot be judged" rather than "no": a detached worktree has no branch
  * whose merge could be read, and with no local `origin/<default>` there is nothing to
- * compare against. Both would otherwise report `false` and read as live work, which is
- * the one wrong answer here — it hides a reclaimable worktree behind a missing fetch.
+ * compare against. `false` there would read as live work and hide a reclaimable worktree.
  * @param {string} cwd
  * @param {string|null} branch
  * @param {string} fallback  The default branch, which is never its own reclaim candidate.
@@ -68,9 +67,8 @@ function listWorktrees(cwd) {
  * @returns {boolean|null}
  */
 function isReclaimable(cwd, branch, fallback, against) {
-  // Checked before `against`, because it is the one answer that does not need the ref:
-  // the default branch is trivially its own ancestor, and `requireBranch` already refuses
-  // to target it, so reporting it reclaimable would contradict the verb's own guard.
+  // Checked before `against`: the one answer needing no ref, and `requireBranch` already
+  // refuses to target the default branch.
   if (branch === fallback) return false;
   if (against === null || branch === null) return null;
   return exec('git', ['merge-base', '--is-ancestor', `refs/heads/${branch}`, against], { cwd }).ok;
@@ -79,15 +77,12 @@ function isReclaimable(cwd, branch, fallback, against) {
 /**
  * Every registered worktree, each marked with whether its branch has already merged.
  *
- * Deliberately offline: the comparison reads the remote-tracking ref that is already on
- * disk rather than fetching, so `list` stays a cheap local lookup. The answer is therefore
- * only as fresh as the last fetch — `begin` fetches, so a worktree created through this
- * verb has already refreshed it.
+ * Deliberately offline: the comparison reads the remote-tracking ref already on disk rather
+ * than fetching, so the answer is only as fresh as the last fetch (`begin` fetches).
  *
- * There is no size field on purpose. `du` overstates a worktree severalfold on APFS,
- * because pnpm clones package files from its store rather than copying them, so apparent
- * size measures the store rather than what removing the worktree would return. The reclaim
- * signal is the merged branch.
+ * No size field on purpose: `du` overstates a worktree severalfold on APFS, since pnpm
+ * clones package files from its store rather than copying them, so apparent size measures
+ * the store rather than what removing the worktree would return.
  * @param {string} cwd
  */
 function list(cwd) {
@@ -97,7 +92,6 @@ function list(cwd) {
   const against = present ? ref : null;
   return {
     root: cwd,
-    // Named so a caller can tell "nothing is reclaimable" from "nothing could be judged":
     // null here with null throughout means fetch first, not that every branch is live.
     comparedWith: against,
     worktrees: listWorktrees(cwd).map((w) => ({ ...w, reclaimable: isReclaimable(cwd, w.branch, fallback, against) })),
