@@ -36,11 +36,10 @@ Own the /cp stash ring: five plain-text entries under ~/.claude, and the clipboa
   stash list
       Every slot, whether it exists, its size, and when it was written.
 
-  --consume        Delete the content file once its bytes are in the ring. Pass it whenever
-                   the caller writes to one fixed path every run: the file is a hand-off, not
-                   a document, and a leftover copy is what makes the *next* run's \`Write\` land
-                   on a file that session never read — which the tool rejects. Deleting it
-                   removes the pre-existing file instead of asking every run to remember.
+  --consume        Delete the content file once its bytes are in the ring. The file is a
+                   hand-off, not a document, so a caller that mints a fresh path per run —
+                   which /cp does, because \`Write\` refuses to overwrite what the session has
+                   not read — would otherwise leave one behind on every invocation.
 
   --no-clipboard   Do the file half only. The stash is written on every platform; only the
                    clipboard sink is platform-detected.
@@ -175,11 +174,8 @@ function write(dir, contentFile, clipboard, consume) {
   const { rotated, dropped } = rotate(dir);
   const path = slotPath(dir, 0);
   copyFileSync(contentFile, path);
-  // The bytes are in the ring now, so the hand-off file has no further job — and leaving it
-  // behind is what made the next run fail. `/cp` composes into one fixed path every time, so
-  // the second run's `Write` lands on a file this session never read, which `Write` rejects.
-  // Deleting it here removes the pre-existing file rather than asking every future run to
-  // remember to read it first.
+  // The bytes are in the ring now, so the hand-off file has no further job. `/cp` mints a fresh
+  // compose path per invocation, and a unique name per run accumulates unless something removes it.
   if (consume) rmSync(contentFile, { force: true });
 
   return {
