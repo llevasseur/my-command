@@ -150,9 +150,8 @@ test('pr refuses --body together with --body-file', () => {
 });
 
 test('the usage strings do not prescribe the stdin form the gate refuses', () => {
-  // Three recorded sessions lost a turn to this: the gate refused `--body -`, and the verb's
-  // own usage text — the prose the agent reads to find the flag — offered it as a route. Where
-  // the stdin form is mentioned at all it has to say it is refused, in the same breath.
+  // The usage text is the prose an agent reads to find the flag, so where it mentions the
+  // stdin form at all it has to say the gate refuses it, in the same breath.
   for (const [usage, flag] of [
     [prUsage, '--body -'],
     [commitUsage, '--message -'],

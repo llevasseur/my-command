@@ -118,14 +118,9 @@ guard(() => {
  * is already following, when the file has not changed since that earlier read. A watch delivers
  * its events itself, so the second and third read of the same unchanged bytes are the polling.
  *
- * The *first* read is deliberately allowed, and that is the whole correction here. Refusing it
- * outright is what the recorded sessions paid for: one run took three of these refusals, and
- * each time had to reason about whether the watch it named had already ended before it dared
- * reissue the read — a question the transcript could answer and the agent could not. Letting the
- * read through makes that question unnecessary, because the read itself is now the cheap way to
- * ask: it returns the log's current bytes, and only asking a second time for those same bytes is
- * refused. Nothing about the polling this gate exists to stop survives the change — the recorded
- * harm was a report read twenty times, and reads two through twenty are still refused.
+ * The *first* read is deliberately allowed, which makes the read itself the cheap way to ask
+ * whether the watch is still live — it returns the log's current bytes, and only asking a second
+ * time for those same bytes is refused. Reads two through twenty, the recorded harm, still are.
  *
  * Only the watch's own output target counts — the file it redirects to, `tee`s to, or tails —
  * compared as a whole resolved path. A read of the script a watch runs, or of the config it was
@@ -179,16 +174,11 @@ function readPolling(input, line, session, cwd) {
 }
 
 /**
- * Refuse post-merge branch cleanup composed as raw git. `my-command-tools cleanup` already
- * settles both halves from the PR rather than from git's error, and the docs already say so —
- * yet the pair recurred, hit in sequence in one recorded session: the remote delete exited 1 on
- * an auto-deleted ref, and the local delete then refused the squash-merged branch as "not fully
- * merged". Prose was the lever that did not hold, so the shape is named here instead.
- *
- * The verb is the whole replacement: it asks `git ls-remote` before pushing a delete and reports
- * `already-absent` as an outcome, and it deletes a squash-merged branch on the PR's evidence.
- * The one refusal it keeps is the one that means something — a branch with no merged PR, whose
- * commits exist nowhere else — so this redirects rather than weakens.
+ * Refuse post-merge branch cleanup composed as raw git. `my-command-tools cleanup` settles both
+ * halves from the PR rather than from git's error — it asks `git ls-remote` before pushing a
+ * delete and reports `already-absent` as an outcome, and it deletes a squash-merged branch on
+ * the PR's evidence. The one refusal it keeps is the one that means something: a branch with no
+ * merged PR, whose commits exist nowhere else. So this redirects rather than weakens.
  * @param {Record<string, any>} input @param {string} session
  * @returns {boolean} true when the call was denied
  */

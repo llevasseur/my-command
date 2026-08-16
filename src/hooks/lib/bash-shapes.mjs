@@ -198,17 +198,13 @@ export function stdinProseFlag(command) {
 
 /**
  * The hand-rolled half of post-merge branch cleanup in this command, or null. Both halves fail
- * for a reason that is settled before they run rather than discovered from their error:
- *
- *   git push <remote> --delete <b>  → "remote ref does not exist", because GitHub's
- *                                     auto-delete-branch setting took the ref at merge time.
- *   git branch -d <b>               → "the branch is not fully merged", because a squash merge
- *                                     shares no history with the branch's own commits.
- *
+ * for a reason settled before they run rather than discovered from their error: `git push
+ * <remote> --delete` hits a ref GitHub's auto-delete setting already took, and `git branch -d`
+ * calls a squash-merged branch unmerged because it shares no history with the branch's commits.
  * `my-command-tools cleanup` answers each half from the PR instead, so this reports the shape
  * and the caller names that verb. Only the *safe* local delete counts: `git branch -D` is a
- * deliberate discard of work that never landed — `/mc` prescribes it to force a branch to be
- * recreated from origin — and refusing it would put this gate at odds with the docs.
+ * deliberate discard, which `/merge-deps` prescribes to force a branch to be recreated from
+ * origin, and refusing it would put this gate at odds with the docs.
  * @param {string} command
  * @returns {{half: 'remote' | 'local', branch: string, remote: string} | null}
  */

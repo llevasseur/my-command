@@ -1241,9 +1241,7 @@ test('watched condition: a Read that re-polls a watched file is refused, an unre
 });
 
 test('watched condition: the first Read of a watched log passes, and so does one after it changed', () => {
-  // The recorded cost of refusing it: one session took three of these refusals and had to
-  // reason each time about whether the watch had already ended before reissuing the read.
-  // Letting the read through makes the read itself the answer.
+  // Nothing has read the log yet, so this is the look rather than the poll.
   const dir = scratch();
   const log = join(dir, 'verify.log');
   writeFileSync(log, 'running\n');
@@ -1260,8 +1258,7 @@ test('watched condition: the first Read of a watched log passes, and so does one
   });
   assert.equal(denied(first), false);
 
-  // Read once already, but the watch has written to it since — so this read returns bytes
-  // the session does not have, and refusing it would cost the very report it was waiting for.
+  // Read once already, but written to since — so this read returns bytes the session lacks.
   const after = transcript([
     'prompt',
     [read('Bash', { command: `pnpm verify > ${log} 2>&1`, run_in_background: true })],
@@ -1383,9 +1380,8 @@ test('cleanup: both halves of hand-rolled post-merge deletion are refused, namin
   assert.equal(handRolledCleanup('git branch -d feat/x')?.branch, 'feat/x');
   assert.equal(handRolledCleanup('git branch --delete feat/x')?.half, 'local');
 
-  // The force delete is the deliberate discard of work that never landed, which `/mc`
-  // prescribes to make a branch be recreated from origin. Refusing it would put this gate
-  // at odds with the docs.
+  // The force delete is the deliberate discard, which `/merge-deps` prescribes to make a
+  // branch be recreated from origin — refusing it would put this gate at odds with the docs.
   assert.equal(handRolledCleanup('git branch -D feat/x'), null);
   assert.equal(handRolledCleanup('git branch --delete --force feat/x'), null);
   // An ordinary push, a listing, and a delete whose branch the shell computes are all left be.
