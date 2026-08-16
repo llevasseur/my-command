@@ -1240,3 +1240,79 @@ test('verify --background hands back one ready-to-send wait and a verdict', asyn
   assert.match(readFileSync(started.verdict, 'utf8'), /^PASS /);
   assert.equal(JSON.parse(readFileSync(started.result, 'utf8')).pass, true);
 });
+
+// ── verify --wait: the call that *is* the wait ────────────────────────────────────────
+//
+// `--background` alone hands back a *notified* wait — three calls and a watch to arm — and a
+// run with nothing else to do read the report instead: twenty times in one recorded session,
+// fifteen in another, two sessions ending inside the loop. One blocking call ends that.
+
+/** @param {unknown} r @returns {any} */
+const anyResult = (r) => /** @type {never} */ (r);
+
+test('verify --background offers the blocking wait as a ready-to-send call', () => {
+  const { dir } = repo();
+  writeFileSync(
+    join(dir, 'package.json'),
+    JSON.stringify({ name: 'bg2', scripts: { test: 'node -e "process.exit(0)"' } }, null, 2),
+  );
+  const started = anyResult(verify(ctx(dir, [], { background: true, only: 'test' })));
+
+  assert.match(started.wait.blocking, /my-command-tools verify --wait /);
+  assert.equal(started.wait.blockingCall.tool, 'Bash');
+  // Foreground, and with a timeout inside the Bash tool's ceiling: the whole answer arrives in
+  // this call's own result, so there is nothing to read afterwards.
+  assert.equal(started.wait.blockingCall.input.run_in_background, undefined);
+  assert.equal(started.wait.blockingCall.input.timeout, 600_000);
+  // The report is written atomically at exit, which is what makes an early read provably
+  // useless rather than merely wasteful. The note has to say so or the poll stays tempting.
+  assert.match(started.note, /atomic/i);
+});
+
+test('verify --wait blocks until the detached run finishes and returns its whole report', () => {
+  const { dir } = repo();
+  writeFileSync(
+    join(dir, 'package.json'),
+    JSON.stringify({ name: 'bg3', scripts: { test: 'node -e "process.exit(0)"' } }, null, 2),
+  );
+  const started = anyResult(verify(ctx(dir, [], { background: true, only: 'test' })));
+
+  const waited = anyResult(verify(ctx(dir, [], { wait: started.verdict })));
+  assert.equal(waited.pass, true);
+  assert.equal(waited.waited.timedOut, false);
+  assert.equal(waited.waited.verdict, started.verdict);
+  // The report itself, not a pointer to it: the wait and the answer are one call.
+  assert.ok(Array.isArray(waited.ran));
+  assert.deepEqual(
+    waited.ran.map((/** @type {any} */ g) => g.script),
+    ['test'],
+  );
+});
+
+test('verify --wait times out without killing the run', () => {
+  const { dir } = repo();
+  writeFileSync(
+    join(dir, 'package.json'),
+    JSON.stringify({ name: 'bg4', scripts: { test: 'node -e "setTimeout(() => process.exit(0), 5000)"' } }, null, 2),
+  );
+  const started = anyResult(verify(ctx(dir, [], { background: true, only: 'test' })));
+
+  const waited = anyResult(verify(ctx(dir, [], { wait: started.verdict, 'wait-timeout': '1' })));
+  assert.equal(waited.pass, false);
+  assert.equal(waited.waited.timedOut, true);
+  assert.match(waited.reason, /still/i);
+});
+
+test('verify --wait says so when there is no detached run to wait on', () => {
+  const { dir } = repo();
+  const before = process.env.MY_COMMAND_VERIFY_DIR;
+  process.env.MY_COMMAND_VERIFY_DIR = join(dir, 'empty');
+  try {
+    // A bare `--wait` means "the most recent detached run". With none, the error names the
+    // command that starts one rather than blocking on a file that will never appear.
+    assert.throws(() => verify(ctx(dir, [], { wait: true })), /no detached verify run/);
+  } finally {
+    if (before === undefined) delete process.env.MY_COMMAND_VERIFY_DIR;
+    else process.env.MY_COMMAND_VERIFY_DIR = before;
+  }
+});

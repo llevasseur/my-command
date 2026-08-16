@@ -3,23 +3,32 @@
 // gate returns a bounded tail. Callers stop hand-rolling `2>&1 | tail -12` and stop
 // re-running a whole build because they guessed the window too small.
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, openSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, openSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bool, list, str } from '../lib/flags.mjs';
-import { run as exec } from '../lib/proc.mjs';
+import { run as exec, ToolkitError } from '../lib/proc.mjs';
 import { repoRoot } from '../lib/repo.mjs';
 
-export const usage = `verify [--only <script,...>] [--tail <n>] [--background]
+export const usage = `verify [--only <script,...>] [--tail <n>] [--background] [--wait [<verdict>]]
 
 Run the repo's verification scripts and report which passed.
 
   --only <script,...>  Run just these package.json scripts, in the order given.
   --tail <n>           Lines of output kept for a failing gate (default 40).
   --background         Start the same run detached and return immediately with the
-                       one call that waits for it. Nothing to poll: send \`wait.call\`
-                       verbatim and its completion notice carries the verdict.`;
+                       one call that waits for it.
+  --wait [<verdict>]   Block until a detached run finishes, then print its whole report
+                       and exit on its verdict — one call, no polling, no watch to arm.
+                       With no argument it waits on the most recent detached run.
+  --wait-timeout <s>   Give up waiting after this many seconds (default 570, which lands
+                       inside the Bash tool's 600s ceiling). Timing out reports the run as
+                       still going; it never kills it.
+
+The wait is the point. A detached run writes its JSON report and *then* its verdict file,
+so there is provably nothing to read before the verdict appears — polling the report early
+returns the same nothing every time. \`--wait\` is the call that ends when the gates do.`;
 
 // Ordered by how fast they fail: a lint error should not wait on a build.
 const PREFERRED = ['check', 'lint', 'format:check', 'typecheck', 'test', 'build'];
@@ -56,6 +65,136 @@ function tail(text, n) {
   return all.length <= n ? text : all.slice(-n).join('\n');
 }
 
+/** Where detached runs leave their verdict, report, and log. */
+function verifyDir() {
+  return join(process.env.MY_COMMAND_VERIFY_DIR ?? tmpdir(), 'my-command-verify');
+}
+
+/**
+ * Seconds to block before giving up. Under the Bash tool's 600s ceiling on purpose: a wait
+ * that outlives its own call is indistinguishable from a hung one, and the caller learns
+ * nothing. Timing out reports the run as still going and never kills it.
+ */
+const DEFAULT_WAIT_SECONDS = 570;
+
+/** How often the wait re-checks for the verdict file. In-process, so no agent is sleeping. */
+const POLL_MS = 400;
+
+/**
+ * Block this process for `ms`. A tool may sleep; an agent may not, which is the whole reason
+ * this verb exists — the wait happens once, here, instead of as a loop of agent turns.
+ * @param {number} ms
+ */
+function pause(ms) {
+  try {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  } catch {
+    // No shared memory available; fall through to a tighter loop rather than failing the wait.
+  }
+}
+
+/**
+ * The verdict file this wait is for. An explicit path wins; otherwise the most recent detached
+ * run in the verify directory, identified by the `.log` the spawn creates immediately — the
+ * verdict itself does not exist yet, which is precisely what is being waited for.
+ * @param {string | undefined} given
+ * @returns {string}
+ */
+function verdictPath(given) {
+  if (given) return given.endsWith('.verdict') ? given : `${given}.verdict`;
+
+  const dir = verifyDir();
+  let newest = null;
+  let newestAt = 0;
+  try {
+    for (const name of readdirSync(dir)) {
+      if (!name.endsWith('.log')) continue;
+      const at = statSync(join(dir, name)).mtimeMs;
+      if (at <= newestAt) continue;
+      newestAt = at;
+      newest = join(dir, `${name.slice(0, -'.log'.length)}.verdict`);
+    }
+  } catch {
+    // No directory at all: no detached run has ever started here.
+  }
+  if (!newest) {
+    throw new ToolkitError(
+      'no detached verify run to wait on — start one with `my-command-tools verify --background`',
+      {
+        dir,
+      },
+    );
+  }
+  return newest;
+}
+
+/**
+ * Block until a detached verify run finishes, then return its whole report.
+ *
+ * This is the primitive the wait never had. Refusing the poll was rung 3 and it held; what it
+ * left behind was an agent with nothing to do but poll again, so recorded sessions read the
+ * same report fifteen and twenty times, stated four separate times that they would stop, and
+ * two of them died inside the loop. The report is written atomically at exit — the detached
+ * wrapper writes the JSON *before* the verdict — so every one of those reads was guaranteed to
+ * return nothing new. There was never anything to see; there was only something to wait for.
+ * @param {string | undefined} given @param {number} timeoutMs
+ * @returns {Record<string, unknown>}
+ */
+function waitFor(given, timeoutMs) {
+  const verdict = verdictPath(given);
+  const result = `${verdict.slice(0, -'.verdict'.length)}.json`;
+  const log = `${verdict.slice(0, -'.verdict'.length)}.log`;
+  const started = Date.now();
+
+  while (Date.now() - started < timeoutMs) {
+    let ready = false;
+    try {
+      ready = statSync(verdict).size > 0;
+    } catch {
+      // Not written yet, which is the normal case for most of this loop.
+    }
+    if (ready) break;
+    pause(POLL_MS);
+  }
+
+  const waitedMs = Date.now() - started;
+  let verdictLine = '';
+  try {
+    verdictLine = readFileSync(verdict, 'utf8').trim();
+  } catch {
+    // Still absent: the timeout below reports it.
+  }
+
+  if (!verdictLine) {
+    return {
+      pass: false,
+      waited: { ms: waitedMs, timedOut: true, verdict, result, log },
+      reason:
+        `the detached verify run has not finished after ${Math.round(waitedMs / 1000)}s. It is still going — ` +
+        'nothing was killed. Re-issue this same `--wait` call to keep blocking, or read the log if you ' +
+        'suspect it is stuck.',
+    };
+  }
+
+  // The report is written before the verdict, so a verdict on disk means a complete report is
+  // too. Anything unreadable here is a genuine fault rather than a race.
+  let report;
+  try {
+    report = JSON.parse(readFileSync(result, 'utf8'));
+  } catch (err) {
+    return {
+      pass: false,
+      waited: { ms: waitedMs, timedOut: false, verdict, result, log },
+      verdictLine,
+      reason: `the run finished with "${verdictLine}" but its report at ${result} could not be read: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    };
+  }
+
+  return { ...report, waited: { ms: waitedMs, timedOut: false, verdict, result, log } };
+}
+
 /**
  * Start this same verify run detached and hand back the single call that waits for it.
  *
@@ -70,7 +209,7 @@ function tail(text, n) {
  * @returns {Record<string, unknown>}
  */
 function background(root, requested, tailLines) {
-  const dir = join(process.env.MY_COMMAND_VERIFY_DIR ?? tmpdir(), 'my-command-verify');
+  const dir = verifyDir();
   mkdirSync(dir, { recursive: true });
   const stamp = `${Date.now()}-${process.pid}`;
   const verdict = join(dir, `${stamp}.verdict`);
@@ -109,9 +248,20 @@ function background(root, requested, tailLines) {
     verdict,
     log,
     wait: {
+      // The whole wait, in one foreground call that returns the report itself. Nothing to
+      // arm, nothing to read afterwards, and the exit code is the verdict.
+      blocking: `my-command-tools verify --wait ${verdict}`,
+      blockingCall: {
+        tool: 'Bash',
+        input: {
+          command: `my-command-tools verify --wait ${verdict}`,
+          timeout: 600000,
+          description: 'Block until the detached verify run finishes and print its report',
+        },
+      },
       tool: 'Bash',
-      // One call, one notification, and it ends itself. `sleep` inside a backgrounded command
-      // is the form the harness allows; a foreground wait is refused outright.
+      // Kept for a caller that would rather be notified than blocked. One call, one
+      // notification, and it ends itself; a foreground `sleep` is refused outright.
       input: {
         run_in_background: true,
         command: `until [ -s ${verdict} ]; do sleep 2; done; cat ${verdict}`,
@@ -122,13 +272,28 @@ function background(root, requested, tailLines) {
       next: `Read({file_path: "${result}"}) — once, after that notification arrives.`,
     },
     note:
-      'Send wait.input as a single Bash call with run_in_background true. Do not read log or ' +
-      'result before its completion notice arrives; the notice is what says the run is over.',
+      `Send wait.blockingCall: one foreground Bash call, with its timeout, that returns this ` +
+      `run's whole report and exits on its verdict. Prefer it — there is nothing to poll and ` +
+      `no second call to make.\n` +
+      `The report at ${result} is written atomically, before the verdict file, so it does not ` +
+      `exist at all until the run is over. Reading it early returns the same nothing every ` +
+      `time; that is why the wait is a call rather than a loop.\n` +
+      `wait.input is the notified alternative for a caller that must stay free meanwhile: ` +
+      `background it, and read result only once its completion notice arrives.`,
   };
 }
 
 /** @param {import('../cli.mjs').Ctx} ctx */
 export function run(ctx) {
+  // Before anything else, and before `repoRoot`: a wait is about a run that already started
+  // somewhere, and the directory this call happens to be in is not part of the question.
+  if (ctx.flags.wait !== undefined) {
+    const given = typeof ctx.flags.wait === 'string' ? ctx.flags.wait : undefined;
+    const seconds = Number(str(ctx.flags['wait-timeout']));
+    const timeoutMs = (Number.isFinite(seconds) && seconds > 0 ? seconds : DEFAULT_WAIT_SECONDS) * 1000;
+    return waitFor(given, timeoutMs);
+  }
+
   const root = repoRoot(ctx.cwd);
   const scripts = scriptsOf(root);
   const pm = packageManager(root);

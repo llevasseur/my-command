@@ -142,19 +142,42 @@ function readPolling(input, line, session, cwd) {
   deny(
     `${liveness(watched)}, and this \`Read\` is polling it by hand. Waiting is the watch's job, ` +
       `so a second and third read of the same file return the same bytes and a stalled ` +
-      `condition is polled forever.\n\n` +
-      `You are waiting, not discovering, so ask for a wait rather than for the file. If this is ` +
-      `the repo's verification, there is a wait built for it:\n` +
-      `  my-command-tools verify --background\n` +
-      `which returns the exact one-shot \`Bash({run_in_background: true, …})\` call to send under ` +
-      `\`wait.call\`. That call ends by itself when the gates finish and reports the verdict in ` +
-      `its completion notice, so there is no file to poll and no second watch to arm.\n\n` +
+      `condition is polled forever.\n\n${verifyWaitOffer(watched)}\n\n` +
       `For anything else, arm one bounded wait that ends on its own:\n` +
       `  Bash({run_in_background: true, command: "until grep -qE '<done>|<failure>' ${path}; do sleep 1; done"})\n` +
       `widening the pattern to the failure signatures too, so a crash is not silence. Then read ` +
       `the file once, after that wait reports.`,
   );
   return true;
+}
+
+/**
+ * The replacement a watched-condition denial hands back, ready to send.
+ *
+ * Refusing the poll without naming the wait is what let this regress: recorded sessions took
+ * the refusal, had nothing else to do, and polled again — one read the same report twenty
+ * times, another fifteen, and two died still waiting. So the denial names a call that blocks,
+ * and says why the reads it is refusing could never have returned anything: a detached verify
+ * writes its report atomically at exit, after the gates are done. There is no partial state to
+ * catch, which is the fact that makes polling futile rather than merely wasteful.
+ * @param {string} watched
+ * @returns {string}
+ */
+function verifyWaitOffer(watched) {
+  const verdict = /\.verdict$/.test(watched) ? watched : '';
+  return (
+    `You are waiting, not discovering, so ask for the wait rather than for the file. If this is ` +
+    `the repo's verification, there is now one call that *is* the wait:\n` +
+    `  my-command-tools verify --wait${verdict ? ` ${verdict}` : ''}\n` +
+    `Send it as a plain foreground \`Bash\` call with \`timeout: 600000\`. It blocks until the ` +
+    `detached run exits, then prints that run's whole report and exits on its verdict — one ` +
+    `call, no watch to arm, no file to read afterwards. \`my-command-tools verify --background\` ` +
+    `returns this exact command under \`wait.blocking\` if you need the path.\n\n` +
+    `And there is provably nothing to see before then: the detached run writes its JSON report ` +
+    `**atomically at exit**, before it writes the verdict file. Until the run is over that ` +
+    `report does not exist, so every early read returns the same nothing. Polling cannot ` +
+    `surface progress here — it can only spend turns.`
+  );
 }
 
 /**
@@ -315,12 +338,7 @@ function staleProbe(event, input, line, session, readOnly) {
   if (watched && !alreadyDenied(session, 'watched', watched)) {
     deny(
       `${liveness(watched)}. Polling the same file by hand repeats work that is already ` +
-        `happening, and a stalled condition polls forever.\n\n` +
-        `You are waiting, not discovering. For the repo's verification, ask for the wait ` +
-        `itself:\n` +
-        `  my-command-tools verify --background\n` +
-        `whose \`wait.call\` is the exact backgrounded call that ends when the gates do and ` +
-        `carries the verdict in its completion notice — one watch, no polling, no log to read.\n\n` +
+        `happening, and a stalled condition polls forever.\n\n${verifyWaitOffer(watched)}\n\n` +
         `Otherwise let this watch's notification arrive; if its filter is not catching what you ` +
         `need, widen that filter to the failure signatures rather than checking by hand beside it.`,
     );
