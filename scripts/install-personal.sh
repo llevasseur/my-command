@@ -52,6 +52,30 @@ done
 echo "Linked $linked command(s) into $DEST_DIR (skipped $skipped)."
 echo "They run as bare slash commands (e.g. /task). Run 'git pull' in $REPO_ROOT to update."
 
+# The subagent definitions every dispatch site names. A command naming one the device does not
+# have takes the default agent instead and says nothing about it, so these have to land alongside
+# the commands. Symlinked like them, so `git pull` updates them.
+AGENTS_SRC="$REPO_ROOT/agents"
+AGENTS_DEST="${CLAUDE_AGENTS_DIR:-$CLAUDE_DIR/agents}"
+if [ -d "$AGENTS_SRC" ]; then
+  mkdir -p "$AGENTS_DEST"
+  agents_linked=0 agents_skipped=0
+  for f in "$AGENTS_SRC"/*.md; do
+    [ -e "$f" ] || continue
+    name="$(basename "$f")"
+    target="$AGENTS_DEST/$name"
+    if [ -L "$target" ]; then
+      ln -sf "$f" "$target"; agents_linked=$((agents_linked+1)); continue
+    fi
+    if [ -e "$target" ]; then
+      echo "skip: $name already exists as a real file in $AGENTS_DEST (not overwriting)" >&2
+      agents_skipped=$((agents_skipped+1)); continue
+    fi
+    ln -s "$f" "$target"; agents_linked=$((agents_linked+1))
+  done
+  echo "Linked $agents_linked subagent definition(s) into $AGENTS_DEST (skipped $agents_skipped)."
+fi
+
 # Point the device-wide toolkit at this clone too, so the shared CLI tracks `git pull`
 # the same way the commands do. Symlinked rather than copied for exactly that reason.
 TOOLKIT_SRC="$REPO_ROOT/src/toolkit"

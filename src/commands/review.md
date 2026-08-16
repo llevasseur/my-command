@@ -40,8 +40,8 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 
 ## Step 3 — Perform the review
 
-- **Default:** dispatch a **fresh** agent (not a fork — it must not inherit this conversation's framing of the PR) via the `Agent` tool, working in the worktree from Step 2. Brief it with the material and rubric below.
-- **`--here` / `-h`:** do **not** use the `Agent` tool. Apply the material, rubric, and required output shape below directly yourself in the current checkout. The caller chose this mode because this command is already running inside the fresh agent that should perform the independent review.
+- **Default:** dispatch a **fresh** agent (not a fork — it must not inherit this conversation's framing of the PR) via the `Agent` tool, with **`subagent_type: "mycommand-reviewer"`**, working in the worktree from Step 2. That definition already carries the reviewer's role and holds it to findings only — it ships without `Edit` or `Write` — so brief it with this PR's material and the rubric below, not with a restatement of what a reviewer is.
+- **`--here` / `-h`:** do **not** use the `Agent` tool, and name no `subagent_type`. Apply the material, rubric, and required output shape below directly yourself in the current checkout. The caller chose this mode because this command is already running inside the fresh agent that should perform the independent review.
 
 <!-- include-block: shared/batched-discovery.md -->
 ### Discovery runs as one batched pass
