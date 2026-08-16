@@ -30,6 +30,7 @@ noise, what a PR description should say, or whether a failure is worth fixing.
 | `pr` | push, then create or update the branch's PR |
 | `prs view\|list\|checks` | read-only pull-request lookups; never writes |
 | `worktree begin\|end\|reap\|list` | the isolated-workspace lifecycle, and which worktrees have outlived their branch |
+| `cleanup` | retire a merged branch's local and remote refs, judged against its PR |
 | `identity` | which GitHub account this checkout's remote wants, and `--select` to switch to it |
 | `stash write\|restore\|list` | `/cp`'s five-deep clipboard ring under `~/.claude`, and the clipboard sink |
 | `doctor` | where the toolkit resolved from, what's on PATH, and which clone it tracks |
@@ -105,6 +106,22 @@ than copying them — a measured install producing a 197 MB tree cost 0 MB of re
 so apparent size measures the store, not what removing the worktree would return. The
 reclaim signal is the merged branch.
 
+`cleanup` covers the state a worktree teardown leaves behind: the branch itself,
+after its PR merged. Both halves of that had been failing for reasons the merge
+method makes predictable. `git branch -d` consults history alone, so a squash
+merge — one commit on the target with none of the branch's own — reads as unmerged
+and the deletion is refused; and GitHub's auto-delete setting takes the remote ref
+at merge time, so a `git push <remote> --delete` afterwards fails on a ref that is
+already gone. Neither is a question git can answer, which is why the verb asks the
+**PR** instead: a merged PR for that head is the evidence that the commits landed,
+and `git ls-remote --heads` is the evidence the remote ref is still there to
+delete. So a squash-merged branch is deleted and reported as `squash-merged` with
+its PR number, an auto-deleted remote is reported `already-absent` with `pass:
+true`, and the only refusal left is `not-merged` — no merged PR and no containing
+history, which is the one case where the commits really do exist nowhere else.
+A branch a worktree still holds is refused as `checked-out`, naming the path.
+`--keep-local` and `--keep-remote` each skip their half.
+
 ## Guards
 
 These are the reason the plumbing is worth centralizing — each one encodes a
@@ -123,6 +140,15 @@ failure a workflow run has actually hit:
 - `verify` returns no log at all for a passing gate and a bounded tail for a
   failing one, so callers stop hand-rolling `2>&1 | tail -12` and stop re-running a
   whole build because they guessed the window too small.
+- `verify --background` detaches the run and hands back the wait rather than
+  leaving the caller to invent one. It returns a `wait.tool` / `wait.input` pair
+  that is a single backgrounded Bash call ending by itself once the verdict file
+  is non-empty, the `result` path to read when its notice arrives, and the
+  `verdict` path itself. That is the affordance the watched-condition gates were
+  refusing without: a gate that says "you are already watching this" leaves a
+  caller polling anyway unless something else does the waiting, and every
+  recorded case of a run reading its own output file five times began with a
+  refusal it had no replacement for.
 - `commit` retries **once** on an unapproved signing prompt. The failed attempt wrote
   nothing, so re-issuing the same commit is the entire fix — and it is a fix nobody has
   to recall. Never a rewrite, never `--no-gpg-sign`, never a config change.
@@ -247,6 +273,12 @@ with `allowJs` + `checkJs` + `noEmit`, run as `pnpm run check:toolkit`.
       with no `origin/<default>` on disk it reports `comparedWith: null` and
       `reclaimable: null` rather than claiming nothing is reclaimable, and a branch
       ref git cannot resolve reads `null` rather than `false`.
+- [ ] `cleanup` deletes a squash-merged branch git calls "not fully merged", reporting
+      `squash-merged` with the PR number; refuses it as `not-merged` when no merged PR
+      exists; reports an already-auto-deleted remote ref as `already-absent` with
+      `pass: true`; and refuses a branch a worktree holds, naming the path.
+- [ ] `verify --background` returns a `wait.input` that is one `run_in_background` Bash
+      call, plus the `result` path to read once its notice arrives.
 - [ ] `pnpm run check:toolkit` and `pnpm test` pass in CI.
 - [ ] A fresh `npx` install lands a runnable shim on the device root **and** leaves a
       bare `my-command-tools` call working in a new shell.

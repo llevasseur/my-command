@@ -10,11 +10,13 @@ import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { porcelain } from '../lib/repo.mjs';
+import { run as cleanup } from './cleanup.mjs';
 import { run as commit } from './commit.mjs';
 import { run as concepts, line as conceptsLine } from './concepts.mjs';
 import { run as pr } from './pr.mjs';
 import { run as scope } from './scope.mjs';
 import { run as state } from './state.mjs';
+import { run as verify } from './verify.mjs';
 import { run as worktree } from './worktree.mjs';
 
 /** @type {string[]} */
@@ -1097,4 +1099,144 @@ test('concepts save reads the record on stdin and omits the optionals left empty
     args.some((a) => a.includes('secret')),
     false,
   );
+});
+
+// ── cleanup: the two post-merge states, answered from the PR rather than from git ─────
+
+/**
+ * Put a fake `gh` first on PATH for the duration of `fn`, so the merged-PR lookup can be
+ * driven without a network or an account. `answer` is what `gh pr list --json …` prints.
+ * @param {string} answer @param {() => void} fn
+ */
+function withGh(answer, fn) {
+  const bin = mkdtempSync(join(tmpdir(), 'mct-gh-'));
+  made.push(bin);
+  writeFileSync(join(bin, 'gh'), `#!/bin/sh\ncat <<'JSON'\n${answer}\nJSON\n`);
+  chmodSync(join(bin, 'gh'), 0o755);
+  const saved = process.env.PATH;
+  process.env.PATH = `${bin}:${saved}`;
+  try {
+    fn();
+  } finally {
+    process.env.PATH = saved;
+  }
+}
+
+/** @param {unknown} r @returns {{pass: boolean, cleaned: {local: {deleted: boolean, reason: string, pr: number, detail: string}, remote: {deleted: boolean, reason: string, detail: string}}[]}} */
+const cleaned = (r) => /** @type {never} */ (r);
+
+test('cleanup deletes a branch git can see is merged', () => {
+  const { dir, git } = repo();
+  git(['checkout', '-qb', 'feat/done']);
+  writeFileSync(join(dir, 'b.ts'), 'export const b = 1;\n');
+  git(['add', 'b.ts']);
+  git(['commit', '-qm', 'b']);
+  git(['checkout', '-q', 'main']);
+  git(['merge', '-q', '--no-edit', 'feat/done']);
+
+  const r = cleaned(cleanup(ctx(dir, [], { branch: 'feat/done', 'keep-remote': true })));
+  assert.equal(r.cleaned[0].local.reason, 'merged');
+  assert.equal(r.cleaned[0].local.deleted, true);
+  assert.equal(r.pass, true);
+});
+
+test('cleanup forces a squash-merged branch on the PR, not on the refusal', () => {
+  // The exact recorded failure: the work landed as one squash commit, so `git branch -d`
+  // reports the branch unmerged and a hand-run `-D` is the only way past. The verb reaches
+  // for `-D` because the PR says MERGED, and reports why.
+  const { dir, git } = repo();
+  git(['checkout', '-qb', 'feat/squashed']);
+  writeFileSync(join(dir, 'c.ts'), 'export const c = 1;\n');
+  git(['add', 'c.ts']);
+  git(['commit', '-qm', 'c']);
+  git(['checkout', '-q', 'main']);
+  git(['merge', '-q', '--squash', 'feat/squashed']);
+  git(['commit', '-qm', 'squashed c']);
+
+  withGh('[{"number":42,"state":"MERGED","mergedAt":"2026-08-01T00:00:00Z","mergeCommit":{"oid":"deadbeef"}}]', () => {
+    const r = cleaned(cleanup(ctx(dir, [], { branch: 'feat/squashed', 'keep-remote': true })));
+    assert.equal(r.cleaned[0].local.deleted, true);
+    assert.equal(r.cleaned[0].local.reason, 'squash-merged');
+    assert.equal(r.cleaned[0].local.pr, 42);
+    assert.equal(r.pass, true);
+  });
+});
+
+test('cleanup refuses a branch whose work landed nowhere', () => {
+  // Without a merged PR the refusal is the right answer: those commits exist only here.
+  const { dir, git } = repo();
+  git(['checkout', '-qb', 'feat/orphan']);
+  writeFileSync(join(dir, 'd.ts'), 'export const d = 1;\n');
+  git(['add', 'd.ts']);
+  git(['commit', '-qm', 'd']);
+  git(['checkout', '-q', 'main']);
+
+  withGh('[]', () => {
+    const r = cleaned(cleanup(ctx(dir, [], { branch: 'feat/orphan', 'keep-remote': true })));
+    assert.equal(r.cleaned[0].local.deleted, false);
+    assert.equal(r.cleaned[0].local.reason, 'not-merged');
+    assert.equal(r.pass, false);
+  });
+  // And it really did not delete it.
+  assert.match(
+    execFileSync('git', ['branch', '--list', 'feat/orphan'], { cwd: dir, encoding: 'utf8' }),
+    /feat\/orphan/,
+  );
+});
+
+test('cleanup reports an already-auto-deleted remote ref as an outcome, not a failure', () => {
+  const { dir, git } = repo();
+  const remote = mkdtempSync(join(tmpdir(), 'mct-remote-'));
+  made.push(remote);
+  execFileSync('git', ['init', '-q', '--bare', remote]);
+  git(['remote', 'add', 'origin', remote]);
+  git(['push', '-q', 'origin', 'main']);
+  git(['checkout', '-qb', 'feat/gone']);
+  git(['checkout', '-q', 'main']);
+  git(['merge', '-q', '--no-edit', 'feat/gone']);
+
+  const r = cleaned(cleanup(ctx(dir, [], { branch: 'feat/gone' })));
+  assert.equal(r.cleaned[0].remote.reason, 'already-absent');
+  assert.equal(r.cleaned[0].remote.deleted, false);
+  assert.equal(r.pass, true);
+});
+
+test('cleanup refuses a branch a worktree still holds, naming the path', () => {
+  const { dir } = repo();
+  const r = cleaned(cleanup(ctx(dir, [], { branch: 'main', 'keep-remote': true })));
+  assert.equal(r.cleaned[0].local.reason, 'checked-out');
+  // macOS resolves the tmpdir through a /private prefix, so compare the tail, not the string.
+  assert.equal(r.cleaned[0].local.detail.endsWith(dir.replace(/^\/private/, '')), true);
+});
+
+// ── verify --background: the wait the watched-condition gates were refusing without ───
+
+/** @param {unknown} r @returns {{background: boolean, verdict: string, result: string, wait: {tool: string, next: string, input: {run_in_background: boolean, command: string}}}} */
+const backgrounded = (r) => /** @type {never} */ (r);
+
+test('verify --background hands back one ready-to-send wait and a verdict', async () => {
+  const { dir } = repo();
+  writeFileSync(
+    join(dir, 'package.json'),
+    JSON.stringify({ name: 'bg', scripts: { test: 'node -e "process.exit(0)"' } }, null, 2),
+  );
+  const started = backgrounded(verify(ctx(dir, [], { background: true, only: 'test' })));
+
+  assert.equal(started.background, true);
+  assert.equal(started.wait.tool, 'Bash');
+  // The whole point: one call, backgrounded, that ends by itself. A foreground wait is
+  // refused by the harness and a poll is refused by the gate.
+  assert.equal(started.wait.input.run_in_background, true);
+  assert.match(started.wait.input.command, /until \[ -s /);
+  assert.match(started.wait.next, /Read\(\{file_path/);
+
+  // The detached run writes its JSON result before the verdict, so a waiter that sees the
+  // verdict can read a complete result rather than a half-written one.
+  const deadline = Date.now() + 60_000;
+  while (!existsSync(started.verdict) && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  assert.equal(existsSync(started.verdict), true);
+  assert.match(readFileSync(started.verdict, 'utf8'), /^PASS /);
+  assert.equal(JSON.parse(readFileSync(started.result, 'utf8')).pass, true);
 });

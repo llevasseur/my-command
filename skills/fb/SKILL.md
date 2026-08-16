@@ -5,8 +5,11 @@ description: Implement feedback through the task workflow on the current branch 
 
 # Apply Feedback
 
-Parse `--target <branch>` / `-t <branch>` and treat the remaining prompt as task criteria.
+Parse `--target <branch>` / `-t <branch>` and `--worktree <path>`, and treat the remaining prompt as task criteria.
 
+- With `--worktree <path>`, the checkout already exists and belongs to whoever
+  dispatched this run: make none of your own, work through absolute paths beneath
+  it, forward the path to the task workflow, and leave it standing at the end.
 - Without a target, invoke `$task --here <feedback>` in the current checkout.
 - With a target, fetch and verify the existing local or remote branch, then use
   `my-command-tools worktree begin --existing` when available to create a fresh

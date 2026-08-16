@@ -19,6 +19,8 @@ existing branch in a fresh worktree.
 
 - `--target` / `-t <branch>` — apply the feedback onto **existing** `<branch>` in a
   fresh worktree, instead of the current branch.
+- `--worktree <path>` — the workspace was already made by the dispatcher; make none,
+  work through absolute paths beneath it, forward it to `/task`, and leave it standing.
 - Everything after the flags is the **feedback text**.
 
 ## Behavior

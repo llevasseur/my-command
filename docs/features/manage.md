@@ -220,6 +220,25 @@ wave into a queue while reporting success either way.
 Every unit in a wave carries an explicit **lane** — the paths it owns and the paths
 it must not touch — because a subagent cannot see its siblings' plans.
 
+### The workspace is made at the dispatch site
+
+A unit dispatched with the repo root as its cwd has to make its own worktree, and
+`EnterWorktree` is refused there — the root already holds the default branch. That
+refusal is not something the worker can learn its way out of: siblings in a wave are
+dispatched in one turn and run at the same moment, so one hitting it teaches the
+others nothing and the whole wave hits it. Five recorded sessions across two repos
+did, three of them the concurrent siblings of a single `manage` wave. So `manage`
+runs `worktree begin` itself, per unit, before the `Agent` call, and passes the path
+it reports as `--worktree <path>` — plus one literal line in the prompt telling the
+unit to use absolute paths beneath it and create no worktree. Teardown stays here
+too: the unit reports the path as still standing and `manage` removes it after the
+wave. An `fb` unit adds `--existing`, its branch being one that already exists.
+
+`work` is the exception, because it cannot be otherwise: no branch is known until
+`/work` reads the ledger, so there is nothing to cut a worktree from at this step.
+That unit becomes a dispatch site itself and makes each workspace at its own
+downstream dispatch, under the same rule.
+
 ### Star topology, not mesh
 
 Workers talk to the orchestrator and to nothing else. Peer messaging between

@@ -5,7 +5,7 @@ description: Take a plain-language task from criteria through implementation, ve
 
 # Task to Pull Request
 
-Parse `--here`, `--base <branch>`, `--draft`, `--sub`, and `--add <skill prompt,...>`; remaining text is the task criteria.
+Parse `--here`, `--worktree <path>`, `--base <branch>`, `--draft`, `--sub`, and `--add <skill prompt,...>`; remaining text is the task criteria.
 
 Before the first tool call, record this pipeline as a task list whose **last item
 is step 8's closing turn**, kept as its own item and left open until nothing else
@@ -19,7 +19,13 @@ last scheduled action is a bookkeeping tool call ends on that call, the mark
 lands every time, and the message meant to follow it never arrives.
 
 1. Resolve requested add-on skills from the skills installed on this device, read their complete instructions, and place them in the pipeline according to their prompts.
-2. Set up the workspace before editing. Unless `--here`, use
+2. Set up the workspace before editing. `--worktree <path>` means the checkout is
+   already there and belongs to whoever dispatched this run: read its state, work
+   through absolute paths beneath it, pass that path as the working directory to
+   every helper verb, and make no worktree of your own — no `worktree begin`, no
+   session-level move into it, and skip step 3, which the dispatcher already ran.
+   Report the path as still standing at the end instead of removing it. Otherwise,
+   unless `--here`, use
    `my-command-tools worktree begin --bootstrap` when available to fetch and
    create a dedicated `.codex/worktrees/<type>/<summary>` worktree from the
    latest requested base. Verify the branch, worktree, and base; never implement

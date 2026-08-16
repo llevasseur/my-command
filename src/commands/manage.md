@@ -135,20 +135,39 @@ Send a wave as **multiple `Agent` calls in a single assistant turn**, each with 
 
 **Keep each delegate prompt minimal.** Every delegate is a MyCommand command that is already self-contained through its own file, which the subagent loads when it is invoked — and the **delegate role** is likewise already stated once, in the `mycommand-delegate` definition the dispatch names. Pass the invocation, that unit's criteria, its branch, and its lane — then stop. Restating the whole plan, or the role, into every subagent prompt puts a second set of instructions in front of the command's own, competes with them for attention, and makes completion **less** reliable rather than more.
 
+<!-- include-block: shared/dispatch-worktree.md -->
+### Make the workspace here, before the subagent exists
+
+**A dispatched unit must never be the thing that creates or enters its own worktree.** Make it at the dispatch site, one `my-command-tools worktree begin --branch <name> --bootstrap` per unit, and hand the `path` it prints to that unit as `--worktree <path>`.
+
+The reason is the shape of a wave rather than any one agent's judgement. Siblings go out in the same turn and run concurrently, so a lesson one of them learns is unreachable to the other four — they are already past the point where it would have helped. A note in the repo's own conventions has the same problem from the other side: the unit reads it only once it has been dispatched, with the repo root as its working directory, which is precisely the state in which the worktree call it is about to make cannot succeed. Recorded waves put three siblings into the identical refusal at the identical step, and the count is a property of the fan-out, not of the agents.
+
+So the affordance moves rather than the advice. Concretely, for every unit:
+
+- Run `worktree begin` **here**, in this turn's setup, before composing the prompt. Its `path` is what makes the handover possible at all — a unit cannot be told about a directory that does not exist yet.
+- Put `--worktree <path>` in the invocation, with the path copied byte for byte from that `path` field.
+- Add the line **`Work through absolute paths under that worktree. Do not create a worktree and do not call EnterWorktree.`** to the unit's prompt. A subagent's working directory is the repo root, so an absolute path is the only form that resolves for it either way.
+- Keep teardown here too. The unit that did not make the worktree does not remove it; collect the wave first, then end each branch's worktree from this session.
+
+A unit dispatched **without** `--worktree` is unchanged and sets its own workspace up as it always has — this is a handover, not a new precondition on the delegate.
+<!-- /include-block -->
+
 A unit's prompt is therefore about this shape, naming the **resolved** delegate rather than `/task` by default:
 
 ```
-Run /<delegate> <this unit's forwarded flags> <this unit's criteria>.
+Run /<delegate> --worktree <path> <this unit's forwarded flags> <this unit's criteria>.
 Branch: <type>/<kebab-summary>, cut from <base>. Own <paths>; do not touch <paths>.
+Work through absolute paths under that worktree. Do not create a worktree and do not call EnterWorktree.
 ```
 
 **The flags in that invocation are the surviving set Step 1 settled and Step 3 printed** — this run's forwarded flags minus the ones the delegate cannot parse, composed exactly as they were printed. `--add <list>` is one of them rather than a special case, and `--base` carries **this unit's** base: the root base for a unit that waits on nothing, and the branch it depends on for a stacked one — or, under `--delegate god`, the run's merge target for that stacked one, since the branch it would otherwise inherit has already been merged and deleted by the wave before it. `--into` carries the **run's** merge target, identical in every `god` invocation and never swapped for the unit's own base — the one flag in the set that does not vary per unit. Never re-derive the set here, and never add a flag the plan did not show.
 
-An `fb` unit is the one that reads differently — the branch goes in the invocation, and **no forwarded flag survives**, `/fb` documenting `--target` alone:
+An `fb` unit is the one that reads differently — the branch goes in the invocation, and of this run's forwarded flags **none survives**, `/fb` documenting `--target` alone. Its workspace is still made here, with `--existing` added to `worktree begin` because the branch already exists and a fresh one would abandon the very work being fixed:
 
 ```
-Run /fb --target <existing branch> <this unit's criteria>.
+Run /fb --target <existing branch> --worktree <path> <this unit's criteria>.
 Own <paths>; do not touch <paths>.
+Work through absolute paths under that worktree. Do not create a worktree and do not call EnterWorktree.
 ```
 
 A `work` unit reads differently again — the **area** is both the selector and the lane, and there is no branch to name:
@@ -157,6 +176,8 @@ A `work` unit reads differently again — the **area** is both the selector and 
 Run /work --area <this unit's area> <this unit's surviving forwarded flags> <any extra context from the goal>.
 Own that area alone; never select an idea filed under <the other units' areas>.
 ```
+
+**A `work` unit is the one exception to the handover above**, and for the reason the shape already gives: it names an area rather than a branch, and which ideas it takes — so how many branches it needs, and what they are called — is not known until `/work` has read the ledger. There is no path to hand over, so `/work` makes each workspace at *its* own dispatch step instead, which is the same rule applied one level down.
 
 Add `--delegate god` to that invocation for `work:god`, carrying `--into` when the run has one. `/work` claims every idea it takes before writing any code, so two units racing for one idea resolve in the ledger rather than here.
 

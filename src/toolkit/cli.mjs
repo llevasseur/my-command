@@ -8,6 +8,7 @@ import { realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { ToolkitError } from './lib/proc.mjs';
 import { GATED_VERBS, requireArmed } from './lib/require-armed.mjs';
+import * as cleanup from './verbs/cleanup.mjs';
 import * as commit from './verbs/commit.mjs';
 import * as concepts from './verbs/concepts.mjs';
 import * as doctor from './verbs/doctor.mjs';
@@ -40,6 +41,7 @@ const VERBS = {
   pr,
   prs,
   worktree,
+  cleanup,
   identity,
   concepts,
   stash,
@@ -63,6 +65,9 @@ const SWITCHES = new Set([
   'select',
   'json',
   'no-clipboard',
+  'background',
+  'keep-remote',
+  'keep-local',
 ]);
 
 /**

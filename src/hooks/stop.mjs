@@ -25,10 +25,11 @@
 //   - A run this session set going is still open. `nestedRunOpen()` counts inline `Skill`
 //     calls, `Agent` dispatches, and `claude -p` shell outs.
 //
-// What survives all of that is refused only in the one shape that cannot be anything else:
-// a last message with **no text at all**. A last message that did speak but carried a tool
-// call along with it gets a warning and a line in the log, because a false refusal costs more
-// than a missed one.
+// What survives all of that is refused in two shapes, and both are read off the turn rather
+// than off any one tool name: a last message with **no text at all**, and a last message whose
+// every call only moved a row of the task list. A last message that did speak and carried some
+// other tool call along with it gets a warning and a line in the log, because a false refusal
+// costs more than a missed one.
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { block, guard, readEvent, warn } from './lib/io.mjs';
@@ -48,6 +49,13 @@ const FLUSH_PAUSE_MS = 250;
 
 /** Tools that hand control back by design, so a turn ending on one is a pause, not an ending. */
 const YIELDS = new Set(['AskUserQuestion', 'ExitPlanMode', 'Monitor']);
+
+/**
+ * Tools that only move a row of the run's own task list. None of them changes a file, a
+ * branch, or a remote — so a turn made of nothing but these did no work, and whatever it
+ * was, it was not the run finishing.
+ */
+const BOOKKEEPING = new Set(['TodoWrite', 'TaskUpdate', 'TaskCreate']);
 
 guard(() => {
   const event = readEvent();
@@ -76,7 +84,25 @@ guard(() => {
   // retries the stop. Without this the run cannot end at all.
   if (alreadyDenied(session, 'outcome', call.last.uuid || String(call.count))) return;
 
-  note(`${new Date().toISOString()} session=${session} endsOnToolCall=${call.endsOnToolCall} unclosed=${call.owed}`);
+  note(
+    `${new Date().toISOString()} session=${session} endsOnToolCall=${call.endsOnToolCall} unclosed=${call.owed}` +
+      `${call.verdict === 'bookkeeping' ? ' shape=bookkeeping' : ''}`,
+  );
+
+  if (call.verdict === 'bookkeeping') {
+    const names = [...new Set(call.last.toolUses.map((/** @type {{name: string}} */ u) => u.name))].join(', ');
+    block(
+      `This run's last turn called nothing but ${names} — task-list bookkeeping, ${call.last.toolUses.length} ` +
+        `call${call.last.toolUses.length === 1 ? '' : 's'} of it and nothing else. Marking rows is not work, so ` +
+        `the run's last real action was the turn before this one and the outcome was never recorded.\n\n` +
+        `The list is already accurate; nothing further is owed to it. Reply now with the report in text alone — ` +
+        `one self-contained line saying where the run stands, then the detail. Do not send another bookkeeping ` +
+        `call first, whatever is still open on the list.\n\n` +
+        `Next run, close every remaining row in the same turn as the last piece of real work — the teardown, the ` +
+        `final verify, the closing \`gh\` call — so no turn is left with only bookkeeping in it.`,
+    );
+    return;
+  }
 
   if (call.verdict === 'warn') {
     warn(
@@ -111,7 +137,7 @@ guard(() => {
 
 /**
  * @typedef {object} Verdict
- * @property {'silent' | 'warn' | 'block'} verdict
+ * @property {'silent' | 'warn' | 'block' | 'bookkeeping'} verdict
  * @property {import('./lib/transcript.mjs').Turn} [last]
  * @property {number} [count]
  * @property {boolean} [endsOnToolCall]
@@ -149,10 +175,33 @@ function judge(line) {
   // The loop stopped because of what it called, not because the run was over.
   if (endsOnToolCall && yieldedByDesign(last)) return { ...seen, owed, verdict: 'silent' };
 
+  // Nothing in the last turn but task-list bookkeeping. Judged on the *shape of the turn*
+  // rather than on which tool was called, which is what makes it reachable at all: the
+  // recorded runs end on batches of `TaskUpdate`, whose input carries a `taskId` and a
+  // status and never the subject, so no PreToolUse gate can tell the closing row from any
+  // other one. Stop does not have to — it reads a turn that already happened, and a turn
+  // that moved only task rows moved nothing else, whatever those rows were called.
+  if (endsOnToolCall && bookkeepingOnly(last)) return { ...seen, owed, verdict: 'bookkeeping' };
+
   // A run this session set going is still open, so the stop lands mid-pipeline.
   if (nestedRunOpen(line)) return { ...seen, owed, verdict: 'silent' };
 
   return { ...seen, owed, verdict: saidNothing ? 'block' : 'warn' };
+}
+
+/**
+ * Whether every call in this turn only moved a row of the task list. A turn that also ran a
+ * command, wrote a file, or dispatched anything is not this shape — bookkeeping riding along
+ * with real work is what the commands ask for. A turn whose calls all failed is not it either:
+ * nothing was marked, so the run is owed a correction rather than a closing message.
+ * @param {import('./lib/transcript.mjs').Turn} turn
+ * @returns {boolean}
+ */
+function bookkeepingOnly(turn) {
+  const uses = turn.toolUses;
+  if (uses.length === 0) return false;
+  if (uses.every((u) => u.ok === false)) return false;
+  return uses.every((u) => BOOKKEEPING.has(u.name));
 }
 
 /**

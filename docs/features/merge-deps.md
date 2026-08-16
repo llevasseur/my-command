@@ -41,8 +41,10 @@ would make `/mc`'s push get rejected as non-fast-forward), `/mc -t <branch>` to 
 --bootstrap` plus
 `verify` to confirm the bump is green in an isolated worktree, `gh pr merge`
 into `main`, `worktree end --force` to drop the throwaway worktree (the one place
-forcing is right — these hold install artifacts, never authored work), and refresh
-local `main`. Anything left unresolved,
+forcing is right — these hold install artifacts, never authored work),
+`my-command-tools cleanup --branch <branch> --keep-local` to retire the remote ref
+without hand-running a `git push origin --delete` that GitHub's auto-delete has
+usually already made redundant, and refresh local `main`. Anything left unresolved,
 failing verification, or on a fork is reported for a human rather than merged.
 
 ## Related

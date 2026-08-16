@@ -373,9 +373,28 @@ export function repeatedProbe(line, command, exceptTurnUuid, readOnly) {
 }
 
 /**
- * Path-shaped tokens named by a watch this session already armed — a `Monitor`, or a
- * backgrounded Bash command and its log file. A watch delivers its events on its own, so
- * polling the same file by hand is work already being done.
+ * Whether a tool use is a watch this session armed that has **not** reported finishing.
+ *
+ * The liveness half is what keeps these gates from refusing a legitimate read. A
+ * backgrounded Bash command announces its own exit as a completion notice naming its
+ * tool-use id, so once that notice has arrived the watch is over and reading its output is
+ * the single read the gate asked for — not polling. A `Monitor` is judged live throughout:
+ * its notices are the events it was armed to deliver, not an ending, so one arriving says
+ * the watch is working rather than that it stopped.
+ * @param {Turn['toolUses'][number]} use
+ * @returns {boolean}
+ */
+function liveWatch(use) {
+  if (use.name === 'Monitor') return true;
+  if (use.name !== 'Bash' || use.input?.run_in_background !== true) return false;
+  return use.notified !== true;
+}
+
+/**
+ * Path-shaped tokens named by a watch this session already armed and that is still running —
+ * a `Monitor`, or a backgrounded Bash command and its log file. A live watch delivers its
+ * events on its own, so polling the same file by hand is work already being done; a watch that
+ * has already reported finishing names nothing here, because then there is nothing to wait for.
  * @param {(Turn | null)[]} line @param {string} [exceptTurnUuid]
  * @returns {string[]}
  */
@@ -385,8 +404,7 @@ export function watchedPaths(line, exceptTurnUuid) {
   for (const turn of turns(line)) {
     if (exceptTurnUuid && turn.uuid === exceptTurnUuid) continue;
     for (const use of turn.toolUses) {
-      const watching = use.name === 'Monitor' || (use.name === 'Bash' && use.input?.run_in_background === true);
-      if (!watching) continue;
+      if (!liveWatch(use)) continue;
       const text = `${use.input?.command ?? ''} ${JSON.stringify(use.input?.ws ?? '')}`;
       // A basename with an extension is the only token specific enough to key on; a bare
       // word would collide with any command mentioning the same noun. Split into shell
@@ -404,9 +422,9 @@ export function watchedPaths(line, exceptTurnUuid) {
 }
 
 /**
- * The files a watch this session armed is actually writing or following: a backgrounded
- * command's redirect target, a `tee` destination, a `tail -f` argument. Paths as written, for
- * the caller to resolve against the cwd it knows.
+ * The files a watch this session armed **and still has running** is writing or following: a
+ * backgrounded command's redirect target, a `tee` destination, a `tail -f` argument. Paths as
+ * written, for the caller to resolve against the cwd it knows.
  *
  * Deliberately narrower than `watchedPaths`, which keys on every filename-shaped token of the
  * command. That breadth is right for a substring test against another *shell command* and
@@ -429,8 +447,7 @@ export function watchedOutputs(line, exceptTurnUuid) {
   for (const turn of turns(line)) {
     if (exceptTurnUuid && turn.uuid === exceptTurnUuid) continue;
     for (const use of turn.toolUses) {
-      const watching = use.name === 'Monitor' || (use.name === 'Bash' && use.input?.run_in_background === true);
-      if (!watching) continue;
+      if (!liveWatch(use)) continue;
       const command = String(use.input?.command ?? '');
       for (const m of command.matchAll(/\d?>>?\s*("[^"]+"|'[^']+'|[^\s;&|<>]+)/g)) add(m[1]);
       for (const m of command.matchAll(/\btee\s+(?:-\S+\s+)*("[^"]+"|'[^']+'|[^\s;&|<>]+)/g)) add(m[1]);

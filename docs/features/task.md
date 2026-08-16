@@ -21,6 +21,11 @@ The end goal is always an open PR.
 - `--here` / `-h` — no worktree; work on the **current branch**. If `state` reports
   `onDefaultBranch`, a `<type>/<kebab-summary>` branch is cut in place first and
   reported — never implement on `main`.
+- `--worktree <path>` — the workspace already exists and belongs to the dispatcher.
+  No `worktree begin`, no `EnterWorktree`, no Step 1.5; every toolkit verb takes
+  `--cwd <path>` and every file path is absolute beneath it, and teardown is skipped
+  so the path is reported as still standing. Set by `/manage` and `/work` when they
+  dispatch a unit, so the subagent never has to make a worktree from a repo root.
 - `--base <branch>` — branch off `<branch>` instead of `main`. Ignored with `--here`.
 - `--draft` / `-d` — open the resulting PR as a draft (passed through to `/pr`). Does
   not preserve the worktree; teardown still runs.

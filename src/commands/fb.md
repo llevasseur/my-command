@@ -23,6 +23,7 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 ## Flags
 
 - `--target <branch>` / `-t <branch>` — apply the feedback onto an **existing** branch inside a fresh worktree.
+- `--worktree <path>` — that worktree already exists; whoever invoked this run made it and owns it. Work through absolute paths under `<path>`, create nothing, enter nothing, and skip teardown, reporting the path as still standing. Set by a dispatching command rather than typed by hand.
 - Anything not a recognized flag is part of the feedback request.
 
 ## Behavior
