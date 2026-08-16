@@ -1353,7 +1353,9 @@ test('a malformed event allows the call rather than failing it', () => {
 const wordless = (...calls) => ({ say: '', calls });
 
 test('stop: a run whose last message has no text at all is blocked', () => {
-  const line = transcript(['prompt', wordless(read('Bash', { command: 'my-command-tools worktree end --branch x' }))]);
+  // The call is a piece of real work rather than a closing chore, so the shape under test is the
+  // generic one. A chore-shaped ending is refused too, by its own more specific message.
+  const line = transcript(['prompt', wordless(read('Edit', { file_path: '/w/src/a.ts' }))]);
   const answer = hook(STOP, { session_id: 'f1', transcript_path: line });
   assert.equal(answer.decision, 'block');
   assert.match(answer.reason, /text and zero tool calls/);
@@ -1361,8 +1363,9 @@ test('stop: a run whose last message has no text at all is blocked', () => {
 
 test('stop: a report carrying a tool call is warned about, never blocked', () => {
   // The run did say where it stood and the report simply rode a tool call, so the log line is
-  // the durable part rather than the refusal.
-  const line = transcript(['prompt', [read('Bash', { command: 'my-command-tools worktree end --branch x' })]]);
+  // the durable part rather than the refusal. The call is real work, not a closing chore — a
+  // report riding nothing but a chore is refused, because that is the recorded ending.
+  const line = transcript(['prompt', [read('Edit', { file_path: '/w/src/a.ts' })]]);
   const answer = hook(STOP, { session_id: 'f1b', transcript_path: line });
   assert.equal(answer.decision, undefined);
   assert.match(answer.systemMessage, /decision mid-run/);
@@ -1400,16 +1403,56 @@ test('stop: TodoWrite and TaskCreate mixed into that turn are the same shape', (
 
 test('stop: a bookkeeping call riding along with real work is not blocked', () => {
   // The rule is about a turn that did nothing else, never about the tool. A run that marks its
-  // rows in the same turn as the teardown is doing exactly what the commands prescribe.
+  // rows in the same turn as a piece of real work is doing exactly what the commands prescribe.
   const line = transcript([
     'prompt',
     [
       read('TaskUpdate', { taskId: 1, status: 'completed' }),
-      read('Bash', { command: 'my-command-tools worktree end --branch x' }),
+      read('Bash', { command: 'my-command-tools commit --message-file /tmp/m.txt src/a.ts' }),
     ],
   ]);
   const answer = hook(STOP, { session_id: 'bk3', transcript_path: line });
   assert.equal(answer.decision, undefined);
+});
+
+test('stop: a final turn of nothing but worktree teardown is blocked', () => {
+  // The recorded shape reached through the other closing chore: the PR was already pushed, the
+  // run closed on a lone `worktree end`, and no outcome was recorded. Removing the workspace is
+  // no more the work than marking a row is.
+  const line = transcript([
+    'prompt',
+    [read('Bash', { command: 'my-command-tools pr --title x --body-file /tmp/b.md' })],
+    [read('Bash', { command: 'my-command-tools worktree end --branch fix/x' })],
+  ]);
+  const answer = hook(STOP, { session_id: 'bk6', transcript_path: line });
+  assert.equal(answer.decision, 'block');
+  assert.match(answer.reason, /teardown/);
+});
+
+test('stop: ExitWorktree alone is the same shape', () => {
+  const line = transcript([
+    'prompt',
+    [read('Edit', { file_path: '/x/a.ts' })],
+    [read('ExitWorktree', { action: 'keep' })],
+  ]);
+  assert.equal(hook(STOP, { session_id: 'bk7', transcript_path: line }).decision, 'block');
+});
+
+test('stop: bookkeeping and teardown together are still only chores', () => {
+  const line = transcript([
+    'prompt',
+    [read('Edit', { file_path: '/x/a.ts' })],
+    [read('TaskUpdate', { taskId: 1, status: 'completed' }), read('Bash', { command: 'my-command-tools cleanup' })],
+  ]);
+  assert.equal(hook(STOP, { session_id: 'bk8', transcript_path: line }).decision, 'block');
+});
+
+test('stop: a Bash call that merely mentions a worktree is not teardown', () => {
+  // The verb is matched, not the word: `worktree begin` and `worktree list` are not teardown,
+  // and a turn ending on one is judged by the ordinary rules.
+  const line = transcript(['prompt', [read('Bash', { command: 'git worktree list --porcelain' })]]);
+  const answer = hook(STOP, { session_id: 'bk9', transcript_path: line });
+  assert.notEqual(answer.reason && /teardown/.test(answer.reason), true);
 });
 
 test('stop: a bookkeeping turn whose every call failed was interrupted, not finished', () => {
@@ -1584,7 +1627,9 @@ test('stop: a pipeline with a nested command still open is not asked for an outc
 });
 
 test('stop: an outermost run abandoned after its nested runs returned is still refused', () => {
-  // Both children handed back, so nothing is open; the parent ended on teardown and never spoke.
+  // Both children handed back, so nothing is open; the parent ended on a call and never spoke.
+  // That last call is real work rather than a closing chore, so what is under test is the
+  // nesting reading — a parent that ends on teardown is refused by the chore message instead.
   const line = transcript([
     'prompt',
     [read('Skill', { skill: 'clean' })],
@@ -1593,7 +1638,7 @@ test('stop: an outermost run abandoned after its nested runs returned is still r
       say: 'PR #91 opened\n\nRETURN /pr',
       calls: [read('Bash', { command: 'my-command-tools worktree end --branch x' })],
     },
-    wordless(read('Bash', { command: 'my-command-tools worktree end --branch x' })),
+    wordless(read('Edit', { file_path: '/w/src/a.ts' })),
   ]);
   const answer = hook(STOP, { session_id: 'n4', transcript_path: line });
   assert.equal(answer.decision, 'block');

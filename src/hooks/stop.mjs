@@ -27,7 +27,9 @@
 //
 // What survives all of that is refused in two shapes, and both are read off the turn rather
 // than off any one tool name: a last message with **no text at all**, and a last message whose
-// every call only moved a row of the task list. A last message that did speak and carried some
+// every call was a closing chore — a row of the task list moved, or the workspace torn down
+// with `worktree end`/`ExitWorktree`. Neither chore is the work, so a turn made only of them is
+// the run tidying up after its last real action. A last message that did speak and carried some
 // other tool call along with it gets a warning and a line in the log, because a false refusal
 // costs more than a missed one.
 import { appendFileSync, mkdirSync } from 'node:fs';
@@ -56,6 +58,21 @@ const YIELDS = new Set(['AskUserQuestion', 'ExitPlanMode', 'Monitor']);
  * was, it was not the run finishing.
  */
 const BOOKKEEPING = new Set(['TodoWrite', 'TaskUpdate', 'TaskCreate']);
+
+/**
+ * Session tools that only dismantle the workspace the run was using. Same argument as
+ * `BOOKKEEPING`: removing the scaffolding is not the work, so a turn made of nothing but this
+ * is the run tidying up after its last real action rather than the run finishing.
+ */
+const TEARDOWN_TOOLS = new Set(['ExitWorktree']);
+
+/**
+ * The teardown verbs, as they appear in a `Bash` command. `worktree end` is the recorded one:
+ * a run closed on it alone, having already opened its PR the turn before, and the harness
+ * recorded no outcome for the run at all. `reap` and `cleanup` are the same act by another
+ * name and end a turn the same way.
+ */
+const TEARDOWN_BASH = /my-command-tools\s+(?:worktree\s+(?:end|reap)|cleanup)\b/;
 
 guard(() => {
   const event = readEvent();
@@ -86,20 +103,32 @@ guard(() => {
 
   note(
     `${new Date().toISOString()} session=${session} endsOnToolCall=${call.endsOnToolCall} unclosed=${call.owed}` +
-      `${call.verdict === 'bookkeeping' ? ' shape=bookkeeping' : ''}`,
+      `${call.verdict === 'bookkeeping' ? ` shape=${call.chore}` : ''}`,
   );
 
   if (call.verdict === 'bookkeeping') {
     const names = [...new Set(call.last.toolUses.map((/** @type {{name: string}} */ u) => u.name))].join(', ');
+    const what =
+      call.chore === 'teardown'
+        ? 'workspace teardown'
+        : call.chore === 'chores'
+          ? 'task-list bookkeeping and workspace teardown'
+          : 'task-list bookkeeping';
+    const nothingOwed =
+      call.chore === 'bookkeeping'
+        ? 'The list is already accurate; nothing further is owed to it.'
+        : 'The workspace is already gone, and nothing about this run depends on it any more.';
     block(
-      `This run's last turn called nothing but ${names} — task-list bookkeeping, ${call.last.toolUses.length} ` +
-        `call${call.last.toolUses.length === 1 ? '' : 's'} of it and nothing else. Marking rows is not work, so ` +
-        `the run's last real action was the turn before this one and the outcome was never recorded.\n\n` +
-        `The list is already accurate; nothing further is owed to it. Reply now with the report in text alone — ` +
-        `one self-contained line saying where the run stands, then the detail. Do not send another bookkeeping ` +
-        `call first, whatever is still open on the list.\n\n` +
-        `Next run, close every remaining row in the same turn as the last piece of real work — the teardown, the ` +
-        `final verify, the closing \`gh\` call — so no turn is left with only bookkeeping in it.`,
+      `This run's last turn called nothing but ${names} — ${what}, ${call.last.toolUses.length} ` +
+        `call${call.last.toolUses.length === 1 ? '' : 's'} of it and nothing else. Neither marking a row nor ` +
+        `removing the workspace is the work, so the run's last real action was the turn before this one and the ` +
+        `outcome was never recorded.\n\n` +
+        `${nothingOwed} Reply now with the report in text alone — one self-contained line saying where the run ` +
+        `stands, then the detail. Do not send another such call first, whatever is still open.\n\n` +
+        `Next run, fold every closing chore into the same turn as the last piece of real work — the teardown, the ` +
+        `final verify, the closing \`gh\` call, the last row of the list — so no turn is left with only chores in ` +
+        `it. \`worktree end\` and \`ExitWorktree\` are the recorded way this happens: they sit naturally at the ` +
+        `end, they return quietly, and the message that was meant to follow never gets sent.`,
     );
     return;
   }
@@ -142,6 +171,7 @@ guard(() => {
  * @property {number} [count]
  * @property {boolean} [endsOnToolCall]
  * @property {number} [owed]
+ * @property {'bookkeeping' | 'teardown' | 'chores'} [chore]
  */
 
 /**
@@ -181,7 +211,12 @@ function judge(line) {
   // status and never the subject, so no PreToolUse gate can tell the closing row from any
   // other one. Stop does not have to — it reads a turn that already happened, and a turn
   // that moved only task rows moved nothing else, whatever those rows were called.
-  if (endsOnToolCall && bookkeepingOnly(last)) return { ...seen, owed, verdict: 'bookkeeping' };
+  // The same reading catches the trailing teardown: a run that pushed its PR and then closed on
+  // a lone `worktree end` recorded no outcome either, and removing the workspace is no more the
+  // run finishing than marking a row is.
+  if (endsOnToolCall && bookkeepingOnly(last)) {
+    return { ...seen, owed, verdict: 'bookkeeping', chore: choreShape(last) };
+  }
 
   // A run this session set going is still open, so the stop lands mid-pipeline.
   if (nestedRunOpen(line)) return { ...seen, owed, verdict: 'silent' };
@@ -201,7 +236,33 @@ function bookkeepingOnly(turn) {
   const uses = turn.toolUses;
   if (uses.length === 0) return false;
   if (uses.every((u) => u.ok === false)) return false;
-  return uses.every((u) => BOOKKEEPING.has(u.name));
+  return uses.every((u) => BOOKKEEPING.has(u.name) || isTeardown(u));
+}
+
+/**
+ * Whether one call is workspace teardown. Read off the tool and, for `Bash`, off the verb in
+ * the command — the teardown verbs are a closed list and none of them takes free-form prose,
+ * so matching the verb cannot mistake some other command for one.
+ * @param {{name: string, input?: any}} use
+ * @returns {boolean}
+ */
+function isTeardown(use) {
+  if (TEARDOWN_TOOLS.has(use.name)) return true;
+  if (use.name !== 'Bash') return false;
+  return TEARDOWN_BASH.test(String(use.input?.command ?? ''));
+}
+
+/**
+ * Which of the two closing-chore shapes this turn is, for the message. Both are refused; they
+ * are told apart only so the refusal can name what it actually saw.
+ * @param {import('./lib/transcript.mjs').Turn} turn
+ * @returns {'bookkeeping' | 'teardown' | 'chores'}
+ */
+function choreShape(turn) {
+  const book = turn.toolUses.some((u) => BOOKKEEPING.has(u.name));
+  const down = turn.toolUses.some((u) => isTeardown(u));
+  if (book && down) return 'chores';
+  return down ? 'teardown' : 'bookkeeping';
 }
 
 /**
