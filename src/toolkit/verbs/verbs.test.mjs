@@ -309,6 +309,82 @@ test('worktree end reaps by default and --no-reap opts out', () => {
   assert.equal(alive(doomed), false);
 });
 
+/** A repo whose `main` is pushed to a real bare `origin`, still checked out on `main`. */
+function repoWithOrigin() {
+  const { dir, git } = repo();
+  const remote = mkdtempSync(join(tmpdir(), 'mct-origin-'));
+  made.push(remote);
+  execFileSync('git', ['init', '-q', '--bare', remote]);
+  git(['remote', 'add', 'origin', remote]);
+  git(['push', '-q', '-u', 'origin', 'main']);
+  return { dir, git };
+}
+
+/** @param {unknown} r @returns {{comparedWith: string|null, worktrees: {branch: string|null, reclaimable: boolean|null}[]}} */
+const listed = (r) => /** @type {never} */ (r);
+
+test('worktree list marks a merged branch reclaimable and leaves live work alone', () => {
+  const { dir, git } = repoWithOrigin();
+  // Never moved off main's tip, so already an ancestor of origin/main.
+  git(['branch', 'feat/merged']);
+  // Carries a commit origin/main has never seen.
+  git(['checkout', '-qb', 'feat/live']);
+  writeFileSync(join(dir, 'b.ts'), 'export const b = 1;\n');
+  git(['add', 'b.ts']);
+  git(['commit', '-qm', 'work in progress']);
+  git(['checkout', '-q', 'main']);
+
+  worktree(ctx(dir, ['begin'], { branch: 'feat/merged', existing: true }));
+  worktree(ctx(dir, ['begin'], { branch: 'feat/live', existing: true }));
+
+  const r = listed(worktree(ctx(dir, ['list'])));
+  assert.equal(r.comparedWith, 'origin/main');
+  const by = new Map(r.worktrees.map((w) => [w.branch, w.reclaimable]));
+  assert.equal(by.get('feat/merged'), true);
+  assert.equal(by.get('feat/live'), false);
+});
+
+test('worktree list never marks the default branch reclaimable', () => {
+  const { dir } = repoWithOrigin();
+  // `main` sits exactly on origin/main, so it is trivially its own ancestor.
+  const r = listed(worktree(ctx(dir, ['list'])));
+  assert.equal(r.worktrees.find((w) => w.branch === 'main')?.reclaimable, false);
+});
+
+test('worktree list cannot judge a detached worktree', () => {
+  const { dir, git } = repoWithOrigin();
+  git(['worktree', 'add', '-q', '--detach', join(dir, '.claude', 'worktrees', 'loose'), 'HEAD']);
+
+  const r = listed(worktree(ctx(dir, ['list'])));
+  // No branch means no merge to read — null, not a `false` that would read as live work.
+  assert.equal(r.worktrees.find((w) => w.branch === null)?.reclaimable, null);
+});
+
+test('worktree list cannot judge a branch ref git can no longer resolve', () => {
+  const { dir, git } = repoWithOrigin();
+  git(['branch', 'feat/gone']);
+  worktree(ctx(dir, ['begin'], { branch: 'feat/gone', existing: true }));
+  // The worktree outlives its ref: git still lists the branch, but merge-base exits 128
+  // instead of answering, and 128 is not a "no".
+  git(['update-ref', '-d', 'refs/heads/feat/gone']);
+
+  const r = listed(worktree(ctx(dir, ['list'])));
+  assert.equal(r.worktrees.find((w) => w.branch === 'feat/gone')?.reclaimable, null);
+});
+
+test('worktree list says it could not compare rather than claiming nothing is reclaimable', () => {
+  const { dir, git } = repo();
+  git(['branch', 'feat/x']);
+  worktree(ctx(dir, ['begin'], { branch: 'feat/x', existing: true }));
+
+  const r = listed(worktree(ctx(dir, ['list'])));
+  // With no origin/main on disk the answer is "unknown — fetch first", not `false`.
+  assert.equal(r.comparedWith, null);
+  assert.equal(r.worktrees.find((w) => w.branch === 'feat/x')?.reclaimable, null);
+  // The default branch still needs no ref to judge.
+  assert.equal(r.worktrees.find((w) => w.branch === 'main')?.reclaimable, false);
+});
+
 /**
  * A repo with a real `origin` to push to, plus a stub `gh` on PATH that answers
  * `pr view` with `json` and records every invocation. Returns the log reader, so a
@@ -316,12 +392,7 @@ test('worktree end reaps by default and --no-reap opts out', () => {
  * @param {Record<string, unknown>} json  What `gh pr view --json ...` should report.
  */
 function repoWithFakeGh(json) {
-  const { dir, git } = repo();
-  const remote = mkdtempSync(join(tmpdir(), 'mct-origin-'));
-  made.push(remote);
-  execFileSync('git', ['init', '-q', '--bare', remote]);
-  git(['remote', 'add', 'origin', remote]);
-  git(['push', '-q', '-u', 'origin', 'main']);
+  const { dir, git } = repoWithOrigin();
   git(['checkout', '-qb', 'feat/x']);
 
   const bin = join(dir, '.fakebin');
