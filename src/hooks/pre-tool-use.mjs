@@ -8,13 +8,14 @@
 //   repeated probe    — the same Bash probe re-issued with nothing since to change its answer
 //   polling a watch   — a probe of a file a Monitor in this session is already watching
 //   relative cd       — `cd <relative path>` that does not resolve from the current dir
+//   hand-rolled cleanup — post-merge branch deletion as raw git, which the `cleanup` verb owns
 //   unmatched glob    — an unquoted glob matching nothing, which zsh aborts the command on
 //   foreground sleep  — a wait the harness refuses, taking the probe chained to it down too
 //   heredoc write     — composing a file in the shell where the Write tool does it directly
 //   prose on stdin    — a toolkit verb asked to read `-`, which is what invites the heredoc
 //   guessed JSON      — a `node -e`/`python3 -c` one-liner against a JSON shape never read
 //   diff again        — a per-path diff after `scope --diff` already returned that content
-//   read-polling      — a `Read` of a file a watch in this session is already following
+//   read-polling      — a *repeat* `Read` of an unchanged file a watch is already following
 //   trailing anchor   — a bookkeeping call scheduled after the run's last real work
 //
 // A scratch write under `$CLAUDE_JOB_DIR` from a worktree is deliberately *not* here: see
@@ -29,6 +30,7 @@ import { basename, isAbsolute, resolve } from 'node:path';
 import {
   dumpedFiles,
   foregroundSleep,
+  handRolledCleanup,
   heredocWrite,
   inlineScriptJson,
   perPathDiff,
@@ -44,6 +46,7 @@ import {
   foreignTranscript,
   issued,
   lastFullReadOf,
+  lastReadOf,
   repeatedProbe,
   timeline,
   touched,
@@ -111,15 +114,22 @@ guard(() => {
 });
 
 /**
- * Refuse a `Read` of a file a `Monitor` or a backgrounded Bash command in this session is
- * already following. The shell half of this has been gated since the watch gate shipped; the
- * `Read` half was not, and it is the half that recurred — a backgrounded verify run whose
- * output file was re-read three times while waiting, with the file unchanged between reads.
- * A watch delivers its events itself, so there is no second read to make.
+ * Refuse a **repeat** `Read` of a file a `Monitor` or a backgrounded Bash command in this session
+ * is already following, when the file has not changed since that earlier read. A watch delivers
+ * its events itself, so the second and third read of the same unchanged bytes are the polling.
+ *
+ * The *first* read is deliberately allowed, and that is the whole correction here. Refusing it
+ * outright is what the recorded sessions paid for: one run took three of these refusals, and
+ * each time had to reason about whether the watch it named had already ended before it dared
+ * reissue the read — a question the transcript could answer and the agent could not. Letting the
+ * read through makes that question unnecessary, because the read itself is now the cheap way to
+ * ask: it returns the log's current bytes, and only asking a second time for those same bytes is
+ * refused. Nothing about the polling this gate exists to stop survives the change — the recorded
+ * harm was a report read twenty times, and reads two through twenty are still refused.
  *
  * Only the watch's own output target counts — the file it redirects to, `tee`s to, or tails —
- * compared as a whole resolved path. A first read of the script a watch runs, or of the config
- * it was handed, is discovery rather than polling.
+ * compared as a whole resolved path. A read of the script a watch runs, or of the config it was
+ * handed, is discovery rather than polling however many times it happens.
  * @param {Record<string, any>} input
  * @param {(import('./lib/transcript.mjs').Turn | null)[]} line @param {string} session
  * @param {string} cwd
@@ -137,16 +147,76 @@ function readPolling(input, line, session, cwd) {
     (file) => (isAbsolute(file) ? file : resolve(cwd, file)) === target,
   );
   if (!watched) return false;
+
+  // Never seen by this session: this is the look, not the poll. Any read counts, a slice as
+  // much as a whole file, since either one returned the log's bytes at that moment.
+  const priorAt = lastReadOf(line, path, currentUuid);
+  if (priorAt === 0) return false;
+  let mtime;
+  try {
+    mtime = statSync(target).mtimeMs;
+  } catch {
+    // Not there yet, or unreadable — let the tool say so rather than guessing on its behalf.
+    return false;
+  }
+  // Written to since that read, so this one returns bytes the session does not have.
+  if (mtime > priorAt - CHANGED_GRACE_MS) return false;
   if (alreadyDenied(session, 'watched', watched)) return false;
 
   deny(
-    `${liveness(watched)}, and this \`Read\` is polling it by hand. Waiting is the watch's job, ` +
-      `so a second and third read of the same file return the same bytes and a stalled ` +
-      `condition is polled forever.\n\n${verifyWaitOffer(watched)}\n\n` +
+    `This session already read ${watched} at ${new Date(priorAt).toISOString()} and the file has ` +
+      `not been written to since (last modified ${new Date(mtime).toISOString()}), so this ` +
+      `\`Read\` returns the same bytes again.\n\n${liveness(watched)} — so there is nothing to ` +
+      `reason about here and no need to check whether waiting will end: the watch is live, it ` +
+      `delivers its own events, and a stalled condition polled by hand is polled forever.\n\n` +
+      `${verifyWaitOffer(watched)}\n\n` +
       `For anything else, arm one bounded wait that ends on its own:\n` +
       `  Bash({run_in_background: true, command: "until grep -qE '<done>|<failure>' ${path}; do sleep 1; done"})\n` +
       `widening the pattern to the failure signatures too, so a crash is not silence. Then read ` +
       `the file once, after that wait reports.`,
+  );
+  return true;
+}
+
+/**
+ * Refuse post-merge branch cleanup composed as raw git. `my-command-tools cleanup` already
+ * settles both halves from the PR rather than from git's error, and the docs already say so —
+ * yet the pair recurred, hit in sequence in one recorded session: the remote delete exited 1 on
+ * an auto-deleted ref, and the local delete then refused the squash-merged branch as "not fully
+ * merged". Prose was the lever that did not hold, so the shape is named here instead.
+ *
+ * The verb is the whole replacement: it asks `git ls-remote` before pushing a delete and reports
+ * `already-absent` as an outcome, and it deletes a squash-merged branch on the PR's evidence.
+ * The one refusal it keeps is the one that means something — a branch with no merged PR, whose
+ * commits exist nowhere else — so this redirects rather than weakens.
+ * @param {Record<string, any>} input @param {string} session
+ * @returns {boolean} true when the call was denied
+ */
+function handRolledBranchCleanup(input, session) {
+  const found = handRolledCleanup(String(input?.command ?? ''));
+  if (!found) return false;
+  if (alreadyDenied(session, 'cleanup', found.branch)) return false;
+
+  const failure =
+    found.half === 'remote'
+      ? `\`git push ${found.remote} --delete ${found.branch}\` exits 1 with "remote ref does not ` +
+        `exist" whenever GitHub's auto-delete-branch setting already took the ref at merge time`
+      : `\`git branch -d ${found.branch}\` refuses a squash-merged branch as "not fully merged", ` +
+        `because the squash commit shares no history with the branch's own commits — the work ` +
+        `landed, and git cannot see that it did`;
+
+  deny(
+    `${failure}. Both halves of post-merge cleanup fail that way predictably, and one recorded ` +
+      `session hit them in sequence.\n\n` +
+      `One call settles both, from the PR rather than from git's answer:\n` +
+      `  my-command-tools cleanup --branch ${found.branch}\n\n` +
+      `Read \`local.reason\` and \`remote.reason\` from its JSON and move on: a ref auto-delete ` +
+      `already removed reports \`already-absent\`, which is a success, and a squash-merged branch ` +
+      `reports \`squash-merged\` with the PR number. \`--keep-local\` / \`--keep-remote\` skip a ` +
+      `half deliberately, and \`--remote <name>\` names a remote other than origin.\n\n` +
+      `\`local.reason: "not-merged"\` is the one answer that still refuses, and it means the ` +
+      `branch's commits exist nowhere else — escalating to \`git branch -D\` by hand there would ` +
+      `discard them.`,
   );
   return true;
 }
@@ -250,6 +320,7 @@ function badShape(event, input, session) {
   const cwd = typeof event.cwd === 'string' ? event.cwd : process.cwd();
 
   if (relativeCd(event, input)) return true;
+  if (handRolledBranchCleanup(input, session)) return true;
 
   const glob = unmatchedGlob(command, cwd);
   if (glob && !alreadyDenied(session, 'glob', glob)) {

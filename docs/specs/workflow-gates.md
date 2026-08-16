@@ -48,7 +48,8 @@ is allowed to be another sentence.
 | Redundant whole-file reads | 3 | `PreToolUse` refuses a re-read of an unchanged file |
 | Re-narrowing on a file already read | 3 | `PreToolUse` refuses a shell dump of an unchanged file already read whole |
 | The same probe re-issued per item | 3 | `PreToolUse` refuses an identical read-only command whose answer cannot have changed |
-| Polling a condition already watched | 3 | `PreToolUse` refuses a probe — shell **or** `Read` — of a file a **still-running** `Monitor` or backgrounded Bash call in this session is following; the `Read` half judges the watch's own output target by whole path, and a backgrounded command whose completion notice already arrived no longer counts as a watch, so reading its output afterwards is the one read the gate was asking for |
+| Polling a condition already watched | 3 | `PreToolUse` refuses a probe — shell **or** `Read` — of a file a **still-running** `Monitor` or backgrounded Bash call in this session is following; the `Read` half judges the watch's own output target by whole path, and a backgrounded command whose completion notice already arrived no longer counts as a watch, so reading its output afterwards is the one read the gate was asking for. The **first** `Read` of a watched file is allowed: only a repeat read of bytes unchanged since the last one is the poll |
+| Reasoning about whether a watch is still live | 3 | the `Read` that would have asked the question is allowed instead of refused, so the read *is* the answer; the refusal that remains states its own evidence — the earlier read's timestamp and the file's mtime — so nothing is left to infer |
 | Having nothing to wait *on* | 4 | `verify --wait` **is** the wait: one foreground `Bash` call that blocks until the detached run exits, then prints its whole report and exits on its verdict. `--background` returns that exact command under `wait.blocking`, and `wait.input` remains for a run that must stay free |
 | Prose composed on stdin | 4 | `commit`/`pr` take `--message-file`/`--body-file`; `PreToolUse` refuses `--message -`/`--body -` and names the flag |
 | A second, path-narrowed diff | 4 | `scope --diff` already returned every hunk; `PreToolUse` refuses a single-path `git diff -- <path>`/`gh pr diff <path>` once it has run, leaving the batched multi-path form the prose prescribes alone |
@@ -56,6 +57,7 @@ is allowed to be another sentence.
 | A run ending on a bookkeeping call | 4 | `PreToolUse` refuses a `TodoWrite` that completes the closing-turn anchor and carries nothing else |
 | A closing turn made only of chores | 4 | `Stop` refuses a final turn whose every call is `TodoWrite`/`TaskUpdate`/`TaskCreate` **or workspace teardown** (`worktree end`, `worktree reap`, `cleanup`, `ExitWorktree`), judged on the turn's shape rather than any tool's input — which is how `TaskUpdate`, ungateable at `PreToolUse`, is reached at all |
 | Post-merge branch deletion failing predictably | 4 | `my-command-tools cleanup` settles both halves from the PR: a squash merge's "not fully merged" is deleted on the PR's evidence, an auto-deleted remote ref reports `already-absent` rather than exiting 1 |
+| That cleanup composed as raw git anyway | 4 | `PreToolUse` refuses `git push <remote> --delete <branch>` and `git branch -d <branch>` and names `cleanup --branch <branch>`. `git branch -D` is left alone: it is the deliberate discard of work that never landed, and `/mc` prescribes it |
 | A dispatched unit making its own worktree | 4 | the dispatching command runs `worktree begin` and hands over `--worktree <path>`; concurrent siblings cannot learn from each other, so the affordance moves to the caller rather than the advice to the callee |
 | A dispatched unit told to *enter* a worktree | 4 | the instruction is gone. `worktree begin` reports `workingRoot` and an `enterWorktree` line saying it is not needed, and the prose makes the absolute-path form the normal mode rather than the fallback after a refusal |
 | Relative `cd` that cannot resolve | 3 | `PreToolUse` refuses it, naming the absolute form |
@@ -67,6 +69,7 @@ is allowed to be another sentence.
 | Unapproved signing prompt | 3 | `commit` retries once, itself |
 | `must be a collaborator` | 3 | `pr` resolves the identity, itself |
 | Hand-composed probes the classifier refuses | 4 | named read-only verbs, plus an installed allowlist |
+| Turns lost to a shape-incidental refusal | 3 | `shared/classifier-refusal.md` names the form that works for each recorded shape — a chained probe reissued as the one bare command (or as `Read`), a heredoc composition written with `Write`/`Edit` — and states outright that a probe naming a `.env` file is refused for the *file*, so no smaller form of it is a fix and it is never allowlisted or worked around |
 | A run ending with no outcome | 3 | `Stop` refuses the stop — for the **outermost** run only |
 
 High tool churn has no gate of its own as an aggregate — but its one recorded *cause* now
@@ -790,6 +793,10 @@ cannot contradict each other again.
 - [x] A turn issuing seven parallel probes of distinct files is not refused.
 - [x] Hand-polling a file a `Monitor` in this session is following is refused once; an
       unrelated probe during that watch passes.
+- [x] The **first** `Read` of a file a live watch is writing passes, and so does a read of a
+      file that has been written to since the last one; only a repeat read of bytes unchanged
+      since that read is refused, and the refusal states both timestamps so no liveness
+      question is left to answer.
 - [x] `doctor.hooks.armed` is `false` with the missing entries named when the gates are not
       registered, `false` when `settings.json` cannot be parsed, and `true` with
       `link.pointsAtCheckout` after the installer runs.
@@ -813,8 +820,9 @@ cannot contradict each other again.
       passing both the file and the inline flag is a usage error, and an unreadable path fails
       with the path named.
 - [x] `my-command-tools commit --message -` and `pr --body -` are each refused with the
-      `--message-file` / `--body-file` form named, and no command or shared snippet teaches
-      the stdin form.
+      `--message-file` / `--body-file` form named, and no command, shared snippet, or **verb
+      usage string** teaches the stdin form — the usage strings are prose the agent reads, so
+      one advertising `--body -` prescribed the exact call the gate refuses.
 - [x] A `git diff -- <path>` or `gh pr diff` narrowed to a single path is refused once
       `scope --diff` has run in the session; the same call with no prior `scope --diff`, and a
       `--name-only`/`--stat` enumeration at any time, both pass.
@@ -877,6 +885,10 @@ cannot contradict each other again.
       `squash-merged` with the PR number; refuses it as `not-merged` when no merged PR exists;
       reports an already-auto-deleted remote ref as `already-absent` with `pass: true`; and
       refuses a branch checked out in a worktree, naming the path.
+- [x] `git push <remote> --delete <branch>` and `git branch -d <branch>` are each refused with
+      `cleanup --branch <branch>` named; `git branch -D`, an ordinary `git push`, and a
+      `git branch` listing all pass, because the force delete is the deliberate discard `/mc`
+      prescribes rather than the predictable failure.
 - [x] `stash write` rotates a five-deep ring, drops the oldest, and preserves an entry
       containing quotes, backslashes, and newlines byte for byte; `stash restore` reads a
       named slot, and a slot holding nothing is reported with the clipboard left alone.

@@ -196,6 +196,49 @@ export function stdinProseFlag(command) {
   return null;
 }
 
+/**
+ * The hand-rolled half of post-merge branch cleanup in this command, or null. Both halves fail
+ * for a reason that is settled before they run rather than discovered from their error:
+ *
+ *   git push <remote> --delete <b>  → "remote ref does not exist", because GitHub's
+ *                                     auto-delete-branch setting took the ref at merge time.
+ *   git branch -d <b>               → "the branch is not fully merged", because a squash merge
+ *                                     shares no history with the branch's own commits.
+ *
+ * `my-command-tools cleanup` answers each half from the PR instead, so this reports the shape
+ * and the caller names that verb. Only the *safe* local delete counts: `git branch -D` is a
+ * deliberate discard of work that never landed — `/mc` prescribes it to force a branch to be
+ * recreated from origin — and refusing it would put this gate at odds with the docs.
+ * @param {string} command
+ * @returns {{half: 'remote' | 'local', branch: string, remote: string} | null}
+ */
+export function handRolledCleanup(command) {
+  for (const segment of command.split(/\|\||&&|[;|\n]/)) {
+    const tokens = tokenize(segment).map((t) => t.text);
+    if ((tokens[0]?.split('/').pop() ?? '') !== 'git') continue;
+    // `git -C <path>` and the other pre-subcommand options sit between `git` and the verb.
+    const at = tokens.findIndex((t, i) => i > 0 && (t === 'push' || t === 'branch'));
+    if (at === -1) continue;
+    const rest = tokens.slice(at + 1);
+    // A flag's own value, and anything the shell computes, make the branch unreadable here.
+    const words = rest.filter((t) => !t.startsWith('-') && !UNJUDGEABLE.test(t) && !/[*?]/.test(t));
+
+    if (tokens[at] === 'push') {
+      if (!rest.includes('--delete') && !rest.includes('-d')) continue;
+      // `git push <remote> --delete <branch>` in either order; a bare `--delete` names both.
+      if (words.length !== 2) continue;
+      return { half: 'remote', remote: words[0], branch: words[1] };
+    }
+
+    // `git branch --delete` is `-d`; `--force`/`-D` alongside it is the deliberate discard.
+    if (!rest.includes('-d') && !rest.includes('--delete')) continue;
+    if (rest.includes('-D') || rest.includes('--force')) continue;
+    if (words.length !== 1) continue;
+    return { half: 'local', remote: 'origin', branch: words[0] };
+  }
+  return null;
+}
+
 /** Inline-script runners: the whole program is an argument, so nothing on disk records it. */
 const INLINE_SCRIPT = [
   { bin: /^(node|bun)$/, flags: new Set(['-e', '--eval', '-p', '--print']) },

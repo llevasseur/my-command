@@ -11,9 +11,9 @@ import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { porcelain } from '../lib/repo.mjs';
 import { run as cleanup } from './cleanup.mjs';
-import { run as commit } from './commit.mjs';
+import { run as commit, usage as commitUsage } from './commit.mjs';
 import { run as concepts, line as conceptsLine } from './concepts.mjs';
-import { run as pr } from './pr.mjs';
+import { run as pr, usage as prUsage } from './pr.mjs';
 import { run as scope } from './scope.mjs';
 import { run as state } from './state.mjs';
 import { run as verify } from './verify.mjs';
@@ -147,6 +147,24 @@ test('pr refuses --body together with --body-file', () => {
   writeFileSync(bodyFile, '## Summary\n\nOne way only.\n');
 
   assert.throws(() => pr(ctx(dir, [], { body: 'inline', 'body-file': bodyFile })), /mutually exclusive/);
+});
+
+test('the usage strings do not prescribe the stdin form the gate refuses', () => {
+  // Three recorded sessions lost a turn to this: the gate refused `--body -`, and the verb's
+  // own usage text — the prose the agent reads to find the flag — offered it as a route. Where
+  // the stdin form is mentioned at all it has to say it is refused, in the same breath.
+  for (const [usage, flag] of [
+    [prUsage, '--body -'],
+    [commitUsage, '--message -'],
+  ]) {
+    for (const line of usage.split('\n')) {
+      if (!line.includes(flag)) continue;
+      const sentence = usage.slice(usage.indexOf(line));
+      assert.match(sentence, /refuses/, `${flag} is offered without saying the gate refuses it`);
+    }
+  }
+  assert.match(prUsage, /--body-file/);
+  assert.match(commitUsage, /--message-file/);
 });
 
 test('a rename is one entry, not a phantom second file', () => {
