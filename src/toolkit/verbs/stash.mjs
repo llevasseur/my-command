@@ -174,10 +174,8 @@ function write(dir, contentFile, clipboard, consume) {
   const { rotated, dropped } = rotate(dir);
   const path = slotPath(dir, 0);
   copyFileSync(contentFile, path);
-  // The bytes are in the ring now, so the hand-off file has no further job. `/cp` mints a
-  // fresh compose path per invocation — `Write` rejects an overwrite of a file the session
-  // never read, so a fixed path failed on the first write of every run after the first — and
-  // a unique name per run is exactly the shape that accumulates if nobody removes it.
+  // The bytes are in the ring now, so the hand-off file has no further job. `/cp` mints a fresh
+  // compose path per invocation, and a unique name per run accumulates unless something removes it.
   if (consume) rmSync(contentFile, { force: true });
 
   return {
