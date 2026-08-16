@@ -16,6 +16,7 @@ import { install } from './install-hooks.mjs';
 import {
   dumpedFiles,
   foregroundSleep,
+  handRolledCleanup,
   heredocWrite,
   inlineScriptJson,
   perPathDiff,
@@ -1170,9 +1171,15 @@ test('watched condition: the Read gate follows the watch output, not every name 
   ]) {
     writeFileSync(path, body);
   }
+  // Older than the read below, so the second read is provably asking for the same bytes.
+  const old = (Date.now() - 3_600_000) / 1000;
+  utimesSync(log, old, old);
   const line = transcript([
     'prompt',
     [read('Bash', { command: `node ${script} --config ${config} > ${log} 2>&1`, run_in_background: true })],
+    // The first read of the log is allowed; it is the second, of unchanged bytes, that polls.
+    [read('Read', { file_path: log })],
+    [read('Grep', { pattern: 'still-going' })],
   ]);
   /** @param {string} session @param {string} file */
   const at = (session, file) =>
@@ -1184,7 +1191,7 @@ test('watched condition: the Read gate follows the watch output, not every name 
       tool_input: { file_path: file },
     });
 
-  // The redirect target is what the watch is writing, so reading it by hand is the polling.
+  // The redirect target is what the watch is writing, so reading it again by hand is polling.
   assert.equal(denied(at('wo1', log)), true);
 
   // The script it runs and the config it was handed are named on the same command line, and a
@@ -1198,13 +1205,17 @@ test('watched condition: the Read gate follows the watch output, not every name 
   assert.equal(denied(at('wo4', elsewhere)), false);
 });
 
-test('watched condition: a Read that polls a watched file is refused, an unrelated Read is not', () => {
+test('watched condition: a Read that re-polls a watched file is refused, an unrelated Read is not', () => {
   const dir = scratch();
   const log = join(dir, 'verify.log');
   writeFileSync(log, 'running\n');
+  const old = (Date.now() - 3_600_000) / 1000;
+  utimesSync(log, old, old);
   const line = transcript([
     'prompt',
     [read('Bash', { command: `pnpm verify > ${log} 2>&1`, run_in_background: true })],
+    [read('Read', { file_path: log })],
+    [read('Grep', { pattern: 'still-going' })],
   ]);
 
   const answer = hook(PRE_TOOL_USE, {
@@ -1216,6 +1227,8 @@ test('watched condition: a Read that polls a watched file is refused, an unrelat
   });
   assert.equal(denied(answer), true);
   assert.match(answer.hookSpecificOutput.permissionDecisionReason, /is \*\*still running\*\*/);
+  // The refusal carries its own evidence, so no liveness question is left to reason about.
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /already read .* and the file has/s);
 
   const unrelated = hook(PRE_TOOL_USE, {
     session_id: 'rp2',
@@ -1225,6 +1238,42 @@ test('watched condition: a Read that polls a watched file is refused, an unrelat
     tool_input: { file_path: join(dir, 'other.md') },
   });
   assert.equal(denied(unrelated), false);
+});
+
+test('watched condition: the first Read of a watched log passes, and so does one after it changed', () => {
+  // Nothing has read the log yet, so this is the look rather than the poll.
+  const dir = scratch();
+  const log = join(dir, 'verify.log');
+  writeFileSync(log, 'running\n');
+  const armed = transcript([
+    'prompt',
+    [read('Bash', { command: `pnpm verify > ${log} 2>&1`, run_in_background: true })],
+  ]);
+  const first = hook(PRE_TOOL_USE, {
+    session_id: 'fw1',
+    transcript_path: armed,
+    cwd: dir,
+    tool_name: 'Read',
+    tool_input: { file_path: log },
+  });
+  assert.equal(denied(first), false);
+
+  // Read once already, but written to since — so this read returns bytes the session lacks.
+  const after = transcript([
+    'prompt',
+    [read('Bash', { command: `pnpm verify > ${log} 2>&1`, run_in_background: true })],
+    [read('Read', { file_path: log })],
+    [read('Grep', { pattern: 'still-going' })],
+  ]);
+  writeFileSync(log, 'running\nfailed: 1 gate\n');
+  const changed = hook(PRE_TOOL_USE, {
+    session_id: 'fw2',
+    transcript_path: after,
+    cwd: dir,
+    tool_name: 'Read',
+    tool_input: { file_path: log },
+  });
+  assert.equal(denied(changed), false);
 });
 
 test('watched condition: a backgrounded command that already reported is no longer a watch', () => {
@@ -1300,9 +1349,13 @@ test('watched condition: the denial names the affordance that replaces the poll'
   const dir = scratch();
   const log = join(dir, 'verify.log');
   writeFileSync(log, 'running\n');
+  const old = (Date.now() - 3_600_000) / 1000;
+  utimesSync(log, old, old);
   const line = transcript([
     'prompt',
     [read('Bash', { command: `pnpm verify > ${log} 2>&1`, run_in_background: true })],
+    [read('Read', { file_path: log })],
+    [read('Grep', { pattern: 'still-going' })],
   ]);
   const answer = hook(PRE_TOOL_USE, {
     session_id: 'rp5',
@@ -1313,6 +1366,78 @@ test('watched condition: the denial names the affordance that replaces the poll'
   });
   assert.equal(denied(answer), true);
   assert.match(answer.hookSpecificOutput.permissionDecisionReason, /verify --background/);
+});
+
+// ── post-merge branch cleanup composed as raw git ────────────────────────────────────
+
+test('cleanup: both halves of hand-rolled post-merge deletion are refused, naming the verb', () => {
+  assert.deepEqual(handRolledCleanup('git push origin --delete feat/x'), {
+    half: 'remote',
+    remote: 'origin',
+    branch: 'feat/x',
+  });
+  assert.equal(handRolledCleanup('git -C /repo push upstream -d feat/x')?.half, 'remote');
+  assert.equal(handRolledCleanup('git branch -d feat/x')?.branch, 'feat/x');
+  assert.equal(handRolledCleanup('git branch --delete feat/x')?.half, 'local');
+
+  // The force delete is the deliberate discard, which `/merge-deps` prescribes to make a
+  // branch be recreated from origin — refusing it would put this gate at odds with the docs.
+  assert.equal(handRolledCleanup('git branch -D feat/x'), null);
+  assert.equal(handRolledCleanup('git branch --delete --force feat/x'), null);
+  // An ordinary push, a listing, and a delete whose branch the shell computes are all left be.
+  assert.equal(handRolledCleanup('git push origin HEAD'), null);
+  assert.equal(handRolledCleanup('git branch --list'), null);
+  assert.equal(handRolledCleanup('git push origin --delete "$BRANCH"'), null);
+
+  const dir = scratch();
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'cu1',
+    transcript_path: transcript(['prompt']),
+    cwd: dir,
+    tool_name: 'Bash',
+    tool_input: { command: 'git push origin --delete feat/x' },
+  });
+  assert.equal(denied(answer), true);
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /cleanup --branch feat\/x/);
+
+  const local = hook(PRE_TOOL_USE, {
+    session_id: 'cu2',
+    transcript_path: transcript(['prompt']),
+    cwd: dir,
+    tool_name: 'Bash',
+    tool_input: { command: 'git branch -d feat/x' },
+  });
+  assert.equal(denied(local), true);
+  assert.match(local.hookSpecificOutput.permissionDecisionReason, /not fully merged/);
+
+  const forced = hook(PRE_TOOL_USE, {
+    session_id: 'cu3',
+    transcript_path: transcript(['prompt']),
+    cwd: dir,
+    tool_name: 'Bash',
+    tool_input: { command: 'git branch -D feat/x' },
+  });
+  assert.equal(denied(forced), false);
+});
+
+test('cleanup: the same branch is never refused twice', () => {
+  const dir = scratch();
+  const state = scratch();
+  /** @param {string} command */
+  const at = (command) =>
+    hook(
+      PRE_TOOL_USE,
+      {
+        session_id: 'cu4',
+        transcript_path: transcript(['prompt']),
+        cwd: dir,
+        tool_name: 'Bash',
+        tool_input: { command },
+      },
+      state,
+    );
+  assert.equal(denied(at('git push origin --delete feat/x')), true);
+  assert.equal(denied(at('git branch -d feat/x')), false);
 });
 
 // ── the closing-turn anchor ─────────────────────────────────────────────────────────

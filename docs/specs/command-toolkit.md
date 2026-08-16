@@ -65,8 +65,11 @@ and `--body-file <path>` are what the usage strings advertise, because the multi
 alternative is a heredoc and a heredoc composing a file is refused wholesale inside a
 worktree — the shape those two verbs are called from most. The file pairs with the
 tool that refusal already names: write the prose to a path, pass the path. `--message -`
-and `--body -` still read stdin for a real pipeline; they are simply no longer the
-advertised route, since every recorded use of them spent a refused call first.
+and `--body -` still read stdin, but the usage strings no longer offer them as a route:
+the gate refuses that form on sight, so a usage string that advertised it was prose
+prescribing the exact call the gate then refused, and three recorded sessions spent a
+turn each on the round trip. What the toolkit prints and what the gate does now say the
+same thing.
 
 `scope --diff` returns that branch's diff **content** in the same call, split into
 `diff.committed` and `diff.workingTree` and annotated per line — `<sign><line number>\t<text>`,

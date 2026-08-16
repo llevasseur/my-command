@@ -24,7 +24,9 @@ Push the current branch and create or update its PR.
   --base <branch>     Target branch (default: the repo's default branch).
   --retitle           Also update the title of an existing PR.
 
-\`--body -\` still reads the description from stdin, for a real pipeline.
+\`--body -\` reads the description from stdin, and the \`PreToolUse\` gate refuses that
+form on sight — the only way to put multi-line prose on stdin is a heredoc, and a
+heredoc is refused wholesale inside an isolated worktree. Use \`--body-file\`.
 
 Assets already in an existing PR's description — images, videos, GitHub attachment
 links — are always carried over into the new body. They are never dropped.

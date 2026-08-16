@@ -327,6 +327,29 @@ export function lastFullReadOf(line, path, exceptTurnUuid) {
   return at;
 }
 
+/**
+ * The most recent time this session read `path` at all — whole file or a slice — or 0 when it
+ * never did. Deliberately broader than `lastFullReadOf`: the question here is not "are these
+ * bytes already in context" but "has this file been looked at once already", which is what
+ * separates a first look at a watched log from polling it.
+ * @param {(Turn | null)[]} line @param {string} path @param {string} [exceptTurnUuid]
+ * @returns {number}
+ */
+export function lastReadOf(line, path, exceptTurnUuid) {
+  let at = 0;
+  for (const turn of turns(line)) {
+    if (exceptTurnUuid && turn.uuid === exceptTurnUuid) continue;
+    for (const use of turn.toolUses) {
+      if (use.name !== 'Read') continue;
+      // A refused or errored read delivered no bytes, so it was never a look at the file.
+      if (use.ok === false) continue;
+      if (use.input?.file_path !== path) continue;
+      if (turn.at > at) at = turn.at;
+    }
+  }
+  return at;
+}
+
 /** Tools whose call satisfies the harness's read-before-write precondition for a path. */
 const TOUCHES = new Set(['Read', 'Edit', 'Write', 'NotebookEdit', 'MultiEdit']);
 

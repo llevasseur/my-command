@@ -16,7 +16,9 @@ Stage the given paths and commit them.
                          worktree.
   --message <text>       A one-line message given inline.
 
-\`--message -\` still reads the whole message from stdin, for a real pipeline.
+\`--message -\` reads the whole message from stdin, and the \`PreToolUse\` gate refuses
+that form on sight — the only way to put a multi-line message on stdin is a heredoc,
+and a heredoc is refused wholesale inside an isolated worktree. Use \`--message-file\`.
 
 Refuses to commit on the default branch, and refuses \`.\`/\`-A\`-style whole-tree
 staging — paths are always explicit so unrelated carryover files stay put.
