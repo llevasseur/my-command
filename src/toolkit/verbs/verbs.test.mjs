@@ -1122,6 +1122,9 @@ function withGh(answer, fn) {
   }
 }
 
+/** @param {unknown} r @returns {{pass: boolean, cleaned: {local: {deleted: boolean, reason: string, pr: number, detail: string}, remote: {deleted: boolean, reason: string, detail: string}}[]}} */
+const cleaned = (r) => /** @type {never} */ (r);
+
 test('cleanup deletes a branch git can see is merged', () => {
   const { dir, git } = repo();
   git(['checkout', '-qb', 'feat/done']);
@@ -1131,7 +1134,7 @@ test('cleanup deletes a branch git can see is merged', () => {
   git(['checkout', '-q', 'main']);
   git(['merge', '-q', '--no-edit', 'feat/done']);
 
-  const r = cleanup(ctx(dir, [], { branch: 'feat/done', 'keep-remote': true }));
+  const r = cleaned(cleanup(ctx(dir, [], { branch: 'feat/done', 'keep-remote': true })));
   assert.equal(r.cleaned[0].local.reason, 'merged');
   assert.equal(r.cleaned[0].local.deleted, true);
   assert.equal(r.pass, true);
@@ -1151,7 +1154,7 @@ test('cleanup forces a squash-merged branch on the PR, not on the refusal', () =
   git(['commit', '-qm', 'squashed c']);
 
   withGh('[{"number":42,"state":"MERGED","mergedAt":"2026-08-01T00:00:00Z","mergeCommit":{"oid":"deadbeef"}}]', () => {
-    const r = cleanup(ctx(dir, [], { branch: 'feat/squashed', 'keep-remote': true }));
+    const r = cleaned(cleanup(ctx(dir, [], { branch: 'feat/squashed', 'keep-remote': true })));
     assert.equal(r.cleaned[0].local.deleted, true);
     assert.equal(r.cleaned[0].local.reason, 'squash-merged');
     assert.equal(r.cleaned[0].local.pr, 42);
@@ -1169,7 +1172,7 @@ test('cleanup refuses a branch whose work landed nowhere', () => {
   git(['checkout', '-q', 'main']);
 
   withGh('[]', () => {
-    const r = cleanup(ctx(dir, [], { branch: 'feat/orphan', 'keep-remote': true }));
+    const r = cleaned(cleanup(ctx(dir, [], { branch: 'feat/orphan', 'keep-remote': true })));
     assert.equal(r.cleaned[0].local.deleted, false);
     assert.equal(r.cleaned[0].local.reason, 'not-merged');
     assert.equal(r.pass, false);
@@ -1192,7 +1195,7 @@ test('cleanup reports an already-auto-deleted remote ref as an outcome, not a fa
   git(['checkout', '-q', 'main']);
   git(['merge', '-q', '--no-edit', 'feat/gone']);
 
-  const r = cleanup(ctx(dir, [], { branch: 'feat/gone' }));
+  const r = cleaned(cleanup(ctx(dir, [], { branch: 'feat/gone' })));
   assert.equal(r.cleaned[0].remote.reason, 'already-absent');
   assert.equal(r.cleaned[0].remote.deleted, false);
   assert.equal(r.pass, true);
@@ -1200,7 +1203,7 @@ test('cleanup reports an already-auto-deleted remote ref as an outcome, not a fa
 
 test('cleanup refuses a branch a worktree still holds, naming the path', () => {
   const { dir } = repo();
-  const r = cleanup(ctx(dir, [], { branch: 'main', 'keep-remote': true }));
+  const r = cleaned(cleanup(ctx(dir, [], { branch: 'main', 'keep-remote': true })));
   assert.equal(r.cleaned[0].local.reason, 'checked-out');
   // macOS resolves the tmpdir through a /private prefix, so compare the tail, not the string.
   assert.equal(r.cleaned[0].local.detail.endsWith(dir.replace(/^\/private/, '')), true);
@@ -1208,13 +1211,16 @@ test('cleanup refuses a branch a worktree still holds, naming the path', () => {
 
 // ── verify --background: the wait the watched-condition gates were refusing without ───
 
+/** @param {unknown} r @returns {{background: boolean, verdict: string, result: string, wait: {tool: string, next: string, input: {run_in_background: boolean, command: string}}}} */
+const backgrounded = (r) => /** @type {never} */ (r);
+
 test('verify --background hands back one ready-to-send wait and a verdict', async () => {
   const { dir } = repo();
   writeFileSync(
     join(dir, 'package.json'),
     JSON.stringify({ name: 'bg', scripts: { test: 'node -e "process.exit(0)"' } }, null, 2),
   );
-  const started = verify(ctx(dir, [], { background: true, only: 'test' }));
+  const started = backgrounded(verify(ctx(dir, [], { background: true, only: 'test' })));
 
   assert.equal(started.background, true);
   assert.equal(started.wait.tool, 'Bash');
