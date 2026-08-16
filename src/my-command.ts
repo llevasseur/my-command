@@ -27,6 +27,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const PKG_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const SRC_DIR = join(PKG_ROOT, 'src', 'commands');
 const SKILLS_DIR = join(PKG_ROOT, 'skills');
+const AGENTS_DIR = join(PKG_ROOT, 'agents');
 const TOOLKIT_SRC = join(PKG_ROOT, 'src', 'toolkit');
 const HOOKS_SRC = join(PKG_ROOT, 'src', 'hooks');
 const TOOLKIT_BIN = 'my-command-tools';
@@ -53,6 +54,11 @@ const commands: string[] = existsSync(SRC_DIR)
   : [];
 const skills: string[] = existsSync(SKILLS_DIR)
   ? readdirSync(SKILLS_DIR).filter((name) => existsSync(join(SKILLS_DIR, name, 'SKILL.md')))
+  : [];
+const agents: string[] = existsSync(AGENTS_DIR)
+  ? readdirSync(AGENTS_DIR)
+      .filter((f) => f.endsWith('.md'))
+      .map((f) => f.replace(/\.md$/, ''))
   : [];
 
 interface CheckboxPromptOptions {
@@ -277,6 +283,52 @@ async function installCodexSkills() {
     summary: 'They run as Codex skills (type `$` to invoke them):',
     display: (command) => `$${command}`,
   });
+}
+
+interface AgentsResult {
+  installed: boolean;
+  /** Where the definitions landed. */
+  dest: string;
+  copied?: number;
+  /** The directory is a symlink into a checkout, so the definitions were left alone. */
+  symlinked?: boolean;
+  reason?: string;
+}
+
+// The subagent definitions the command dispatch sites name by `subagent_type`. Installed for
+// BOTH Claude modes, like the toolkit and the gates: a command that names a definition the
+// device does not have silently takes the default agent instead and reports nothing.
+//
+// COPIED rather than symlinked, for the same reason installHooks() copies — npx runs from an
+// ephemeral cache directory that is cleaned up after the wizard exits, so a link into it would
+// dangle and every definition would disappear. A file already on the device under one of our
+// names is left alone: it may be the user's own agent.
+function installAgents(root = deviceRoot()): AgentsResult {
+  // deviceRoot() is `<config dir>/my-command`, and Claude reads agents from `<config dir>/agents`.
+  const dest = process.env.CLAUDE_AGENTS_DIR || join(dirname(root), 'agents');
+  const base: AgentsResult = { installed: false, dest };
+  if (!existsSync(AGENTS_DIR) || agents.length === 0) return { ...base, reason: `no agents in ${AGENTS_DIR}` };
+
+  try {
+    // A dev install symlinks each definition back into its clone; copying over one would write
+    // into the user's checkout.
+    let copied = 0;
+    let symlinked = 0;
+    mkdirSync(dest, { recursive: true });
+    for (const agent of agents) {
+      const target = join(dest, `${agent}.md`);
+      const existing = lstatSync(target, { throwIfNoEntry: false });
+      if (existing?.isSymbolicLink()) {
+        symlinked++;
+        continue;
+      }
+      copyFileSync(join(AGENTS_DIR, `${agent}.md`), target);
+      copied++;
+    }
+    return { ...base, installed: true, copied, symlinked: symlinked > 0 };
+  } catch (err) {
+    return { ...base, reason: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 interface ToolkitResult {
@@ -505,6 +557,20 @@ function reportConceptStore() {
   console.log('Worker — one dataset, one token, two documented names.');
 }
 
+function reportAgents(result: AgentsResult) {
+  if (result.installed) {
+    console.log(`\nSubagent definitions installed: ${result.dest}`);
+    console.log(`Copied ${result.copied} definition(s)${result.symlinked ? ', left existing symlinks alone' : ''}:`);
+    console.log(agents.map((a) => `  ${a}`).join('\n'));
+    console.log('Commands name these at every dispatch; without them a dispatch takes the default agent.');
+  } else {
+    // Deliberately not fatal: every command still runs, its dispatches simply fall back to the
+    // default agent, which is the behaviour that predates these definitions.
+    console.log(`\nSubagent definitions not installed (${result.reason}).`);
+    console.log('The commands still work — each dispatch takes the default agent instead.');
+  }
+}
+
 function reportHooks(result: HooksResult) {
   if (result.installed) {
     if (result.symlinked) {
@@ -544,11 +610,13 @@ async function main() {
   if (choice === '1') {
     await installPlugin();
     reportToolkit(installToolkit());
+    reportAgents(installAgents());
     reportConceptStore();
     reportHooks(await installHooks());
   } else if (choice === '2') {
     await installPersonal();
     reportToolkit(installToolkit());
+    reportAgents(installAgents());
     reportConceptStore();
     reportHooks(await installHooks());
   } else if (choice === '3') {
@@ -579,4 +647,4 @@ if (invokedDirectly) {
   });
 }
 
-export { checkboxPrompt, installCodexSkills, installHooks, installPersonal, installToolkit, linkOnPath };
+export { checkboxPrompt, installAgents, installCodexSkills, installHooks, installPersonal, installToolkit, linkOnPath };

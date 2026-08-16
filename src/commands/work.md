@@ -201,7 +201,7 @@ Two ideas in **different repos** never conflict, whatever their paths look like 
 
 ## Step 4 — Schedule, claim, and dispatch
 
-Dispatch **one fresh subagent per selected idea**, each running the **resolved downstream command** with that single idea's brief and the pass-through flags exactly as given:
+Dispatch **one fresh subagent per selected idea**, each with **`subagent_type: "mycommand-delegate"`**, running the **resolved downstream command** with that single idea's brief and the pass-through flags exactly as given:
 
 ```
 /task <pass-through flags> <the composed brief for this idea>
@@ -264,7 +264,7 @@ Anything else is independent and goes out concurrently. In particular, landing i
   `claim` is idempotent for the same holder, so this attaches the PR rather than fighting the claim you already hold. It matters because a claim carrying a `pr` never goes stale: the six-hour expiry is sized to **writing** the change, while the long part of an idea's life is review, so a PR sitting in review for a day would otherwise expire its own claim and invite a second run to build what is already built.
 - **Name the repo explicitly in each subagent's brief** — its absolute checkout path, and that the downstream command is to run with that path as its working directory. Never let a subagent infer which checkout it should edit.
 - **Read every result in a wave before opening the next**, and treat one subagent's failure as information for the wave after it rather than a reason to abandon the ones already running.
-- Give each subagent everything it needs to act alone — the ledger prompt, its lane, its branch name, and the base to branch from when that is not the default. A concurrently-dispatched subagent cannot see the others at all, so anything about the ideas beside it that it needs to respect has to be written into its own brief.
+- Give each subagent everything it needs to act alone — the ledger prompt, its lane, its branch name, and the base to branch from when that is not the default. A concurrently-dispatched subagent cannot see the others at all, so anything about the ideas beside it that it needs to respect has to be written into its own brief. **That is the whole of the prompt**: `mycommand-delegate` already states that the invocation is run verbatim, that the command's own file is the instructions, and that a lane is a boundary rather than a suggestion, so restating any of it here only competes with the definition for attention.
 - The downstream command owns the workspace, the verification, the commits and the PR from here — and under `--delegate god` the merge as well. Do not create a worktree, edit files, commit, or merge in this command — that is `/task`'s pipeline and duplicating it produces two workspaces for one change.
 - When each subagent returns, record the PR against **that idea's slug**. Step 5 marks each idea against its own PR, so a PR URL attributed to the wrong slug is a false claim in the ledger.
 

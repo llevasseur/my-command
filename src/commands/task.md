@@ -128,7 +128,7 @@ On `false`, **run neither `/clean` nor `/pr`, and do not push.** Go straight to 
 Otherwise run `/clean` then `/pr` in sequence on this branch. `--sub` changes **where** they run and nothing else — same commands, same order, same verification, same teardown:
 
 - **Default (no `--sub`):** run both **inline in this session**, via the `Skill` tool, one after the other. No subagent is dispatched.
-- **`--sub` / `-s`:** dispatch **one fresh subagent** via the `Agent` tool to run both. It shares this worktree but not this conversation — hand it the branch name and enough context to act alone. **One subagent for both**, never one each: the shared context is what lets `/pr`'s description pick up whatever `/clean` touched.
+- **`--sub` / `-s`:** dispatch **one fresh subagent** via the `Agent` tool, with **`subagent_type: "mycommand-finisher"`**, to run both. That definition already carries the finisher's role — the order, the no-teardown rule, and the ban on implementing anything — so the prompt you write is this run's specifics alone: the branch name, the worktree path, and any `--draft`. It shares this worktree but not this conversation. **One subagent for both**, never one each: the shared context is what lets `/pr`'s description pick up whatever `/clean` touched.
 
 Either way it is one continuous stage: a Step 0 added command scheduled at this point runs in the same place the pair does — inline here by default, inside that same subagent under `--sub`.
 

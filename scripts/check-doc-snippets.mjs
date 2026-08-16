@@ -31,14 +31,15 @@ const NOT_RUN = /<!--\s*not-run:\s*(.+?)\s*-->/;
 
 /**
  * Every markdown file whose fences are instructions to an agent: the command sources, the
- * shared snippets they include, and the Codex skills that translate them. `commands/` is
- * generated from `src/commands/`, so checking it too would only report the same snippet twice.
+ * shared snippets they include, the subagent definitions the dispatch sites name, and the Codex
+ * skills that translate them. `commands/` is generated from `src/commands/`, so checking it too
+ * would only report the same snippet twice.
  * @returns {string[]}
  */
 function sources() {
   /** @type {string[]} */
   const out = [];
-  for (const dir of ['src/commands', 'src/shared']) {
+  for (const dir of ['src/commands', 'src/shared', 'agents']) {
     for (const name of readdirSync(join(ROOT, dir))) {
       if (name.endsWith('.md')) out.push(join(ROOT, dir, name));
     }

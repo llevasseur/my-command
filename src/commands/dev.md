@@ -64,7 +64,7 @@ That applies to the grill's own reading: `docs/specs/index.md`, `docs/adrs/index
 
 **Spawn exactly ONE griller, and keep it alive for the whole grill.**
 
-- The first round is one `Agent` call: a **read-only** adversarial griller, handed the idea, the repo's okq specs index (`docs/specs/index.md`), and the ADR index (`docs/adrs/index.md`).
+- The first round is one `Agent` call with **`subagent_type: "mycommand-griller"`**, handed the idea, the repo's okq specs index (`docs/specs/index.md`), and the ADR index (`docs/adrs/index.md`). That definition is what makes the griller read-only and holds it to one question per round, so the spawn prompt carries the idea and those two indexes rather than a restatement of the role.
 - **Every round after that is a `SendMessage` to that same agent.** Never a fresh `Agent` call per round. A fresh griller re-derives the whole repo context every round, so the context is paid for once per round instead of once per grill, and the questions restart from a reading that has already been answered.
 - `SendMessage` resumes that agent and returns as soon as the send is accepted; **the griller's reply arrives afterwards, as a task notification, not as the tool call's return value**. So a round is: send, let the call return, wait for the notification, then answer. Do not read the send's acknowledgement as the answer.
 
