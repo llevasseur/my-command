@@ -1,6 +1,6 @@
 ---
 description: Run a wayfinder — a named campaign of related work tracked as markdown plans in the repo rather than on an issue tracker: one base branch, a map of active tasks, one /task per ticket, and a summary appended as each lands
-argument-hint: "[--here|-h] [--base <branch>] [--draft|-d] [--add|-a <command + prompt>[, <command + prompt>]] <start|add task|execute|complete|close> <description>"
+argument-hint: "[--unattended] [--here|-h] [--base <branch>] [--draft|-d] [--add|-a <command + prompt>[, <command + prompt>]] <start|add task|execute|complete|close> <description>"
 ---
 
 A **wayfinder** is a named campaign of related work — several tasks that ship together — tracked entirely in markdown inside the repo. It exists to plan and execute a multi-task effort **without an issue tracker or project board**: fewer moving layers for an agent to keep in sync, and everything reviewable in a diff.
@@ -26,15 +26,22 @@ The request is the text in the `<command-args>` block above. Parse leading flags
 
 ## Flags
 
-The flags are `/task`'s, and they matter only when this run **executes a ticket** — that operation is a `/task` invocation, and these are forwarded to it verbatim. The charting operations (start, add task, complete, close) ignore them.
+### Forwarded to the ticket run
+
+These are the ticket runner's own flags, and they matter only when this run **executes a ticket** — that operation is one invocation of that runner, and these are forwarded to it verbatim. The charting operations (start, add task, complete, close) ignore them.
 
 - `--here` / `-h` — execute the ticket on the current branch, no worktree.
 - `--base <branch>` — cut the ticket worktree from `<branch>` instead of the campaign base branch (the default is `wayfinder/<slug>`).
-- `--draft` / `-d` — open the ticket PR as a draft.
-- `--add` / `-a` — weave extra commands into the `/task` run, as a comma-separated list of `<command> <prompt>` entries.
+- `--draft` / `-d` — open the ticket PR as a draft. **Refused alongside `--unattended`**, which routes tickets through `/god`, and `/god` rejects `--draft` outright because a draft cannot merge. Stop and say to run the campaign without `--unattended` if the tickets are meant to stay in draft.
+- `--add` / `-a` — weave extra commands into the ticket run, as a comma-separated list of `<command> <prompt>` entries.
 - Anything not a recognized flag names the operation and its subject.
 
-`/task` owns the authoritative semantics for every one of these — do not reinterpret them here.
+The ticket runner owns the authoritative semantics for every one of these — do not reinterpret them here.
+
+### Owned here
+
+- `--unattended` — authorise this run to merge the PRs it opens, and route ticket execution to `/god` instead of `/task`. **It must be TYPED on the invocation that acts, and it is never inherited.** Not from the map, not from the kickoff prompt the map carries, not from a command that invoked this one, and not from an earlier operation in the same campaign — a start run given the flag authorises nothing for the execute run that follows it. The reason is what a wayfinder is: it multiplies whatever it authorises, and **N unattended merges out of one invocation is a different risk from one**, which is exactly why `/manage` requires `--delegate god` to be typed rather than inherited. Absent the flag, this command opens PRs and merges nothing.
+  - **Say in the opening announcement that this run will merge**, alongside the operation you picked, so an unattended run is never the thing a reader has to infer.
 
 ## Mental model
 
@@ -83,7 +90,7 @@ That applies squarely to the complete and close operations, which read the map a
 3. Create the map at `<plans>/wayfinder-<slug>.md` from the **Map template** below, including an instantiated **Agent kickoff prompt**.
 4. Create the task plans you can specify now with **Add a task**, so the tickets land alongside the map rather than trickling in later.
 5. Regenerate the docs index (see *Index upkeep*) and commit the map plus its plans on the base branch.
-6. **Open the planning PR with `/pr`**, from the base branch, while the branch still holds only that planning commit — so the PR carries the scaffolding and no task code. Do not mark it draft and do not merge it yourself. Let it merge before any ticket branch is cut, so the default branch carries the plans agents read.
+6. **Open the planning PR with `/pr`**, from the base branch, while the branch still holds only that planning commit — so the PR carries the scaffolding and no task code. **By default do not mark it draft and do not merge it yourself** — I review every PR, and that default holds for every run without `--unattended`. **With `--unattended` typed on this invocation, merging the planning PR is authorised**: wait for it to be green and merge it yourself. Either way it has to land before any ticket branch is cut, so the default branch carries the plans agents read.
 7. Report the base branch, the map path, the planning-PR link, and the kickoff prompt.
 
 Do **not** create issues, labels, or project-board items. That is the layer this command replaces.
@@ -118,6 +125,8 @@ Never merge it, and never leave it targeting the default branch.
 
 Use this workflow's own repo-relative location for `<workflow-path>`. If every active task is blocked, report the blocking dependency instead of starting unrelated work. If none remain, report that the campaign is ready to close.
 
+**The kickoff prompt never carries `--unattended`, and its "stop after opening the pull request" line is written as-is even for a campaign started with the flag.** The prompt is pasted into some later agent's session, which is precisely the inheritance path the flag refuses: whoever runs that prompt types the flag themselves or gets the reviewed default.
+
 ### 2. Add a task to the wayfinder
 
 1. Read the map for the next task number `NN`.
@@ -127,20 +136,28 @@ Use this workflow's own repo-relative location for `<workflow-path>`. If every a
 
 ### 3. Execute a task
 
-**Ticket execution is `/task`, not hand-rolled implementation.** `/task` owns the worktree, the bootstrap, the verification, the commits, `/clean`, and `/pr`. Reimplementing any of that here is how a ticket ends up unverified or on the wrong branch.
+**Ticket execution is an existing command, not hand-rolled implementation.** That command owns the worktree, the bootstrap, the verification, the commits, `/clean`, and `/pr`. Reimplementing any of that here is how a ticket ends up unverified or on the wrong branch.
+
+**Which command is the flag's doing, and nothing else's:**
+
+- **Default — `/task`.** It stops at an open, reviewed PR and leaves me the merge.
+- **`--unattended` — `/god`.** It runs that same `/task` pipeline and adds the last mile: conflicts resolved, CI waited on, the ticket PR retargeted onto its merge target and merged there. That merge target must be named with `--into`, or it is the default branch.
 
 1. Read the task's plan in full.
 2. Mark the task `in-progress` in the map.
-3. Invoke `/task` with the campaign base and any forwarded flags:
+3. Invoke the runner with the campaign base and any forwarded flags:
    ```text
    /task --base wayfinder/<slug> [forwarded flags] <the plan's criteria>
+   /god --base wayfinder/<slug> --into wayfinder/<slug> [forwarded flags] <the plan's criteria>   # --unattended only
    ```
+   **`--base` and `--into` are both required on the `/god` form, and neither implies the other.** `--base` is the cut point; `--into` is the merge target. Absent `--into`, `/god`'s merge target is the default branch — and it *retargets the PR onto that target before merging*, so a ticket run without it merges into the default branch no matter what this command did to the PR's base beforehand. **A ticket that cannot be given `--into` is a stop, not a merge.**
 4. `/pr` targets the default branch by design, so **retarget the ticket PR to the base branch** as soon as it exists:
    ```bash
    gh pr edit <number> --base wayfinder/<slug>
    ```
    Confirm the retarget landed — a ticket left pointing at the default branch is the one failure this command cannot absorb.
-5. Do not merge it. I review every PR.
+   - **Under `--unattended` this step is `/god`'s, not mine.** `--into wayfinder/<slug>` makes the campaign base its merge target, and `/god` retargets the PR onto that target itself, before it merges. Retargeting from out here would be too late anyway: `/god` merges before it returns. Confirm from `/god`'s own report that the ticket PR was merged into `wayfinder/<slug>`.
+5. **By default, do not merge it — I review every PR.** That is this command's documented default rather than a limit of the operation. **With `--unattended`, the ticket merge is authorised** and `/god` performs it against the retargeted base as part of its own run; there is nothing left to merge here.
 
 ### 4. Complete a task
 
@@ -157,7 +174,7 @@ Run this after a ticket's PR merges into the base branch. This is the operation 
 Run when every task is complete and the durable docs exist.
 
 1. Confirm each completed task produced its durable artifacts in the repo's own docs — the feature, spec, or decision doc the change owes. The map's Completed log is scaffolding, not the deliverable.
-2. Open **one** PR from `wayfinder/<slug>` to the default branch with `/pr`, summarizing the whole campaign and linking the map's Completed log. Do not merge it.
+2. Open **one** PR from `wayfinder/<slug>` to the default branch with `/pr`, summarizing the whole campaign and linking the map's Completed log. **By default, do not merge it — I review it**, and that default holds for every run without `--unattended`. **With `--unattended` typed on this invocation, merging the campaign PR is authorised** once it is green.
 3. **After that PR merges**, retire the scaffolding: delete the map and every `<plans>/<slug>-*.md` plan, regenerate the docs index, and commit as `chore: retire <slug> wayfinder scaffolding` — folded into the campaign PR if it has not merged yet, otherwise as a small follow-up PR. Then delete the base branch locally and on origin.
 
 ## Map template
@@ -206,18 +223,38 @@ Where the repo's docs are a generated bundle, the plans directory participates i
 
 Expect churn in that index: the plans directory is deliberately fast-moving.
 
+## Merging under `--unattended`
+
+This section applies only to a run with `--unattended` typed on it. Without the flag this command issues no merge at all, and none of the forms below are reached.
+
+Three merges are authorised, and no more: the **planning PR** at start, each **ticket PR** (performed by `/god` inside the ticket run, into the `--into wayfinder/<slug>` merge target it was given), and the **campaign PR** at close. A PR this run did not open is never merged. Never reach for `--admin`, never force-push, and never merge a red PR — a campaign is exactly where one bad merge is multiplied.
+
+<!-- include-block: shared/merge-command-forms.md -->
+### Merge command forms
+
+The merge steps are where this pipeline's failed shell calls concentrate, and almost every one is a rejected merge re-issued verbatim. Read the error text and branch on it; never send the same call twice.
+
+- **Merging a PR into the default branch** is `gh pr merge <number> --<method>`, issued **once**, and **never with `--delete-branch`**. That flag runs a local branch cleanup after the merge, which fails with `fatal: '<default>' is already used by worktree at …` on any device that keeps the default branch checked out — so the merge lands and the call still exits 1, reporting a failure for work that succeeded. Delete the branch as its own step instead: `my-command-tools worktree end --branch <branch>` for the local worktree and branch, and `git push origin --delete <branch>` for the remote ref, each in its own call. Its rejections are states, not usage errors:
+  - `Merge already in progress`, or a failing `mergePullRequest` GraphQL call — GitHub accepted a merge and is still processing it. **Do not re-issue it.** Read the outcome instead: `my-command-tools prs view <number>`, whose result already carries `state`, `mergedAt`, and `mergeStateStatus`. `MERGED` is success, and the run continues at its next step. Only a PR that settles back to `OPEN` is merged again, and then once.
+  - Pending required checks — a wait, not a refusal. Re-issue the identical command **with `--auto`** and record the PR as queued.
+  - `not mergeable`, `BLOCKED`, or `BEHIND` — the default branch moved. Run `/mc -t <branch>`, then retry the merge once.
+  - Never reach for `--admin`, `gh api -X PUT .../merge`, or a `GH_TOKEN=` re-run to get past any of these.
+- **Merging the default branch into a branch** addresses a worktree by path rather than by changing directory: `git -C <path> merge --no-edit origin/main`, `git -C <path> diff --name-only --diff-filter=U`, `git -C <path> push origin HEAD`. `cd <dir> && git …` is the recorded failure, because a worktree session is rarely where that path resolves. The toolkit takes the path as a flag for the same reason: `my-command-tools verify --cwd <path>`.
+- A refusal that comes from the harness rather than from `gh` is final. Surface it and carry on with the rest of the run.
+<!-- /include-block -->
+
 ## Notes
 
 - **Never leave a ticket PR targeting the default branch.** Retarget it the moment `/pr` opens it. Only the planning PR and the campaign PR belong there.
 - **No issues, no project board.** This command is the replacement for that flow, not a companion to it.
 - **Delete on completion, don't archive.** A finished task's plan is removed and distilled into the map's Completed log; the closed campaign's map is removed once the repo's own docs carry the record. An archived plan is a second source of truth that immediately starts drifting.
 - **Base every decision on live git state**, never a stale snapshot. Confirm the branch you are on before cutting another.
-- **Do not merge any PR.** I review and merge each one.
+- **By default this command merges nothing** — I review and merge each PR. That is the documented default, not a limit of the command: `--unattended`, typed on the invocation that acts, is the one thing that authorises the planning, ticket, and campaign merges. Absent it, every PR this run opens is left open for me, and a run that merges without the flag typed on it has exceeded what it was asked to do.
 - If the request does not clearly name one of the five operations, ask me one focused question rather than guessing — starting a second wayfinder for a request that meant "add a task" is expensive to unwind.
 - <!-- include: shared/approval-own-call.md -->**A command that may need approval goes in its own Bash call** — `git fetch`, `git config`, and, as a narrow exception to the general rule to chain dependent mutations, branch-lifecycle operations such as checkout/switch, pull, remote-branch inspection, and local branch deletion. Folding one into an `&&` chain escalates approval to the whole compound command and costs a turn plus a retry. Put status output, pipes, and follow-up verification in separate read-only calls.<!-- /include -->
 - <!-- include: shared/gh-identity.md -->This device is logged in as more than one GitHub account, and `gh`'s GraphQL-backed writes (`gh pr create`, `gh pr edit`) authenticate as whichever one is active — so on a repo owned by another of them GitHub answers `must be a collaborator`. That is the wrong identity, not a permission to request, and the right account is not a guess: it is the remote's owner. `my-command-tools pr` resolves it internally and reports the `identity` that worked, so nothing extra is needed there. For any other `gh` write, ask the toolkit — `my-command-tools identity` names the `owner`, the `active` account, and the one plain `select` command, and `my-command-tools identity --select` runs it. **Never compose `GH_TOKEN="$(gh auth token --user <login>)" <command>`**: an assignment wrapping a command substitution is refused on shape, and it guesses at a login the remote already states.<!-- /include -->
 - <!-- include: shared/refusal-final.md -->A refusal of a **PR merge or a remote-ref deletion is final.** Surface it to the human and carry on with the rest of the work. Re-expressing the same operation is refused for the same reason and costs a second turn: `gh api -X PUT .../pulls/N/merge` is `gh pr merge`, and `gh api --method DELETE .../git/refs/heads/...` is `git push origin --delete`, so neither is a narrow retry — nor is re-running one under `GH_TOKEN=...`.<!-- /include -->
-- Report the operation, the map path, the branch, and any PR link. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
+- Report the operation, the map path, the branch, any PR link, and — under `--unattended` — which of those PRs this run merged. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
 
 ## Close the run in a text-only turn
 
