@@ -18,7 +18,7 @@ import { join } from 'node:path';
 import { bool, str } from '../lib/flags.mjs';
 import { ToolkitError } from '../lib/proc.mjs';
 
-export const usage = `stash <write|restore|list> [<slot>] [--content-file <path>] [--no-clipboard]
+export const usage = `stash <write|restore|list> [<slot>] [--content-file <path>] [--consume] [--no-clipboard]
 
 Own the /cp stash ring: five plain-text entries under ~/.claude, and the clipboard.
 
@@ -35,6 +35,12 @@ Own the /cp stash ring: five plain-text entries under ~/.claude, and the clipboa
 
   stash list
       Every slot, whether it exists, its size, and when it was written.
+
+  --consume        Delete the content file once its bytes are in the ring. Pass it whenever
+                   the caller writes to one fixed path every run: the file is a hand-off, not
+                   a document, and a leftover copy is what makes the *next* run's \`Write\` land
+                   on a file that session never read — which the tool rejects. Deleting it
+                   removes the pre-existing file instead of asking every run to remember.
 
   --no-clipboard   Do the file half only. The stash is written on every platform; only the
                    clipboard sink is platform-detected.
@@ -147,8 +153,9 @@ function rotate(dir) {
 
 /**
  * @param {string} dir @param {string | undefined} contentFile @param {boolean} clipboard
+ * @param {boolean} consume
  */
-function write(dir, contentFile, clipboard) {
+function write(dir, contentFile, clipboard, consume) {
   if (!contentFile) {
     throw new ToolkitError(
       'stash write needs --content-file <absolute path> — the entry is read from a file, never from an argument',
@@ -168,12 +175,19 @@ function write(dir, contentFile, clipboard) {
   const { rotated, dropped } = rotate(dir);
   const path = slotPath(dir, 0);
   copyFileSync(contentFile, path);
+  // The bytes are in the ring now, so the hand-off file has no further job — and leaving it
+  // behind is what made the next run fail. `/cp` composes into one fixed path every time, so
+  // the second run's `Write` lands on a file this session never read, which `Write` rejects.
+  // Deleting it here removes the pre-existing file rather than asking every future run to
+  // remember to read it first.
+  if (consume) rmSync(contentFile, { force: true });
 
   return {
     subcommand: 'write',
     dir,
     path,
     bytes: statSync(path).size,
+    consumed: consume ? contentFile : null,
     rotated,
     dropped,
     clipboard: clipboard ? toClipboard(path) : { copied: false, sink: null, reason: '--no-clipboard' },
@@ -251,7 +265,7 @@ export function run(ctx) {
   const dir = stashDir();
   const clipboard = !bool(ctx.flags['no-clipboard']);
 
-  if (sub === 'write') return write(dir, str(ctx.flags['content-file']), clipboard);
+  if (sub === 'write') return write(dir, str(ctx.flags['content-file']), clipboard, bool(ctx.flags.consume));
   if (sub === 'restore') return restore(dir, slotOf(rest[0]), clipboard);
   if (sub === 'list') return list(dir);
 

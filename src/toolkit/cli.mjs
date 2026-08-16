@@ -65,6 +65,7 @@ const SWITCHES = new Set([
   'select',
   'json',
   'no-clipboard',
+  'consume',
   'background',
   'keep-remote',
   'keep-local',
