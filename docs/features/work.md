@@ -1,10 +1,10 @@
 ---
 type: feature
 title: work
-description: Build the ideas a human accepted — select them by slug or by area from the hosted ideas ledger, claim each one before any code is written, dispatch one task run per idea in waves that cannot collide, and mark each shipped idea against its own PR.
+description: Build the ideas a human accepted — select them by slug or by area from the hosted ideas ledger, claim each one before any code is written, dispatch one downstream run per idea in waves that cannot collide, and mark each shipped idea against its own PR.
 tags: [command, workflow, agents]
 timestamp: 2026-08-10
-updated: 2026-08-10
+updated: 2026-08-16
 dirty: true
 ---
 
@@ -15,9 +15,11 @@ dirty: true
 [ideate](ideate.md) proposes what is **missing** and a human accepts what is worth
 building. This command is what builds them. It reads the hosted ideas ledger for
 the ideas that are signed off and free to take, selects the ones this run is for,
-**claims each one before any code is written**, and dispatches **one
-[task](task.md) run per idea** — one idea, one branch, one PR — then marks each
-shipped idea against the PR that actually built it.
+**claims each one before any code is written**, and dispatches **one downstream
+run per idea** — one idea, one branch, one PR — then marks each shipped idea
+against the PR that actually built it. That downstream command is
+[task](task.md) by default and [god](god.md) under `--delegate god`, which
+carries each of those PRs the rest of the way to merged.
 
 It is the ideas half of what used to be one command. [improve](improve.md) is the
 advice half and is now advice only: it reads claude-proxy's session suggestions,
@@ -60,12 +62,29 @@ selector brought each slug in.
   explicit `--max` narrows it. An explicit selector means a person named the work,
   so `--idea` is never truncated.
 - `--dry-run` / `-n` — report the selection, each idea's file scope and stated
-  dependencies, and the dispatch schedule that would be used, then stop. No claim,
-  no subagent, no branch, no PR, nothing marked.
-- **Pass-through `/task` flags** — `--here` / `-h`, `--base <branch>`,
+  dependencies, the downstream command, and the dispatch schedule that would be
+  used, then stop. No claim, no subagent, no branch, no PR, nothing marked.
+
+**Downstream.**
+
+- `--delegate <command>` / `-D <command>` — which command each accepted idea is
+  dispatched to: **`task` (default)** or `god`. `/task` stops at an open PR and
+  leaves a human the merge; [god](god.md) drives that same PR to green and
+  **merges it without asking**. This command multiplies whatever it dispatches, so
+  **`--delegate god` must be typed and is never inherited** — not from an invoking
+  command, not from the ledger, not from a previous run. The opening announcement
+  says the run will merge, and how many ideas that is.
+- `--into <branch>` — the **merge target**, forwarded to each `/god`. **Only
+  meaningful with `--delegate god`**; with the default delegate it is dropped and
+  reported, since `/task` does not document it. Absent it, `/god` falls back to the
+  default branch. It is the merge target and never the cut point — `--base` is the
+  cut point, and a run that wants both says both.
+- **Pass-through `/task` (or `/god`) flags** — `--here` / `-h`, `--base <branch>`,
   `--draft` / `-d`, `--add` / `-a <list>` are forwarded verbatim and not interpreted
   here, except that `--here` forces serial dispatch. [task](task.md) is the contract
-  for what they mean.
+  for what they mean. **`--draft` with `--delegate god` is a stop**, not a per-idea
+  drop: `/god` rejects a draft outright, so dispatching it would be one stop per
+  idea.
 - Anything not a recognized flag is extra context.
 
 ## Environment
@@ -95,6 +114,17 @@ with `printenv IDEAS_URL`; the token is **never** printed, only checked for bein
 set.
 
 ## Behavior
+
+**The downstream command changes where an idea ends, and nothing else.** `/god`
+runs `/task` internally, so the branch, the worktree, the verification, the
+commits and the PR are the same pipeline either way — it adds the last mile that
+gets that PR green and merges it. Selection, claiming, briefs, lanes, waves and
+one-idea-one-PR are identical under both. Two consequences are not: a dependent
+idea is cut from the **merge target** under `--delegate god`, because `/god`
+merges each idea's PR and deletes its remote branch before the next wave is
+dispatched; and an idea counts as shipped only when its PR **merged**, so one
+left open on a conflict, on red CI, or queued for auto-merge stays `accepted`
+and the stop is named in the report.
 
 **Reading the ledger.** One unnarrowed read returns the ideas that are signed off
 and free to build for this repo:

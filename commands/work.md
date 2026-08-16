@@ -1,9 +1,9 @@
 ---
-description: Build the ideas a human accepted — select them by slug or by area from the hosted ideas ledger, claim each one before any code is written, dispatch one /my-command:task per idea in waves that cannot collide, and mark each shipped idea against its own PR
-argument-hint: "[--idea|-i <slug>[,<slug>...]] [--area|-A <area>[,<area>...]] [--repo <slug>] [--max <n>] [--dry-run|-n] [--here|-h] [--base <branch>] [--draft|-d] [--add|-a <list>] [extra context]"
+description: Build the ideas a human accepted — select them by slug or by area from the hosted ideas ledger, claim each one before any code is written, dispatch one /my-command:task (or /my-command:god) per idea in waves that cannot collide, and mark each shipped idea against its own PR
+argument-hint: "[--idea|-i <slug>[,<slug>...]] [--area|-A <area>[,<area>...]] [--repo <slug>] [--max <n>] [--delegate|-D task|god] [--into <branch>] [--dry-run|-n] [--here|-h] [--base <branch>] [--draft|-d] [--add|-a <list>] [extra context]"
 ---
 
-Build the ideas a human already signed off on. [ideate](ideate.md) proposes what is *missing*, a human accepts what is worth building, and this command turns each accepted idea into its own `/my-command:task` run, its own branch, and its own PR — claiming it in the ledger first so no second run builds the same thing.
+Build the ideas a human already signed off on. [ideate](ideate.md) proposes what is *missing*, a human accepts what is worth building, and this command turns each accepted idea into its own downstream run, its own branch, and its own PR — claiming it in the ledger first so no second run builds the same thing. The downstream command is `/my-command:task` by default and `/my-command:god` under `--delegate god`, which carries each of those PRs the rest of the way to merged.
 
 **This command is the ideas half of the old `/my-command:improve`.** [improve](improve.md) is advice only: it reads claude-proxy's session suggestions and never touches the ideas ledger. This command reads the ideas ledger and never reads a suggestion. There is no flag that makes either one do the other's job.
 
@@ -38,8 +38,13 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 
 - `--repo <slug>` — override the repo filter. Defaults to this repo's git remote slug (`git remote get-url origin`). **Never an absolute checkout path** — the ideas ledger is device-wide and shared across every repo on the machine, and a path names a different thing on another machine.
 - `--max <n>` — cap how many ideas one run dispatches. **Default 5, and it applies only to a run with no selector.** With no selector and more than `--max` available, **stop**: report the available count, the per-area breakdown, and that `--area`, `--idea`, or an explicit `--max` narrows it. An explicit selector means a person named the work, so `--idea` is never capped — building four of the five slugs somebody listed is the silent partial run this command refuses everywhere else.
-- `--dry-run` / `-n` — report the selection, each idea's file scope and stated dependencies, and the dispatch schedule Step 4 would use, then stop. No claim, no subagent, no branch, no PR, and nothing marked.
-- Anything not listed above that `/my-command:task` recognizes is **passed straight through** to every `/my-command:task` invocation in Step 4 — currently `--here` / `-h`, `--base <branch>`, `--draft` / `-d`, and `--add` / `-a <list>`. Read `/my-command:task`'s own Flags section rather than duplicating its list here; this command does not interpret them itself, except that `--here` forces serial dispatch (Step 4).
+- `--dry-run` / `-n` — report the selection, each idea's file scope and stated dependencies, the downstream command, and the dispatch schedule Step 4 would use, then stop. No claim, no subagent, no branch, no PR, and nothing marked.
+
+**Downstream.**
+
+- `--delegate <command>` / `-D <command>` — which command each accepted idea is dispatched to: **`task` (default)** or `god`. `/my-command:task` stops at an open PR and leaves a human the merge; `/my-command:god` drives that same PR to green and **merges it into the merge target without asking**. This command multiplies whatever it dispatches — a no-selector run builds up to `--max` ideas at once — so **`--delegate god` must be typed and is never inherited**: not from an invoking command, not from the ledger, not from a previous run. Say in the opening announcement that the run will merge, and how many ideas that is.
+- `--into <branch>` — the **merge target**, forwarded to each `/my-command:god`. **Only meaningful with `--delegate god`**; with the default delegate it is dropped and reported, since `/my-command:task` does not document it. Absent it, `/my-command:god` falls back to the default branch. It is the merge target and never the cut point — `--base` is the cut point, and a run that wants both says both.
+- Anything not listed above that the downstream command recognizes is **passed straight through** to every invocation in Step 4 — currently `--here` / `-h`, `--base <branch>`, `--draft` / `-d`, and `--add` / `-a <list>`. Read `/my-command:task`'s (or `/my-command:god`'s) own Flags section rather than duplicating it here; this command does not interpret them itself, except that `--here` forces serial dispatch (Step 4). **`--draft` with `--delegate god` is a stop**, not a per-idea drop: `/my-command:god` rejects a draft outright because a draft cannot merge, so dispatching it would be one stop per idea. Say to use the default delegate with `-d`.
 - Anything not a recognized flag is extra context.
 
 ## Step 1 — Resolve the ledger and the claude-proxy checkout
@@ -177,7 +182,7 @@ LOG_DIR="<logDir>" pnpm --filter server ideas prompt --slug <slug>
 
 - **Pass the prompt through as the body of the brief.** Do not paraphrase it, trim it, or reorder its bullets.
 - **An idea is a proposal, not a spec.** Where it names a mechanism, the mechanism passes through. Where it does not, say what is undetermined rather than inventing the design here — that invention would be yours, not the human's, and the sign-off does not cover it.
-- **Say in the brief that the criterion is idea-sourced**, that its evidence is the recorded human sign-off, and that this `/my-command:task` run covers this idea alone. The subagent must not widen the scope to neighbouring work it notices.
+- **Say in the brief that the criterion is idea-sourced**, that its evidence is the recorded human sign-off, and that this run covers this idea alone. The subagent must not widen the scope to neighbouring work it notices.
 
 ### What this command adds around the prompt
 
@@ -196,11 +201,15 @@ Two ideas in **different repos** never conflict, whatever their paths look like 
 
 ## Step 4 — Schedule, claim, and dispatch
 
-Dispatch **one fresh subagent per selected idea**, each running `/my-command:task` with that single idea's brief and the pass-through flags exactly as given:
+Dispatch **one fresh subagent per selected idea**, each running the **resolved downstream command** with that single idea's brief and the pass-through flags exactly as given:
 
 ```
 /my-command:task <pass-through flags> <the composed brief for this idea>
 ```
+
+Under `--delegate god` that invocation is `/my-command:god` instead, carrying the run's `--into` alongside the same flags and the same brief.
+
+**The downstream command changes where an idea ends, and nothing else.** `/my-command:god` runs `/my-command:task` internally, so the branch, the worktree, the verification, the commits and the PR are the same pipeline either way — it adds the last mile that gets that PR green and merges it. Every rule below about claiming, lanes, waves and one-idea-one-PR holds unchanged under both, and `--into` rides along only when the delegate is `god`.
 
 **Ideas that do not conflict go out concurrently**, in a single turn carrying one `Agent` call each; ideas that genuinely depend on one another run in order, the dependent one branching off the branch it depends on. One idea is still one branch and one PR either way — parallelism changes *when* a dispatch starts, never what it carries.
 
@@ -222,7 +231,8 @@ Anything else is independent and goes out concurrently. In particular, landing i
 ### Scheduling the dispatches
 
 - **Group the selected ideas into waves.** A wave is a set of ideas that conflict with nothing else in that wave and with nothing still unfinished; dispatch a whole wave in **one turn, one `Agent` call per idea**, and read every result before opening the next wave. Most runs are a single wave.
-- **A dependent idea branches off the branch it depends on, not off `main`.** Pass the base explicitly in its brief — `/my-command:task --base <the branch it depends on>` — and dispatch it only after that branch actually exists and the run it came from has returned. Basing it on `main` and hoping the merge is clean is precisely the failure the previous rule describes.
+- **A dependent idea branches off the branch it depends on, not off `main`.** Pass the base explicitly in its brief — `--base <the branch it depends on>` — and dispatch it only after that branch actually exists and the run it came from has returned. Basing it on `main` and hoping the merge is clean is precisely the failure the previous rule describes.
+  - **Under `--delegate god` it is cut from the merge target instead.** `/my-command:god` merges each idea's PR and then deletes its remote branch, and waves run in order, so the branch a dependent idea would inherit is already gone before that idea is dispatched. Nothing is lost: the dependency merged **into** the merge target, so the interface the dependent idea consumes is already there — which is the only thing the inheritance was ever for.
 - **Say so in the PR's own terms too:** a stacked idea's brief states which branch it is built on and that its PR is to target that branch, so a reviewer sees the stack rather than a diff full of changes the base already made.
 - **Give every concurrent subagent an explicit lane.** The brief names the paths that idea **owns** and may write, and the paths it **must not touch** — the scopes of every other idea in flight, named as such. A subagent that finds it needs a file outside its lane stops and reports that rather than taking it; the lane is what makes two live branches unable to collide, and a subagent silently widening its scope is the collision arriving anyway.
 - **A serialized dispatch gets a lane as well.** It is the cheapest place to state that the idea it was stacked on already owns those paths, and it keeps a later reader from concluding that lanes are a parallel-only device.
@@ -252,10 +262,10 @@ Anything else is independent and goes out concurrently. In particular, landing i
   ```
 
   `claim` is idempotent for the same holder, so this attaches the PR rather than fighting the claim you already hold. It matters because a claim carrying a `pr` never goes stale: the six-hour expiry is sized to **writing** the change, while the long part of an idea's life is review, so a PR sitting in review for a day would otherwise expire its own claim and invite a second run to build what is already built.
-- **Name the repo explicitly in each subagent's brief** — its absolute checkout path, and that `/my-command:task` is to run with that path as its working directory. Never let a subagent infer which checkout it should edit.
+- **Name the repo explicitly in each subagent's brief** — its absolute checkout path, and that the downstream command is to run with that path as its working directory. Never let a subagent infer which checkout it should edit.
 - **Read every result in a wave before opening the next**, and treat one subagent's failure as information for the wave after it rather than a reason to abandon the ones already running.
 - Give each subagent everything it needs to act alone — the ledger prompt, its lane, its branch name, and the base to branch from when that is not the default. A concurrently-dispatched subagent cannot see the others at all, so anything about the ideas beside it that it needs to respect has to be written into its own brief.
-- `/my-command:task` owns the workspace, the verification, the commits and the PR from here. Do not create a worktree, edit files, or commit in this command — that is `/my-command:task`'s pipeline and duplicating it produces two workspaces for one change.
+- The downstream command owns the workspace, the verification, the commits and the PR from here — and under `--delegate god` the merge as well. Do not create a worktree, edit files, commit, or merge in this command — that is `/my-command:task`'s pipeline and duplicating it produces two workspaces for one change.
 - When each subagent returns, record the PR against **that idea's slug**. Step 5 marks each idea against its own PR, so a PR URL attributed to the wrong slug is a false claim in the ledger.
 
 ## Step 5 — Flag what shipped
@@ -267,13 +277,13 @@ An accepted idea whose brief actually landed is marked in the ideas ledger:
 ```
 
 - **One call per idea, and the note is that idea's own PR.** Step 4 gave every idea its own dispatch and therefore its own PR, so there is no shared URL to write here: take the PR from the subagent that built *this* slug. Never write one run-wide PR URL across several slugs — the note is the only pointer back to the change, and a slug pointing at a PR that built something else is a false record that reads as a true one, and one that no later run can detect.
-- **Only what actually landed.** An idea whose PR did not land stays `accepted` and comes back on the next run — which is the correct outcome, because the sign-off is still valid and the work still is not done. Because each idea has its own PR, one idea failing marks nothing against the others: mark the ones that landed and leave the rest `accepted`, naming them in the report.
+- **Only what actually landed, and the delegate decides what landing is.** Under the default delegate an idea landed when its PR is open — that is where `/my-command:task` ends. Under `--delegate god` it landed when that PR **merged**: a PR `/my-command:god` left open because it stopped on a conflict, on red CI, or queued for auto-merge is not shipped, so leave that idea `accepted` and name the stop in the report. An idea whose PR did not land stays `accepted` and comes back on the next run — which is the correct outcome, because the sign-off is still valid and the work still is not done. Because each idea has its own PR, one idea failing marks nothing against the others: mark the ones that landed and leave the rest `accepted`, naming them in the report.
 - **Only the ideas this run selected can be marked**, since they are the only ones it read.
 - **Never mark an idea in the suggestions store, or a suggestion in this one.** Two evidence standards, one store each; a slug is not a `bucket/id` and the stores share nothing. The suggestions store belongs to [improve](improve.md).
 - Never move an idea back to `proposed` or `rejected` here. This command implements a sign-off; it does not overturn one.
 - **`shipped` keeps the claim, and that is deliberate** — it becomes the record of which branch built the thing, beside the PR in the note. Every other mark drops the claim, which is what makes `-s accepted` the release below.
 
-Report at the end: how many ideas were selected and by which selector each came in on (`--idea`, `--area` and which area, or the no-selector default); the **dispatch schedule that was actually used** — which ideas went out concurrently, which waited, on which branch each stacked idea was based, and the reason for every serialization (scope overlap, a stated dependency, an undetermined scope, or `--here`); the PR number/URL for each idea, listed separately; which ideas were marked `shipped` and against which PR each; and what stays `accepted` with why.
+Report at the end: **which downstream command ran** and, under `--delegate god`, the merge target and which ideas merged versus queued or stopped; how many ideas were selected and by which selector each came in on (`--idea`, `--area` and which area, or the no-selector default); the **dispatch schedule that was actually used** — which ideas went out concurrently, which waited, on which branch each stacked idea was based, and the reason for every serialization (scope overlap, a stated dependency, an undetermined scope, or `--here`); the PR number/URL for each idea, listed separately; which ideas were marked `shipped` and against which PR each; and what stays `accepted` with why.
 
 **Say what happened to each claim**: which slugs this run claimed and under which branch, which it skipped because another run held them — with the holder and since-when — which were dropped because the idea they stacked on was skipped, and which it released on the way out. A skipped idea and an idea nobody selected look identical in a report that only counts what shipped, and the first one is coming back on the next run. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
 
@@ -285,7 +295,8 @@ Report at the end: how many ideas were selected and by which selector each came 
 - **A misspelled area is indistinguishable from an empty one, which is why it stops.** An area that exists and has nothing available is an honest empty selection and carries on.
 - **`--max` caps only the run nobody narrowed.** A selector means a person named the work, and truncating a named list is the silent partial run every other rule here exists to prevent.
 - **The claim is what stops two runs building one idea, and it only works if it goes in first.** `accepted` used to be the status an implementing run looked for right up until its PR existed, so two runs reading the ledger minutes apart both saw the same idea as free and both built it. `claimed` closes that window from the front — stamped before any code is written, carrying the branch as its holder, expiring after six hours so a dead run cannot park an idea forever, and pinned open by a `pr` once one exists because review outlasts the expiry.
-- **One idea is one PR.** Each idea gets its own subagent, its own `/my-command:task` and its own branch. It is also what lets Step 5 mark each shipped idea against the PR that actually built it. **Running two of them at once does not weaken this**: parallel dispatch changes when a subagent starts, not what its brief carries, and two ideas found independent are the *least* excusable pair to merge into one dispatch.
+- **One idea is one PR.** Each idea gets its own subagent, its own downstream run and its own branch. It is also what lets Step 5 mark each shipped idea against the PR that actually built it. **Running two of them at once does not weaken this**: parallel dispatch changes when a subagent starts, not what its brief carries, and two ideas found independent are the *least* excusable pair to merge into one dispatch.
+- **The delegate changes the end of each idea, never the middle.** `/my-command:god` is `/my-command:task` plus the last mile, so selection, claiming, briefs, lanes, waves and one-idea-one-PR are identical under both, and every rule here that names `/my-command:task` holds for `/my-command:god` too. What changes is that `--delegate god` merges — several PRs, unattended, from one invocation — which is why it must be typed, why the opening announcement says how many ideas that is, and why a dependent idea is cut from the merge target rather than from a branch that no longer exists.
 - **Independence is decided from scope and stated dependencies, never from a trial merge.** A clean textual merge proves neither: a stacked idea merges without a marker and then references a token, prop, or endpoint that does not exist on its base, so the break shows up at build time rather than in the diff. When it is unclear, serialize.
 - **A lane is what keeps two live branches apart.** Every concurrently-dispatched subagent is told the paths it owns and the paths it must not touch, because it cannot see the others and will otherwise widen its scope in perfectly good faith.
 - **The brief comes from `ideas prompt`, not from your own reading of the row.** It carries the human's `comment` as build criteria that override the rationale, and that is the one part of an idea a person wrote *as an instruction to the builder*.
