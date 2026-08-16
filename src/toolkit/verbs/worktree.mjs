@@ -4,7 +4,8 @@
 // EnterWorktree/ExitWorktree's job. `begin` prepares the checkout and hands back the
 // path to enter; `end` verifies the work is on origin before removing the local copy.
 // `end` also stops the processes still running out of the worktree; `reap` is that
-// step alone, for the teardowns ExitWorktree owns.
+// step alone, for the teardowns ExitWorktree owns. `list` reports which of them have
+// outlived their branch.
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { bool, str } from '../lib/flags.mjs';
@@ -26,7 +27,8 @@ worktree list
           --no-reap      Leave processes rooted in the worktree running.
   reap    Stop processes rooted in a worktree without removing it — the step
           ExitWorktree does not take. Names it by --branch or by --path.
-  list    Report every registered worktree.`;
+  list    Report every registered worktree, each marked \`reclaimable\` when its
+          branch has already merged into origin/<default-branch>.`;
 
 const BOOTSTRAP = join('scripts', 'bootstrap-worktree.sh');
 
@@ -49,6 +51,56 @@ function listWorktrees(cwd) {
     if (line.startsWith('branch ') || line === 'detached') trees.push(current);
   }
   return trees;
+}
+
+/**
+ * Whether `branch`'s work is already on the default branch, and so whether the worktree
+ * holding it can be removed without losing anything.
+ *
+ * `null` means "cannot be judged" rather than "no": a detached worktree has no branch
+ * whose merge could be read, with no local `origin/<default>` there is nothing to compare
+ * against, and a ref git cannot resolve answers neither way. `false` there would read as
+ * live work and hide a reclaimable worktree.
+ * @param {string} cwd
+ * @param {string|null} branch
+ * @param {string} fallback  The default branch, which is never its own reclaim candidate.
+ * @param {string|null} against  The ref to compare with, or null when it is absent locally.
+ * @returns {boolean|null}
+ */
+function isReclaimable(cwd, branch, fallback, against) {
+  // Checked before `against`: the one answer needing no ref, and `requireBranch` already
+  // refuses to target the default branch.
+  if (branch === fallback) return false;
+  if (against === null || branch === null) return null;
+  const r = exec('git', ['merge-base', '--is-ancestor', `refs/heads/${branch}`, against], { cwd });
+  // git exits 1 for "not an ancestor" but 128 when it cannot resolve the ref at all, so only
+  // 1 is a real negative — anything else is another way of failing to judge.
+  if (r.code === 0) return true;
+  return r.code === 1 ? false : null;
+}
+
+/**
+ * Every registered worktree, each marked with whether its branch has already merged.
+ *
+ * Deliberately offline: the comparison reads the remote-tracking ref already on disk rather
+ * than fetching, so the answer is only as fresh as the last fetch (`begin` fetches).
+ *
+ * No size field on purpose: `du` overstates a worktree severalfold on APFS, since pnpm
+ * clones package files from its store rather than copying them, so apparent size measures
+ * the store rather than what removing the worktree would return.
+ * @param {string} cwd
+ */
+function list(cwd) {
+  const fallback = defaultBranch(cwd);
+  const ref = `origin/${fallback}`;
+  const present = exec('git', ['rev-parse', '--verify', `refs/remotes/${ref}^{commit}`], { cwd }).ok;
+  const against = present ? ref : null;
+  return {
+    root: cwd,
+    // null here with null throughout means fetch first, not that every branch is live.
+    comparedWith: against,
+    worktrees: listWorktrees(cwd).map((w) => ({ ...w, reclaimable: isReclaimable(cwd, w.branch, fallback, against) })),
+  };
 }
 
 /**
@@ -131,7 +183,7 @@ export function run(ctx) {
   if (sub === 'begin') return begin(ctx, cwd);
   if (sub === 'end') return end(ctx, cwd);
   if (sub === 'reap') return reap(ctx, cwd);
-  if (sub === 'list') return { root: cwd, worktrees: listWorktrees(cwd) };
+  if (sub === 'list') return list(cwd);
   throw new UsageError(`unknown subcommand \`${sub ?? ''}\` — expected begin, end, reap, or list`, { usage });
 }
 
