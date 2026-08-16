@@ -394,6 +394,59 @@ test('serial discovery: genuinely serial single-call turns are still refused', (
   assert.match(answer.hookSpecificOutput.permissionDecisionReason, /parallel tool calls in a single turn/);
 });
 
+test('serial discovery: the corrective batch after a refusal is not refused again', () => {
+  // The recorded failure, exactly as it happened: four single-call turns, a refusal on the
+  // fourth, then twelve probes collapsed into one turn — and the first call of that batch
+  // refused again, because `PreToolUse` fires before the other eleven are written and the turn
+  // therefore reads as single-call. The refused probe in turn index 4 is the evidence that
+  // survives the scratch file, so the gate stays silent for the rest of the run.
+  /** @type {('prompt' | {name: string, input: Record<string, unknown>}[])[]} */
+  const spec = ['prompt', ...['a', 'b', 'c', 'd'].map((name) => [read('Bash', { command: `rg -n ${name} src` })])];
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'pb4',
+    transcript_path: splitTranscript(spec, { failed: ['4-0'] }),
+    cwd: '/x',
+    tool_name: 'Bash',
+    tool_input: { command: 'rg -n parseJudgeEntries src' },
+  });
+  assert.equal(denied(answer), false);
+});
+
+test('serial discovery: a long phase of correctly batched turns is never refused', () => {
+  // Judging, review and doc-audit phases are legitimately many read-only turns in sequence.
+  // Eight batched turns is a long phase done right, and length alone is not the fault.
+  /** @type {('prompt' | {name: string, input: Record<string, unknown>}[])[]} */
+  const spec = [
+    'prompt',
+    ...[0, 1, 2, 3, 4, 5, 6, 7].map((turn) =>
+      [1, 2, 3, 4].map((n) => read('Read', { file_path: `/x/${turn}-${n}.ts` })),
+    ),
+  ];
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'pb5',
+    transcript_path: splitTranscript(spec),
+    cwd: '/x',
+    tool_name: 'Read',
+    tool_input: { file_path: '/x/next.ts' },
+  });
+  assert.equal(denied(answer), false);
+});
+
+test('serial discovery: a probe that succeeded still counts toward the run', () => {
+  // The suppression keys on a *failed* call, so an ordinary run of single-call turns whose
+  // probes all returned content is refused exactly as before.
+  /** @type {('prompt' | {name: string, input: Record<string, unknown>}[])[]} */
+  const spec = ['prompt', ...['a', 'b', 'c'].map((name) => [read('Bash', { command: `rg -n ${name} src` })])];
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'pb6',
+    transcript_path: splitTranscript(spec),
+    cwd: '/x',
+    tool_name: 'Bash',
+    tool_input: { command: 'rg -n d src' },
+  });
+  assert.equal(denied(answer), true);
+});
+
 test('a batch does not refuse its own calls as reads it already made', () => {
   // Ten parallel reads of ten distinct, never-read files: nine were once refused as files the
   // batch had already read.

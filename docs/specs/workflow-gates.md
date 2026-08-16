@@ -160,6 +160,29 @@ A read is also recorded only when it **returned content**. A `tool_result` marke
 means the call was refused or failed, and a refused read delivers no bytes, so it can never
 make a later read redundant.
 
+### The correction itself must never be refused
+
+Grouping by `message.id` fixed the *history*, not the **current** turn, and one case survived
+it for five more days. `PreToolUse` fires while the assistant message is still being emitted,
+so when the first call of a batch reaches the gate the other eleven are not written yet: the
+turn is indistinguishable from a single-call one, and the counter treats it as one. A recorded
+session took the refusal on its fourth single-call turn, did exactly what the refusal asked —
+collapsed twelve probes into one turn — and was refused again on the first call of that batch.
+That is worse than not gating, because it teaches that batching does not help.
+
+The counter is not the thing to change. It already refuses to count a batched turn, and a long
+phase of correctly batched turns — judging, review, doc audit — is never refused for its
+length, only a run of genuinely single-call turns is. What failed is the standing rule that a
+gate **speaks once per subject and never wedges a run**: `alreadyDenied` was meant to carry it
+and cannot do so alone, because its scratch file is best-effort and the calls of one batch race
+each other through it.
+
+So the once-per-run guarantee is now read off the **transcript**, which can be neither lost nor
+raced: a failed read-only call anywhere in the current run means this run already took its
+correction, and the gate stays silent for the rest of it. A probe that failed for an unrelated
+reason suppresses the gate too. That is deliberate — fail open is the standing rule, and a run
+that is already erroring needs a second refusal least of all.
+
 ### A subagent's call carries the parent's transcript
 
 A tool call made inside a subagent arrives with the **parent session's** `transcript_path`,

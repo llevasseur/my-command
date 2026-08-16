@@ -565,6 +565,18 @@ function redundantRead(input, line, session) {
  * turns rather than calls, and only single-call turns count: a turn that batched several
  * probes is the prescribed form, so it ends the run rather than extending it. What remains is
  * one probe per turn, repeated. Any non-read-only call breaks the run, as does a user prompt.
+ *
+ * The gate speaks **once per run**, and that has to hold structurally rather than through
+ * scratch state. A recorded session took the refusal, collapsed twelve probes into one turn —
+ * exactly what was asked — and was refused again on the first call of that batch, because
+ * `PreToolUse` fires before the message carrying the other eleven is written, so the batch is
+ * invisible and the turn counts as single-call. Refusing the correction teaches that batching
+ * does not help, which is worse than not gating at all. `alreadyDenied` was meant to prevent
+ * it and cannot be relied on alone: its scratch file is best-effort, and the calls of one batch
+ * race each other through it. The transcript cannot be lost or raced, so a failed read-only
+ * call anywhere in the current run is read as "this run already took its correction" and the
+ * gate stays silent. A probe that failed for some other reason suppresses it too — fail open is
+ * the standing rule, and a run that is already erroring needs a second refusal least of all.
  * @param {string} name @param {Record<string, any>} input
  * @param {(import('./lib/transcript.mjs').Turn | null)[]} line @param {string} session
  */
@@ -590,6 +602,8 @@ function serialDiscovery(name, input, line, session) {
     // lengthening it.
     if (turn.toolUses.length > 1) break;
     if (!turn.toolUses.every((u) => isReadOnly(u.name, u.input))) break;
+    // A refused probe earlier in this same run is this gate having already spoken.
+    if (turn.toolUses.some((u) => u.ok === false)) return;
     run += 1;
   }
 
