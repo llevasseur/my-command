@@ -103,6 +103,15 @@ base moves where the plan starts without collapsing the per-unit bases, and the
 plan prints every unit's base so a root one and an inherited one are told apart
 before anything spawns.
 
+**That inheritance is for the delegates that do not merge. Under `--delegate god`
+a stacked unit is cut from the run's merge target instead**, because [god](god.md)
+merges each unit's PR and then deletes its remote branch — and waves run in order,
+so the branch a stacked unit would inherit is already deleted **before that unit is
+dispatched**, not merely before it merges. Cutting from it would name a branch that
+no longer exists, and nothing is lost by cutting from the merge target: the
+dependency's PR merged into it, so the interface the stacked unit consumes is
+already there, which is the only thing the inheritance was ever for.
+
 **`--into <branch>` is uniform across every unit and is never inherited down a
 stack.** `--base` and `--into` look like a pair and behave nothing alike: every
 `god` unit carries the **same** `--into` — the one typed on the `/manage`
@@ -135,6 +144,8 @@ concurrency safe at all is that `/task` cuts a fresh worktree per run, so two un
 are two working trees; `--here` removes exactly that. Units go out one at a time
 regardless of independence, no per-unit branch is planned, and the run yields **one**
 branch and one PR rather than one per unit — stated in the plan and in the report.
+`--base` is ignored alongside it; **`--into` is not**, since the run still merges
+under `--delegate god` and that one branch and one PR still need a merge target.
 
 ## Behavior
 
