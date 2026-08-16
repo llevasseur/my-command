@@ -16,6 +16,7 @@
     "src",
     "skills",
     "commands",
+    "agents",
     ".claude-plugin",
     ".codex-plugin"
   ],

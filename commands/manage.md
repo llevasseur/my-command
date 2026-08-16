@@ -129,11 +129,11 @@ Under `--dry-run` / `-n`, print the plan and **stop here** — before `TaskCreat
 
 ## Step 4 — Dispatch each wave
 
-Send a wave as **multiple `Agent` calls in a single assistant turn**. One subagent per unit. Star topology: every worker talks to this session and to nothing else.
+Send a wave as **multiple `Agent` calls in a single assistant turn**, each with **`subagent_type: "mycommand-delegate"`**. One subagent per unit. Star topology: every worker talks to this session and to nothing else.
 
 **Do not wire the workers to each other.** Peer messaging between agents costs roughly **2.4x–2.7x** the tokens of the equivalent fan-out through the Task tool — about **150K versus 400K** for a three-agent review, and **500K versus 1.2M** for an eight-agent feature — because every worker pays to read every other worker's traffic. That price is worth paying only when the workers must negotiate a cross-cutting concern mid-flight. **Here they have nothing to negotiate:** each one runs a self-contained command on its own branch in its own worktree, and the concern they would negotiate was already resolved into lanes in Step 3. `--mesh` is the escape hatch for the case where a human knows better; it is off by default and stays off unless typed.
 
-**Keep each delegate prompt minimal.** Every delegate is a MyCommand command that is already self-contained through its own file, which the subagent loads when it is invoked. Pass the invocation, that unit's criteria, its branch, and its lane — then stop. Restating the whole plan into every subagent prompt puts a second set of instructions in front of the command's own, competes with them for attention, and makes completion **less** reliable rather than more.
+**Keep each delegate prompt minimal.** Every delegate is a MyCommand command that is already self-contained through its own file, which the subagent loads when it is invoked — and the **delegate role** is likewise already stated once, in the `mycommand-delegate` definition the dispatch names. Pass the invocation, that unit's criteria, its branch, and its lane — then stop. Restating the whole plan, or the role, into every subagent prompt puts a second set of instructions in front of the command's own, competes with them for attention, and makes completion **less** reliable rather than more.
 
 <!-- include-block: shared/dispatch-worktree.md -->
 ### Make the workspace here, before the subagent exists

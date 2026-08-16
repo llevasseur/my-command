@@ -89,7 +89,7 @@ This is a step of the workflow, not a habit to recall. Run it whenever a phase o
 
 ## Step 3 — Evaluate each doc, one at a time
 
-**Dispatch each doc's evaluation to its own fresh subagent** via the `Agent` tool, in parallel batches of about four. Each evaluation means reading a doc in full, and that is context this session does not need to keep — only the proposed edit is. Give each subagent the bundle dir, the concept id, the rules below, and the required output shape: the claim inventory, the proposed cuts with a reason each, and the before/after size. Keep only the findings here.
+**Dispatch each doc's evaluation to its own fresh subagent** via the `Agent` tool, with **`subagent_type: "mycommand-doc-auditor"`**, in parallel batches of about four. Each evaluation means reading a doc in full, and that is context this session does not need to keep — only the proposed edit is. That definition already carries the claim inventory, the every-claim-survives rule, and the propose-don't-edit boundary, so give each subagent this run's specifics alone: the bundle dir, the concept id, and the density rules below. Keep only the findings here.
 
 Every evaluation starts by taking a **claim inventory** — the list of things the doc asserts that a reader could act on or be wrong about:
 

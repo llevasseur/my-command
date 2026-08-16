@@ -43,6 +43,16 @@ Read this instead of guessing a path. Every path below is real; nothing else is.
   [`docs/specs/workflow-gates.md`](docs/specs/workflow-gates.md) — **a gate must fail
   open and must never refuse the same subject twice**, and both properties are gated by
   `check-commands.sh`.
+- `agents/<name>.md` — the subagent definitions, one per **shape of delegation** rather than
+  one per command, each declaring a model, a tool list, and the role in full. Every dispatch
+  site names one with `subagent_type`, so a dispatch prompt carries that run's specifics and
+  not a restatement of the role. A definition's frontmatter `name` must match its filename,
+  and its `tools` list is a capability boundary — `mycommand-reviewer` ships without `Edit`
+  or `Write` on purpose. Three surfaces place them: `install-personal.sh` symlinks them, the
+  npx wizard's `installAgents()` copies them on both Claude choices, and
+  `.claude-plugin/plugin.json` declares the directory. Codex gets none — it has no subagent
+  mechanism. Invariant 20 gates all of it; see
+  [`docs/specs/subagent-definitions.md`](docs/specs/subagent-definitions.md).
 - `scripts/` — `build-plugin.sh` (regenerates `commands/`), `expand-includes.mjs` (expands
   `src/shared/` snippets in place; `--check` reports drift), `check-commands.sh` (the
   invariant gate), `install-codex-personal.sh`.

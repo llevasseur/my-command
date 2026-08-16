@@ -36,6 +36,10 @@
 #  19. the closing turn distinguishes a nested inline handback from a run close, on all three
 #      surfaces, and the Stop gate reads the same distinction — a nested run that spends a
 #      text-only turn strands its parent's remaining steps (docs/specs/run-markers.md).
+#  20. every subagent definition declares a model and a tool list, every command that dispatches
+#      one names it by subagent_type, and both Claude install surfaces place the definitions —
+#      an unnamed dispatch silently takes the default agent, and a definition that never reaches
+#      the device makes a named one do the same (docs/specs/subagent-definitions.md).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -590,7 +594,78 @@ if ! grep -q 'verify --background' src/hooks/pre-tool-use.mjs; then
   fail=1
 fi
 
+# 24. The subagent definitions are the single statement of each delegate's role, which holds only
+# while three things are true together: each definition declares a model and a tool list, each
+# dispatch site names one, and every Claude install surface puts them where Claude reads them.
+# Miss the last and a named dispatch silently falls back to the default agent, reporting nothing.
+if [ ! -d agents ]; then
+  echo "::error::missing agents/ — the subagent definitions every dispatch site names by subagent_type (docs/specs/subagent-definitions.md)."
+  fail=1
+else
+  for f in agents/*.md; do
+    name="$(basename "$f" .md)"
+    for field in name description tools model; do
+      if ! grep -Eq "^${field}:" "$f"; then
+        echo "::error::agents/$name.md declares no '$field:' in its frontmatter; a definition states a model, a tool list, and what it is for."
+        fail=1
+      fi
+    done
+    # The frontmatter name is what `subagent_type` resolves; a mismatch with the filename makes
+    # the dispatch name one thing and the device install another.
+    if ! grep -Eq "^name: ${name}\$" "$f"; then
+      echo "::error::agents/$name.md declares a 'name:' other than '$name'; subagent_type resolves the frontmatter name, so it must match the filename the installer places."
+      fail=1
+    fi
+    # Named nowhere, it is a file the device carries and nothing invokes.
+    if ! grep -Rql "subagent_type: \"$name\"" src/commands/; then
+      echo "::error::no command in src/commands/ names 'subagent_type: \"$name\"'; a definition no dispatch site names is dead weight on every device."
+      fail=1
+    fi
+  done
+
+  # Each site that dispatches with the Agent tool must say which definition, checked per command
+  # rather than in total.
+  for f in src/commands/task.md src/commands/review.md src/commands/docs.md \
+    src/commands/truncate.md src/commands/dev.md src/commands/work.md \
+    src/commands/manage.md src/commands/improve.md; do
+    if ! grep -Fq 'subagent_type:' "$f"; then
+      echo "::error::$f dispatches a subagent without naming a subagent_type; that dispatch takes the default agent and says nothing about it (docs/specs/subagent-definitions.md)."
+      fail=1
+    fi
+  done
+
+  # Every name a command dispatches has to exist as a definition, or the dispatch resolves to
+  # nothing. Reads the names out of the commands rather than assuming the set.
+  for named in $(grep -rhoE 'subagent_type: "[a-z0-9-]+"' src/commands/ | sed -E 's/.*"(.*)"/\1/' | sort -u); do
+    if [ ! -f "agents/$named.md" ]; then
+      echo "::error::a command names subagent_type \"$named\" but agents/$named.md does not exist; that dispatch resolves to no definition."
+      fail=1
+    fi
+  done
+
+  # Both Claude install surfaces: a definition that never reaches the device makes a correctly
+  # named dispatch behave exactly like an unnamed one.
+  if ! grep -q 'installAgents(' src/my-command.ts; then
+    echo "::error::src/my-command.ts no longer calls installAgents(); an npx install would ship commands naming definitions the device does not have."
+    fail=1
+  fi
+  wired_agents="$(grep -c 'reportAgents(installAgents())' src/my-command.ts || true)"
+  if [ "$wired_agents" -ne 2 ]; then
+    echo "::error::src/my-command.ts wires the subagent definitions into $wired_agents of the 2 Claude install paths; both the plugin and personal choices must place them."
+    fail=1
+  fi
+  if ! grep -q 'AGENTS_DEST' scripts/install-personal.sh; then
+    echo "::error::scripts/install-personal.sh no longer links agents/ into the Claude agents directory; the dev install would name definitions it never placed."
+    fail=1
+  fi
+  # The plugin install path places nothing itself — the manifest is what points Claude at them.
+  if ! grep -q '"agents"' .claude-plugin/plugin.json; then
+    echo "::error::.claude-plugin/plugin.json no longer declares its 'agents' directory; a plugin install would carry no definitions."
+    fail=1
+  fi
+fi
+
 if [ "$fail" -eq 0 ]; then
-  echo "check-commands: all command invariants satisfied ($(ls src/commands/*.md | wc -l | tr -d ' ') commands)."
+  echo "check-commands: all command invariants satisfied ($(ls src/commands/*.md | wc -l | tr -d ' ') commands, $(ls agents/*.md | wc -l | tr -d ' ') subagent definitions)."
 fi
 exit "$fail"

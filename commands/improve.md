@@ -199,7 +199,7 @@ This needs no new dispatch machinery. Step 5 already runs one subagent per repo,
 
 ## Step 5 — Run the task: one subagent per repo
 
-**Group the criteria by the repo they land in**, then dispatch **one fresh subagent per repo**, each running `/my-command:task` with that repo's composed criteria and the same pass-through flags exactly as given:
+**Group the criteria by the repo they land in**, then dispatch **one fresh subagent per repo**, each with **`subagent_type: "mycommand-delegate"`**, running `/my-command:task` with that repo's composed criteria and the same pass-through flags exactly as given:
 
 ```
 /my-command:task <pass-through flags> <the composed criteria for this repo>

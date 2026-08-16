@@ -229,6 +229,14 @@ It asks how you want them installed:
 The repository also ships `.codex-plugin/plugin.json`, so supported Codex
 surfaces can install the complete skill bundle as a plugin.
 
+Both Claude choices also place the **subagent definitions** in `agents/` into
+your Claude agents directory (`CLAUDE_AGENTS_DIR` overrides it). Every command
+that delegates names one of them by `subagent_type`, so a dispatch runs the
+definition's role rather than the default agent; without the definitions on the
+device, a named dispatch silently falls back. See
+[Subagent definitions](./docs/specs/subagent-definitions.md). The Codex choice
+places none — Codex has no subagent mechanism.
+
 Every choice also installs the **command toolkit** — a zero-dependency Node CLI
 the commands and skills call for deterministic git/gh plumbing. It lands under
 `~/.claude/my-command/` for Claude or `${CODEX_HOME:-~/.codex}/my-command/` for
@@ -267,6 +275,7 @@ they are invoked as `/my-command:task`, `/my-command:pr`, and so on.
 
 ```
 src/commands/       Canonical BARE commands — edit these (they call each other as /task, /clean, …)
+agents/             Subagent definitions — one per shape of delegation, named by every dispatch site (see docs/specs/subagent-definitions.md)
 skills/             Codex-native workflow skills — one semantic counterpart per Claude command
 src/my-command.ts   The npx install wizard, in TypeScript (compiled to dist/, ships dependency-free)
 src/toolkit/        Shared CLI every command calls — raw .mjs, shipped as-is (see docs/specs/command-toolkit.md)
@@ -283,8 +292,8 @@ dist/               GENERATED wizard build (tsc output; gitignored, built on ins
 commands/           GENERATED namespaced commands the plugin ships (do not edit by hand)
 scripts/
   build-plugin.sh      Regenerate commands/ from src/commands/ (bare → /my-command:)
-  check-commands.sh    Enforce command + toolkit invariants (commands/ in sync, feature docs, verbs registered) — runs in CI
-  install-personal.sh  Symlink src/commands/*.md into ~/.claude/commands (bare, git-synced)
+  check-commands.sh    Enforce command + toolkit invariants (commands/ in sync, feature docs, verbs registered, dispatch sites name a subagent type) — runs in CI
+  install-personal.sh  Symlink src/commands/*.md into ~/.claude/commands and agents/*.md into ~/.claude/agents (bare, git-synced)
   install-codex-personal.sh  Symlink skills + toolkit into Codex device scopes (git-synced)
 AGENTS.md           Repo rules for agents (the adding-a-command checklist + the CI gate)
 biome.json          Biome lint + format config

@@ -108,7 +108,7 @@ Every suspect still gets the real audit — a doc can be stale with a newer mtim
 2. Find the implementation and compare each claim to it. Mark every claim **matches**, **drifted** (code changed under the doc), or **wrong** (the doc was never right). Record `old value → current value`.
 3. Then walk the graph and re-check what the doc's fix implicates: `okq --bundle <dir> neighbors <id> --depth 1` and `backlinks <id>`. Drift rarely sits in one doc — a renamed flag is usually wrong in the spec that references it too.
 
-**Dispatch each doc's audit to its own fresh subagent** via the `Agent` tool, in parallel batches of about four. Each audit means reading a doc in full plus its implementation, and that is context this session does not need to keep — only the verdict is. Give each subagent the bundle dir, the concept id, the source paths it maps to, and the required output shape: verdict per claim, `old → current` for each discrepancy, and the concrete edit it proposes. Keep only the findings here.
+**Dispatch each doc's audit to its own fresh subagent** via the `Agent` tool, with **`subagent_type: "mycommand-doc-auditor"`**, in parallel batches of about four. Each audit means reading a doc in full plus its implementation, and that is context this session does not need to keep — only the verdict is. That definition already carries the claim-inventory rules, the three verdicts, and the propose-don't-edit boundary, so give each subagent this run's specifics alone: the bundle dir, the concept id, and the source paths it maps to. Keep only the findings here.
 
 **Applying what comes back:**
 
