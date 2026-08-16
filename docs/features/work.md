@@ -1,7 +1,7 @@
 ---
 type: feature
 title: work
-description: Build the ideas a human accepted — select them by slug or by area from the hosted ideas ledger, claim each one before any code is written, dispatch one task run per idea in waves that cannot collide, and mark each shipped idea against its own PR.
+description: Build the ideas a human accepted — select them by slug or by area from the hosted ideas ledger, claim each one before any code is written, dispatch one downstream run per idea in waves that cannot collide, and mark each shipped idea against its own PR.
 tags: [command, workflow, agents]
 timestamp: 2026-08-10
 updated: 2026-08-16

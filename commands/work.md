@@ -204,8 +204,10 @@ Two ideas in **different repos** never conflict, whatever their paths look like 
 Dispatch **one fresh subagent per selected idea**, each running the **resolved downstream command** with that single idea's brief and the pass-through flags exactly as given:
 
 ```
-/<task|god> <pass-through flags> <the composed brief for this idea>
+/my-command:task <pass-through flags> <the composed brief for this idea>
 ```
+
+Under `--delegate god` that invocation is `/my-command:god` instead, carrying the run's `--into` alongside the same flags and the same brief.
 
 **The downstream command changes where an idea ends, and nothing else.** `/my-command:god` runs `/my-command:task` internally, so the branch, the worktree, the verification, the commits and the PR are the same pipeline either way — it adds the last mile that gets that PR green and merges it. Every rule below about claiming, lanes, waves and one-idea-one-PR holds unchanged under both, and `--into` rides along only when the delegate is `god`.
 
