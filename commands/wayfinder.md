@@ -141,21 +141,22 @@ Use this workflow's own repo-relative location for `<workflow-path>`. If every a
 **Which command is the flag's doing, and nothing else's:**
 
 - **Default — `/my-command:task`.** It stops at an open, reviewed PR and leaves me the merge.
-- **`--unattended` — `/my-command:god`.** It runs that same `/my-command:task` pipeline and adds the last mile: conflicts resolved, CI waited on, the ticket PR merged.
+- **`--unattended` — `/my-command:god`.** It runs that same `/my-command:task` pipeline and adds the last mile: conflicts resolved, CI waited on, the ticket PR retargeted onto its merge target and merged there. That merge target must be named with `--into`, or it is the default branch.
 
 1. Read the task's plan in full.
 2. Mark the task `in-progress` in the map.
 3. Invoke the runner with the campaign base and any forwarded flags:
    ```text
    /my-command:task --base wayfinder/<slug> [forwarded flags] <the plan's criteria>
-   /my-command:god --base wayfinder/<slug> [forwarded flags] <the plan's criteria>   # --unattended only
+   /my-command:god --base wayfinder/<slug> --into wayfinder/<slug> [forwarded flags] <the plan's criteria>   # --unattended only
    ```
+   **`--base` and `--into` are both required on the `/my-command:god` form, and neither implies the other.** `--base` is the cut point; `--into` is the merge target. Absent `--into`, `/my-command:god`'s merge target is the default branch — and it *retargets the PR onto that target before merging*, so a ticket run without it merges into the default branch no matter what this command did to the PR's base beforehand. **A ticket that cannot be given `--into` is a stop, not a merge.**
 4. `/my-command:pr` targets the default branch by design, so **retarget the ticket PR to the base branch** as soon as it exists:
    ```bash
    gh pr edit <number> --base wayfinder/<slug>
    ```
    Confirm the retarget landed — a ticket left pointing at the default branch is the one failure this command cannot absorb.
-   - **Under `--unattended` the retarget cannot wait until `/my-command:god` returns**, because by then `/my-command:god` has already merged the PR — into the default branch, which is the exact failure above with no undo. So the retarget goes *inside* that run, woven in through the flag the runner already takes: add `--add "pr after the PR is opened, retarget it to wayfinder/<slug> with gh pr edit --base and confirm the retarget landed before anything merges"` to the `/my-command:god` invocation, ahead of any `--add` entries I passed. **A ticket whose retarget cannot be woven in is a stop, not a merge.**
+   - **Under `--unattended` this step is `/my-command:god`'s, not mine.** `--into wayfinder/<slug>` makes the campaign base its merge target, and `/my-command:god` retargets the PR onto that target itself, before it merges. Retargeting from out here would be too late anyway: `/my-command:god` merges before it returns. Confirm from `/my-command:god`'s own report that the ticket PR was merged into `wayfinder/<slug>`.
 5. **By default, do not merge it — I review every PR.** That is this command's documented default rather than a limit of the operation. **With `--unattended`, the ticket merge is authorised** and `/my-command:god` performs it against the retargeted base as part of its own run; there is nothing left to merge here.
 
 ### 4. Complete a task
@@ -226,7 +227,7 @@ Expect churn in that index: the plans directory is deliberately fast-moving.
 
 This section applies only to a run with `--unattended` typed on it. Without the flag this command issues no merge at all, and none of the forms below are reached.
 
-Three merges are authorised, and no more: the **planning PR** at start, each **ticket PR** (performed by `/my-command:god` inside the ticket run, against the retargeted base), and the **campaign PR** at close. A PR this run did not open is never merged. Never reach for `--admin`, never force-push, and never merge a red PR — a campaign is exactly where one bad merge is multiplied.
+Three merges are authorised, and no more: the **planning PR** at start, each **ticket PR** (performed by `/my-command:god` inside the ticket run, into the `--into wayfinder/<slug>` merge target it was given), and the **campaign PR** at close. A PR this run did not open is never merged. Never reach for `--admin`, never force-push, and never merge a red PR — a campaign is exactly where one bad merge is multiplied.
 
 <!-- include-block: shared/merge-command-forms.md -->
 ### Merge command forms

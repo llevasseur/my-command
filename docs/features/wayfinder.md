@@ -65,8 +65,10 @@ Five operations, one per invocation:
    its row to the map's Active tasks table.
 3. **Execute a task** — mark it in progress, then run the ticket runner with
    `--base wayfinder/<slug>` against the plan's criteria — `/task` by default,
-   `/god` under `--unattended` — and **retarget the resulting PR** to the base
-   branch, since `/pr` targets the default branch by design.
+   `/god --base wayfinder/<slug> --into wayfinder/<slug>` under `--unattended` —
+   and **retarget the resulting PR** to the base branch, since `/pr` targets the
+   default branch by design. Under `--unattended` that retarget is `/god`'s, done
+   from the `--into` merge target before it merges.
 4. **Complete a task** — after its PR merges into the base branch, delete the
    plan file, append a Completed entry describing what was *actually built*, and
    remove the Active tasks row.
@@ -99,11 +101,16 @@ one. That is the documented default rather than a limit of the command.
 overrides it, and it authorises exactly three merges: the planning PR at start,
 each ticket PR, and the campaign PR at close. The ticket merges are not performed
 here — execute routes to `/god`, which runs the same `/task` pipeline and adds
-the last mile. Because `/god` merges before it returns, the ticket PR's retarget
-to `wayfinder/<slug>` has to be woven **into** that run through its `--add` list
-rather than applied after it; a ticket whose retarget cannot be woven in is a
-stop, not a merge. A PR this run did not open is never merged, and a red PR is
-never merged at all.
+the last mile. `/god` is given the campaign base branch **twice**: `--base
+wayfinder/<slug>` as the cut point and `--into wayfinder/<slug>` as the merge
+target. The two are independent and neither implies the other, and absent
+`--into` the merge target is the default branch — so a ticket run without it
+would be merged there, and `/god` would retarget the PR onto it first, undoing
+any retarget applied from outside. `--into` is therefore what makes the ticket
+land on the campaign base, and `/god`'s own retarget is what keeps the PR's base
+true before the merge. A ticket that cannot be given `--into` is a stop, not a
+merge. A PR this run did not open is never merged, and a red PR is never merged
+at all.
 
 The flag is never inherited. The map's agent kickoff prompt keeps its
 "stop after opening the pull request" wording even for a campaign started with

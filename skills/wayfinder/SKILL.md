@@ -17,18 +17,18 @@ only when this run executes a ticket, because that operation is one invocation o
 that runner and forwards them verbatim. The charting operations ignore them.
 
 `--unattended` belongs to this workflow. It authorises the run to merge the pull
-requests it opens, and routes ticket execution to the merge-through workflow
-rather than the stop-at-a-pull-request one. **It must be typed on the invocation
+requests it opens, and routes ticket execution to `$god` rather than the
+stop-at-a-pull-request `$task`. **It must be typed on the invocation
 that acts, and it is never inherited** — not from the map, not from the kickoff
 prompt the map carries, not from a workflow that invoked this one, and not from
 an earlier operation in the same campaign. The reason is what a campaign is: it
 multiplies whatever it authorises, and N unattended merges out of one invocation
-is a different risk from one, which is why the orchestration workflow likewise
-requires its merge-through delegate to be typed rather than inherited. Absent the
-flag, this workflow opens pull requests and merges nothing.
+is a different risk from one, which is why `$manage` likewise requires its
+merge-through delegate to be typed rather than inherited. Absent the flag, this
+workflow opens pull requests and merges nothing.
 
-`--draft` is refused alongside `--unattended`: the merge-through runner rejects a
-draft outright, because a draft cannot merge. Say to run the campaign without
+`--draft` is refused alongside `--unattended`: `$god` rejects a draft outright,
+because a draft cannot merge. Say to run the campaign without
 `--unattended` if the tickets are meant to stay in draft.
 
 Announce which of the five operations you picked before acting: start, add task,
@@ -117,24 +117,28 @@ workflow replaces.
 Ticket execution is an existing workflow, which owns the worktree, bootstrap,
 verification, commits, cleanup, and pull request. Do not reimplement any of that
 here. Which workflow is the flag's doing and nothing else's: by default `$task`,
-which stops at an open, reviewed pull request; under `--unattended` the
-merge-through workflow, which runs that same pipeline and adds the last mile —
-conflicts resolved, checks waited on, the ticket pull request merged.
+which stops at an open, reviewed pull request; under `--unattended` `$god`, which
+runs that same pipeline and adds the last mile — conflicts resolved, checks
+waited on, the ticket pull request retargeted onto its merge target and merged
+there.
 
 1. Read the plan in full.
 2. Mark the task in progress in the map.
 3. Run the chosen workflow with the campaign base branch as its base and any
-   forwarded flags, handing it the plan's criteria.
+   forwarded flags, handing it the plan's criteria. Under `--unattended`, name
+   the campaign base branch **twice** — once as `$god`'s cut point and once as
+   its merge target (`--base wayfinder/<slug> --into wayfinder/<slug>`). The two
+   are independent and neither implies the other; absent the merge target,
+   `$god` merges into the default branch. A ticket that cannot be given that
+   merge target is a stop, not a merge.
 4. The pull-request step targets the default branch by design, so retarget the
    ticket pull request to `wayfinder/<slug>` as soon as it exists, and confirm
    the retarget landed. A ticket left pointing at the default branch is the one
-   failure this workflow cannot absorb. Under `--unattended` that retarget cannot
-   wait until the runner returns, because by then it has merged the pull request
-   into the default branch — the same failure with no undo. Weave the retarget
-   into the runner's own invocation through its added-command flag, ahead of any
-   entries the user passed, so it happens after the pull request is opened and
-   before anything merges. A ticket whose retarget cannot be woven in is a stop,
-   not a merge.
+   failure this workflow cannot absorb. Under `--unattended` that retarget
+   belongs to `$god` rather than to this workflow: the merge target given in step
+   3 is what `$god` retargets the pull request onto before it merges, and a
+   retarget attempted from out here would arrive after the merge in any case.
+   Confirm from `$god`'s own report that the ticket landed on `wayfinder/<slug>`.
 5. By default never merge it — the user reviews every pull request, and that is
    the documented default rather than a limit of the operation. Under
    `--unattended` the ticket merge is authorised and the runner performs it
@@ -224,9 +228,9 @@ refuses: whoever runs it types the flag themselves or gets the reviewed default.
   left open for the user, and a run that merges without the flag typed on it has
   exceeded what it was asked to do.
 - Under `--unattended`, exactly three merges are authorised and no more: the
-  planning pull request at start, each ticket pull request (performed by the
-  ticket runner against the retargeted base), and the campaign pull request at
-  close. Never merge a pull request this run did not open, never merge one whose
+  planning pull request at start, each ticket pull request (performed by `$god`
+  into the campaign base branch it was given as its merge target), and the
+  campaign pull request at close. Never merge a pull request this run did not open, never merge one whose
   checks are red, never force-push, and never reach for an administrator
   override — a campaign is exactly where one bad merge is multiplied. Issue a
   merge once and read the resulting state rather than re-issuing it: a merge
