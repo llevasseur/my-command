@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-08-17
+
+### Changed
+
+- **`/clean` runs `pnpm lint:anti-slop` early — before touching any comment — when the repo defines that script.** The comment pass judged slop by eye alone; repos that carry the anti-slop Oxlint plugin already flag it mechanically, and that signal arrived after the edits or not at all. `/clean` now checks the repo root `package.json` for a `lint:anti-slop` script as part of its batched Scope reads and, when present, runs it before the delete/tighten pass, treating each finding that lands on a line in scope as a candidate. The gate is the script's existence: absent, the step is skipped and the summary says so — `/clean` never adds the script, installs a plugin, or edits lint config to make it runnable. The lint's output is input, not a gate: non-comment findings and findings outside the diff stay out of bounds, so the command still only touches comments in scope. Frontmatter allowlists exactly `Bash(pnpm lint:anti-slop)`.
+
 ## 2026-08-16
 
 ### Added
