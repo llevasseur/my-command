@@ -86,9 +86,8 @@ export function parseArgs(argv) {
   const rest = leadsWithFlag ? argv : argv.slice(1);
   /** @type {string[]} */
   const positionals = [];
-  // Collected here as raw occurrences and resolved into flag values below. This loop is
-  // the whole of the argv boundary: what a spelling means is decided once, on the way out
-  // of it, so nothing downstream has to look at a command line again.
+  // The argv boundary: occurrences are collected raw here and resolved into flag values
+  // on the way out, so nothing downstream reads a spelling again.
   /** @type {Map<string, (string | undefined)[]>} */
   const occurrences = new Map();
   /** @param {string} key @param {string} [value] undefined for an occurrence given bare */

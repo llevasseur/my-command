@@ -27,8 +27,8 @@ export function run(cmd, args, opts = {}) {
     maxBuffer: 64 * 1024 * 1024,
   };
   // Merged rather than replaced: a verb overriding one variable (an owner-scoped
-  // GH_TOKEN) still needs PATH, HOME, and the rest of the caller's environment. Left
-  // unset otherwise, which is what makes the child inherit this process's environment.
+  // GH_TOKEN) still needs PATH, HOME, and the rest of the caller's environment. Left unset
+  // otherwise, so the child inherits this process's environment.
   if (opts.env) spawnOpts.env = { ...process.env, ...opts.env };
   const r = spawnSync(cmd, args, spawnOpts);
   const missing = Boolean(r.error && /** @type {NodeJS.ErrnoException} */ (r.error).code === 'ENOENT');

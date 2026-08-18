@@ -1,11 +1,9 @@
 // What a flag *is*, settled once at the argv boundary.
 //
-// `--flag`, `--flag=x`, `--flag x`, and a `--flag` repeated three times are four spellings
-// of the same command line, and every verb used to re-decide what it had been handed at
-// the point it read one. `parseArgs` collects a flag's occurrences and hands them to
-// `flag()` below, which resolves them into the three questions a verb ever asks: the
-// flag's text, every occurrence it collected, and whether it is switched on. Downstream
-// reads a field of that value; nothing re-derives the spelling it came from.
+// `--flag`, `--flag=x`, `--flag x` and a repeated `--flag` are four spellings of one
+// thing. `parseArgs` hands each flag's occurrences to `flag()` below, which resolves them
+// into the three questions a verb ever asks: the flag's text, every occurrence, and
+// whether it is on. Downstream reads a field, never a spelling.
 
 /**
  * One flag, as resolved from the command line.
@@ -27,12 +25,11 @@
 export function flag(occurrences) {
   if (occurrences.length === 1) {
     const only = occurrences[0];
-    // Bare: it carries no text at all, so a verb asking for one correctly reads it as absent.
+    // Bare: no text, so a verb asking for one reads it as absent.
     if (only === undefined) return { text: undefined, all: [], on: true };
     return { text: only, all: [only], on: only === 'true' };
   }
-  // A bare occurrence inside a repeated flag still fills a slot, and `true` is the text
-  // that has always stood for it.
+  // A bare occurrence inside a repeated flag fills its slot as `true`.
   const all = occurrences.map((occurrence) => occurrence ?? 'true');
   return { text: all[all.length - 1], all, on: false };
 }

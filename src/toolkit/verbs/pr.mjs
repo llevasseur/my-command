@@ -83,9 +83,8 @@ export function run(ctx) {
     const retitle = bool(ctx.flags.retitle);
     const args = ['pr', 'edit', String(existing.number), '--body', merged.body];
     if (retitle) args.push('--title', title);
-    // The REST fallback carries exactly what the `gh` call above carries: the body always,
-    // the title only when a retitle was asked for, so neither path can rename a PR the
-    // other would have left alone.
+    // The REST fallback carries what the `gh` call above carries: the body always, the
+    // title only on a retitle.
     /** @type {{body: string, title?: string}} */
     const patch = { body: merged.body };
     if (retitle) patch.title = title;

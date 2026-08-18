@@ -1,16 +1,14 @@
 // Reading JSON that arrived from outside — a config file, stdin, an HTTP response.
 //
-// JSON admits six kinds of value and every reader in this toolkit wants exactly one of
-// them: a record of named fields. Settling that once, at the point the text is parsed, is
-// what lets the code downstream read fields instead of re-establishing what it was handed.
+// JSON admits six kinds of value and every reader here wants one: a record of named
+// fields. Settled once where the text is parsed, so downstream reads fields.
 
 /**
- * The JSON value as a record of named fields, or null when the document is any of the
- * other things JSON allows — an array, a scalar, `null`.
+ * The JSON value as a record of named fields, or null for anything else JSON allows — an
+ * array, a scalar, `null`.
  *
- * `JSON.parse` only ever produces plain objects, arrays, and scalars, so comparing the
- * prototype answers the question exactly and separates an array from a record, which is
- * the distinction a caller reaching for `.field` actually depends on.
+ * `JSON.parse` yields only plain objects, arrays and scalars, so the prototype separates
+ * an array from a record exactly — the distinction a caller reaching for `.field` needs.
  * @param {unknown} value
  * @returns {Record<string, unknown> | null}
  */
@@ -20,8 +18,7 @@ export function asRecord(value) {
 }
 
 /**
- * The same reading with an empty record for the absent case, for a caller that iterates
- * the fields rather than branching on whether there were any.
+ * The same reading, with an empty record for the absent case.
  * @param {unknown} value
  * @returns {Record<string, unknown>}
  */

@@ -264,9 +264,8 @@ function recordFrom(path) {
 
 /**
  * A list field of a record, however it arrived: as an array, or as the newline-separated
- * string the old snippet took. One rule reads both — every value given, split on newlines,
- * trimmed, emptied of blanks and of the finder — so no caller downstream has to ask which
- * of the two spellings the store or the caller happened to send.
+ * string the old snippet took. Every value given, split on newlines, trimmed, emptied of
+ * blanks and of the finder.
  * @param {unknown} value @returns {string[]}
  */
 function listOf(value) {
@@ -352,8 +351,7 @@ async function count(term, skill) {
       headers: { authorization: `Bearer ${token}` },
     });
     if (!res.ok) return no(`the store answered ${res.status} for ${JSON.stringify(term)}`);
-    // The response is the boundary: read it as the concept record once, and every field
-    // below is a field of a record rather than whatever the store happened to send.
+    // The response is the boundary: read it as the concept record once.
     stored = asRecord(/** @type {any} */ (await res.json())?.concept);
   } catch (err) {
     return no(why(err));
@@ -369,8 +367,8 @@ async function count(term, skill) {
     savedAt: new Date().toISOString(),
   };
   // Carried forward: reads resolve the newest version, so a version written without them
-  // loses them for every later reader. Each field is carried as its own kind — `notes` is
-  // prose, the other three are lists — which is what `save` writes them as.
+  // loses them for every later reader. Each field keeps the kind `save` writes it as —
+  // `notes` is prose, the other three are lists.
   const notes = textOf(stored.notes);
   if (notes) rec.notes = notes;
   for (const key of ['tips', 'sources', 'surfacedSkills']) {

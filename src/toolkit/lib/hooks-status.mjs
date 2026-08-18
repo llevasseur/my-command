@@ -36,10 +36,8 @@ function real(path) {
 /**
  * Every hook a settings document registers, as one `{event, command}` per hook.
  *
- * Both documents this file compares are the same shape — the settings file the harness
- * reads and the fragment this repo ships — so what counts as a registration is settled
- * here, once, and the comparison below works over registrations rather than over two
- * separately-walked JSON trees.
+ * The two documents compared below — the settings file the harness reads and the fragment
+ * this repo ships — are the same shape, so both read through here.
  * @param {unknown} document
  * @returns {{event: string, command: string}[]}
  */
@@ -50,7 +48,7 @@ function registrations(document) {
     if (!Array.isArray(entries)) continue;
     for (const entry of entries) {
       for (const hook of Array.isArray(entry?.hooks) ? entry.hooks : []) {
-        // A hook with no command registers nothing — there is no file for the harness to run.
+        // A hook with no command registers nothing.
         if (hook?.command === undefined || hook?.command === null) continue;
         out.push({ event, command: String(hook.command) });
       }
@@ -64,8 +62,8 @@ const scriptOf = (/** @type {string} */ command) => command.split(/\s+/)[0];
 
 /**
  * The fragment as a settings document, with `{{HOOKS_DIR}}` resolved to where the scripts
- * are installed. Throws on an unreadable or invalid fragment, which `deviceHooksStatus`
- * reports as "no verdict" rather than as "not armed".
+ * are installed. Throws if it is unreadable or invalid — `deviceHooksStatus` reports that
+ * as "no verdict", not as "not armed".
  * @param {string} fragmentPath @param {string} hooksDir
  * @returns {unknown}
  */

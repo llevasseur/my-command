@@ -101,9 +101,8 @@ export function run(ctx) {
     /** @type {ReturnType<typeof content> | undefined} */
     diff: undefined,
   };
-  // The diff is opt-in — it is the one field big enough to bury the rest of the answer —
-  // and an answer that was not asked for one carries no `diff` key at all, since
-  // `JSON.stringify` drops a field left undefined.
+  // Opt-in: `JSON.stringify` drops the key entirely for an answer that was not asked for
+  // a diff.
   if (bool(ctx.flags.diff)) answer.diff = content(cwd, mergeBase, branch, workingTree, limitOf(ctx));
   return answer;
 }

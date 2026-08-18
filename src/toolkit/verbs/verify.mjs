@@ -49,10 +49,9 @@ function packageManager(root) {
 }
 
 /**
- * The repo's npm scripts, read at the one place package.json enters this verb. A repo
- * without a manifest, with an unreadable one, or with no `scripts` record in it all
- * answer the same way — no gates — so everything below runs over a plain name→command
- * record rather than over whatever the file happened to hold.
+ * The repo's npm scripts, read at the one place package.json enters this verb. A missing
+ * manifest, an unreadable one, and one with no `scripts` record all answer the same way:
+ * no gates.
  * @param {string} root @returns {Record<string, string>}
  */
 function scriptsOf(root) {
@@ -298,8 +297,7 @@ export function run(ctx) {
   // Before anything else, and before `repoRoot`: a wait is about a run that already started
   // somewhere, and the directory this call happens to be in is not part of the question.
   if (ctx.flags.wait !== undefined) {
-    // Bare `--wait` waits on the newest run; `--wait <verdict>` names one, and `str`
-    // already reports the bare form as no verdict given.
+    // Bare `--wait` waits on the newest run; `--wait <verdict>` names one.
     const given = str(ctx.flags.wait);
     const seconds = Number(str(ctx.flags['wait-timeout']));
     const timeoutMs = (Number.isFinite(seconds) && seconds > 0 ? seconds : DEFAULT_WAIT_SECONDS) * 1000;
@@ -359,7 +357,7 @@ export function run(ctx) {
     reason: undefined,
   };
   // Only a run that verified nothing owes an explanation; `JSON.stringify` drops the key
-  // for every run that does not.
+  // for every other run.
   if (!verified) answer.reason = 'no recognized verification gate to run';
   return answer;
 }
