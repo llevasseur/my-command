@@ -39,9 +39,8 @@ function readJson(path) {
 }
 
 /**
- * The commands a registered entry runs. An entry in the user's settings is theirs — written
- * back exactly as it was found — so the only thing decoded out of one is what this installer
- * has to recognize its own entries by.
+ * The commands a registered entry runs — the only thing decoded out of an entry, which is
+ * otherwise written back exactly as it was found.
  * @param {unknown} matcherEntry @returns {string[]}
  */
 function commandsIn(matcherEntry) {
@@ -66,11 +65,9 @@ function isOurs(matcherEntry, hooksDir) {
 
 /**
  * A settings document, decoded. `fields` is everything the file holds and is what gets written
- * back, so a setting this installer knows nothing about survives untouched. `hooks` and
- * `permissions` are the two sections it does own, settled here into records once — a section
- * the file carried as something other than an object of named entries holds no entries to
- * merge with, so it reads as empty, and stays detached from `fields` until the installer
- * actually puts something in it.
+ * back, so an unrelated setting survives untouched. `hooks` and `permissions` are the two
+ * sections this installer owns; a section the file carried as anything other than an object of
+ * named entries reads as empty, and stays detached from `fields` until something is put in it.
  *
  * @typedef {object} SettingsDoc
  * @property {Record<string, any>} fields
@@ -101,16 +98,15 @@ function removeOurs(doc, hooksDir) {
     if (kept.length > 0) hooks[event] = kept;
     else delete hooks[event];
   }
-  // A registry we emptied is dropped rather than written back as `{}` — but only when it was
-  // the document's own registry to begin with.
+  // An emptied registry is dropped rather than written back as `{}`, but only if it was the
+  // document's own to begin with.
   if (doc.hadHooks && Object.keys(hooks).length === 0) delete doc.fields.hooks;
   return removed;
 }
 
 /**
- * The bundled fragment, decoded with this install's hooks directory written into it. It ships
- * with the repo, so it is well formed by construction; decoding it here gives the merge below
- * the same settled sections it already has for the document on disk.
+ * The bundled fragment, decoded with this install's hooks directory written into it, into the
+ * same settled sections the document on disk already has.
  * @param {string} hooksDir
  * @returns {{hooks: Record<string, any>, allow: any[]}}
  */

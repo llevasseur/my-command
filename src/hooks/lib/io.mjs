@@ -14,10 +14,8 @@ export function disabled() {
 }
 
 /**
- * One hook event, decoded. This is the whole of what a gate knows about the call it was asked
- * about, and every field is settled here rather than re-examined at each gate: `command` and
- * `filePath` are the text the tool named, or undefined where it named none, and `cwd` is
- * already the directory the command will actually run in.
+ * One hook event, decoded — the whole of what a gate knows about the call it was asked about,
+ * settled here rather than re-examined at each gate.
  *
  * @typedef {object} HookEvent
  * @property {string} toolName        The tool about to run, or '' when the event named none.
@@ -46,8 +44,7 @@ export function readEvent() {
   } catch {
     return null;
   }
-  // Anything that is not an object carries none of the fields a gate reads, so it is the same
-  // as nothing being there: no gate has an opinion and the call goes through.
+  // Not an object: none of the fields a gate reads, so the same as nothing being there.
   if (!isRecord(event)) return null;
 
   const input = asRecord(event.tool_input);

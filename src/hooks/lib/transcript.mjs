@@ -44,11 +44,10 @@ export function entries(path) {
 }
 
 /**
- * One transcript line, decoded. The file is written by the harness and read here, so this is
- * the boundary: a record's role, its ids, its timestamp and each of its content blocks are
- * settled once, and every reading below branches on those rather than on what a field looked
- * like. `content` is null for a record that carried no content array at all, which is the one
- * case that is not a turn and not a prompt but simply nothing to read.
+ * One transcript line, decoded. A record's role, its ids, its timestamp and each of its
+ * content blocks are settled once here, and every reading below branches on those. `content`
+ * is null for a record that carried no content array — neither a turn nor a prompt, but
+ * nothing to read.
  *
  * @typedef {object} Entry
  * @property {'user' | 'assistant' | 'other'} role
@@ -60,8 +59,7 @@ export function entries(path) {
 
 /**
  * One content block, decoded to the four kinds these gates read. Anything else — an image, a
- * thinking block, a block whose own fields were not what they claimed — is `other`: present in
- * the record, and not one of the kinds any gate acts on.
+ * thinking block, a block whose own fields were not what they claimed — is `other`.
  *
  * @typedef {{kind: 'text', text: string}} TextBlock
  * @typedef {{kind: 'toolUse', id: string, name: string, input: Record<string, any>}} ToolUseBlock
@@ -81,7 +79,6 @@ function block(raw) {
     return said === undefined ? OTHER : { kind: 'text', text: said };
   }
   if (b.type === 'tool_use') {
-    // A block naming no tool is not a call anything can be decided from.
     const name = asText(b.name);
     return name === undefined ? OTHER : { kind: 'toolUse', id: text(b.id), name, input: asRecord(b.input) };
   }
@@ -166,8 +163,7 @@ export function timeline(records) {
       name: b.name,
       input: b.input,
       id: b.id,
-      // An id the transcript did not carry belongs to no result, so the call is neither
-      // failed, answered, nor reported on.
+      // An id the transcript did not carry belongs to no result.
       ok: !(b.id !== '' && failed.has(b.id)),
       answered: b.id !== '' && answered.has(b.id),
       notified: b.id !== '' && notified.has(b.id),

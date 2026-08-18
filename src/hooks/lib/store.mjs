@@ -33,9 +33,8 @@ export function resolve() {
 }
 
 /**
- * True when this resolution failed. `resolve()` above settles which of the two a resolution is
- * and is the only thing that makes one, so the question here is which was returned — not what
- * any field happens to hold.
+ * True when this resolution failed. `resolve()` is the only thing that makes one, so the
+ * question is which of the two it returned — not what any field happens to hold.
  * @param {Store | Unresolved} r @returns {r is Unresolved}
  */
 export function unresolved(r) {
@@ -76,7 +75,6 @@ export async function request(store, path, init = {}) {
       const headers = { authorization: `Bearer ${store.token}` };
       /** @type {RequestInit} */
       const sent = { method, headers, signal: AbortSignal.timeout(TIMEOUT_MS) };
-      // A request with nothing to send carries neither the body nor the header describing it.
       if (body !== undefined) {
         headers['content-type'] = 'application/json';
         sent.body = body;

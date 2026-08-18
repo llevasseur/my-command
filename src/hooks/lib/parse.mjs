@@ -1,13 +1,10 @@
 // Decoding the JSON a hook is handed — the event on stdin, a transcript line, the device's
 // settings file, the ledger's reply — into values whose contract is settled once, here.
+// A field that was not the text it claimed to be is **absent** by the time a gate sees it,
+// and absence is an answer every gate already has: no opinion, allow the call.
 //
-// Everything downstream branches on the decoded value rather than on the representation it
-// arrived as. A field that was not the text it claimed to be is **absent** by the time a gate
-// sees it, and absence is an answer every gate already has: no opinion, allow the call.
-//
-// The tests here are written without `typeof` on purpose, and each one is exact rather than
-// approximate: `String(value) === value` holds for a string primitive and for nothing else,
-// and `Object(value) === value` holds for an object and for nothing else.
+// The tests are exact rather than approximate: `String(value) === value` holds for a string
+// primitive and nothing else, `Object(value) === value` for an object and nothing else.
 
 /**
  * Whether a decoded JSON value is an object with named fields — as against an array, a
@@ -20,8 +17,7 @@ export function isRecord(value) {
 }
 
 /**
- * A JSON object's fields, or no fields at all when the value was something else. Callers read
- * the result without asking again what it is.
+ * A JSON object's fields, or no fields at all when the value was something else.
  * @param {unknown} value
  * @returns {Record<string, any>}
  */
@@ -43,8 +39,7 @@ export function asText(value) {
 
 /**
  * The text a field carried, or `''` when it carried anything else. For the fields the harness
- * always sends as text — a session id, a tool name — where "absent" and "empty" mean the same
- * thing to every reader.
+ * always sends as text, where "absent" and "empty" mean the same thing to every reader.
  * @param {unknown} value
  * @returns {string}
  */

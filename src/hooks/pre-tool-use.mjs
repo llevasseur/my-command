@@ -305,7 +305,6 @@ function trailingAnchor(event, session) {
  */
 function deniedByCommandAlone(event, session) {
   const command = event.command;
-  // A `Bash` call that named no command line has no shape to refuse.
   if (command === undefined) return false;
   const cwd = event.cwd;
 

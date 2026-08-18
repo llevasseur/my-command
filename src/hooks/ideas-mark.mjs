@@ -23,7 +23,6 @@ guard('not marked', async () => {
   const store = resolve();
   if (unresolved(store)) return say(`not marked: ${store.missing}`);
 
-  // The note rides along only when there is one to send.
   /** @type {{slug: string, status: string, note?: string}} */
   const mark = { slug, status };
   if (note) mark.note = note;
