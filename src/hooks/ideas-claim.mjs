@@ -19,7 +19,11 @@ guard('not claimed', async () => {
   const store = resolve();
   if (unresolved(store)) return say(`not claimed: ${store.missing}`);
 
-  const claim = { slug, by, ...(pr ? { pr } : {}) };
+  // The url is attached only when this run has one; a claim carrying an empty `pr` would
+  // record a promise about work that has no PR yet.
+  /** @type {{slug: string, by: string, pr?: string}} */
+  const claim = { slug, by };
+  if (pr) claim.pr = pr;
   const result = await request(store, '/api/ideas/claim', { method: 'POST', body: { claims: [claim] } });
   if (!result.ok) return say(`not claimed: ${result.reason}`);
 
