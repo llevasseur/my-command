@@ -113,8 +113,8 @@ export function substituted(body) {
 }
 
 /**
- * Why the gates would refuse this snippet, or null. Each entry is a reason a snippet is refused
- * before the command runs, so the block is one an agent following the docs cannot execute.
+ * Why the gates would refuse this snippet, or null. Each reason names a shape refused before the
+ * command runs.
  * @param {string} raw
  * @returns {{reason: string, fix: string} | null}
  */

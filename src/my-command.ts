@@ -175,8 +175,7 @@ interface InstallFilesOptions {
 
 function run(cmd: string, args: string[]): RunResult {
   const r = spawnSync(cmd, args, { stdio: 'inherit' });
-  // A spawn that could not find the binary reports a Node system error, which carries a
-  // `code`; a plain Error does not. Test for the property rather than assert it away.
+  // A Node system error carries a `code`; a plain Error does not.
   if (r.error && 'code' in r.error && r.error.code === 'ENOENT') {
     return { ok: false, missing: true };
   }
@@ -494,9 +493,7 @@ async function installHooks(
     // Register through the copy that just landed, so the entries name the scripts the
     // harness will actually run. Imported rather than shelled out, for a value to report.
     const installer = join(dest, 'install-hooks.mjs');
-    // Declared as the binding's type rather than asserted onto the import: nothing about the
-    // module has been checked at this point, so the shape belongs to the contract this file
-    // expects of `install-hooks.mjs`, not to an invariant it has already established.
+    // Nothing about the module is checked here — the type is the contract, not an invariant.
     const mod: HooksInstallerModule = await import(pathToFileURL(installer).href);
     const merged = mod.install({ hooksDir: dest, settingsPath, uninstall: false });
     return {
