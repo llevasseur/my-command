@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { flagsFrom } from '../lib/flags.mjs';
 import { porcelain } from '../lib/repo.mjs';
 import { run as cleanup } from './cleanup.mjs';
 import { run as commit, usage as commitUsage } from './commit.mjs';
@@ -40,8 +41,9 @@ function repo() {
   return { dir, git };
 }
 
-/** @param {string} cwd @param {string[]} positionals @param {Record<string, unknown>} flags */
-const ctx = (cwd, positionals = [], flags = {}) => /** @type {never} */ ({ verb: '', cwd, positionals, flags });
+/** @param {string} cwd @param {string[]} positionals @param {Record<string, string | true | string[]>} flags */
+const ctx = (cwd, positionals = [], flags = {}) =>
+  /** @type {never} */ ({ verb: '', cwd, positionals, flags: flagsFrom(flags) });
 
 after(() => {
   for (const dir of made) rmSync(dir, { recursive: true, force: true });
@@ -800,7 +802,7 @@ const STORE_ENV = ['IDEAS_URL', 'IDEAS_TOKEN', 'CONCEPTS_URL', 'CONCEPTS_TOKEN']
  * answered `201` and its parsed body is collected in `posted`, so a write can be asserted on
  * field by field.
  * @param {string[]} positionals
- * @param {{env?: Record<string, string>, routes?: Record<string, {status?: number, body?: unknown}>, flags?: Record<string, string | boolean | string[]>}} [opts]
+ * @param {{env?: Record<string, string>, routes?: Record<string, {status?: number, body?: unknown}>, flags?: Record<string, string | true | string[]>}} [opts]
  */
 async function conceptsRun(positionals, opts = {}) {
   const env = opts.env ?? { CONCEPTS_URL: 'https://store.test', CONCEPTS_TOKEN: 'secret' };

@@ -83,12 +83,14 @@ export function run(ctx) {
     const retitle = bool(ctx.flags.retitle);
     const args = ['pr', 'edit', String(existing.number), '--body', merged.body];
     if (retitle) args.push('--title', title);
+    // The REST fallback carries what the `gh` call above carries: the body always, the
+    // title only on a retitle.
+    /** @type {{body: string, title?: string}} */
+    const patch = { body: merged.body };
+    if (retitle) patch.title = title;
     const attempt = ghWrite(cwd, args, {
       restFallback: slug
-        ? restCall(cwd, 'PATCH', `repos/${slug.owner}/${slug.repo}/pulls/${existing.number}`, {
-            body: merged.body,
-            ...(retitle ? { title } : {}),
-          })
+        ? restCall(cwd, 'PATCH', `repos/${slug.owner}/${slug.repo}/pulls/${existing.number}`, patch)
         : undefined,
     });
     const edited = attempt.result;

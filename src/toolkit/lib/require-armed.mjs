@@ -5,8 +5,11 @@
 // turn kept going unrecorded on devices where the Stop hook was a file nobody executed.
 // This removes the affordance instead of reporting it — the verbs every workflow command
 // opens with refuse to run at all until the gates are registered.
+import { bool } from './flags.mjs';
 import { deviceHooksStatus } from './hooks-status.mjs';
 import { ToolkitError } from './proc.mjs';
+
+/** @typedef {import('./flags.mjs').Flag} Flag */
 
 /**
  * The verbs a workflow command calls before it does anything else. Gating these means an
@@ -20,12 +23,12 @@ const OFF = /^(0|off|false|no)$/i;
 /**
  * The deliberate escape a caller used, or null. Never the default: a hook-less environment
  * has to say so, and says which way it said it.
- * @param {Record<string, string | boolean | string[]>} flags
+ * @param {Record<string, Flag>} flags
  * @param {NodeJS.ProcessEnv} [env]
  * @returns {string | null}
  */
 export function armingEscape(flags, env = process.env) {
-  if (flags.unarmed === true || flags.unarmed === 'true') return '--unarmed';
+  if (bool(flags.unarmed)) return '--unarmed';
   const required = env.MY_COMMAND_REQUIRE_HOOKS;
   if (required !== undefined && OFF.test(required.trim())) return 'MY_COMMAND_REQUIRE_HOOKS=0';
   // The device-wide off switch already means the gates are deliberately not running here.
@@ -38,7 +41,7 @@ export function armingEscape(flags, env = process.env) {
  * Refuse a gated verb on a device whose gates are not registered. `armed: null` — a Codex
  * install, or a detector that could not answer — passes, matching the hooks' fail-open rule.
  * @param {string} verb
- * @param {Record<string, string | boolean | string[]>} flags
+ * @param {Record<string, Flag>} flags
  * @param {NodeJS.ProcessEnv} [env]
  * @returns {{gated: boolean, armed: boolean | null, escape: string | null}}
  */

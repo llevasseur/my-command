@@ -315,8 +315,9 @@ function end(ctx, cwd) {
 
 /** @param {import('../cli.mjs').Ctx} ctx @param {string} cwd @returns {string} */
 function requireBranch(ctx, cwd) {
+  // `str` answers with the branch name or nothing: bare and absent both arrive undefined.
   const branch = str(ctx.flags.branch);
-  if (typeof branch !== 'string' || !branch.trim()) throw new UsageError('--branch is required', { usage });
+  if (!branch?.trim()) throw new UsageError('--branch is required', { usage });
   if (branch === defaultBranch(cwd)) throw new ToolkitError('refusing to target the default branch', { branch });
   return branch;
 }
