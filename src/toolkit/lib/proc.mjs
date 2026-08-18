@@ -19,15 +19,18 @@ import { spawnSync } from 'node:child_process';
  * @returns {RunResult}
  */
 export function run(cmd, args, opts = {}) {
-  const r = spawnSync(cmd, args, {
+  /** @type {import('node:child_process').SpawnSyncOptionsWithStringEncoding} */
+  const spawnOpts = {
     cwd: opts.cwd,
     input: opts.input,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
-    // Merged rather than replaced: a verb overriding one variable (an owner-scoped
-    // GH_TOKEN) still needs PATH, HOME, and the rest of the caller's environment.
-    ...(opts.env ? { env: { ...process.env, ...opts.env } } : {}),
-  });
+  };
+  // Merged rather than replaced: a verb overriding one variable (an owner-scoped
+  // GH_TOKEN) still needs PATH, HOME, and the rest of the caller's environment. Left
+  // unset otherwise, which is what makes the child inherit this process's environment.
+  if (opts.env) spawnOpts.env = { ...process.env, ...opts.env };
+  const r = spawnSync(cmd, args, spawnOpts);
   const missing = Boolean(r.error && /** @type {NodeJS.ErrnoException} */ (r.error).code === 'ENOENT');
   // `raw` keeps significant leading whitespace — git's porcelain status codes are
   // two columns wide and a trim eats the space that means "unstaged".

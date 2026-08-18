@@ -84,7 +84,7 @@ export function run(ctx) {
     },
   );
 
-  return {
+  const answer = {
     root: cwd,
     branch,
     isCurrentBranch: workingTree,
@@ -98,8 +98,14 @@ export function run(ctx) {
     files: committed,
     workingTree,
     uncommitted: tracked.map((e) => ({ status: e.status, path: e.path })),
-    ...(bool(ctx.flags.diff) ? { diff: content(cwd, mergeBase, branch, workingTree, limitOf(ctx)) } : {}),
+    /** @type {ReturnType<typeof content> | undefined} */
+    diff: undefined,
   };
+  // The diff is opt-in — it is the one field big enough to bury the rest of the answer —
+  // and an answer that was not asked for one carries no `diff` key at all, since
+  // `JSON.stringify` drops a field left undefined.
+  if (bool(ctx.flags.diff)) answer.diff = content(cwd, mergeBase, branch, workingTree, limitOf(ctx));
+  return answer;
 }
 
 /** @param {import('../cli.mjs').Ctx} ctx @returns {number} */
