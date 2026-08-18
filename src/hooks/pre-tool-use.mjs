@@ -71,25 +71,25 @@ const CHANGED_GRACE_MS = 2000;
 guard(() => {
   const event = readEvent();
   if (!event) return;
-  const name = event.tool_name;
-  const input = event.tool_input ?? {};
-  const session = String(event.session_id ?? '');
+  const name = event.toolName;
+  const input = event.input;
+  const session = event.sessionId;
 
   const readOnly = isReadOnly(name, input);
   // Every gate except the Bash shape checks decides from this session's history, and a
   // subagent's call arrives carrying the parent's transcript. Someone else's turns are not
   // evidence about this run, so those gates stay silent.
-  const foreign = foreignTranscript(event.transcript_path ?? '');
+  const foreign = foreignTranscript(event.transcriptPath);
 
   if (name === 'Bash') {
     // Cheapest gates first, and the only ones that need no transcript: a command whose own
     // shape makes it fail is going to fail whatever the session did before it.
-    if (badShape(event, input, session)) return;
+    if (deniedByCommandAlone(event, session)) return;
     if (foreign) return;
     // These need the transcript but not read-only status: a dumper like `sed` is not
     // classified read-only, and dumping a file already in context is the shape regardless.
-    const line = timeline(entries(event.transcript_path ?? ''));
-    if (staleProbe(event, input, line, session, readOnly)) return;
+    const line = timeline(entries(event.transcriptPath));
+    if (staleProbe(event, line, session, readOnly)) return;
     if (!readOnly) {
       clearGate(session, 'serial');
       return;
@@ -101,15 +101,14 @@ guard(() => {
   if (!readOnly) {
     // A real action ends the discovery run, so the gate is armed again for the next one.
     clearGate(session, 'serial');
-    if (name === 'TodoWrite' && !foreign) trailingAnchor(event, input, session);
+    if (name === 'TodoWrite' && !foreign) trailingAnchor(event, session);
     return;
   }
 
   if (foreign) return;
-  const line = timeline(entries(event.transcript_path ?? ''));
-  const cwd = typeof event.cwd === 'string' ? event.cwd : process.cwd();
-  if (name === 'Read' && readPolling(input, line, session, cwd)) return;
-  if (name === 'Read' && redundantRead(input, line, session)) return;
+  const line = timeline(entries(event.transcriptPath));
+  if (name === 'Read' && readPolling(event, line, session)) return;
+  if (name === 'Read' && redundantRead(event, line, session)) return;
   serialDiscovery(name, input, line, session);
 });
 
@@ -125,18 +124,18 @@ guard(() => {
  * Only the watch's own output target counts — the file it redirects to, `tee`s to, or tails —
  * compared as a whole resolved path. A read of the script a watch runs, or of the config it was
  * handed, is discovery rather than polling however many times it happens.
- * @param {Record<string, any>} input
+ * @param {import('./lib/io.mjs').HookEvent} event
  * @param {(import('./lib/transcript.mjs').Turn | null)[]} line @param {string} session
- * @param {string} cwd
  * @returns {boolean} true when the call was denied
  */
-function readPolling(input, line, session, cwd) {
-  const path = input?.file_path;
-  if (typeof path !== 'string') return false;
+function readPolling(event, line, session) {
+  const path = event.filePath;
+  if (path === undefined) return false;
+  const cwd = event.cwd;
 
   const all = turns(line);
   const current = all[all.length - 1];
-  const currentUuid = current && issued(current, 'Read', input) ? current.uuid : undefined;
+  const currentUuid = current && issued(current, 'Read', event.input) ? current.uuid : undefined;
   const target = isAbsolute(path) ? path : resolve(cwd, path);
   const watched = watchedOutputs(line, currentUuid).find(
     (file) => (isAbsolute(file) ? file : resolve(cwd, file)) === target,
@@ -179,11 +178,11 @@ function readPolling(input, line, session, cwd) {
  * delete and reports `already-absent` as an outcome, and it deletes a squash-merged branch on
  * the PR's evidence. The one refusal it keeps is the one that means something: a branch with no
  * merged PR, whose commits exist nowhere else. So this redirects rather than weakens.
- * @param {Record<string, any>} input @param {string} session
+ * @param {string} command @param {string} session
  * @returns {boolean} true when the call was denied
  */
-function handRolledBranchCleanup(input, session) {
-  const found = handRolledCleanup(String(input?.command ?? ''));
+function handRolledBranchCleanup(command, session) {
+  const found = handRolledCleanup(command);
   if (!found) return false;
   if (alreadyDenied(session, 'cleanup', found.branch)) return false;
 
@@ -224,7 +223,7 @@ function handRolledBranchCleanup(input, session) {
  * @returns {string}
  */
 function verifyWaitOffer(watched) {
-  const verdict = /\.verdict$/.test(watched) ? watched : '';
+  const verdict = watched.endsWith('.verdict') ? watched : '';
   return (
     `You are waiting, not discovering, so ask for the wait rather than for the file. If this is ` +
     `the repo's verification, there is now one call that *is* the wait:\n` +
@@ -264,10 +263,10 @@ function liveness(watched) {
  * report was composed, and this bookkeeping call was attached to it, so the harness recorded
  * a decision mid-run instead of an outcome. The scheduling is the thing to remove, so it is
  * refused here, before the turn exists.
- * @param {Record<string, any>} event @param {Record<string, any>} input @param {string} session
+ * @param {import('./lib/io.mjs').HookEvent} event @param {string} session
  */
-function trailingAnchor(event, input, session) {
-  const todos = input?.todos;
+function trailingAnchor(event, session) {
+  const todos = event.input.todos;
   if (!Array.isArray(todos) || todos.length === 0) return;
 
   const anchors = todos.filter((t) => /close the run|text-only turn/i.test(String(t?.content ?? t?.subject ?? '')));
@@ -277,12 +276,12 @@ function trailingAnchor(event, input, session) {
   if (!anchors.every((t) => t?.status === 'completed')) return;
   if (!todos.every((t) => t?.status === 'completed')) return;
 
-  const line = timeline(entries(event.transcript_path ?? ''));
+  const line = timeline(entries(event.transcriptPath));
   const all = turns(line);
   const current = all[all.length - 1];
   // A bookkeeping call riding along with real work is the prescribed form; only a call that
   // is the turn's whole content is the shape that ends a run.
-  if (current && issued(current, 'TodoWrite', input) && current.toolUses.length > 1) return;
+  if (current && issued(current, 'TodoWrite', event.input) && current.toolUses.length > 1) return;
   if (alreadyDenied(session, 'anchor', 'closing')) return;
 
   deny(
@@ -301,16 +300,16 @@ function trailingAnchor(event, input, session) {
 /**
  * The Bash gates that need only the command and the cwd. Ordered cheapest first; each one
  * refuses a command that either cannot run or is refused before it runs.
- * @param {Record<string, any>} event @param {Record<string, any>} input @param {string} session
+ * @param {import('./lib/io.mjs').HookEvent} event @param {string} session
  * @returns {boolean} true when the call was denied
  */
-function badShape(event, input, session) {
-  const command = input?.command;
-  if (typeof command !== 'string') return false;
-  const cwd = typeof event.cwd === 'string' ? event.cwd : process.cwd();
+function deniedByCommandAlone(event, session) {
+  const command = event.command;
+  if (command === undefined) return false;
+  const cwd = event.cwd;
 
-  if (relativeCd(event, input)) return true;
-  if (handRolledBranchCleanup(input, session)) return true;
+  if (relativeCd(event)) return true;
+  if (handRolledBranchCleanup(command, session)) return true;
 
   const glob = unmatchedGlob(command, cwd);
   if (glob && !alreadyDenied(session, 'glob', glob)) {
@@ -329,7 +328,7 @@ function badShape(event, input, session) {
     return true;
   }
 
-  const sleeping = foregroundSleep(command, input?.run_in_background === true);
+  const sleeping = foregroundSleep(command, event.background);
   if (sleeping && !alreadyDenied(session, 'sleep', 'foreground')) {
     deny(
       `\`${sleeping}\` waits in the foreground, which the harness refuses — and it refuses the ` +
@@ -381,18 +380,18 @@ function badShape(event, input, session) {
  * The read-only Bash gates: a probe whose answer this session already has. All three decide
  * from evidence about *this* command and *this* path, never from how many calls a turn
  * carried — a legitimate parallel batch is unaffected by every one of them.
- * @param {Record<string, any>} event @param {Record<string, any>} input
+ * @param {import('./lib/io.mjs').HookEvent} event
  * @param {(import('./lib/transcript.mjs').Turn | null)[]} line @param {string} session
  * @param {boolean} readOnly
  * @returns {boolean} true when the call was denied
  */
-function staleProbe(event, input, line, session, readOnly) {
-  const command = input?.command;
-  if (typeof command !== 'string') return false;
-  const cwd = typeof event.cwd === 'string' ? event.cwd : process.cwd();
+function staleProbe(event, line, session, readOnly) {
+  const command = event.command;
+  if (command === undefined) return false;
+  const cwd = event.cwd;
   const all = turns(line);
   const current = all[all.length - 1];
-  const currentUuid = current && issued(current, 'Bash', input) ? current.uuid : undefined;
+  const currentUuid = current && issued(current, 'Bash', event.input) ? current.uuid : undefined;
 
   // A watch already armed in this session delivers its events on its own.
   const watched = watchedPaths(line, currentUuid).find((file) => command.includes(file));
@@ -504,13 +503,13 @@ function scopedDiff(line, exceptTurnUuid) {
  * Refuse `cd <relative path>` when the path does not exist from here. Unambiguous by
  * construction: the command would fail on this line anyway with `no such file or
  * directory`, so the gate trades a wasted turn for the form that works.
- * @param {Record<string, any>} event @param {Record<string, any>} input
+ * @param {import('./lib/io.mjs').HookEvent} event
  * @returns {boolean} true when the call was denied
  */
-function relativeCd(event, input) {
-  const command = input?.command;
-  if (typeof command !== 'string') return false;
-  const from = typeof event.cwd === 'string' ? event.cwd : process.cwd();
+function relativeCd(event) {
+  const command = event.command;
+  if (command === undefined) return false;
+  const from = event.cwd;
 
   // `cd` at the start of the command or of any segment. A `cd` deeper inside a quoted
   // string or a substitution is not matched, which is the safe direction.
@@ -579,13 +578,14 @@ function nearbyPath(from, target) {
  * changed since. Three conditions, all required: this read asks for the whole file, an
  * earlier read in this session also did, and the mtime predates that read. A file touched
  * since — by an `Edit`, a formatter, a generator, another agent — passes.
- * @param {Record<string, any>} input
+ * @param {import('./lib/io.mjs').HookEvent} event
  * @param {(import('./lib/transcript.mjs').Turn | null)[]} line @param {string} session
  * @returns {boolean} true when the call was denied
  */
-function redundantRead(input, line, session) {
-  const path = input?.file_path;
-  if (typeof path !== 'string') return false;
+function redundantRead(event, line, session) {
+  const path = event.filePath;
+  if (path === undefined) return false;
+  const input = event.input;
   // A targeted slice is the form this gate asks for; never refuse one.
   if (input.offset !== undefined || input.limit !== undefined) return false;
 

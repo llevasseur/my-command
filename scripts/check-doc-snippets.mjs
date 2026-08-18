@@ -113,17 +113,17 @@ export function substituted(body) {
 }
 
 /**
- * Why the gates would refuse this snippet, or null. Each entry is a shape that is refused
- * before the command runs, so the block is one an agent following the docs cannot execute.
+ * Why the gates would refuse this snippet, or null. Each reason names a shape refused before the
+ * command runs.
  * @param {string} raw
- * @returns {{shape: string, fix: string} | null}
+ * @returns {{reason: string, fix: string} | null}
  */
 export function refusal(raw) {
   const body = substituted(raw);
   const program = shellProgram(body);
   if (program) {
     return {
-      shape: `a ${program.kind} (\`${program.keyword}\`) makes this a shell program, not a call`,
+      reason: `a ${program.kind} (\`${program.keyword}\`) makes this a shell program, not a call`,
       fix:
         'A worktree-isolated session refuses what it cannot statically resolve. Give the ' +
         'work a name — a `my-command-tools` verb is one allowlisted command the gate can ' +
@@ -134,14 +134,14 @@ export function refusal(raw) {
   const stdin = stdinProseFlag(body);
   if (stdin) {
     return {
-      shape: `\`${stdin.verb} ${stdin.flag} -\` reads its prose from stdin`,
+      reason: `\`${stdin.verb} ${stdin.flag} -\` reads its prose from stdin`,
       fix: `Write the prose to a file and pass \`${stdin.replacement} <absolute path>\`.`,
     };
   }
 
   if (heredocWrite(body)) {
     return {
-      shape: 'a heredoc composes a file',
+      reason: 'a heredoc composes a file',
       fix: 'That shape is refused wholesale inside an isolated worktree. Use the `Write` tool.',
     };
   }
@@ -149,7 +149,7 @@ export function refusal(raw) {
   const sleeping = foregroundSleep(body, false);
   if (sleeping) {
     return {
-      shape: `\`${sleeping}\` waits in the foreground`,
+      reason: `\`${sleeping}\` waits in the foreground`,
       fix: 'The harness refuses the whole call. Wait on the condition with `Monitor` instead.',
     };
   }
@@ -169,7 +169,7 @@ function main() {
       const bad = refusal(block.body);
       if (!bad) continue;
       problems.push(
-        `${block.file}:${block.line} — ${bad.shape}.\n` +
+        `${block.file}:${block.line} — ${bad.reason}.\n` +
           `${block.body
             .split('\n')
             .map((l) => `    ${l}`)

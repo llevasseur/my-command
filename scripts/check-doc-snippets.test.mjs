@@ -22,11 +22,11 @@ test('a loop, a function, and a case branch are each refused as shell programs',
     '  [ -f ~/.claude/cp-last.$i.txt ] && mv ~/.claude/cp-last.$i.txt ~/.claude/cp-last.$((i + 1)).txt',
     'done',
   ].join('\n');
-  assert.equal(refusal(ring)?.shape, 'a loop (`for`) makes this a shell program, not a call');
+  assert.equal(refusal(ring)?.reason, 'a loop (`for`) makes this a shell program, not a call');
 
-  assert.match(String(refusal('cpagain() { pbcopy < ~/.claude/cp-last.txt; }')?.shape), /function definition/);
-  assert.match(String(refusal('while read -r l; do echo "$l"; done')?.shape), /loop/);
-  assert.match(String(refusal('case "$1" in a) echo a ;; esac')?.shape), /case branch/);
+  assert.match(String(refusal('cpagain() { pbcopy < ~/.claude/cp-last.txt; }')?.reason), /function definition/);
+  assert.match(String(refusal('while read -r l; do echo "$l"; done')?.reason), /loop/);
+  assert.match(String(refusal('case "$1" in a) echo a ;; esac')?.reason), /case branch/);
 });
 
 test('the shapes a worktree-isolated session actually runs are never flagged', () => {
@@ -53,17 +53,17 @@ test('a placeholder is substituted before the shapes are judged', () => {
 });
 
 test('a heredoc that genuinely composes a file is still refused', () => {
-  assert.match(String(refusal("cat > out.txt <<'EOF'\nbody\nEOF")?.shape), /heredoc composes a file/);
+  assert.match(String(refusal("cat > out.txt <<'EOF'\nbody\nEOF")?.reason), /heredoc composes a file/);
 });
 
 test('the prose flags that read stdin are refused with the file flag named', () => {
   const found = refusal('my-command-tools commit --message - src/a.md');
-  assert.match(String(found?.shape), /reads its prose from stdin/);
+  assert.match(String(found?.reason), /reads its prose from stdin/);
   assert.match(String(found?.fix), /--message-file/);
 });
 
 test('a foreground sleep is refused', () => {
-  assert.match(String(refusal('sleep 5 && gh pr checks')?.shape), /waits in the foreground/);
+  assert.match(String(refusal('sleep 5 && gh pr checks')?.reason), /waits in the foreground/);
 });
 
 test('the replacement /cp now prescribes is not refused', () => {

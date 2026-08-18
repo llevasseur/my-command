@@ -2,6 +2,7 @@
 // `guard` swallows every exception into a silent allow, and the off switch is checked
 // before any work happens.
 import { readFileSync } from 'node:fs';
+import { asRecord, asText, isRecord } from './parse.mjs';
 
 /** Values of MY_COMMAND_HOOKS that turn the gates off. Anything else leaves them on. */
 const OFF = new Set(['0', 'off', 'false', 'no']);
@@ -13,17 +14,51 @@ export function disabled() {
 }
 
 /**
+ * One hook event, decoded — the whole of what a gate knows about the call it was asked about,
+ * settled here rather than re-examined at each gate.
+ *
+ * @typedef {object} HookEvent
+ * @property {string} toolName        The tool about to run, or '' when the event named none.
+ * @property {Record<string, any>} input The tool's arguments as they arrived, for the gates
+ *   that read a field of their own and for comparing against the transcript's copy.
+ * @property {string | undefined} command  `Bash`'s command line.
+ * @property {string | undefined} filePath The file tools' target path.
+ * @property {boolean} background    The call was handed to the background.
+ * @property {string} cwd            Where the call runs, defaulted to this process's own.
+ * @property {string} sessionId
+ * @property {string} transcriptPath
+ * @property {boolean} stopHookActive The harness is re-running a stop a hook already blocked.
+ */
+
+/**
  * The hook event on stdin, or null when there is nothing parseable there.
- * @returns {Record<string, any> | null}
+ * @returns {HookEvent | null}
  */
 export function readEvent() {
+  /** @type {unknown} */
+  let event;
   try {
     const raw = readFileSync(0, 'utf8');
     if (!raw.trim()) return null;
-    return JSON.parse(raw);
+    event = JSON.parse(raw);
   } catch {
     return null;
   }
+  // Not an object: none of the fields a gate reads, so the same as nothing being there.
+  if (!isRecord(event)) return null;
+
+  const input = asRecord(event.tool_input);
+  return {
+    toolName: String(event.tool_name ?? ''),
+    input,
+    command: asText(input.command),
+    filePath: asText(input.file_path),
+    background: input.run_in_background === true,
+    cwd: asText(event.cwd) ?? process.cwd(),
+    sessionId: String(event.session_id ?? ''),
+    transcriptPath: String(event.transcript_path ?? ''),
+    stopHookActive: event.stop_hook_active === true,
+  };
 }
 
 /**

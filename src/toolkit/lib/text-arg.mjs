@@ -11,7 +11,7 @@ import { ToolkitError, UsageError } from './proc.mjs';
 /**
  * Resolve one piece of text given as a literal, as a file path, or on stdin.
  *
- * @param {Record<string, string | boolean | string[]>} flags
+ * @param {Record<string, import('./flags.mjs').Flag>} flags
  * @param {string} name Flag name for the literal form, e.g. `message`.
  * @param {string} fileName Flag name for the file form, e.g. `message-file`.
  * @param {{usage: string, required?: boolean}} opts
