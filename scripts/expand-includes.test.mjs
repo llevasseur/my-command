@@ -67,7 +67,7 @@ test('an unclosed block directive does not swallow the next block', () => {
 });
 
 test('the two forms coexist in one document', () => {
-  const both = read({ ...{ rule: 'Never force past a live lock.' }, vocab: '### Rewrite toward' });
+  const both = read({ rule: 'Never force past a live lock.', vocab: '### Rewrite toward' });
   const source = '- <!-- include: shared/rule.md -->\n\n<!-- include-block: shared/vocab.md -->\n';
 
   assert.equal(
