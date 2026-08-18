@@ -52,6 +52,19 @@ export function alreadyDenied(sessionId, gate, subject) {
 }
 
 /**
+ * How many distinct subjects this gate has already refused in this session. The outcome gate
+ * needs a ceiling rather than a single shot: it must be able to speak to a *second* closing turn,
+ * since a run that was blocked once and then ended again anyway is the recorded failure — while
+ * still terminating, because a Stop hook that can block without limit is an infinite loop.
+ * @param {string} sessionId @param {string} gate
+ * @returns {number}
+ */
+export function timesDenied(sessionId, gate) {
+  const prefix = `${gate}:`;
+  return Object.keys(load(sessionId)).filter((key) => key.startsWith(prefix)).length;
+}
+
+/**
  * Forget a gate's denials, so a later violation of the same kind is refused again.
  * Called when the condition that made the denials relevant has ended.
  * @param {string} sessionId @param {string} gate
