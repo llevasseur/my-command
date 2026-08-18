@@ -446,9 +446,7 @@ function staleProbe(event, line, session, readOnly) {
   const currentUuid = current && issued(current, 'Bash', event.input) ? current.uuid : undefined;
 
   // A watch already armed in this session delivers its events on its own. Judged against the
-  // watch's **own output target** rather than every filename-shaped token on its command line:
-  // the broad reading refused a first probe of `server.ts` and of `artifactDownload.ts` because
-  // a `Monitor` command happened to name them, which is discovery rather than polling.
+  // watch's **own output target**, never every filename-shaped token on its command line.
   const watched = watchedOutputs(line, currentUuid).find((file) => command.includes(basename(file)));
   if (watched && !alreadyDenied(session, 'watched', watched)) {
     deny(
@@ -661,13 +659,11 @@ function withoutLeadingCd(command) {
 /**
  * Refuse `grep --include=<glob>` however it is quoted, and name the `rg -g` form.
  *
- * The unquoted-glob gate below already catches this when the pattern happens to match nothing,
- * and that turned out to be the wrong question to ask. `--include=*.ts` recurred across at least
- * ten recorded sessions, and **four** of the patterns carried a stray trailing `;` — so quoting
- * them as written, which is what that gate hands back, would have turned an abort into a silent
- * zero matches. `rg -g '<glob>'` has no quoting decision to get wrong: the glob is the program's
- * own argument by construction, and `rg` reports a pattern it cannot use rather than matching
- * nothing with it.
+ * The unquoted-glob gate below catches this only when the pattern happens to match nothing, and
+ * that is the wrong question: **four** of the recorded patterns carried a stray trailing `;`, so
+ * quoting them as written — that gate's answer — turns an abort into a silent zero matches. With
+ * `rg -g '<glob>'` the glob is the program's own argument, so there is no quoting decision to get
+ * wrong and an unusable pattern is reported rather than matched against nothing.
  * @param {string} command @param {string} session
  * @returns {boolean} true when the call was denied
  */
@@ -807,8 +803,8 @@ function sweepingAnOkfBundle(event, session) {
  * @returns {boolean} true when the call was denied
  */
 function enteringFromRepoRoot(event, session) {
-  const wanted = event.input.path;
-  if (typeof wanted === 'string' && wanted !== '') return false;
+  // A `path` names a worktree that already exists, which the tool supports from here.
+  if (event.input.path) return false;
   if (!existsSync(join(event.cwd, '.git'))) return false;
   if (alreadyDenied(session, 'enter', event.cwd)) return false;
 
@@ -861,11 +857,10 @@ function closingTurnAsTask(event, session) {
 /**
  * Refuse a whole-file `Read` of a file too large for the tool's own token cap, and name the slice.
  *
- * Six recorded refusals of "File content (N tokens) exceeds maximum allowed tokens (25000)" landed
- * on files of 25,923–37,456 tokens, and **four separate sessions rediscovered it one file at a
- * time** — every call was guaranteed to fail before it was sent, and its failure says nothing the
- * file's own size did not already say. A slice is never refused, so the corrected form always goes
- * through, and one refusal per path leaves a second attempt to the caller.
+ * Six recorded refusals of "exceeds maximum allowed tokens (25000)", rediscovered one file at a
+ * time by four separate sessions — every call was certain to fail before it was sent. A slice is
+ * never refused, so the corrected form always goes through, and one refusal per path leaves a
+ * second attempt to the caller.
  * @param {import('./lib/io.mjs').HookEvent} event @param {string} session
  * @returns {boolean} true when the call was denied
  */

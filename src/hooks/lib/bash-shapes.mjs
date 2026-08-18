@@ -129,9 +129,7 @@ export function unmatchedGlob(command, cwd) {
 const STRAY_SEPARATOR = /[;,]+$/;
 
 /**
- * A glob with any separator that was never part of the pattern removed, plus whether one was
- * there. The caller needs both: the clean pattern to hand back, and the fact that the original
- * carried a typo, since quoting a pattern with a stray `;` in it silently matches nothing.
+ * A glob with any separator that was never part of the pattern removed, and the separator found.
  * @param {string} glob
  * @returns {{pattern: string, stray: string}}
  */
@@ -144,19 +142,15 @@ export function withoutStraySeparator(glob) {
 const GREPS = new Set(['grep', 'egrep', 'fgrep', 'rgrep']);
 
 /**
- * A `grep --include=<glob>` / `--exclude=<glob>` in this command, or null — whatever the
- * quoting. Unlike the unmatched-glob check this does not ask whether the pattern matches
- * anything: the shape is refused because `rg -g` does the same job without a pattern ever
- * reaching the shell, and because quoting the recorded patterns would not have saved them —
- * four of them carried a stray trailing `;` that only the program would have rejected.
+ * A `grep --include=<glob>` / `--exclude=<glob>` in this command, or null — whatever the quoting.
+ * Unlike the unmatched-glob check this does not ask whether the pattern matches anything; the
+ * caller refuses the shape itself.
  * @param {string} command
  * @returns {{flag: string, glob: string, bin: string} | null}
  */
 export function grepIncludeGlob(command) {
-  // Deliberately not split into segments first. A stray trailing `;` glued to the pattern is
-  // one of the recorded shapes, and splitting on `;` would silently repair it here while the
-  // shell still sees `--include=*.tsx;` — so the whole command is tokenized and the separator
-  // is reported rather than discarded.
+  // Not split into segments first: splitting on `;` would strip a stray trailing one here while
+  // the shell still sees it, so the whole command is tokenized and the separator is reported.
   const tokens = tokenize(command);
   const bin = tokens.map((t) => t.text.split('/').pop() ?? '').find((word) => GREPS.has(word));
   if (bin === undefined) return null;
@@ -219,16 +213,14 @@ export function heredocWrite(command) {
 const COMPOSERS = new Set(['cat', 'echo', 'printf']);
 
 /**
- * The file a command composes in the shell, or null. Deliberately wider than `heredocWrite`,
- * which only sees a heredoc: the recorded compositions include `cat > <file>` reading its body
- * from a heredoc, `cat >> <file>` appending a program's output, and `printf > <file>` — all of
- * them the same act, all of them refused wholesale inside an isolated worktree, and all of them
- * done by the `Write` tool with no shell in the way.
+ * The file a command composes in the shell, or null. Wider than `heredocWrite`, which sees only a
+ * heredoc: a composer redirected into a file is the same act, refused in the same places, and done
+ * by the `Write` tool with no shell in the way.
  *
- * A redirect whose source is a real program's output is **not** this shape: `pnpm test > log`
- * is capturing a result, not composing a document, and refusing it would take the backgrounded
- * log file the rest of these gates depend on with it. So the first word of the segment has to
- * be a composer, or the segment has to carry a heredoc feeding the redirect.
+ * A redirect whose source is a real program's output is **not** this shape — that is capturing a
+ * result, and refusing it would take the backgrounded log file the other gates depend on with it.
+ * So the segment's first word has to be a composer, or the segment has to feed a heredoc into the
+ * redirect.
  * @param {string} command
  * @returns {{target: string, how: 'heredoc' | 'composer'} | null}
  */
@@ -240,9 +232,9 @@ export function shellComposedWrite(command) {
     const redirect = />>?\s*("[^"]+"|'[^']+'|[^\s;&|<>]+)/.exec(segment);
     if (!redirect) continue;
     const target = redirect[1].replace(/^['"]|['"]$/g, '');
-    // `2>&1` and friends duplicate a descriptor; `/dev/*` is not a document. A target the shell
-    // computes cannot be named here, and the one recorded case — a scratch file under
-    // `$CLAUDE_JOB_DIR`, which the job harness prescribes — is a write no gate may refuse.
+    // `2>&1` and friends duplicate a descriptor; `/dev/*` is not a document. A computed target
+    // cannot be named, and the recorded one is the `$CLAUDE_JOB_DIR` scratch write no gate may
+    // refuse.
     if (!target || target.startsWith('&') || target.startsWith('/dev/')) continue;
     if (/[$`]/.test(target)) continue;
     if (COMPOSERS.has(bin)) return { target, how: 'composer' };

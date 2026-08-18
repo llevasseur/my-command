@@ -52,10 +52,9 @@ export function alreadyDenied(sessionId, gate, subject) {
 }
 
 /**
- * How many distinct subjects this gate has already refused in this session. The outcome gate
- * needs a ceiling rather than a single shot: it must be able to speak to a *second* closing turn,
- * since a run that was blocked once and then ended again anyway is the recorded failure — while
- * still terminating, because a Stop hook that can block without limit is an infinite loop.
+ * How many distinct subjects this gate has already refused in this session. The outcome gate needs
+ * a ceiling rather than a single shot: it must reach a *second* closing turn, while still
+ * terminating.
  * @param {string} sessionId @param {string} gate
  * @returns {number}
  */
