@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { asRecord, asText } from './lib/parse.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FRAGMENT = join(HERE, 'settings-fragment.json');
@@ -21,12 +22,15 @@ function claudeDir() {
   return process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
 }
 
-/** @param {string} path @returns {Record<string, any>} */
+/**
+ * A settings document's fields. Anything on disk that is not a JSON object carries no settings
+ * to merge into, so it reads as an empty document — the same as a file that is not there.
+ * @param {string} path @returns {Record<string, any>}
+ */
 function readJson(path) {
   if (!existsSync(path)) return {};
   try {
-    const parsed = JSON.parse(readFileSync(path, 'utf8'));
-    return parsed && typeof parsed === 'object' ? parsed : {};
+    return asRecord(JSON.parse(readFileSync(path, 'utf8')));
   } catch (err) {
     // Overwriting a settings file we could not parse would discard the user's whole
     // configuration. Refuse instead, and say which file to look at.
@@ -35,21 +39,59 @@ function readJson(path) {
 }
 
 /**
- * Whether a registered hook entry is one of ours.
- * @param {Record<string, any>} matcherEntry @param {string} hooksDir
+ * The commands a registered entry runs. An entry in the user's settings is theirs — written
+ * back exactly as it was found — so the only thing decoded out of one is what this installer
+ * has to recognize its own entries by.
+ * @param {unknown} matcherEntry @returns {string[]}
  */
-function isOurs(matcherEntry, hooksDir) {
-  const hooks = Array.isArray(matcherEntry?.hooks) ? matcherEntry.hooks : [];
-  return hooks.some((h) => typeof h?.command === 'string' && h.command.includes(hooksDir));
+function commandsIn(matcherEntry) {
+  const hooks = asRecord(matcherEntry).hooks;
+  if (!Array.isArray(hooks)) return [];
+  /** @type {string[]} */
+  const out = [];
+  for (const hook of hooks) {
+    const command = asText(asRecord(hook).command);
+    if (command !== undefined) out.push(command);
+  }
+  return out;
 }
 
 /**
- * @param {Record<string, any>} settings @param {string} hooksDir
+ * Whether a registered hook entry is one of ours.
+ * @param {unknown} matcherEntry @param {string} hooksDir
+ */
+function isOurs(matcherEntry, hooksDir) {
+  return commandsIn(matcherEntry).some((command) => command.includes(hooksDir));
+}
+
+/**
+ * A settings document, decoded. `fields` is everything the file holds and is what gets written
+ * back, so a setting this installer knows nothing about survives untouched. `hooks` and
+ * `permissions` are the two sections it does own, settled here into records once — a section
+ * the file carried as something other than an object of named entries holds no entries to
+ * merge with, so it reads as empty, and stays detached from `fields` until the installer
+ * actually puts something in it.
+ *
+ * @typedef {object} SettingsDoc
+ * @property {Record<string, any>} fields
+ * @property {Record<string, any>} hooks
+ * @property {Record<string, any>} permissions
+ * @property {boolean} hadHooks Whether the file carried a hook registry of its own.
+ */
+
+/** @param {string} path @returns {SettingsDoc} */
+function readSettings(path) {
+  const fields = readJson(path);
+  const hooks = asRecord(fields.hooks);
+  return { fields, hooks, permissions: asRecord(fields.permissions), hadHooks: hooks === fields.hooks };
+}
+
+/**
+ * @param {SettingsDoc} doc @param {string} hooksDir
  * @returns {number} how many of our entries were removed
  */
-function removeOurs(settings, hooksDir) {
-  const hooks = settings.hooks;
-  if (!hooks || typeof hooks !== 'object') return 0;
+function removeOurs(doc, hooksDir) {
+  const hooks = doc.hooks;
   let removed = 0;
   for (const event of MANAGED_EVENTS) {
     const list = hooks[event];
@@ -59,8 +101,23 @@ function removeOurs(settings, hooksDir) {
     if (kept.length > 0) hooks[event] = kept;
     else delete hooks[event];
   }
-  if (Object.keys(hooks).length === 0) delete settings.hooks;
+  // A registry we emptied is dropped rather than written back as `{}` — but only when it was
+  // the document's own registry to begin with.
+  if (doc.hadHooks && Object.keys(hooks).length === 0) delete doc.fields.hooks;
   return removed;
+}
+
+/**
+ * The bundled fragment, decoded with this install's hooks directory written into it. It ships
+ * with the repo, so it is well formed by construction; decoding it here gives the merge below
+ * the same settled sections it already has for the document on disk.
+ * @param {string} hooksDir
+ * @returns {{hooks: Record<string, any>, allow: any[]}}
+ */
+function readFragment(hooksDir) {
+  const fragment = asRecord(JSON.parse(readFileSync(FRAGMENT, 'utf8').replaceAll('{{HOOKS_DIR}}', hooksDir)));
+  const allow = asRecord(fragment.permissions).allow;
+  return { hooks: asRecord(fragment.hooks), allow: Array.isArray(allow) ? allow : [] };
 }
 
 /**
@@ -69,33 +126,35 @@ function removeOurs(settings, hooksDir) {
  */
 export function install(opts) {
   const { hooksDir, settingsPath, uninstall } = opts;
-  const settings = readJson(settingsPath);
+  const doc = readSettings(settingsPath);
 
   // Clearing ours first is what keeps a re-run idempotent instead of stacking a second copy
   // of the same hook, which would deny twice for one violation.
-  const removed = removeOurs(settings, hooksDir);
+  const removed = removeOurs(doc, hooksDir);
 
   if (uninstall) {
-    write(settingsPath, settings);
+    write(settingsPath, doc.fields);
     return { settingsPath, hooksDir, uninstalled: removed, registered: 0, allowAdded: 0 };
   }
 
-  const fragment = JSON.parse(readFileSync(FRAGMENT, 'utf8').replaceAll('{{HOOKS_DIR}}', hooksDir));
+  const fragment = readFragment(hooksDir);
 
-  settings.hooks = settings.hooks && typeof settings.hooks === 'object' ? settings.hooks : {};
+  const hooks = doc.hooks;
+  doc.fields.hooks = hooks;
   let registered = 0;
   for (const event of MANAGED_EVENTS) {
-    const incoming = fragment.hooks?.[event];
+    const incoming = fragment.hooks[event];
     if (!Array.isArray(incoming)) continue;
-    const existing = Array.isArray(settings.hooks[event]) ? settings.hooks[event] : [];
-    settings.hooks[event] = [...existing, ...incoming];
+    const existing = Array.isArray(hooks[event]) ? hooks[event] : [];
+    hooks[event] = [...existing, ...incoming];
     registered += incoming.length;
   }
 
   // Additive and deduped, so a permission the user narrowed by hand is never widened twice.
-  const incomingAllow = Array.isArray(fragment.permissions?.allow) ? fragment.permissions.allow : [];
-  settings.permissions = settings.permissions && typeof settings.permissions === 'object' ? settings.permissions : {};
-  const currentAllow = Array.isArray(settings.permissions.allow) ? settings.permissions.allow : [];
+  const incomingAllow = fragment.allow;
+  const permissions = doc.permissions;
+  doc.fields.permissions = permissions;
+  const currentAllow = Array.isArray(permissions.allow) ? permissions.allow : [];
   const merged = [...currentAllow];
   let allowAdded = 0;
   for (const rule of incomingAllow) {
@@ -103,9 +162,9 @@ export function install(opts) {
     merged.push(rule);
     allowAdded += 1;
   }
-  settings.permissions.allow = merged;
+  permissions.allow = merged;
 
-  write(settingsPath, settings);
+  write(settingsPath, doc.fields);
   return { settingsPath, hooksDir, uninstalled: 0, registered, allowAdded, replaced: removed };
 }
 

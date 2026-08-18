@@ -33,11 +33,13 @@ export function resolve() {
 }
 
 /**
- * True when this resolution failed.
+ * True when this resolution failed. `resolve()` above settles which of the two a resolution is
+ * and is the only thing that makes one, so the question here is which was returned — not what
+ * any field happens to hold.
  * @param {Store | Unresolved} r @returns {r is Unresolved}
  */
 export function unresolved(r) {
-  return typeof (/** @type {any} */ (r)?.missing) === 'string';
+  return 'missing' in r;
 }
 
 /**
@@ -70,15 +72,16 @@ export async function request(store, path, init = {}) {
   const body = init.body === undefined ? undefined : JSON.stringify(init.body);
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const response = await fetch(`${store.origin}${path}`, {
-        method,
-        headers: {
-          authorization: `Bearer ${store.token}`,
-          ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-        },
-        ...(body === undefined ? {} : { body }),
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-      });
+      /** @type {Record<string, string>} */
+      const headers = { authorization: `Bearer ${store.token}` };
+      /** @type {RequestInit} */
+      const sent = { method, headers, signal: AbortSignal.timeout(TIMEOUT_MS) };
+      // A request with nothing to send carries neither the body nor the header describing it.
+      if (body !== undefined) {
+        headers['content-type'] = 'application/json';
+        sent.body = body;
+      }
+      const response = await fetch(`${store.origin}${path}`, sent);
       if (!response.ok) {
         if (response.status >= 500 && attempt === 1) continue;
         const detail = await response.text().catch(() => '');

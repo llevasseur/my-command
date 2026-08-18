@@ -79,15 +79,15 @@ guard(() => {
   if (!event) return;
   // Set on a stop the harness is re-running because a hook already blocked once. Blocking
   // again from the same state is how a Stop hook becomes an infinite loop.
-  if (event.stop_hook_active === true) return;
+  if (event.stopHookActive) return;
 
-  const path = String(event.transcript_path ?? '');
+  const path = event.transcriptPath;
   // A subagent's event carries the *parent's* transcript, so without this the gate judges one
   // run by another's history.
   if (foreignTranscript(path)) return;
   if (nonInteractive()) return;
 
-  const session = String(event.session_id ?? '');
+  const session = event.sessionId;
   let call = judge(timeline(entries(path)));
   // Only re-read when about to say something, so the pause is paid on the rare stop rather
   // than on every one. Once: if the record still is not there, it is not arriving.
@@ -215,7 +215,7 @@ function judge(line) {
   // a lone `worktree end` recorded no outcome either, and removing the workspace is no more the
   // run finishing than marking a row is.
   if (endsOnToolCall && bookkeepingOnly(last)) {
-    return { ...seen, owed, verdict: 'bookkeeping', chore: choreShape(last) };
+    return { ...seen, owed, verdict: 'bookkeeping', chore: closingChore(last) };
   }
 
   // A run this session set going is still open, so the stop lands mid-pipeline.
@@ -253,12 +253,12 @@ function isTeardown(use) {
 }
 
 /**
- * Which of the two closing-chore shapes this turn is, for the message. Both are refused; they
- * are told apart only so the refusal can name what it actually saw.
+ * Which closing chore this turn performed, for the message. All three are refused; they are
+ * told apart only so the refusal can name what it actually saw.
  * @param {import('./lib/transcript.mjs').Turn} turn
  * @returns {'bookkeeping' | 'teardown' | 'chores'}
  */
-function choreShape(turn) {
+function closingChore(turn) {
   const book = turn.toolUses.some((u) => BOOKKEEPING.has(u.name));
   const down = turn.toolUses.some((u) => isTeardown(u));
   if (book && down) return 'chores';

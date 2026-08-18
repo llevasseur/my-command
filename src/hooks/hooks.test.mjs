@@ -87,25 +87,6 @@ function transcript(spec, startedAt = Date.now() - 600_000) {
   const path = join(dir, 'transcript.jsonl');
   const lines = spec.map((item, i) => {
     const timestamp = new Date(startedAt + i * 1000).toISOString();
-    if (item && !Array.isArray(item) && typeof item === 'object') {
-      return JSON.stringify({
-        type: 'assistant',
-        uuid: `a${i}`,
-        timestamp,
-        message: {
-          role: 'assistant',
-          content: [
-            { type: 'text', text: item.say },
-            ...(item.calls ?? []).map((u, n) => ({
-              type: 'tool_use',
-              id: `t${i}-${n}`,
-              name: u.name,
-              input: u.input,
-            })),
-          ],
-        },
-      });
-    }
     if (item === 'prompt') {
       return JSON.stringify({
         type: 'user',
@@ -122,6 +103,21 @@ function transcript(spec, startedAt = Date.now() - 600_000) {
         message: { role: 'assistant', content: [{ type: 'text', text: 'here is the answer' }] },
       });
     }
+    if (Array.isArray(item)) {
+      return JSON.stringify({
+        type: 'assistant',
+        uuid: `a${i}`,
+        timestamp,
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'text', text: 'looking' },
+            ...item.map((u, n) => ({ type: 'tool_use', id: `t${i}-${n}`, name: u.name, input: u.input })),
+          ],
+        },
+      });
+    }
+    // Everything left is the `{say, calls}` form: a turn whose own text matters.
     return JSON.stringify({
       type: 'assistant',
       uuid: `a${i}`,
@@ -129,8 +125,13 @@ function transcript(spec, startedAt = Date.now() - 600_000) {
       message: {
         role: 'assistant',
         content: [
-          { type: 'text', text: 'looking' },
-          ...item.map((u, n) => ({ type: 'tool_use', id: `t${i}-${n}`, name: u.name, input: u.input })),
+          { type: 'text', text: item.say },
+          ...(item.calls ?? []).map((u, n) => ({
+            type: 'tool_use',
+            id: `t${i}-${n}`,
+            name: u.name,
+            input: u.input,
+          })),
         ],
       },
     });

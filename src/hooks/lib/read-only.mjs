@@ -1,8 +1,13 @@
 // Deciding whether a tool call is a read-only probe.
 //
+// The call's arguments arrive as the harness wrote them — from the event on stdin, or from the
+// transcript — so the command line is decoded once, here, and everything below reads text.
+//
 // Anything not recognized is not read-only. The bias is asymmetric on purpose: calling a
 // mutation read-only inflates the discovery run and can deny a legitimate call, while
 // calling a probe not-read-only only resets the counter.
+
+import { asText } from './parse.mjs';
 
 /** Tools whose whole purpose is reading. Bash is decided by its command, below. */
 const READ_ONLY_TOOLS = new Set(['Read', 'Grep', 'Glob']);
@@ -170,8 +175,9 @@ function segmentReadsOnly(segment) {
 export function isReadOnly(name, input) {
   if (READ_ONLY_TOOLS.has(name)) return true;
   if (name !== 'Bash') return false;
-  const command = input?.command;
-  if (typeof command !== 'string' || !command.trim()) return false;
+  // A `Bash` call that named no command line is not a probe of anything.
+  const command = asText(input?.command);
+  if (command === undefined || !command.trim()) return false;
   // A backgrounded call is a process, not a probe, whichever binary it names.
   if (input?.run_in_background === true) return false;
   const parts = segments(command);
