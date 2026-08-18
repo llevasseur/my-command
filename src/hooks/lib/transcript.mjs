@@ -491,45 +491,16 @@ function liveWatch(use) {
 }
 
 /**
- * Path-shaped tokens named by a watch this session already armed and that is still running —
- * a `Monitor`, or a backgrounded Bash command and its log file. A live watch delivers its
- * events on its own, so polling the same file by hand is work already being done; a watch that
- * has already reported finishing names nothing here, because then there is nothing to wait for.
- * @param {(Turn | null)[]} line @param {string} [exceptTurnUuid]
- * @returns {string[]}
- */
-export function watchedPaths(line, exceptTurnUuid) {
-  /** @type {Set<string>} */
-  const out = new Set();
-  for (const turn of turns(line)) {
-    if (exceptTurnUuid && turn.uuid === exceptTurnUuid) continue;
-    for (const use of turn.toolUses) {
-      if (!liveWatch(use)) continue;
-      const text = `${use.input?.command ?? ''} ${JSON.stringify(use.input?.ws ?? '')}`;
-      // A basename with an extension is the only token specific enough to key on; a bare
-      // word would collide with any command mentioning the same noun. Split into shell
-      // tokens first and take each one's basename whole — a regex scanning the raw text
-      // matches only a *suffix* of the name ("y.log" out of "verify.log"), which is enough
-      // for a substring test and wrong for anything that compares names.
-      for (const token of text.split(/[\s'"`(){}[\]<>|;&,]+/)) {
-        if (!token) continue;
-        const base = token.split('/').pop() ?? '';
-        if (base.length >= 5 && /^[\w.-]+\.[A-Za-z]\w*$/.test(base)) out.add(base);
-      }
-    }
-  }
-  return [...out];
-}
-
-/**
  * The files a watch this session armed **and still has running** is writing or following: a
  * backgrounded command's redirect target, a `tee` destination, a `tail -f` argument. Paths as
  * written, for the caller to resolve against the cwd it knows.
  *
- * Deliberately narrower than `watchedPaths`, which keys on every filename-shaped token of the
- * command. That breadth is right for a substring test against another *shell command* and
- * wrong for judging a `Read`: the script a watch runs and the config it was handed are named
- * on its command line too, and a first look at either is not polling anything.
+ * Only the watch's own output counts. A broader reading that keyed on every filename-shaped
+ * token of the watch's command line used to answer the shell half of the polling gate, and it
+ * refused a first probe of `server.ts` and of `artifactDownload.ts` merely because a `Monitor`
+ * command named them — the script a watch runs and the config it was handed are on its command
+ * line too, and a first look at either is discovery rather than polling. Both halves now ask
+ * this narrower question.
  * @param {(Turn | null)[]} line @param {string} [exceptTurnUuid]
  * @returns {string[]}
  */
