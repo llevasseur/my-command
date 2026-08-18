@@ -9,6 +9,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
+import { flagsFrom } from '../lib/flags.mjs';
 import { slotPath, run as stash, stashDir } from './stash.mjs';
 
 /** @type {string[]} */
@@ -43,7 +44,7 @@ function source(dir, content) {
 const ctx = (positionals, flags = {}) => ({
   verb: 'stash',
   positionals,
-  flags: { 'no-clipboard': true, ...flags },
+  flags: flagsFrom({ 'no-clipboard': true, ...flags }),
   cwd: process.cwd(),
 });
 

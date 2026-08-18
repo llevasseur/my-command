@@ -8,6 +8,7 @@
 // stated skip, never a stop.
 import { readFileSync } from 'node:fs';
 import { str } from '../lib/flags.mjs';
+import { asRecord } from '../lib/json.mjs';
 
 export const usage = `concepts <lookup|save|count> [--record-file <path>] [--json]
 
@@ -251,11 +252,9 @@ function recordFrom(path) {
   }
   if (!raw.trim()) return { error: empty };
   try {
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return { error: `the record on ${source} is not a JSON object` };
-    }
-    return { record: parsed };
+    const record = asRecord(JSON.parse(raw));
+    if (!record) return { error: `the record on ${source} is not a JSON object` };
+    return { record };
   } catch (err) {
     return {
       error: `the record on ${source} is not valid JSON (${err instanceof Error ? err.message : String(err)})`,
@@ -264,14 +263,22 @@ function recordFrom(path) {
 }
 
 /**
- * A list field, normalised and stripped of the finder. Accepts an array or the
- * newline-separated string the old snippet took, so a caller can hand over either.
- * @param {unknown} v @returns {string[]}
+ * A list field of a record, however it arrived: as an array, or as the newline-separated
+ * string the old snippet took. One rule reads both — every value given, split on newlines,
+ * trimmed, emptied of blanks and of the finder — so no caller downstream has to ask which
+ * of the two spellings the store or the caller happened to send.
+ * @param {unknown} value @returns {string[]}
  */
-function listOf(v) {
-  const raw = Array.isArray(v) ? v : typeof v === 'string' ? v.split('\n') : [];
-  return raw.map((s) => String(s).trim()).filter((s) => s && s !== FINDER);
+function listOf(value) {
+  return [value ?? []]
+    .flat()
+    .flatMap((entry) => String(entry).split('\n'))
+    .map((s) => s.trim())
+    .filter((s) => s && s !== FINDER);
 }
+
+/** A text field of a record, trimmed. Absent and blank are the same answer: ''. */
+const textOf = (/** @type {unknown} */ value) => String(value ?? '').trim();
 
 /**
  * @param {string} outcome @param {string} line @param {Record<string, unknown>} [extra]
@@ -295,14 +302,14 @@ async function save(recordFile) {
   const input = given.record;
 
   for (const key of ['term', 'sentence', 'field']) {
-    if (!String(input[key] ?? '').trim()) return no(`the record is missing ${key}`);
+    if (!textOf(input[key])) return no(`the record is missing ${key}`);
   }
 
   /** @type {Record<string, unknown>} */
   const rec = {
-    term: String(input.term).trim(),
+    term: textOf(input.term),
     sentence: String(input.sentence),
-    field: String(input.field).trim(),
+    field: textOf(input.field),
     skills: listOf(input.skills),
     // A fresh timestamp on every save is what makes a re-teach a new version rather than a
     // silent overwrite of the old one.
@@ -310,7 +317,7 @@ async function save(recordFile) {
   };
   // An optional field is omitted entirely when empty — never "" and never []. The detail
   // page distinguishes absent from empty.
-  const notes = String(input.notes ?? '').trim();
+  const notes = textOf(input.notes);
   if (notes) rec.notes = notes;
   for (const key of ['tips', 'sources', 'surfacedSkills']) {
     const values = listOf(input[key]);
@@ -345,7 +352,9 @@ async function count(term, skill) {
       headers: { authorization: `Bearer ${token}` },
     });
     if (!res.ok) return no(`the store answered ${res.status} for ${JSON.stringify(term)}`);
-    stored = /** @type {any} */ (await res.json()).concept;
+    // The response is the boundary: read it as the concept record once, and every field
+    // below is a field of a record rather than whatever the store happened to send.
+    stored = asRecord(/** @type {any} */ (await res.json())?.concept);
   } catch (err) {
     return no(why(err));
   }
@@ -353,17 +362,20 @@ async function count(term, skill) {
 
   /** @type {Record<string, unknown>} */
   const rec = {
-    term: stored.term,
-    sentence: stored.sentence,
-    field: stored.field,
-    skills: [...(stored.skills || []), skill].filter((s) => s !== FINDER),
+    term: textOf(stored.term),
+    sentence: String(stored.sentence ?? ''),
+    field: textOf(stored.field),
+    skills: [...listOf(stored.skills), skill],
     savedAt: new Date().toISOString(),
   };
-  // Carried forward unchanged: reads resolve the newest version, so a version written
-  // without them loses them for every later reader.
-  for (const key of ['notes', 'tips', 'sources', 'surfacedSkills']) {
-    const v = stored[key];
-    if (typeof v === 'string' ? v.trim() : Array.isArray(v) && v.length) rec[key] = v;
+  // Carried forward: reads resolve the newest version, so a version written without them
+  // loses them for every later reader. Each field is carried as its own kind — `notes` is
+  // prose, the other three are lists — which is what `save` writes them as.
+  const notes = textOf(stored.notes);
+  if (notes) rec.notes = notes;
+  for (const key of ['tips', 'sources', 'surfacedSkills']) {
+    const values = listOf(stored[key]);
+    if (values.length) rec[key] = values;
   }
 
   const res = await post(root, token, rec);

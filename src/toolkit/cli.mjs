@@ -6,6 +6,7 @@
 // the prompts; this owns the mechanics that are identical on every run.
 import { realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { bool, flag, str } from './lib/flags.mjs';
 import { ToolkitError } from './lib/proc.mjs';
 import { GATED_VERBS, requireArmed } from './lib/require-armed.mjs';
 import * as cleanup from './verbs/cleanup.mjs';
@@ -22,10 +23,12 @@ import * as verify from './verbs/verify.mjs';
 import * as worktree from './verbs/worktree.mjs';
 
 /**
+ * @typedef {import('./lib/flags.mjs').Flag} Flag
+ *
  * @typedef {object} Ctx
  * @property {string} verb
  * @property {string[]} positionals
- * @property {Record<string, string | boolean | string[]>} flags
+ * @property {Record<string, Flag>} flags
  * @property {string} cwd
  */
 
@@ -73,7 +76,7 @@ const SWITCHES = new Set([
 
 /**
  * @param {string[]} argv
- * @returns {{verb: string, positionals: string[], flags: Record<string, string | boolean | string[]>}}
+ * @returns {{verb: string, positionals: string[], flags: Record<string, Flag>}}
  */
 export function parseArgs(argv) {
   // A leading flag means there is no verb — `my-command-tools --help` is help, not a
@@ -83,15 +86,24 @@ export function parseArgs(argv) {
   const rest = leadsWithFlag ? argv : argv.slice(1);
   /** @type {string[]} */
   const positionals = [];
-  /** @type {Record<string, string | boolean | string[]>} */
-  const flags = {};
+  // Collected here as raw occurrences and resolved into flag values below. This loop is
+  // the whole of the argv boundary: what a spelling means is decided once, on the way out
+  // of it, so nothing downstream has to look at a command line again.
+  /** @type {Map<string, (string | undefined)[]>} */
+  const occurrences = new Map();
+  /** @param {string} key @param {string} [value] undefined for an occurrence given bare */
+  const seen = (key, value) => {
+    const already = occurrences.get(key);
+    if (already) already.push(value);
+    else occurrences.set(key, [value]);
+  };
 
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i];
     // `-h` is the only short flag; spelling it long here keeps the rest of the parser
     // dealing with exactly one form.
     if (arg === '-h') {
-      flags.help = true;
+      seen('help');
       continue;
     }
     if (!arg.startsWith('--')) {
@@ -100,18 +112,16 @@ export function parseArgs(argv) {
     }
     const eq = arg.indexOf('=');
     const key = eq === -1 ? arg.slice(2) : arg.slice(2, eq);
-    let value;
-    if (eq !== -1) value = arg.slice(eq + 1);
-    else if (SWITCHES.has(key)) value = true;
+    if (eq !== -1) seen(key, arg.slice(eq + 1));
+    else if (SWITCHES.has(key)) seen(key);
     // A following token is this flag's value unless it is itself a flag.
-    else if (rest[i + 1] !== undefined && !rest[i + 1].startsWith('--')) value = rest[++i];
-    else value = true;
-
-    const existing = flags[key];
-    if (existing === undefined) flags[key] = value;
-    else if (Array.isArray(existing)) existing.push(String(value));
-    else flags[key] = [String(existing), String(value)];
+    else if (rest[i + 1] !== undefined && !rest[i + 1].startsWith('--')) seen(key, rest[++i]);
+    else seen(key);
   }
+
+  /** @type {Record<string, Flag>} */
+  const flags = {};
+  for (const [key, given] of occurrences) flags[key] = flag(given);
 
   return { verb, positionals, flags };
 }
@@ -145,11 +155,11 @@ function helpText() {
  * Write one verb's answer: its `line` by default, the structured result under `--json`.
  * @param {{line?: (result: any) => string}} entry
  * @param {unknown} result
- * @param {Record<string, string | boolean | string[]>} flags
+ * @param {Record<string, Flag>} flags
  * @param {number | undefined} indent
  */
 function emit(entry, result, flags, indent) {
-  if (entry.line && flags.json !== true) process.stdout.write(`${entry.line(result)}\n`);
+  if (entry.line && !bool(flags.json)) process.stdout.write(`${entry.line(result)}\n`);
   else process.stdout.write(`${JSON.stringify(result, null, indent)}\n`);
 }
 
@@ -167,7 +177,7 @@ function emitError(err, indent) {
 export function main(argv) {
   const { verb, positionals, flags } = parseArgs(argv);
 
-  if (!verb || verb === 'help' || flags.help === true) {
+  if (!verb || verb === 'help' || bool(flags.help)) {
     const target = verb === 'help' ? positionals[0] : verb;
     const topic = target && target !== 'help' ? VERBS[target] : undefined;
     if (target && target !== 'help' && !topic) {
@@ -184,8 +194,8 @@ export function main(argv) {
     return 2;
   }
 
-  const cwd = typeof flags.cwd === 'string' ? flags.cwd : process.cwd();
-  const indent = flags.compact ? undefined : 2;
+  const cwd = str(flags.cwd) ?? process.cwd();
+  const indent = bool(flags.compact) ? undefined : 2;
 
   try {
     // Before the verb, not after: an unarmed device must not be able to start a run at all.

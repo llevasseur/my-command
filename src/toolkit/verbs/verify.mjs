@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bool, list, str } from '../lib/flags.mjs';
+import { asRecord, recordOrEmpty } from '../lib/json.mjs';
 import { run as exec, ToolkitError } from '../lib/proc.mjs';
 import { repoRoot } from '../lib/repo.mjs';
 
@@ -47,16 +48,28 @@ function packageManager(root) {
   return 'npm';
 }
 
-/** @param {string} root @returns {Record<string, string>} */
+/**
+ * The repo's npm scripts, read at the one place package.json enters this verb. A repo
+ * without a manifest, with an unreadable one, or with no `scripts` record in it all
+ * answer the same way — no gates — so everything below runs over a plain name→command
+ * record rather than over whatever the file happened to hold.
+ * @param {string} root @returns {Record<string, string>}
+ */
 function scriptsOf(root) {
   const pkg = join(root, 'package.json');
   if (!existsSync(pkg)) return {};
+  let manifest;
   try {
-    const parsed = JSON.parse(readFileSync(pkg, 'utf8'));
-    return parsed.scripts && typeof parsed.scripts === 'object' ? parsed.scripts : {};
+    manifest = JSON.parse(readFileSync(pkg, 'utf8'));
   } catch {
     return {};
   }
+  /** @type {Record<string, string>} */
+  const scripts = {};
+  for (const [name, command] of Object.entries(recordOrEmpty(asRecord(manifest)?.scripts))) {
+    scripts[name] = String(command);
+  }
+  return scripts;
 }
 
 /** @param {string} text @param {number} n */
@@ -285,7 +298,9 @@ export function run(ctx) {
   // Before anything else, and before `repoRoot`: a wait is about a run that already started
   // somewhere, and the directory this call happens to be in is not part of the question.
   if (ctx.flags.wait !== undefined) {
-    const given = typeof ctx.flags.wait === 'string' ? ctx.flags.wait : undefined;
+    // Bare `--wait` waits on the newest run; `--wait <verdict>` names one, and `str`
+    // already reports the bare form as no verdict given.
+    const given = str(ctx.flags.wait);
     const seconds = Number(str(ctx.flags['wait-timeout']));
     const timeoutMs = (Number.isFinite(seconds) && seconds > 0 ? seconds : DEFAULT_WAIT_SECONDS) * 1000;
     return waitFor(given, timeoutMs);
@@ -332,7 +347,7 @@ export function run(ctx) {
   // and a caller branching on the exit code would read that as verified.
   const verified = ran.length > 0;
 
-  return {
+  const answer = {
     root,
     packageManager: pm,
     available: Object.keys(scripts),
@@ -340,6 +355,11 @@ export function run(ctx) {
     missing,
     pass: verified && ran.every((r) => r.ok) && missing.length === 0,
     verified,
-    ...(verified ? {} : { reason: 'no recognized verification gate to run' }),
+    /** @type {string | undefined} */
+    reason: undefined,
   };
+  // Only a run that verified nothing owes an explanation; `JSON.stringify` drops the key
+  // for every run that does not.
+  if (!verified) answer.reason = 'no recognized verification gate to run';
+  return answer;
 }

@@ -9,6 +9,7 @@ import { existsSync, readFileSync, readlinkSync, realpathSync, statSync } from '
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { asRecord, recordOrEmpty } from './json.mjs';
 import { codexDeviceRoot, deviceRoot } from './paths.mjs';
 
 /**
@@ -33,48 +34,43 @@ function real(path) {
 }
 
 /**
- * Every hook command registered in `settings`, by event.
- * @param {Record<string, any>} settings
- * @returns {Record<string, string[]>}
+ * Every hook a settings document registers, as one `{event, command}` per hook.
+ *
+ * Both documents this file compares are the same shape — the settings file the harness
+ * reads and the fragment this repo ships — so what counts as a registration is settled
+ * here, once, and the comparison below works over registrations rather than over two
+ * separately-walked JSON trees.
+ * @param {unknown} document
+ * @returns {{event: string, command: string}[]}
  */
-function registeredCommands(settings) {
-  /** @type {Record<string, string[]>} */
-  const out = {};
-  const hooks = settings?.hooks;
-  if (!hooks || typeof hooks !== 'object') return out;
-  for (const [event, list] of Object.entries(hooks)) {
-    if (!Array.isArray(list)) continue;
-    out[event] = list.flatMap((entry) => {
-      const hooked = Array.isArray(entry?.hooks) ? entry.hooks : [];
-      /** @type {string[]} */
-      const commands = [];
-      for (const hook of hooked) if (typeof hook?.command === 'string') commands.push(hook.command);
-      return commands;
-    });
-  }
-  return out;
-}
-
-/**
- * What the fragment asks for: one `{event, command}` per hook it registers, with
- * `{{HOOKS_DIR}}` resolved to where the scripts are installed.
- * @param {string} fragmentPath @param {string} hooksDir
- * @returns {{event: string, command: string, script: string}[]}
- */
-function expected(fragmentPath, hooksDir) {
-  const fragment = JSON.parse(readFileSync(fragmentPath, 'utf8').replaceAll('{{HOOKS_DIR}}', hooksDir));
-  /** @type {{event: string, command: string, script: string}[]} */
+function registrations(document) {
+  /** @type {{event: string, command: string}[]} */
   const out = [];
-  for (const [event, list] of Object.entries(fragment.hooks ?? {})) {
-    if (!Array.isArray(list)) continue;
-    for (const entry of list) {
+  for (const [event, entries] of Object.entries(recordOrEmpty(asRecord(document)?.hooks))) {
+    if (!Array.isArray(entries)) continue;
+    for (const entry of entries) {
       for (const hook of Array.isArray(entry?.hooks) ? entry.hooks : []) {
-        if (typeof hook?.command !== 'string') continue;
-        out.push({ event, command: hook.command, script: hook.command.split(/\s+/)[0] });
+        // A hook with no command registers nothing — there is no file for the harness to run.
+        if (hook?.command === undefined || hook?.command === null) continue;
+        out.push({ event, command: String(hook.command) });
       }
     }
   }
   return out;
+}
+
+/** The first word of a registered command: the script the harness actually executes. */
+const scriptOf = (/** @type {string} */ command) => command.split(/\s+/)[0];
+
+/**
+ * The fragment as a settings document, with `{{HOOKS_DIR}}` resolved to where the scripts
+ * are installed. Throws on an unreadable or invalid fragment, which `deviceHooksStatus`
+ * reports as "no verdict" rather than as "not armed".
+ * @param {string} fragmentPath @param {string} hooksDir
+ * @returns {unknown}
+ */
+function fragmentDocument(fragmentPath, hooksDir) {
+  return JSON.parse(readFileSync(fragmentPath, 'utf8').replaceAll('{{HOOKS_DIR}}', hooksDir));
 }
 
 /**
@@ -142,12 +138,13 @@ export function hooksStatus(opts) {
 
   /** @type {{event: string, command: string, registered: boolean}[]} */
   const gates = [];
-  const registered = registeredCommands(settings);
-  for (const want of expected(fragmentPath, hooksDir)) {
+  const registered = registrations(settings);
+  for (const want of registrations(fragmentDocument(fragmentPath, hooksDir))) {
+    const script = scriptOf(want.command);
     // Accept the script registered from the link or straight from the checkout: both run it.
-    const candidates = [real(expand(want.script)), real(join(hooksSrc, want.script.split('/').pop() ?? ''))];
-    const present = (registered[want.event] ?? []).some((cmd) =>
-      candidates.includes(real(expand(cmd.split(/\s+/)[0]))),
+    const candidates = [real(expand(script)), real(join(hooksSrc, script.split('/').pop() ?? ''))];
+    const present = registered.some(
+      (got) => got.event === want.event && candidates.includes(real(expand(scriptOf(got.command)))),
     );
     gates.push({ event: want.event, command: want.command, registered: present });
   }

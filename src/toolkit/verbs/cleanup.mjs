@@ -17,7 +17,7 @@
 // is already gone is reported as `already-absent`, which is a success. What a caller cannot do
 // through this verb is delete a branch whose work never landed — that still refuses, with the
 // PR state attached, since that is the one case where the refusal means something.
-import { list, str } from '../lib/flags.mjs';
+import { bool, list, str } from '../lib/flags.mjs';
 import { ghJson } from '../lib/gh.mjs';
 import { run as exec, lines, must, UsageError } from '../lib/proc.mjs';
 import { currentBranch, repoRoot } from '../lib/repo.mjs';
@@ -159,8 +159,8 @@ export function run(ctx) {
     .filter(Boolean);
   if (branches.length === 0) throw new UsageError('--branch is required', { usage });
   const remote = str(ctx.flags.remote) ?? 'origin';
-  const keepLocal = ctx.flags['keep-local'] === true;
-  const keepRemote = ctx.flags['keep-remote'] === true;
+  const keepLocal = bool(ctx.flags['keep-local']);
+  const keepRemote = bool(ctx.flags['keep-remote']);
 
   /** @type {Record<string, unknown>[]} */
   const cleaned = [];

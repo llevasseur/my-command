@@ -1,13 +1,14 @@
 // The arming gate, exercised through the CLI entry point rather than around it: what
 // matters is the exit code a workflow command actually sees.
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { install } from '../../hooks/install-hooks.mjs';
 import { main } from '../cli.mjs';
+import { flag } from './flags.mjs';
 import { armingEscape, GATED_VERBS } from './require-armed.mjs';
 
 const REPO_ROOT = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url)))));
@@ -74,7 +75,8 @@ test('a gated verb exits non-zero on a device whose gates are not armed', () => 
   assert.equal(answer.armed, false);
   assert.match(answer.error, /gates are not armed/);
   // The refusal has to carry the fix and the way out, or it is a wall rather than a gate.
-  assert.equal(typeof answer.arm, 'string');
+  // The fix is a command a stuck device can run, so assert it reads as one.
+  assert.match(answer.arm, /^(bash|node|npx) \S/);
   assert.match(answer.escape, /MY_COMMAND_REQUIRE_HOOKS=0/);
   // The verb never ran: no state payload came back with the error.
   assert.equal(answer.branch, undefined);
@@ -106,14 +108,16 @@ test('a gated verb exits zero once the gates are registered', () => {
   assert.equal(code, 0);
   // The verb ran for real: its own payload came back, not the gate's refusal.
   const answer = JSON.parse(out);
-  assert.equal(typeof answer.root, 'string');
+  // `state` answers with the repo it was pointed at — a real directory on disk, which is
+  // what the gate having let the verb through actually looks like.
+  assert.equal(existsSync(answer.root), true, `state reported root ${answer.root}`);
   assert.equal(answer.error, undefined);
 });
 
 test('each escape is explicit, and none of them is the default', () => {
   assert.equal(armingEscape({}, {}), null);
   assert.equal(armingEscape({}, { MY_COMMAND_REQUIRE_HOOKS: '1' }), null);
-  assert.equal(armingEscape({ unarmed: true }, {}), '--unarmed');
+  assert.equal(armingEscape({ unarmed: flag([undefined]) }, {}), '--unarmed');
   assert.equal(armingEscape({}, { MY_COMMAND_REQUIRE_HOOKS: '0' }), 'MY_COMMAND_REQUIRE_HOOKS=0');
   assert.equal(armingEscape({}, { MY_COMMAND_HOOKS: 'off' }), 'MY_COMMAND_HOOKS=0');
 });
