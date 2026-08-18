@@ -7,7 +7,15 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**", "!**/node_modules", "!.claude/worktrees", "!**/pnpm-lock.yaml", "!**/dist/*", "!commands/*"]
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!.claude/worktrees",
+      "!**/pnpm-lock.yaml",
+      "!**/dist/*",
+      "!commands/*",
+      "!tools/oxlint/anti-slop"
+    ]
   },
   "formatter": {
     "enabled": true,
