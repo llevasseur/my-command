@@ -81,7 +81,7 @@ function checkboxPrompt({
   out = output,
 }: CheckboxPromptOptions): Promise<string[] | null> {
   return new Promise((resolve) => {
-    const selected = new Array<boolean>(items.length).fill(false);
+    const selected: boolean[] = Array.from({ length: items.length }, () => false);
     const rowCount = items.length + 1; // row 0 is the select-all toggle
     let cursor = 0;
     let rendered = 0;
@@ -175,7 +175,9 @@ interface InstallFilesOptions {
 
 function run(cmd: string, args: string[]): RunResult {
   const r = spawnSync(cmd, args, { stdio: 'inherit' });
-  if (r.error && (r.error as NodeJS.ErrnoException).code === 'ENOENT') {
+  // A spawn that could not find the binary reports a Node system error, which carries a
+  // `code`; a plain Error does not. Test for the property rather than assert it away.
+  if (r.error && 'code' in r.error && r.error.code === 'ENOENT') {
     return { ok: false, missing: true };
   }
   return { ok: r.status === 0, missing: false };
@@ -421,6 +423,14 @@ function installToolkit(root = deviceRoot()): ToolkitResult {
   }
 }
 
+/** The contract `installHooks()` expects of the `install-hooks.mjs` module it imports. */
+interface HooksInstallerModule {
+  install: (opts: { hooksDir: string; settingsPath: string; uninstall: boolean }) => {
+    registered: number;
+    allowAdded: number;
+  };
+}
+
 interface HooksResult {
   installed: boolean;
   /** Where the hook scripts landed, and what the registration names. */
@@ -484,12 +494,10 @@ async function installHooks(
     // Register through the copy that just landed, so the entries name the scripts the
     // harness will actually run. Imported rather than shelled out, for a value to report.
     const installer = join(dest, 'install-hooks.mjs');
-    const mod = (await import(pathToFileURL(installer).href)) as {
-      install: (opts: { hooksDir: string; settingsPath: string; uninstall: boolean }) => {
-        registered: number;
-        allowAdded: number;
-      };
-    };
+    // Declared as the binding's type rather than asserted onto the import: nothing about the
+    // module has been checked at this point, so the shape belongs to the contract this file
+    // expects of `install-hooks.mjs`, not to an invariant it has already established.
+    const mod: HooksInstallerModule = await import(pathToFileURL(installer).href);
     const merged = mod.install({ hooksDir: dest, settingsPath, uninstall: false });
     return {
       ...base,
