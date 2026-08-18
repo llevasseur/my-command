@@ -19,7 +19,9 @@ guard('not claimed', async () => {
   const store = resolve();
   if (unresolved(store)) return say(`not claimed: ${store.missing}`);
 
-  const claim = { slug, by, ...(pr ? { pr } : {}) };
+  /** @type {{slug: string, by: string, pr?: string}} */
+  const claim = { slug, by };
+  if (pr) claim.pr = pr;
   const result = await request(store, '/api/ideas/claim', { method: 'POST', body: { claims: [claim] } });
   if (!result.ok) return say(`not claimed: ${result.reason}`);
 
