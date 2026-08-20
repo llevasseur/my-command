@@ -5,6 +5,23 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-08-20
+
+### Added
+
+- **`/health` — report what is actually consuming this machine's CPU, memory, and energy, then fix the safe findings.**
+- Rolls every process up to an **owner** (application, vendor, session manager, repo) before ranking. A per-process table puts system noise on top: 393 OS processes summing to 187% CPU sat above 15 endpoint-security processes summing to 141%, and only the rollup showed the security suite was the largest consumer by 8x.
+- Ranks four axes — CPU now, memory read against the compressor rather than free pages (one run: 58 MB free, 7.4 GB compressed), energy, and watcher churn.
+- **Energy is declared as a proxy.** Activity Monitor's Energy Impact is not available to an ordinary process and `powermetrics` needs root, so the column is cumulative CPU time and says so. `/health` never takes root.
+- Output is two tables plus a fix list, each finding tiered `SAFE` / `CONFIRM` / `MANUAL` / `LEAVE` — a claim about safety, not value. The report is the deliverable; a healthy machine gets the same tables.
+- Read-only by default. `--fix` acts, `-y` skips the prompt for `SAFE` only, `--top <n>` sets rows, trailing text focuses an owner without hiding a heavier one.
+- **`--fix` re-measures before every signal**, because ownership moves: a recorded run saw the live backend change PID three times in twenty minutes and a port flip between two duplicate dev stacks, so a list built from the first reading would have killed the working server. Kills are guarded by command-line match rather than PID, run from a script file rather than inline shell, and every previously-serving port is re-checked after.
+- Four refusals hold under `-y`: no stopping a supervised service (persistent login-state change, so it quotes the disable line instead), no closing unsaved work (asked of the application — one run cleared an editor as clean from an empty backup directory and found a dirty marker in the app's own window list a step later), no killing a process bound to a live port unless named, no root.
+- Reports numbers that got worse. Load average climbs after a cleanup as the indexer and scanner react to the teardown; the run names them instead of hiding the spike.
+- Carries a **Known patterns** section so the engine stays generic: duplicate dev stacks, supervised services read as strays, editors served over local HTTP into a shell window, managed security software, decorative work with no viewer, idle pre-warmed slots.
+- macOS-first, degrading on Linux and naming the sections it cannot fill rather than printing a macOS-shaped number.
+- Ships with the Codex skill, the feature doc, and both README tables.
+
 ## 2026-08-17
 
 ### Changed

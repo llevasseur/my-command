@@ -41,6 +41,7 @@
 | `learn` | Lease a public skill for one task and give it back — look the concept up, install the skill that concept already surfaced, use it, and remove it on the way out. A skill you already had is never removed, and the install is counted on the concept record `teach` writes rather than on a counter of its own. |
 | `read-tweet` | Read a public X/Twitter post through a **reader proxy** — a forward proxy that fetches the URL from its own address and returns readability-extracted text — falling through an ordered list of prefixes whenever one answers with a bot check or a login wall. Never solves a captcha, and never hands a private or signed URL to a proxy operator. |
 | `diagram` | Draw the architecture a change **produces** as one Mermaid diagram and attach it to that change's PR — an open PR's body, a comment, or a file. Opens no PR and touches no code; composes into `task` with `--add`. |
+| `health` | Report what is actually consuming this machine's CPU, memory, and energy, ranked **by owner rather than by process** — a per-process table puts system noise on top and buries the finding. Two tables and a fix list; read-only unless `--fix` is passed, and even then it re-measures before every signal and never stops a supervised service, closes unsaved work, or takes root. |
 
 ## Use cases
 
@@ -134,6 +135,9 @@ skill syntax—for example, `$task -h ...`, `$review -t 42`, or `$mc -t feat/sea
 | `diagram` | `/diagram -t 42 the ingest path` | `--target` / `-t <PR-number-or-branch>` — diagram PR #42 instead of the current branch's. Trailing text is a focus hint naming the layer or flow to draw. |
 | `diagram` | `/diagram -k sequence -c` | `--kind` / `-k <flowchart\|sequence\|class\|er\|state>` forces the diagram type; `--comment` / `-c` posts a PR comment instead of editing the body. `--out` / `-o <path>` writes to a Markdown file, `--dry-run` / `-n` renders it in the reply and changes nothing. |
 | `task` | `/task -a diagram once the PR is open, diagram the new ingest path add a bulk ingest endpoint` | `--add` / `-a` — the composition point: `/diagram` runs **after** `/pr` so the diagram lands in the PR body in one pass. Scheduled before `/pr`, it hands the block to `/pr` instead. |
+| `health` | `/health` | Default — read-only. Rolls every process up to an owner (application, vendor, session manager, repo), ranks CPU / memory / energy / watcher churn, and prints where the machine is going plus what to do about it. The energy column is cumulative CPU time, declared as a proxy: Activity Monitor's Energy Impact is not available to an ordinary process and `powermetrics` needs root, which `health` never takes. |
+| `health` | `/health --fix` | Acts on the findings, confirming each one. Re-measures immediately before every signal because ownership moves — a recorded run saw the live server change PID three times in twenty minutes and a port flip between two duplicate dev stacks. Kills are guarded by command-line match rather than PID, and every previously-serving port is re-checked after. |
+| `health` | `/health --fix -y node` | `-y` / `--yes` acts on the `SAFE` tier without a prompt per item, and never promotes a lower tier. Trailing text is a focus term expanding those owners; focus never hides a heavier one. `--top <n>` sets rows per table (default 10). |
 
 `revive`'s default proxy source is location-agnostic: export **`CLAUDE_PROXY_STORE`**
 (the directory holding `<id>.md` transcripts) and optionally **`CLAUDE_PROXY_ARCHIVE`**
