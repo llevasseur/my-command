@@ -12,8 +12,8 @@ timestamp: 2026-08-02
 
 Turns `<command> <prompt>` into a single ready-to-paste invocation on the system
 clipboard, for handing to another agent. It never runs the named command, loads
-its instructions, or prints what it copied — the reply is `Done!` plus at most one
-line of context.
+its instructions, or prints what it copied — the reply is `Done!`, the stash slot
+the copy landed in, and at most one line of context.
 
 ## Flags / Parameters
 
@@ -35,6 +35,12 @@ tool** and hands that path to
 `my-command-tools stash write --content-file <path> --consume`, which rotates the
 ring, installs the line as the newest entry, and feeds the clipboard from it — so
 the stash and the clipboard carry identical bytes.
+
+That verb reports the `slot` its entry landed in — always 0, the newest — and the
+reply names it, so the copy goes back on the clipboard with `/cp --again 0`
+without reading or recomposing anything. `stash restore` already named the slot
+it read, so both paths report the same field rather than a number the command
+worked out for itself.
 
 ### Why the compose path is unique per invocation
 
@@ -93,10 +99,13 @@ holds every command file to it: see
 Any later copy from any application overwrites the clipboard, and recomposing
 would spend the tokens again. `--again` restores the stash without recomposing,
 reading, or enriching anything: `/cp --again` puts `~/.claude/cp-last.txt` back,
-`/cp --again 2` reaches `~/.claude/cp-last.2.txt`. A missing stash file is
-reported plainly rather than copied as an empty clipboard — `my-command-tools
-stash restore` leaves the clipboard alone rather than clearing it, since an empty
-clipboard is worse than whatever is on it now.
+`/cp --again 2` reaches `~/.claude/cp-last.2.txt`. The slot printed after `Done!`
+is what that argument takes — a fresh copy is slot 0, and each copy after it
+shifts that entry one slot older. A missing stash file is reported plainly rather
+than copied as an empty clipboard — `my-command-tools stash restore` leaves the
+clipboard alone rather than clearing it, since an empty clipboard is worse than
+whatever is on it now — and that reply names no slot, because nothing was
+restored.
 
 Recovery needs no agent at all. In `~/.zshrc`:
 
