@@ -101,10 +101,11 @@ would spend the tokens again. `--again` restores the stash without recomposing,
 reading, or enriching anything: `/cp --again` puts `~/.claude/cp-last.txt` back,
 `/cp --again 2` reaches `~/.claude/cp-last.2.txt`. The slot printed after `Done!`
 is what that argument takes — a fresh copy is slot 0, and each copy after it
-shifts that entry one slot older. A missing stash file is
-reported plainly rather than copied as an empty clipboard — `my-command-tools
-stash restore` leaves the clipboard alone rather than clearing it, since an empty
-clipboard is worse than whatever is on it now.
+shifts that entry one slot older. A missing stash file is reported plainly rather
+than copied as an empty clipboard — `my-command-tools stash restore` leaves the
+clipboard alone rather than clearing it, since an empty clipboard is worse than
+whatever is on it now — and that reply names no slot, because nothing was
+restored.
 
 Recovery needs no agent at all. In `~/.zshrc`:
 

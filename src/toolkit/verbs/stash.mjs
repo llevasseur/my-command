@@ -174,7 +174,9 @@ function write(dir, contentFile, clipboard, consume) {
 
   mkdirSync(dir, { recursive: true });
   const { rotated, dropped } = rotate(dir);
-  const path = slotPath(dir, 0);
+  // Named once so the path and the slot reported below cannot drift apart.
+  const slot = 0;
+  const path = slotPath(dir, slot);
   copyFileSync(contentFile, path);
   // The bytes are in the ring now, so the hand-off file has no further job. `/cp` mints a fresh
   // compose path per invocation, and a unique name per run accumulates unless something removes it.
@@ -184,8 +186,8 @@ function write(dir, contentFile, clipboard, consume) {
     subcommand: 'write',
     dir,
     path,
-    // Always the newest slot, reported so /cp names it instead of hardcoding what `slotPath` decides.
-    slot: 0,
+    // Reported so /cp names the slot instead of hardcoding what `slotPath` already decides.
+    slot,
     bytes: statSync(path).size,
     consumed: consume ? contentFile : null,
     rotated,
