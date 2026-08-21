@@ -184,8 +184,7 @@ function write(dir, contentFile, clipboard, consume) {
     subcommand: 'write',
     dir,
     path,
-    // Always the newest slot, reported rather than left implicit: /cp names the slot in its reply,
-    // and reading it here is what keeps that reply from hardcoding what `slotPath` already decides.
+    // Always the newest slot, reported so /cp names it instead of hardcoding what `slotPath` decides.
     slot: 0,
     bytes: statSync(path).size,
     consumed: consume ? contentFile : null,
