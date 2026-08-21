@@ -26,7 +26,9 @@ Own the /cp stash ring: five plain-text entries under ~/.claude, and the clipboa
       Rotate the ring, install that file's bytes as the newest entry, and copy them to the
       clipboard. The content arrives as a path, never as an argument, so no shell quoting can
       corrupt a line containing quotes, backslashes, or newlines — write it with the \`Write\`
-      tool and hand over the path, the way \`commit --message-file\` already works.
+      tool and hand over the path, the way \`commit --message-file\` already works. The entry
+      lands in the newest slot and the result names it, so a caller reporting which slot to pass
+      back to \`stash restore\` reads that field instead of assuming the number.
 
   stash restore [<slot>]
       Copy an entry back to the clipboard. Slot 0 (the default) is the newest. A slot that
@@ -182,6 +184,9 @@ function write(dir, contentFile, clipboard, consume) {
     subcommand: 'write',
     dir,
     path,
+    // Always the newest slot, reported rather than left implicit: /cp names the slot in its reply,
+    // and reading it here is what keeps that reply from hardcoding what `slotPath` already decides.
+    slot: 0,
     bytes: statSync(path).size,
     consumed: consume ? contentFile : null,
     rotated,
@@ -249,7 +254,10 @@ export function line(result) {
   const clip = result.clipboard.copied
     ? `copied to the clipboard with ${result.clipboard.sink}`
     : `not copied to the clipboard (${result.clipboard.reason})`;
-  const what = result.subcommand === 'write' ? `stashed ${result.bytes} bytes` : `restored slot ${result.slot}`;
+  const what =
+    result.subcommand === 'write'
+      ? `stashed ${result.bytes} bytes in slot ${result.slot}`
+      : `restored slot ${result.slot}`;
   return `${what}; ${clip}`;
 }
 
