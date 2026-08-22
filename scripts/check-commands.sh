@@ -42,6 +42,9 @@
 #      the device makes a named one do the same. Each declared model matches the tier the spec's
 #      table assigns it, and the one site that departs from its definition's tier still says so
 #      (docs/specs/subagent-definitions.md).
+#  25. both Claude install paths also copy the skills into ~/.agents/skills, where opencode
+#      discovers them for every model it drives — without that copy the workflows reach
+#      Anthropic models only, and an opencode session finds nothing.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -756,6 +759,36 @@ else
     echo "::error::.claude-plugin/plugin.json no longer declares its 'agents' directory; a plugin install would carry no definitions."
     fail=1
   fi
+fi
+
+# 25. Both Claude install paths also place the skills where opencode finds them. opencode
+# discovers ~/.agents/skills for every model it drives, so this copy is the only thing that
+# carries the workflows to a non-Anthropic model; dropping it leaves an opencode session
+# with no workflows and no way to tell any were meant to be there.
+if ! grep -q 'installOpencodeSkills(' src/my-command.ts; then
+  echo "::error::src/my-command.ts no longer calls installOpencodeSkills(); an npx install would leave opencode sessions without the workflows."
+  fail=1
+fi
+
+# Anchored at the statement start, so the Codex path's guarded call does not count.
+wired_opencode="$(grep -cE '^ *reportOpencodeSkills\(installOpencodeSkills\(\)\);$' src/my-command.ts || true)"
+if [ "$wired_opencode" -ne 2 ]; then
+  echo "::error::src/my-command.ts wires the opencode skills into $wired_opencode of the 2 Claude install paths; both the plugin and personal choices must place them."
+  fail=1
+fi
+
+# The same copy-not-symlink rule the gates and the definitions are held to: npx runs from an
+# ephemeral cache that is cleaned up after the wizard exits, so a link into it would dangle.
+if ! grep -q 'copyFileSync(join(SKILLS_DIR' src/my-command.ts; then
+  echo "::error::src/my-command.ts no longer copies each skills/<name>/SKILL.md to the device; a link into the npx cache would dangle once that cache is cleaned up."
+  fail=1
+fi
+
+# CODEX_SKILLS_DIR and CODEX_HOME move the Codex install; pointing this one at them would
+# install nothing opencode finds.
+if ! grep -q "agentsSkillsDir = () => join(homedir(), '.agents', 'skills')" src/my-command.ts; then
+  echo "::error::src/my-command.ts no longer resolves the opencode skills directory to a fixed ~/.agents/skills; opencode reads that path and nowhere else."
+  fail=1
 fi
 
 if [ "$fail" -eq 0 ]; then
