@@ -251,8 +251,8 @@ async function installFiles({ items, dest, itemLabel, targetPath, install, summa
 }
 
 // The user-scoped skills directory opencode reads, and the modern Codex default. Fixed
-// rather than env-overridable: opencode looks here (and in ~/.claude/skills) and nowhere
-// else, so a copy pointed anywhere else installs nothing it can find.
+// rather than env-overridable: opencode reads this path and ~/.claude/skills, so a copy
+// pointed anywhere else installs nothing it can find.
 const agentsSkillsDir = () => join(homedir(), '.agents', 'skills');
 
 function codexSkillsDir() {
@@ -301,12 +301,10 @@ interface OpencodeResult {
   reason?: string;
 }
 
-// The Codex skill translations, placed where opencode discovers them. opencode reads
-// `~/.agents/skills` and `~/.claude/skills` for EVERY model it drives, not only the
-// Anthropic ones, so this one copy is what gives a GPT or Gemini session under opencode the
-// same workflows a Claude session gets. Run on both Claude choices, like the toolkit, the
-// gates and the definitions — installing Claude commands says nothing about which model the
-// user then points at them.
+// The Codex skill translations, placed where opencode discovers them — for EVERY model it
+// drives, not only the Anthropic ones, so this copy is what gives a GPT or Gemini session
+// the same workflows a Claude session gets. Run on both Claude choices, like the toolkit,
+// the gates and the definitions.
 //
 // COPIED rather than symlinked, like installHooks() and installAgents() — npx runs from an
 // ephemeral cache directory cleaned up after the wizard exits, so a link into it would dangle.
@@ -689,9 +687,8 @@ async function main() {
   } else if (choice === '3') {
     await installCodexSkills();
     reportToolkit(installToolkit(deviceRoot('codex')));
-    // Only when this choice sent the skills somewhere else. On the default destination
-    // installCodexSkills() has already written this exact directory, asking before it
-    // overwrote anything — copying over that answer would undo the one the user gave.
+    // Only when this choice sent the skills elsewhere — on the default destination
+    // installCodexSkills() has already written this directory, asking before it overwrote.
     if (codexSkillsDir() !== agentsSkillsDir()) reportOpencodeSkills(installOpencodeSkills());
     reportConceptStore();
     // No gates on the Codex path, deliberately. Codex's hook engine is a different

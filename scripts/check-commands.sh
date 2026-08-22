@@ -762,17 +762,15 @@ else
 fi
 
 # 25. Both Claude install paths also place the skills where opencode finds them. opencode
-# discovers skills from ~/.agents/skills for every model it drives, so this copy is the only
-# thing that carries the workflows to a non-Anthropic model — and a Claude install says
-# nothing about which model the user then points at them. Dropping it leaves an opencode
-# session with no workflows and no way to tell that any were meant to be there.
+# discovers ~/.agents/skills for every model it drives, so this copy is the only thing that
+# carries the workflows to a non-Anthropic model; dropping it leaves an opencode session
+# with no workflows and no way to tell any were meant to be there.
 if ! grep -q 'installOpencodeSkills(' src/my-command.ts; then
   echo "::error::src/my-command.ts no longer calls installOpencodeSkills(); an npx install would leave opencode sessions without the workflows."
   fail=1
 fi
 
-# Anchored at the start of the statement, so the Codex path's conditional call does not count:
-# that one is guarded, and these two are the unconditional Claude wiring.
+# Anchored at the statement start, so the Codex path's guarded call does not count.
 wired_opencode="$(grep -cE '^ *reportOpencodeSkills\(installOpencodeSkills\(\)\);$' src/my-command.ts || true)"
 if [ "$wired_opencode" -ne 2 ]; then
   echo "::error::src/my-command.ts wires the opencode skills into $wired_opencode of the 2 Claude install paths; both the plugin and personal choices must place them."
@@ -786,8 +784,8 @@ if ! grep -q 'copyFileSync(join(SKILLS_DIR' src/my-command.ts; then
   fail=1
 fi
 
-# The destination is what opencode reads, not what the environment redirects. CODEX_SKILLS_DIR
-# and CODEX_HOME move the Codex install; pointing this one at them installs nothing opencode finds.
+# CODEX_SKILLS_DIR and CODEX_HOME move the Codex install; pointing this one at them would
+# install nothing opencode finds.
 if ! grep -q "agentsSkillsDir = () => join(homedir(), '.agents', 'skills')" src/my-command.ts; then
   echo "::error::src/my-command.ts no longer resolves the opencode skills directory to a fixed ~/.agents/skills; opencode reads that path and nowhere else."
   fail=1
