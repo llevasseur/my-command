@@ -18,6 +18,12 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 - **The polling gate stopped reading a watch's arguments as its output.** `watchedPaths()` keyed on every filename-shaped token of a watch's command line and answered the shell half of the gate, so a **first** probe of `server.ts` and of `artifactDownload.ts` was refused because a `Monitor` command happened to name them. Both halves now ask the narrower question `watchedOutputs()` already answered for the `Read` half — the watch's own redirect, `tee`, or `tail` target — and the broad helper is removed rather than left for one caller.
 - **A `grep`/`find` sweep of an OKF bundle is refused with `okq` named.** One recorded run issued three clusters of independent `find | xargs grep` sweeps over one `docs/` tree while its own system prompt said the bundle is queryable with `okq`. A bundle declares itself in its `index.md` frontmatter (`okf_version`), so the gate reads that off disk rather than guessing from a directory being called `docs`.
 
+## 2026-08-21
+
+### Changed
+
+- **`/cp` says which stash slot the copy landed in, so putting a clobbered copy back takes no counting.** The reply was `Done!` plus at most one line of context, and the ring entry it had just written went unnamed — so recovering that copy meant either trusting that a bare `--again` still pointed at it or running `stash list` and reading timestamps to work out how far it had rotated. The reply now carries the slot — `Done! 0` — and a `--again` run names the slot it restored, which is the number that goes straight back into `/cp --again <slot>`. It is read rather than assumed: `my-command-tools stash write` now reports a `slot` field alongside `path` and `bytes`, and its one-line status says `stashed N bytes in slot 0`, so the command names what the verb did instead of hardcoding what `slotPath` already decides — a reply naming a slot it guessed would be worse than one naming none. `stash restore` already reported its slot and is unchanged. Nothing about the ring moved: still five deep, still rotated inside the verb, still under `~/.claude` (or `$CLAUDE_CONFIG_DIR`) and nowhere else, and a fresh copy still lands in the newest slot, so bare `/cp --again` keeps working exactly as before. `skills/cp/SKILL.md`, `docs/features/cp.md`, and the README usage rows carry the same rule, including the one reply that names no slot — a `--again` against an empty slot, where the verb copied nothing and so has no entry to name, and `commands/` was regenerated rather than hand-edited.
+
 ## 2026-08-17
 
 ### Changed

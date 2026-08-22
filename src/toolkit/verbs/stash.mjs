@@ -26,7 +26,9 @@ Own the /cp stash ring: five plain-text entries under ~/.claude, and the clipboa
       Rotate the ring, install that file's bytes as the newest entry, and copy them to the
       clipboard. The content arrives as a path, never as an argument, so no shell quoting can
       corrupt a line containing quotes, backslashes, or newlines — write it with the \`Write\`
-      tool and hand over the path, the way \`commit --message-file\` already works.
+      tool and hand over the path, the way \`commit --message-file\` already works. The entry
+      lands in the newest slot and the result names it, so a caller reporting which slot to pass
+      back to \`stash restore\` reads that field instead of assuming the number.
 
   stash restore [<slot>]
       Copy an entry back to the clipboard. Slot 0 (the default) is the newest. A slot that
@@ -172,7 +174,9 @@ function write(dir, contentFile, clipboard, consume) {
 
   mkdirSync(dir, { recursive: true });
   const { rotated, dropped } = rotate(dir);
-  const path = slotPath(dir, 0);
+  // Named once so the path and the slot reported below cannot drift apart.
+  const slot = 0;
+  const path = slotPath(dir, slot);
   copyFileSync(contentFile, path);
   // The bytes are in the ring now, so the hand-off file has no further job. `/cp` mints a fresh
   // compose path per invocation, and a unique name per run accumulates unless something removes it.
@@ -182,6 +186,8 @@ function write(dir, contentFile, clipboard, consume) {
     subcommand: 'write',
     dir,
     path,
+    // Reported so /cp names the slot instead of hardcoding what `slotPath` already decides.
+    slot,
     bytes: statSync(path).size,
     consumed: consume ? contentFile : null,
     rotated,
@@ -249,7 +255,10 @@ export function line(result) {
   const clip = result.clipboard.copied
     ? `copied to the clipboard with ${result.clipboard.sink}`
     : `not copied to the clipboard (${result.clipboard.reason})`;
-  const what = result.subcommand === 'write' ? `stashed ${result.bytes} bytes` : `restored slot ${result.slot}`;
+  const what =
+    result.subcommand === 'write'
+      ? `stashed ${result.bytes} bytes in slot ${result.slot}`
+      : `restored slot ${result.slot}`;
   return `${what}; ${clip}`;
 }
 

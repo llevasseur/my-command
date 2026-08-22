@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { flagsFrom } from '../lib/flags.mjs';
-import { slotPath, run as stash, stashDir } from './stash.mjs';
+import { line, slotPath, run as stash, stashDir } from './stash.mjs';
 
 /** @type {string[]} */
 const made = [];
@@ -59,6 +59,16 @@ test('stash write installs the content file as the newest entry, byte for byte',
   assert.equal(readFileSync(result.path, 'utf8'), text);
   assert.equal(result.clipboard.copied, false);
   assert.equal(result.clipboard.reason, '--no-clipboard');
+});
+
+test('stash write names the slot it wrote, so a caller reports it instead of assuming it', () => {
+  const dir = sandbox();
+  const result = /** @type {any} */ (stash(ctx(['write'], { 'content-file': source(dir, 'newest\n') })));
+
+  assert.equal(result.slot, 0);
+  assert.equal(result.path, slotPath(dir, result.slot));
+  // /cp reads the slot off this line, so the status has to carry it and not just the byte count.
+  assert.match(line(result), /in slot 0/);
 });
 
 test('stash write rotates a five-deep ring and drops the oldest', () => {
