@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-08-22
+
+### Changed
+
+- **The anti-slop lint moved out of `/clean` and into `/task`, where the findings can actually be fixed.** `/clean` ran `pnpm lint:anti-slop` before its comment pass, then had no way to act on most of what came back: that command may only delete and tighten comments — never change code, logic, formatting, or behavior, and never add a comment — so a finding about a name, a dead branch, or a redundant wrapper was read and dropped. The check is now `/task` Step 2.5, between implementing and the `/clean` + `/pr` stage, and it **may change code to clear a finding**. Because those are code changes rather than comment edits, the step re-runs the repo's gates afterwards on the same single-call `verify --background` wait Step 2 uses, and a `pass: false` means the step is unfinished. Everything that gated the old step is unchanged: the script's existence decides whether it runs, an absent `lint:anti-slop` is skipped and reported as skipped, and the step never adds the script, installs a plugin, or edits lint config to make it runnable. Findings stay input rather than a gate — one deliberately left standing is reported with its reason instead of silenced in config — and scope is this run's own changes, so a finding on an untouched line is named in the report rather than fixed. `/clean`'s frontmatter drops `Bash(pnpm lint:anti-slop)`, `skills/task/SKILL.md` carries the mirrored step, and `commands/` was regenerated rather than hand-edited.
+
 ## 2026-08-21
 
 ### Changed

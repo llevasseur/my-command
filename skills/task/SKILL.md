@@ -8,7 +8,7 @@ description: Take a plain-language task from criteria through implementation, ve
 Parse `--here`, `--worktree <path>`, `--base <branch>`, `--draft`, `--sub`, and `--add <skill prompt,...>`; remaining text is the task criteria.
 
 Before the first tool call, record this pipeline as a task list whose **last item
-is step 8's closing turn**, kept as its own item and left open until nothing else
+is step 9's closing turn**, kept as its own item and left open until nothing else
 remains. A compaction carries that list forward; it does not carry these
 instructions, so the item is the only surviving record that the run owes an
 outcome. Resolve it in the same tool-call turn as the run's last piece of real
@@ -55,7 +55,22 @@ lands every time, and the message meant to follow it never arrives.
    session, including shell/filesystem tools, installed skills, browser or
    computer-use tools for required visual proof, and subagents only when the user
    or repository instructions allow delegation.
-5. Add changelog work when the repository tracks it. Commit logical scoped
+5. Run the repository's anti-slop lint before any cleanup or pull-request step,
+   when the repository defines a `lint:anti-slop` script at its root. Read the
+   root manifest for that script; if it is absent, skip this step and record it
+   as skipped in the run's report and pull-request description, never adding the
+   script, installing a plugin, or editing lint configuration to make it
+   runnable. When it is present, run it from the repository root and fix what it
+   reports on this run's own changes — code, structure, and naming are all in
+   scope here, unlike the comment-only cleanup skill, which is why the check
+   lives in this pipeline rather than there. A finding on a line this run never
+   touched is pre-existing: name it in the report instead of widening the diff.
+   Because the fixes are code changes, re-run the repository's verification gates
+   afterwards, waited on with the single blocking call above, and treat a failing
+   verdict as this step being unfinished. The lint's output is input, not a gate:
+   a finding deliberately left standing is reported with its reason, never
+   silenced by editing lint configuration.
+6. Add changelog work when the repository tracks it. Commit logical scoped
    changes with explicit paths through `my-command-tools commit` when available;
    never sweep in unrelated work. For a multi-line message, write it to a file and
    pass `--message-file <absolute path>` rather than piping a heredoc on stdin — a
@@ -66,10 +81,10 @@ lands every time, and the message meant to follow it never arrives.
    the same commit once after the prompt is approved. Never rewrite the commit,
    pass `--no-gpg-sign`, or change the repo's signing configuration to get
    around it.
-6. Use `my-command-tools state` when available for the no-change gate. If the run
+7. Use `my-command-tools state` when available for the no-change gate. If the run
    produced no relevant commits or edits, report that the criteria already hold
    and safely remove any worktree.
-7. Otherwise run `$clean`, commit any cleanup, then run `$pr`. Run that pair in
+8. Otherwise run `$clean`, commit any cleanup, then run `$pr`. Run that pair in
    this session by default and delegate it to a single subagent only when `--sub`
    was requested; the order, cleanup commit, and PR result are identical either
    way. After the PR exists, confirm the worktree is clean and its HEAD is on the
@@ -82,7 +97,7 @@ lands every time, and the message meant to follow it never arrives.
      through the repository helper from outside the worktree, which re-verifies
      the branch reached origin. If another live session still holds it, stop and
      report the path as left in place.
-8. Close the run in a text-only turn: one final message carrying text and zero
+9. Close the run in a text-only turn: one final message carrying text and zero
    tool calls, sent after the last tool call returns rather than alongside it. A
    run's outcome is recorded only from a message with no tool call in it, so
    ending on one — or bundling the report into one — records no outcome at all.

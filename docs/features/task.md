@@ -4,7 +4,7 @@ title: task
 description: Carry a plain-language task from criteria to an open PR — isolated worktree, bootstrap, implement, verify, then clean + PR.
 tags: [command, workflow, git]
 timestamp: 2026-07-15
-updated: 2026-08-08
+updated: 2026-08-22
 ---
 
 # task
@@ -78,6 +78,18 @@ in the latest toolkit state/worktree result; missing paths trigger one cwd/workt
 re-resolution rather than a blind retry. Dev servers and watchers run in the background with
 startup logs and a bounded harness wait — never a foreground two-minute timeout or a
 resource-burning `until …; do :; done` loop.
+
+Step 2.5 runs the repo's anti-slop lint between implementing and cleanup, and unlike its
+previous home it can act on what the lint says. `/clean` carried the check but is barred from
+changing code, logic, or behavior and from adding comments, so a finding about a name or a
+dead branch had nowhere to land — the signal arrived and was then dropped. Step 2.5 may
+change code to clear a finding, and because those are code changes it re-runs the repo's
+gates afterwards on the same one-call wait Step 2 uses; a failing verdict means the step is
+unfinished. The gate on running at all is unchanged and still the script's existence: no
+`lint:anti-slop` in the repo root `package.json` and the step is skipped and reported as
+skipped, never made runnable by adding the script, installing a plugin, or editing lint
+config. Scope is this run's own changes — a finding on a line the run never touched is named
+in the report rather than fixed, so the diff stays the task's.
 
 Delegation is opt-in. Step 3 runs `/clean` then `/pr` inline in the calling session unless
 `--sub` is given, in which case both go to **one** fresh subagent — never one each, so

@@ -132,6 +132,18 @@ That returns `wait.blocking` — a `my-command-tools verify --wait <verdict>` co
 `wait.input` is still there for a run that must stay free while the gates go — a backgrounded call that notifies once and ends by itself. Take it only when you have other work to do in the meantime; otherwise `wait.blockingCall` is strictly fewer turns. Either way, **one wait per run**: a second watch over the same file is a duplicate, and arming one is what turned the recorded waits into collisions to reason about.
 <!-- /include-block -->
 
+## Step 2.5 — Anti-slop lint, while the code is still yours to change
+
+Run the repo's own anti-slop lint over what Step 2 produced, before `/clean` and `/pr` ever see the branch. `/clean` used to carry this check and could never act on it — that command only deletes and tightens comments, so a finding about a name, a dead branch, or a redundant wrapper had nowhere to land. Here it does: **this step may change code to clear a finding**, and that is the whole reason it lives here.
+
+1. **Read the repo root `package.json` for a `lint:anti-slop` script.** One read, batched with whatever else this phase needs, and it settles whether the step runs at all.
+2. **Script absent — skip the step and record it as skipped** in this run's report and in the PR description. Never add the script, install a plugin, or edit lint config to make it runnable: a repo without the plugin has not opted in, and opting it in is its own task, not a side effect of this one.
+3. **Script present — run `pnpm lint:anti-slop` from the repo root** and read every error and warning it reports.
+4. **Fix what it reports on this run's own changes.** Code, structure, and naming are all in scope here, unlike in `/clean`. A finding on a line this run never touched is pre-existing: leave it and name it in the report rather than widening the diff into unrelated cleanup.
+5. **Re-run the repo's gates afterwards** — `my-command-tools verify`, started with `--background` and waited on with the single `wait.blockingCall` from Step 2, never polled. The lint fixes are code changes, so `pass: true` is what proves they broke nothing; `pass: false` means this step is not finished. Commit them on this branch like any other Step 2 work.
+
+The lint's output is input, not a gate. A finding you deliberately leave standing — a false positive, or a rule the repo's own conventions override — is reported with that reason, never silenced by editing lint config or the script.
+
 ## Step 3 — Clean, then PR (inline by default; one fresh subagent with `--sub`)
 
 **First, confirm this run actually produced changes — if it did not, skip this stage.** On an empty diff `/pr` would push a branch and open a PR with no content.

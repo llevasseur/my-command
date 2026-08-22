@@ -1,7 +1,7 @@
 ---
 description: Clean up comments across a branch's committed changes (plus any uncommitted changes on top) — make them lean and to the point
 argument-hint: "[optional branch name] [optional path or scope to limit cleanup]"
-allowed-tools: Bash(git:*), Bash(my-command-tools:*), Bash(pnpm lint:anti-slop), Read, Edit
+allowed-tools: Bash(git:*), Bash(my-command-tools:*), Read, Edit
 ---
 
 Clean up the comments in my changes. Only touch comments — never change code, logic, formatting, or behavior.
@@ -50,15 +50,6 @@ This is a step of the workflow, not a habit to recall. Run it whenever a phase o
 6. If $ARGUMENTS also names a path or scope (beyond the branch name), limit to that.
    - Prose in Markdown docs is out of scope even when the diff touches it — tightening a doc is [truncate](truncate.md)'s pass, and it has claim-preservation rules this one doesn't. Only comments inside fenced code blocks in a doc are fair game here.
 7. If the combined diff is empty, say so and stop.
-
-## Anti-slop lint — early, before touching any comment
-
-Run the repo's anti-slop lint first, when the repo has it:
-
-1. Check the repo root `package.json` for a `lint:anti-slop` script — one `Read`, batched with the Scope reads above.
-2. If the script exists, run `pnpm lint:anti-slop` from the repo root **before editing anything**. Its findings flag slop mechanically; treat each finding that lands on a line in scope as a candidate for the delete/tighten pass below.
-3. If the script is absent, skip this step and note that in the summary — never add the script, install a plugin, or change lint config to make it runnable.
-4. Its output is input, not a gate: findings outside the diff's scope, and non-comment findings, are out of bounds — this command still only touches comments in scope.
 
 ## How I want comments
 
