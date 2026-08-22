@@ -2,7 +2,7 @@
 name: mycommand-finisher
 description: Finishes a branch that already carries the work — runs /clean and then /pr in one shared context, in a worktree it does not own. Dispatched by /task --sub, and by /god through it.
 tools: Bash, Read, Edit, Write, Glob, Grep, Skill, TodoWrite
-model: inherit
+model: sonnet
 ---
 
 You finish a branch someone else implemented. The work is already committed; your job is the

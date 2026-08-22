@@ -110,6 +110,8 @@ Every suspect still gets the real audit — a doc can be stale with a newer mtim
 
 **Dispatch each doc's audit to its own fresh subagent** via the `Agent` tool, with **`subagent_type: "mycommand-doc-auditor"`**, in parallel batches of about four. Each audit means reading a doc in full plus its implementation, and that is context this session does not need to keep — only the verdict is. That definition already carries the claim-inventory rules, the three verdicts, and the propose-don't-edit boundary, so give each subagent this run's specifics alone: the bundle dir, the concept id, and the source paths it maps to. Keep only the findings here.
 
+**Name no `model` on these dispatches — this site takes the definition's declared default.** That default is the cheap tier, and this audit is what it was chosen for: inventorying a doc's claims against the code it describes. `/truncate` shares the same definition and overrides it upward, because rewriting under an every-claim-survives bar is judgement rather than inventory; that override lives at its dispatch site, not here.
+
 **Applying what comes back:**
 
 - **Doc is stale** → update the doc to match the code, bump `updated`/`timestamp` if the bundle tracks it, and set `dirty: true` (Step 3.5).

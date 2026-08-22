@@ -48,10 +48,17 @@ Read this instead of guessing a path. Every path below is real; nothing else is.
   site names one with `subagent_type`, so a dispatch prompt carries that run's specifics and
   not a restatement of the role. A definition's frontmatter `name` must match its filename,
   and its `tools` list is a capability boundary — `mycommand-reviewer` ships without `Edit`
-  or `Write` on purpose. Three surfaces place them: `install-personal.sh` symlinks them, the
+  or `Write` on purpose. Its `model` is a **tier** rather than a model name: work that
+  produces a commit or judges someone else's output takes the strong tier, work that
+  reshapes text under a rule takes the cheap one. The tier table in the spec is the single
+  source of truth and the gate holds each definition's frontmatter to it; a site whose work
+  sits in the other tier overrides with the `Agent` tool's `model` parameter rather than
+  forking the definition, which is what `/truncate` does to the auditor `/docs` shares with
+  it. Three surfaces place them: `install-personal.sh` symlinks them, the
   npx wizard's `installAgents()` copies them on both Claude choices, and
-  `.claude-plugin/plugin.json` declares the directory. Codex gets none — it has no subagent
-  mechanism. Invariant 20 gates all of it; see
+  `.claude-plugin/plugin.json` declares the directory. Codex installs none — it has no
+  subagent mechanism to read them with, so the spec's table records what each tier would
+  resolve to there rather than writing a file nothing loads. Invariant 20 gates all of it; see
   [`docs/specs/subagent-definitions.md`](docs/specs/subagent-definitions.md).
 - `scripts/` — `build-plugin.sh` (regenerates `commands/`), `expand-includes.mjs` (expands
   `src/shared/` snippets in place; `--check` reports drift), `check-commands.sh` (the

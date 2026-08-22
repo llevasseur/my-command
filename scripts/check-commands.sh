@@ -39,7 +39,9 @@
 #  20. every subagent definition declares a model and a tool list, every command that dispatches
 #      one names it by subagent_type, and both Claude install surfaces place the definitions —
 #      an unnamed dispatch silently takes the default agent, and a definition that never reaches
-#      the device makes a named one do the same (docs/specs/subagent-definitions.md).
+#      the device makes a named one do the same. Each declared model matches the tier the spec's
+#      table assigns it, and the one site that departs from its definition's tier still says so
+#      (docs/specs/subagent-definitions.md).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -657,6 +659,12 @@ fi
 # while three things are true together: each definition declares a model and a tool list, each
 # dispatch site names one, and every Claude install surface puts them where Claude reads them.
 # Miss the last and a named dispatch silently falls back to the default agent, reporting nothing.
+# The model each one declares is a tier the spec's table decides, checked here in both directions.
+AGENT_SPEC=docs/specs/subagent-definitions.md
+if [ ! -f "$AGENT_SPEC" ]; then
+  echo "::error::missing $AGENT_SPEC — the tier table it holds is the single source of truth for every definition's model."
+  fail=1
+fi
 if [ ! -d agents ]; then
   echo "::error::missing agents/ — the subagent definitions every dispatch site names by subagent_type (docs/specs/subagent-definitions.md)."
   fail=1
@@ -680,7 +688,33 @@ else
       echo "::error::no command in src/commands/ names 'subagent_type: \"$name\"'; a definition no dispatch site names is dead weight on every device."
       fail=1
     fi
+    # The spec's tier table decides a definition's model; assert the two agree both ways.
+    # Matched on the tier column, not on the name alone: the spec opens with a shape table
+    # keyed by the same names, and a looser pattern reads a row out of both.
+    row="$(grep -E "^\| \`$name\` \| (strong|cheap) \|" "$AGENT_SPEC" || true)"
+    if [ -z "$row" ]; then
+      echo "::error::agents/$name.md has no row in $AGENT_SPEC's tier table; the table is where a definition's tier is decided, so a definition missing from it carries a model nothing chose."
+      fail=1
+    else
+      want="$(printf '%s\n' "$row" | awk -F'|' '{ gsub(/[ `]/, "", $4); print $4 }')"
+      have="$(sed -n 's/^model:[[:space:]]*//p' "$f" | head -1)"
+      if [ "$want" != "$have" ]; then
+        echo "::error::agents/$name.md declares 'model: $have' but $AGENT_SPEC's tier table says '$want'; the table decides the tier and the frontmatter only carries it."
+        fail=1
+      fi
+    fi
   done
+
+  # One definition serves both /docs and /truncate, whose work sits in different tiers, so the
+  # difference lives at the dispatch site. Unchecked, a later edit drops it silently.
+  if ! grep -Fq 'model: "opus"' src/commands/truncate.md; then
+    echo "::error::src/commands/truncate.md no longer overrides mycommand-doc-auditor's declared tier; its every-claim-survives rewrite would run on the cheap tier the audit shape chose ($AGENT_SPEC)."
+    fail=1
+  fi
+  if grep -Fq 'model: "opus"' src/commands/docs.md; then
+    echo "::error::src/commands/docs.md pins a model on its mycommand-doc-auditor dispatch; that site takes the definition's declared default, and only the site departing from the tier states one ($AGENT_SPEC)."
+    fail=1
+  fi
 
   # Each site that dispatches with the Agent tool must say which definition, checked per command
   # rather than in total.
