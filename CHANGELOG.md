@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-08-22
+
+### Changed
+
+- **A subagent definition's `model` is now a tier the spec decides, and the two definitions that reshape text run on the cheap one.** `mycommand-doc-auditor` already pinned `sonnet`, but the reason lived only in that one bullet, so the next definition's model was a fresh judgement call every time and `mycommand-finisher` sat on `inherit` while doing work of exactly the same shape. `docs/specs/subagent-definitions.md` now states the rule where a command author meets it — work that produces a commit takes the strong tier, work that judges someone else's output takes the strong tier, work that reshapes text under a rule takes the cheap tier — and carries a table resolving each definition's tier per runtime. `mycommand-finisher` moves to `sonnet` under it: it applies `/clean`'s already-written comment rule and writes a description from what is on the branch, so its commit is that reshaping rather than the work. `mycommand-delegate`, `mycommand-reviewer`, and `mycommand-griller` are untouched on `inherit`, which is how the strong tier is spelled on Claude Code — the parent session already runs opus, and inheriting keeps following it. The table is the single source of truth rather than a description of the files beside it, because Claude frontmatter `model:` holds exactly one value and Codex reads `agents/` not at all: a per-runtime file or a generated pair would emit a definition no runtime loads, so the table records the Codex resolution (`gpt-5.6-sol` strong, `gpt-5.6-luna` cheap) for a surface Codex does not yet have, and installs nothing there. Invariant 24 asserts each definition's frontmatter matches its table row in both directions, so the table cannot drift from the files. One definition still serves both `/docs` and `/truncate`: `/docs` takes the declared default because its audit is inventory against source, and `/truncate` overrides up to the strong tier at its own dispatch site because judging whether a claim survived a rewrite is not inventory — the same invariant now requires that override to be present at one site and absent at the other, so a later edit cannot quietly collapse them. `commands/` was regenerated rather than hand-edited.
+
 ## 2026-08-21
 
 ### Changed

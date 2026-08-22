@@ -64,7 +64,10 @@ units into **CHECK** / **MISSING** / **OBSOLETE**. ADRs, process specs, and inde
 pages are CHECK-only: never missing or auto-pruned.
 
 The refresh pass audits each doc independently in a fresh subagent, in parallel
-batches of about four. Git and frontmatter dates only rank suspicion. The audit
+batches of about four, each on the cheap tier the `mycommand-doc-auditor`
+definition declares — this audit is inventory against source, and only
+[truncate](truncate.md), which shares the definition, overrides it. Git and
+frontmatter dates only rank suspicion. The audit
 classifies checkable claims—flags, defaults, paths, exit codes, behavior—as
 matching, drifted, or wrong with `old → current`, then checks `neighbors` and
 `backlinks`. Stale docs are updated; suspected code regressions are flagged

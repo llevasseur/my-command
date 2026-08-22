@@ -91,6 +91,8 @@ This is a step of the workflow, not a habit to recall. Run it whenever a phase o
 
 **Dispatch each doc's evaluation to its own fresh subagent** via the `Agent` tool, with **`subagent_type: "mycommand-doc-auditor"`**, in parallel batches of about four. Each evaluation means reading a doc in full, and that is context this session does not need to keep — only the proposed edit is. That definition already carries the claim inventory, the every-claim-survives rule, and the propose-don't-edit boundary, so give each subagent this run's specifics alone: the bundle dir, the concept id, and the density rules below. Keep only the findings here.
 
+**Override the model at this dispatch: pass `model: "opus"` on every one of these `Agent` calls.** The definition declares the cheap tier because `/my-command:docs` dispatches it to inventory claims against source, and one file serves both sites. This site is the other shape: rewriting for density under a bar that every claim survives, where deciding whether a claim survived is judgement rather than inventory. The `Agent` tool's `model` parameter takes precedence over frontmatter, so the difference belongs here rather than in a second near-duplicate definition; the tier rule and the table it resolves against are in `docs/specs/subagent-definitions.md`.
+
 Every evaluation starts by taking a **claim inventory** — the list of things the doc asserts that a reader could act on or be wrong about:
 
 - command names, flags, and their short forms
