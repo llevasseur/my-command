@@ -231,6 +231,10 @@ It asks how you want them installed:
    `CODEX_SKILLS_DIR` to override the destination, or set `CODEX_HOME` to use
    `<CODEX_HOME>/skills`; either way the skills are also placed in
    `~/.agents/skills`, because opencode reads that path and nowhere else.
+4. **opencode commands** — bare slash commands (`/task`) written device-wide
+   into `~/.config/opencode/command/<name>.md`, so every checkout has them.
+   `XDG_CONFIG_HOME` moves that directory, and `OPENCODE_COMMAND_DIR` overrides
+   it outright.
 
 The repository also ships `.codex-plugin/plugin.json`, so supported Codex
 surfaces can install the complete skill bundle as a plugin.
@@ -243,16 +247,34 @@ device, a named dispatch silently falls back. See
 [Subagent definitions](./docs/specs/subagent-definitions.md). The Codex choice
 places none — Codex has no subagent mechanism.
 
-**Choice 3 is the opencode install.** opencode discovers skills from
-`~/.agents/skills` and `~/.claude/skills` for every model it drives, not only
-the Anthropic ones — so the skill folders that choice copies are already what a
-GPT or Gemini session under opencode reads, invoked as skills rather than slash
-commands. Pick it whenever you want opencode updated. If `CODEX_SKILLS_DIR` or
-`CODEX_HOME` sends that install elsewhere, each `SKILL.md` is also copied into
-`~/.agents/skills/<name>/` so opencode still finds it; a skill directory that is
-already a symlink into a checkout — what `scripts/install-codex-personal.sh`
-leaves — is left alone rather than written through. The Claude choices install
-commands and never touch that directory.
+**Choice 3 gives opencode the skills; choice 4 gives it the slash commands.**
+opencode discovers skills from `~/.agents/skills` and `~/.claude/skills` for
+every model it drives, not only the Anthropic ones — so the skill folders choice
+3 copies are already what a GPT or Gemini session under opencode reads. If
+`CODEX_SKILLS_DIR` or `CODEX_HOME` sends that install elsewhere, each `SKILL.md`
+is also copied into `~/.agents/skills/<name>/` so opencode still finds it; a
+skill directory that is already a symlink into a checkout — what
+`scripts/install-codex-personal.sh` leaves — is left alone rather than written
+through. The Claude choices install commands and never touch that directory.
+
+opencode reads slash commands from somewhere it reads no skill from, so a skill
+on the device answers to no `/name`. Choice 4 writes one command file per
+workflow, each handing its request to the skill of the same name:
+
+```md
+---
+description: "Take a plain-language task from criteria through implementation, …"
+---
+
+Use the "task" skill for this request: $ARGUMENTS
+```
+
+A file, not a copy of the Claude prose: the skill is the opencode-native form of
+the workflow, and a second body would be a second thing to keep in step. Because
+a command is inert without its skill, choice 4 also installs any skill missing
+from `~/.agents/skills` — only the missing ones, so a skill you declined to
+overwrite on choice 3 stays as you left it. Choice 3 is still the option that
+updates the skills themselves.
 
 Every choice also installs the **command toolkit** — a zero-dependency Node CLI
 the commands and skills call for deterministic git/gh plumbing. It lands under
