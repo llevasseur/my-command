@@ -777,9 +777,7 @@ if ! grep -Fq 'if (codexSkillsDir() !== agentsSkillsDir()) reportOpencodeSkills(
   fail=1
 fi
 
-# And it stays guarded. An unconditional call on a Claude path installs skills from an option
-# that says it installs commands, and makes the next skills run prompt over its own files.
-# Anchored at the statement start, so the guarded call above does not count.
+# And it stays guarded. Anchored at the statement start, so the guarded call above does not count.
 unguarded="$(grep -cE '^ *reportOpencodeSkills\(installOpencodeSkills\(\)\);$' src/my-command.ts || true)"
 if [ "$unguarded" -ne 0 ]; then
   echo "::error::src/my-command.ts calls reportOpencodeSkills(installOpencodeSkills()) unguarded in $unguarded place(s); the skills belong to the skills choice, which already writes ~/.agents/skills by default."
@@ -800,8 +798,8 @@ if ! grep -q "agentsSkillsDir = () => join(homedir(), '.agents', 'skills')" src/
   fail=1
 fi
 
-# The menu names the surfaces that choice serves. It was labelled "Codex Skills" while already
-# writing the directory opencode reads, which is why the support looked missing.
+# The menu names the surfaces that choice serves. Labelled "Codex Skills" while already writing
+# the directory opencode reads, the support looked missing.
 if ! grep -q '3) Skills .*Codex and opencode' src/my-command.ts; then
   echo "::error::src/my-command.ts no longer labels choice 3 for both Codex and opencode; the option that installs opencode's skills must say so in the menu."
   fail=1
