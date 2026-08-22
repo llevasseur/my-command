@@ -241,6 +241,16 @@ device, a named dispatch silently falls back. See
 [Subagent definitions](./docs/specs/subagent-definitions.md). The Codex choice
 places none — Codex has no subagent mechanism.
 
+Both Claude choices also copy each `skills/<name>/SKILL.md` into
+`~/.agents/skills/<name>/`, which is where **opencode** discovers skills — for
+every model it drives, not only the Anthropic ones. So the same workflows are
+available to a GPT or Gemini session under opencode, invoked as skills rather
+than slash commands. The destination is fixed, because opencode reads that path
+and `~/.claude/skills` and nowhere else; `CODEX_SKILLS_DIR` and `CODEX_HOME`
+move the Codex install without moving this copy. A skill directory that is
+already a symlink into a checkout — what `scripts/install-codex-personal.sh`
+leaves — is left alone rather than written through.
+
 Every choice also installs the **command toolkit** — a zero-dependency Node CLI
 the commands and skills call for deterministic git/gh plumbing. It lands under
 `~/.claude/my-command/` for Claude or `${CODEX_HOME:-~/.codex}/my-command/` for

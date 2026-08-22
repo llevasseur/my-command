@@ -250,10 +250,15 @@ async function installFiles({ items, dest, itemLabel, targetPath, install, summa
   console.log(items.map((c) => `  ${display(c)}`).join('\n'));
 }
 
+// The user-scoped skills directory opencode reads, and the modern Codex default. Fixed
+// rather than env-overridable: opencode looks here (and in ~/.claude/skills) and nowhere
+// else, so a copy pointed anywhere else installs nothing it can find.
+const agentsSkillsDir = () => join(homedir(), '.agents', 'skills');
+
 function codexSkillsDir() {
   if (process.env.CODEX_SKILLS_DIR) return process.env.CODEX_SKILLS_DIR;
   if (process.env.CODEX_HOME) return join(process.env.CODEX_HOME, 'skills');
-  return join(homedir(), '.agents', 'skills');
+  return agentsSkillsDir();
 }
 
 async function installPersonal() {
@@ -284,6 +289,51 @@ async function installCodexSkills() {
     summary: 'They run as Codex skills (type `$` to invoke them):',
     display: (command) => `$${command}`,
   });
+}
+
+interface OpencodeResult {
+  installed: boolean;
+  /** Where the skills landed. */
+  dest: string;
+  copied?: number;
+  /** At least one skill directory is a symlink into a checkout, so it was left alone. */
+  symlinked?: boolean;
+  reason?: string;
+}
+
+// The Codex skill translations, placed where opencode discovers them. opencode reads
+// `~/.agents/skills` and `~/.claude/skills` for EVERY model it drives, not only the
+// Anthropic ones, so this one copy is what gives a GPT or Gemini session under opencode the
+// same workflows a Claude session gets. Run on both Claude choices, like the toolkit, the
+// gates and the definitions — installing Claude commands says nothing about which model the
+// user then points at them.
+//
+// COPIED rather than symlinked, like installHooks() and installAgents() — npx runs from an
+// ephemeral cache directory cleaned up after the wizard exits, so a link into it would dangle.
+function installOpencodeSkills(dest = agentsSkillsDir()): OpencodeResult {
+  const base: OpencodeResult = { installed: false, dest };
+  if (!existsSync(SKILLS_DIR) || skills.length === 0) return { ...base, reason: `no skills in ${SKILLS_DIR}` };
+
+  try {
+    let copied = 0;
+    let symlinked = 0;
+    mkdirSync(dest, { recursive: true });
+    for (const skill of skills) {
+      const skillDir = join(dest, skill);
+      // scripts/install-codex-personal.sh links each skill directory back into its clone;
+      // writing through that link would edit the user's checkout.
+      if (lstatSync(skillDir, { throwIfNoEntry: false })?.isSymbolicLink()) {
+        symlinked++;
+        continue;
+      }
+      mkdirSync(skillDir, { recursive: true });
+      copyFileSync(join(SKILLS_DIR, skill, 'SKILL.md'), join(skillDir, 'SKILL.md'));
+      copied++;
+    }
+    return { ...base, installed: true, copied, symlinked: symlinked > 0 };
+  } catch (err) {
+    return { ...base, reason: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 interface AgentsResult {
@@ -573,6 +623,19 @@ function reportAgents(result: AgentsResult) {
   }
 }
 
+function reportOpencodeSkills(result: OpencodeResult) {
+  if (result.installed) {
+    console.log(`\nWorkflows installed for opencode: ${result.dest}`);
+    console.log(`Copied ${result.copied} skill(s)${result.symlinked ? ', left existing symlinks alone' : ''}.`);
+    console.log('opencode reads this directory for every model it drives, so the same workflows run');
+    console.log('under a GPT or Gemini session there, invoked as skills rather than slash commands.');
+  } else {
+    // Not fatal: the Claude install is complete either way, and only opencode loses the workflows.
+    console.log(`\nWorkflows not installed for opencode (${result.reason}).`);
+    console.log('Claude reaches them as normal; an opencode session simply will not find them.');
+  }
+}
+
 function reportHooks(result: HooksResult) {
   if (result.installed) {
     if (result.symlinked) {
@@ -613,17 +676,23 @@ async function main() {
     await installPlugin();
     reportToolkit(installToolkit());
     reportAgents(installAgents());
+    reportOpencodeSkills(installOpencodeSkills());
     reportConceptStore();
     reportHooks(await installHooks());
   } else if (choice === '2') {
     await installPersonal();
     reportToolkit(installToolkit());
     reportAgents(installAgents());
+    reportOpencodeSkills(installOpencodeSkills());
     reportConceptStore();
     reportHooks(await installHooks());
   } else if (choice === '3') {
     await installCodexSkills();
     reportToolkit(installToolkit(deviceRoot('codex')));
+    // Only when this choice sent the skills somewhere else. On the default destination
+    // installCodexSkills() has already written this exact directory, asking before it
+    // overwrote anything — copying over that answer would undo the one the user gave.
+    if (codexSkillsDir() !== agentsSkillsDir()) reportOpencodeSkills(installOpencodeSkills());
     reportConceptStore();
     // No gates on the Codex path, deliberately. Codex's hook engine is a different
     // mechanism end to end: opt-in behind a `[features]` flag in ~/.codex/config.toml,
@@ -649,4 +718,13 @@ if (invokedDirectly) {
   });
 }
 
-export { checkboxPrompt, installAgents, installCodexSkills, installHooks, installPersonal, installToolkit, linkOnPath };
+export {
+  checkboxPrompt,
+  installAgents,
+  installCodexSkills,
+  installHooks,
+  installOpencodeSkills,
+  installPersonal,
+  installToolkit,
+  linkOnPath,
+};
