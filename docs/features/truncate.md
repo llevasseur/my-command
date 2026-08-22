@@ -77,7 +77,11 @@ by default, all docs with `--all`, or exactly the explicit scope. Generated
 indexes are excluded; an empty queue is a reported clean result.
 
 Each doc is evaluated in a fresh subagent, in parallel batches of about four, so
-only its proposed edit returns to the main context. Evaluation starts with a
+only its proposed edit returns to the main context. Those subagents run on the
+strong tier, overriding the cheap default the shared `mycommand-doc-auditor`
+definition declares for [docs](docs.md)'s audit — judging whether a claim survived
+a rewrite is not the same work as inventorying claims against source. Evaluation
+starts with a
 claim inventory: commands, flags, defaults, exit codes, paths, environment
 variables, behavior, ordering, guardrails, links, and the force of an
 instruction (must, should, or may).

@@ -95,7 +95,10 @@ in the report rather than fixed, so the diff stays the task's.
 
 Delegation is opt-in. Step 3 runs `/clean` then `/pr` inline in the calling session unless
 `--sub` is given, in which case both go to **one** fresh subagent — never one each, so
-`/pr`'s description picks up whatever `/clean` touched without a second handoff. The
+`/pr`'s description picks up whatever `/clean` touched without a second handoff. That
+subagent runs on the cheap tier: it reshapes comments under a rule `/clean` already
+states and writes a description from what is on the branch, rather than deciding any of
+the work itself. The
 commands, their order, and teardown are identical in both modes; only the execution locus
 moves, and a Step 0 added command scheduled at that point runs wherever the pair does —
 its own prompt, not this command, decides the order. `--sub` buys a fresh

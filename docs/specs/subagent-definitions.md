@@ -3,7 +3,7 @@ type: spec
 title: Subagent definitions
 description: The five agent definitions in agents/, one per shape of delegation, that every dispatch site names by subagent_type — so a delegate's role is stated once in a file rather than restated in each dispatch prompt.
 tags: [process, commands, agents, install]
-timestamp: 2026-08-16
+timestamp: 2026-08-22
 ---
 
 # Subagent definitions
@@ -58,9 +58,72 @@ are decisions rather than boilerplate:
   of advisory. `mycommand-griller` and `mycommand-doc-auditor` are read-only for
   the same reason. `mycommand-delegate` takes `"*"`, because it runs a whole
   workflow command whose own file decides what it needs.
-- **`model: inherit`** everywhere except `mycommand-doc-auditor`, which pins
-  `sonnet` because it is dispatched **one per doc in parallel batches** and its
-  work is inventory against source rather than judgement about it.
+- **`model` is a tier, not a model name.** Two tiers exist — **strong** and
+  **cheap** — and which one a definition takes follows from the shape of its work.
+  The tier is the decision; the model name is what a runtime resolves it to. See
+  [Which tier a definition takes](#which-tier-a-definition-takes) below.
+
+## Which tier a definition takes
+
+Three rules decide it, and they are about the work rather than the command:
+
+- **Work that produces a commit takes the strong tier.** The code is the
+  deliverable, and everything downstream is built on it.
+- **Work that judges someone else's output takes the strong tier.** A review, a
+  grill, and a claim-survival check are each worth exactly what the judgement
+  behind them is worth.
+- **Work that reshapes text under a rule takes the cheap tier.** The rule is
+  already written; applying it is inventory rather than judgement.
+
+Applied to the five shapes: `mycommand-delegate` writes the implementation and
+`mycommand-reviewer` and `mycommand-griller` judge, so all three take strong.
+`mycommand-doc-auditor` inventories claims against source, and `mycommand-finisher`
+reshapes comments under `/clean`'s already-written rule and writes a description
+from what is on the branch — its commit is that reshaping, not the work — so both
+take cheap.
+
+## The tier table
+
+Claude Code's agent frontmatter `model:` holds **exactly one value**, and Codex
+reads `agents/` not at all — it has no subagent mechanism to read them with. A
+per-runtime file or a generated pair would therefore emit a Codex definition that
+no runtime loads: a second thing to keep in sync with zero consumers. So the tier
+is the single source of truth, stated once per definition in this table, and each
+runtime resolves it:
+
+| Definition | Tier | `model:` | Claude Code | Codex |
+|---|---|---|---|---|
+| `mycommand-delegate` | strong | `inherit` | opus | `gpt-5.6-sol` |
+| `mycommand-reviewer` | strong | `inherit` | opus | `gpt-5.6-sol` |
+| `mycommand-griller` | strong | `inherit` | opus | `gpt-5.6-sol` |
+| `mycommand-finisher` | cheap | `sonnet` | sonnet | `gpt-5.6-luna` |
+| `mycommand-doc-auditor` | cheap | `sonnet` | sonnet | `gpt-5.6-luna` |
+
+The `model:` column is what the frontmatter carries, and **invariant 24 asserts
+the two match** — so the table is load-bearing rather than a description of the
+files beside it. `inherit` is how the strong tier is spelled on Claude Code: the
+parent session already runs opus, so inheriting it costs no declaration and keeps
+following the session if that changes.
+
+The Codex column is a mapping, not an install target. `gpt-5.6-sol` and
+`gpt-5.6-luna` are the slugs the Codex CLI actually selects (`~/.codex/config.toml`
+`model =`); sol is the frontier model and luna the lighter one. Nothing writes
+them anywhere today, because Codex has no subagent surface — the column is what a
+Codex-side dispatch would resolve the tier to, and what to write if it grows one.
+
+## Overriding a tier at the dispatch site
+
+A definition is written per **shape of delegation**, so one file can serve two
+sites whose work sits in different tiers. The `Agent` tool's `model` parameter
+takes precedence over frontmatter, which is where that difference belongs — never
+a second near-duplicate definition.
+
+`mycommand-doc-auditor` is the case. `/docs` inventories each doc's claims against
+the code, which is the cheap tier the definition declares, so its dispatch names
+no model. `/truncate` rewrites each doc for density under a bar that every claim
+survives, and deciding whether a claim survived a rewrite is judgement — so it
+overrides up to the strong tier at `src/commands/truncate.md`. Both sites read the
+same file; only the one that departs from the tier says so.
 
 ## Where they are installed
 
