@@ -29,7 +29,7 @@ function scratchDest() {
   return dest;
 }
 
-/** The `description:` from a skill's own frontmatter, to compare the command file against. */
+/** The `description:` from a skill's own frontmatter. */
 function shippedDescription(name) {
   const text = readFileSync(join(SKILLS_SRC, name, 'SKILL.md'), 'utf8');
   return /^description:[ \t]*(.+)$/m.exec(text)[1].trim();

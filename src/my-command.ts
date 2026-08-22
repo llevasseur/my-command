@@ -263,7 +263,7 @@ function codexSkillsDir() {
 
 // The device-wide directory opencode reads slash commands from. A checkout can carry its own
 // in `<repo>/.opencode/command`; this is the global counterpart, so one install covers every
-// checkout. XDG_CONFIG_HOME moves ~/.config, and opencode follows it there.
+// checkout.
 const opencodeCommandDir = () =>
   process.env.OPENCODE_COMMAND_DIR ||
   join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'opencode', 'command');
@@ -279,9 +279,8 @@ function skillDescription(name: string): string {
   }
 }
 
-// One command file, handing the request to the skill of the same name. A shim rather than a
-// copy of src/commands/<name>.md on purpose: the skill is the opencode-native form of the
-// workflow, and a second copy of the prose here would be a second body to keep in step.
+// One command file, handing the request to the skill of the same name — not a copy of
+// src/commands/<name>.md, which would be a second body of the same prose to keep in step.
 // JSON.stringify quotes the description, so one carrying a colon stays valid YAML.
 function opencodeCommandBody(name: string): string {
   const description = skillDescription(name);
@@ -319,10 +318,8 @@ async function installCodexSkills() {
   });
 }
 
-// The slash commands an opencode session invokes as /task, written device-wide so every
-// checkout has them. opencode reads skills and commands from separate places: a skill in
-// ~/.agents/skills is loadable but has no `/name`, which is why installing the skills alone
-// left a user typing /task and getting nothing.
+// The slash commands an opencode session invokes as /task, written device-wide. opencode reads
+// skills and commands from separate places: a skill in ~/.agents/skills answers to no `/name`.
 async function installOpencodeCommands(dest = opencodeCommandDir()) {
   await installFiles({
     items: skills,
@@ -368,8 +365,7 @@ function installOpencodeSkills(dest = agentsSkillsDir(), { skipExisting = false 
         symlinked++;
         continue;
       }
-      // The opencode-commands choice backfills only what is absent, so a skill the user
-      // declined to overwrite on the skills choice is not overwritten behind that answer.
+      // Backfilling only what is absent leaves a skill declined on the skills choice as it is.
       if (skipExisting && existsSync(join(skillDir, 'SKILL.md'))) continue;
       mkdirSync(skillDir, { recursive: true });
       copyFileSync(join(SKILLS_DIR, skill, 'SKILL.md'), join(skillDir, 'SKILL.md'));
@@ -681,9 +677,8 @@ function reportOpencodeSkills(result: OpencodeResult) {
   }
 }
 
-// The backfill the opencode-commands choice runs. Its own report, because the copy has a
-// different reason here: not a redirected Codex install, but command files that hand off to
-// skills by name and load into nothing without them.
+// The backfill's own report: the copy here is not a redirected Codex install, but command
+// files that hand off to skills by name and load into nothing without them.
 function reportOpencodeCommandSkills(result: OpencodeResult) {
   if (!result.installed) {
     console.log(`\nSkills not installed for opencode (${result.reason}).`);
@@ -764,8 +759,8 @@ async function main() {
     // Codex-native port is its own piece of work.
   } else if (choice === '4') {
     await installOpencodeCommands();
-    // Unguarded, unlike the skills choice's call, and safe for the same reason it is needed:
-    // a command file is inert without its skill, and skipExisting writes only what is absent.
+    // Unguarded, unlike the skills choice's call: a command is inert without its skill, and
+    // skipExisting writes only the absent ones.
     reportOpencodeCommandSkills(installOpencodeSkills(agentsSkillsDir(), { skipExisting: true }));
     reportToolkit(installToolkit());
     reportConceptStore();
