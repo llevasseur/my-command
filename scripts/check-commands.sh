@@ -278,6 +278,25 @@ if [ -f src/hooks/settings-fragment.json ]; then
       fi
     done
 
+    # A gate aimed at a tool the matcher does not name is a file nobody executes. The
+    # closing-turn anchor gate shipped against `TodoWrite` while the matcher listed only the
+    # read and editor tools, so it never fired once — the same failure as an unregistered
+    # event, and invisible in exactly the same way.
+    missing_matcher=$(node -e '
+      const f = JSON.parse(require("node:fs").readFileSync("src/hooks/settings-fragment.json", "utf8"));
+      const matchers = (f.hooks?.PreToolUse ?? []).map((e) => String(e.matcher ?? "")).join("|");
+      const named = new Set(matchers.split("|").filter(Boolean));
+      const wanted = [
+        "Read", "Grep", "Glob", "Bash", "Edit", "Write", "NotebookEdit", "MultiEdit",
+        "TodoWrite", "TaskCreate", "EnterWorktree",
+      ];
+      console.log(wanted.filter((tool) => !named.has(tool)).join(" "));
+    ')
+    if [ -n "$missing_matcher" ]; then
+      echo "::error::src/hooks/settings-fragment.json PreToolUse matcher does not name: $missing_matcher — a gate judging one of those tools would never be invoked."
+      fail=1
+    fi
+
     # An unallowlisted store hook still runs, at one approval round-trip per call. Nothing else
     # catches that: the event loop above and hooks-status.mjs both read only `hooks`.
     missing_allow=$(node -e '
