@@ -22,7 +22,10 @@ possible.
    `my-command-tools stash restore 2`, valid through slot 4. The verb detects the
    clipboard sink itself, so there is nothing to substitute per platform. If the
    slot holds nothing it says so and leaves the clipboard alone: repeat that
-   plainly and write nothing rather than copying an empty clipboard. Then stop.
+   plainly and write nothing rather than copying an empty clipboard — that run has
+   no slot to name, because the verb reported a failure instead of an entry. A
+   restore that succeeded names the slot it read; carry that number into the
+   report. Then stop.
 2. **Compose.** The first argument token names the target skill (`$name` or a bare
    name); the rest is the prompt. Rewrite it to stand alone for an agent that
    cannot see this conversation — resolve pronouns, name files, branches, and PR
@@ -68,8 +71,14 @@ possible.
    platform-detected, and the verb does that itself — `pbcopy`, `wl-copy`,
    `xclip -selection clipboard`, `clip.exe`. With no clipboard sink the stash is
    written anyway: print the composed line and say why.
-4. **Report.** `Done!`, then at most one short line naming the direction taken.
-   Nothing else.
+4. **Report.** `Done!` followed by the slot the copy is in — `Done! 0` — then at
+   most one short line naming the direction taken. Nothing else. The slot is what
+   reaches that copy again without recomposing it: `--again 0` puts the newest
+   entry back, and every later copy shifts it one slot older. Take the number from
+   the verb's own report — a compose names the slot it wrote, a restore the slot it
+   read — never from a guess. The one reply that carries no slot is a restore
+   against an empty slot: nothing was copied, so there is no entry to name and the
+   reply is that failure alone.
 
 The stash is plain text under `~/.claude` only — never markdown, a doc artifact,
 or anything inside the repository. The ring is five deep: `cp-last.txt` plus

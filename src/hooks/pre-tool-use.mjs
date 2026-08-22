@@ -17,6 +17,13 @@
 //   diff again        — a per-path diff after `scope --diff` already returned that content
 //   read-polling      — a *repeat* `Read` of an unchanged file a watch is already following
 //   trailing anchor   — a bookkeeping call scheduled after the run's last real work
+//   closing turn as a task — a `TaskCreate` scheduling the run's own final message
+//   grep --include    — a bare glob handed to grep, where `rg -g` takes it quoted
+//   shell-composed file — `cat`/`printf` redirected into a file the Write tool writes
+//   worktree program  — a loop or function body sent from inside an isolated worktree
+//   entering at a root — the one cwd where `EnterWorktree` is refused outright
+//   unreadable whole file — a `Read` whose file cannot fit the tool's own token cap
+//   grep over a bundle — a sweep of an OKF bundle `okq` queries directly
 //
 // A scratch write under `$CLAUDE_JOB_DIR` from a worktree is deliberately *not* here: see
 // "The job directory is not a gate" in the spec. Neither is an `Edit`/`Write` of a path this
@@ -25,18 +32,21 @@
 //
 // They share a hook because they decide from the same transcript; parsing it more than once
 // would let the answers disagree.
-import { existsSync, statSync } from 'node:fs';
-import { basename, isAbsolute, resolve } from 'node:path';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { basename, isAbsolute, join, resolve, sep } from 'node:path';
 import {
   dumpedFiles,
   foregroundSleep,
+  grepIncludeGlob,
   handRolledCleanup,
-  heredocWrite,
   inlineScriptJson,
   perPathDiff,
   ranToolkit,
+  shellComposedWrite,
+  shellProgram,
   stdinProseFlag,
   unmatchedGlob,
+  withoutStraySeparator,
 } from './lib/bash-shapes.mjs';
 import { deny, guard, readEvent } from './lib/io.mjs';
 import { isReadOnly } from './lib/read-only.mjs';
@@ -52,7 +62,6 @@ import {
   touched,
   turns,
   watchedOutputs,
-  watchedPaths,
 } from './lib/transcript.mjs';
 
 /**
@@ -68,28 +77,43 @@ const MAX_SERIAL_TURNS = 3;
  */
 const CHANGED_GRACE_MS = 2000;
 
+/** How many lines of a candidate `index.md` are read looking for the OKF marker. */
+const FRONTMATTER_LINES = 12;
+
+/** How a run's own closing message reads once it has been written down as something to do. */
+const CLOSING_TURN = /close the run|text-only turn|text only turn|zero tool calls|final report as a message/i;
+
+/**
+ * Bytes above which a whole-file `Read` cannot come back. The tool's cap is 25,000 **tokens**,
+ * which a hook cannot measure without a tokenizer — so this is a bound rather than a certainty,
+ * set where the bound is safe: a file this size fits the cap only by averaging more than 3.6 bytes
+ * per token, which nothing but plain ASCII prose reaches, and a read that close to the ceiling is
+ * one edit away from failing anyway. Every recorded refusal was well past it.
+ */
+const UNREADABLE_BYTES = 90_000;
+
 guard(() => {
   const event = readEvent();
   if (!event) return;
-  const name = event.tool_name;
-  const input = event.tool_input ?? {};
-  const session = String(event.session_id ?? '');
+  const name = event.toolName;
+  const input = event.input;
+  const session = event.sessionId;
 
   const readOnly = isReadOnly(name, input);
   // Every gate except the Bash shape checks decides from this session's history, and a
   // subagent's call arrives carrying the parent's transcript. Someone else's turns are not
   // evidence about this run, so those gates stay silent.
-  const foreign = foreignTranscript(event.transcript_path ?? '');
+  const foreign = foreignTranscript(event.transcriptPath);
 
   if (name === 'Bash') {
     // Cheapest gates first, and the only ones that need no transcript: a command whose own
     // shape makes it fail is going to fail whatever the session did before it.
-    if (badShape(event, input, session)) return;
+    if (deniedByCommandAlone(event, session)) return;
     if (foreign) return;
     // These need the transcript but not read-only status: a dumper like `sed` is not
     // classified read-only, and dumping a file already in context is the shape regardless.
-    const line = timeline(entries(event.transcript_path ?? ''));
-    if (staleProbe(event, input, line, session, readOnly)) return;
+    const line = timeline(entries(event.transcriptPath));
+    if (staleProbe(event, line, session, readOnly)) return;
     if (!readOnly) {
       clearGate(session, 'serial');
       return;
@@ -101,15 +125,26 @@ guard(() => {
   if (!readOnly) {
     // A real action ends the discovery run, so the gate is armed again for the next one.
     clearGate(session, 'serial');
-    if (name === 'TodoWrite' && !foreign) trailingAnchor(event, input, session);
+    // Both of these read the call's own input and the filesystem, so neither needs the
+    // transcript and neither is stood down by a foreign one.
+    if (name === 'EnterWorktree') {
+      enteringFromRepoRoot(event, session);
+      return;
+    }
+    if (name === 'TaskCreate') {
+      closingTurnAsTask(event, session);
+      return;
+    }
+    if (name === 'TodoWrite' && !foreign) trailingAnchor(event, session);
     return;
   }
 
+  // Decided from the file's own size, so it holds inside a subagent exactly as outside one.
+  if (name === 'Read' && unreadableWholeFile(event, session)) return;
   if (foreign) return;
-  const line = timeline(entries(event.transcript_path ?? ''));
-  const cwd = typeof event.cwd === 'string' ? event.cwd : process.cwd();
-  if (name === 'Read' && readPolling(input, line, session, cwd)) return;
-  if (name === 'Read' && redundantRead(input, line, session)) return;
+  const line = timeline(entries(event.transcriptPath));
+  if (name === 'Read' && readPolling(event, line, session)) return;
+  if (name === 'Read' && redundantRead(event, line, session)) return;
   serialDiscovery(name, input, line, session);
 });
 
@@ -125,18 +160,18 @@ guard(() => {
  * Only the watch's own output target counts — the file it redirects to, `tee`s to, or tails —
  * compared as a whole resolved path. A read of the script a watch runs, or of the config it was
  * handed, is discovery rather than polling however many times it happens.
- * @param {Record<string, any>} input
+ * @param {import('./lib/io.mjs').HookEvent} event
  * @param {(import('./lib/transcript.mjs').Turn | null)[]} line @param {string} session
- * @param {string} cwd
  * @returns {boolean} true when the call was denied
  */
-function readPolling(input, line, session, cwd) {
-  const path = input?.file_path;
-  if (typeof path !== 'string') return false;
+function readPolling(event, line, session) {
+  const path = event.filePath;
+  if (path === undefined) return false;
+  const cwd = event.cwd;
 
   const all = turns(line);
   const current = all[all.length - 1];
-  const currentUuid = current && issued(current, 'Read', input) ? current.uuid : undefined;
+  const currentUuid = current && issued(current, 'Read', event.input) ? current.uuid : undefined;
   const target = isAbsolute(path) ? path : resolve(cwd, path);
   const watched = watchedOutputs(line, currentUuid).find(
     (file) => (isAbsolute(file) ? file : resolve(cwd, file)) === target,
@@ -179,11 +214,11 @@ function readPolling(input, line, session, cwd) {
  * delete and reports `already-absent` as an outcome, and it deletes a squash-merged branch on
  * the PR's evidence. The one refusal it keeps is the one that means something: a branch with no
  * merged PR, whose commits exist nowhere else. So this redirects rather than weakens.
- * @param {Record<string, any>} input @param {string} session
+ * @param {string} command @param {string} session
  * @returns {boolean} true when the call was denied
  */
-function handRolledBranchCleanup(input, session) {
-  const found = handRolledCleanup(String(input?.command ?? ''));
+function handRolledBranchCleanup(command, session) {
+  const found = handRolledCleanup(command);
   if (!found) return false;
   if (alreadyDenied(session, 'cleanup', found.branch)) return false;
 
@@ -224,7 +259,7 @@ function handRolledBranchCleanup(input, session) {
  * @returns {string}
  */
 function verifyWaitOffer(watched) {
-  const verdict = /\.verdict$/.test(watched) ? watched : '';
+  const verdict = watched.endsWith('.verdict') ? watched : '';
   return (
     `You are waiting, not discovering, so ask for the wait rather than for the file. If this is ` +
     `the repo's verification, there is now one call that *is* the wait:\n` +
@@ -242,7 +277,7 @@ function verifyWaitOffer(watched) {
 
 /**
  * How a refusal names the watch it is refusing against. Only a **live** watch reaches either
- * of these gates — `watchedPaths`/`watchedOutputs` drop one whose completion notice has already
+ * of these gates — `watchedOutputs` drops one whose completion notice has already
  * arrived — so the state is stated outright rather than left for the caller to guess at. Not
  * saying it is what the recorded sessions did next: three duplicate-watch refusals in one run,
  * then a fall back to reading the file by hand, because nothing said whether waiting would
@@ -264,10 +299,10 @@ function liveness(watched) {
  * report was composed, and this bookkeeping call was attached to it, so the harness recorded
  * a decision mid-run instead of an outcome. The scheduling is the thing to remove, so it is
  * refused here, before the turn exists.
- * @param {Record<string, any>} event @param {Record<string, any>} input @param {string} session
+ * @param {import('./lib/io.mjs').HookEvent} event @param {string} session
  */
-function trailingAnchor(event, input, session) {
-  const todos = input?.todos;
+function trailingAnchor(event, session) {
+  const todos = event.input.todos;
   if (!Array.isArray(todos) || todos.length === 0) return;
 
   const anchors = todos.filter((t) => /close the run|text-only turn/i.test(String(t?.content ?? t?.subject ?? '')));
@@ -277,12 +312,12 @@ function trailingAnchor(event, input, session) {
   if (!anchors.every((t) => t?.status === 'completed')) return;
   if (!todos.every((t) => t?.status === 'completed')) return;
 
-  const line = timeline(entries(event.transcript_path ?? ''));
+  const line = timeline(entries(event.transcriptPath));
   const all = turns(line);
   const current = all[all.length - 1];
   // A bookkeeping call riding along with real work is the prescribed form; only a call that
   // is the turn's whole content is the shape that ends a run.
-  if (current && issued(current, 'TodoWrite', input) && current.toolUses.length > 1) return;
+  if (current && issued(current, 'TodoWrite', event.input) && current.toolUses.length > 1) return;
   if (alreadyDenied(session, 'anchor', 'closing')) return;
 
   deny(
@@ -301,25 +336,36 @@ function trailingAnchor(event, input, session) {
 /**
  * The Bash gates that need only the command and the cwd. Ordered cheapest first; each one
  * refuses a command that either cannot run or is refused before it runs.
- * @param {Record<string, any>} event @param {Record<string, any>} input @param {string} session
+ * @param {import('./lib/io.mjs').HookEvent} event @param {string} session
  * @returns {boolean} true when the call was denied
  */
-function badShape(event, input, session) {
-  const command = input?.command;
-  if (typeof command !== 'string') return false;
-  const cwd = typeof event.cwd === 'string' ? event.cwd : process.cwd();
+function deniedByCommandAlone(event, session) {
+  const command = event.command;
+  if (command === undefined) return false;
+  const cwd = event.cwd;
 
-  if (relativeCd(event, input)) return true;
-  if (handRolledBranchCleanup(input, session)) return true;
+  if (relativeCd(event, session)) return true;
+  if (handRolledBranchCleanup(command, session)) return true;
+  if (programInsideWorktree(event, session)) return true;
+  if (sweepingAnOkfBundle(event, session)) return true;
+
+  if (bareGrepInclude(command, session)) return true;
 
   const glob = unmatchedGlob(command, cwd);
   if (glob && !alreadyDenied(session, 'glob', glob)) {
+    const { pattern, stray } = withoutStraySeparator(glob);
     deny(
       `\`${glob}\` is an unquoted pattern that matches nothing from ${cwd}. This shell is zsh, ` +
         `where that aborts the whole command with "no matches found" — nothing in it runs, ` +
         `including the parts that would have worked.\n\n` +
-        `This exact command, with that pattern quoted so the program expands it:\n` +
-        `  ${quotedGlob(command, glob)}\n\n` +
+        (stray
+          ? `The pattern also carries a \`${stray}\` that was never part of it. Quoting it as ` +
+            `written would stop the shell complaining and leave the program matching nothing, ` +
+            `which is the worse failure — it looks like an answer.\n\n`
+          : '') +
+        `This exact command, with that pattern ${stray ? 'repaired and ' : ''}quoted so the ` +
+        `program expands it:\n` +
+        `  ${quotedGlob(command, glob, pattern)}\n\n` +
         `Quote any pattern the invoked program should expand rather than the shell:\n` +
         `  • \`rg -g '*.ts'\` and \`rg --files -g '*.ts'\` instead of \`grep --include=*.ts\`\n` +
         `  • \`find . -name '*.ts'\`, with the pattern quoted\n\n` +
@@ -329,7 +375,7 @@ function badShape(event, input, session) {
     return true;
   }
 
-  const sleeping = foregroundSleep(command, input?.run_in_background === true);
+  const sleeping = foregroundSleep(command, event.background);
   if (sleeping && !alreadyDenied(session, 'sleep', 'foreground')) {
     deny(
       `\`${sleeping}\` waits in the foreground, which the harness refuses — and it refuses the ` +
@@ -360,10 +406,15 @@ function badShape(event, input, session) {
     return true;
   }
 
-  if (heredocWrite(command) && !alreadyDenied(session, 'heredoc', 'write')) {
+  const composed = shellComposedWrite(command);
+  // Keyed to the **target**, not to the gate. One global key meant the second composition in a
+  // session went through unrefused and failed in the shell instead — and the recorded sessions
+  // compose several, each a different file.
+  if (composed && !alreadyDenied(session, 'compose', composed.target || 'heredoc')) {
     deny(
-      `This command composes a file from a heredoc. That shape is refused wholesale inside an ` +
-        `isolated worktree, and re-sending it is refused for the same reason.\n\n` +
+      `This command composes ${composed.target ? `\`${composed.target}\`` : 'a file'} in the ` +
+        `shell${composed.how === 'heredoc' ? ', from a heredoc' : ''}. That shape is refused ` +
+        `wholesale inside an isolated worktree, and re-sending it is refused for the same reason.\n\n` +
         `Write the file with the \`Write\` tool instead — no shell, no quoting, no guard — then ` +
         `pass its path to whatever needs it:\n` +
         `  Write({file_path: "<absolute path>", content: "…"})\n` +
@@ -381,21 +432,22 @@ function badShape(event, input, session) {
  * The read-only Bash gates: a probe whose answer this session already has. All three decide
  * from evidence about *this* command and *this* path, never from how many calls a turn
  * carried — a legitimate parallel batch is unaffected by every one of them.
- * @param {Record<string, any>} event @param {Record<string, any>} input
+ * @param {import('./lib/io.mjs').HookEvent} event
  * @param {(import('./lib/transcript.mjs').Turn | null)[]} line @param {string} session
  * @param {boolean} readOnly
  * @returns {boolean} true when the call was denied
  */
-function staleProbe(event, input, line, session, readOnly) {
-  const command = input?.command;
-  if (typeof command !== 'string') return false;
-  const cwd = typeof event.cwd === 'string' ? event.cwd : process.cwd();
+function staleProbe(event, line, session, readOnly) {
+  const command = event.command;
+  if (command === undefined) return false;
+  const cwd = event.cwd;
   const all = turns(line);
   const current = all[all.length - 1];
-  const currentUuid = current && issued(current, 'Bash', input) ? current.uuid : undefined;
+  const currentUuid = current && issued(current, 'Bash', event.input) ? current.uuid : undefined;
 
-  // A watch already armed in this session delivers its events on its own.
-  const watched = watchedPaths(line, currentUuid).find((file) => command.includes(file));
+  // A watch already armed in this session delivers its events on its own. Judged against the
+  // watch's **own output target**, never every filename-shaped token on its command line.
+  const watched = watchedOutputs(line, currentUuid).find((file) => command.includes(basename(file)));
   if (watched && !alreadyDenied(session, 'watched', watched)) {
     deny(
       `${liveness(watched)}. Polling the same file by hand repeats work that is already ` +
@@ -504,13 +556,13 @@ function scopedDiff(line, exceptTurnUuid) {
  * Refuse `cd <relative path>` when the path does not exist from here. Unambiguous by
  * construction: the command would fail on this line anyway with `no such file or
  * directory`, so the gate trades a wasted turn for the form that works.
- * @param {Record<string, any>} event @param {Record<string, any>} input
+ * @param {import('./lib/io.mjs').HookEvent} event @param {string} session
  * @returns {boolean} true when the call was denied
  */
-function relativeCd(event, input) {
-  const command = input?.command;
-  if (typeof command !== 'string') return false;
-  const from = typeof event.cwd === 'string' ? event.cwd : process.cwd();
+function relativeCd(event, session) {
+  const command = event.command;
+  if (command === undefined) return false;
+  const from = event.cwd;
 
   // `cd` at the start of the command or of any segment. A `cd` deeper inside a quoted
   // string or a substitution is not matched, which is the safe direction.
@@ -521,6 +573,24 @@ function relativeCd(event, input) {
     if (!target || target === '-' || isAbsolute(target) || target.startsWith('~')) continue;
     if (/[$`*?]/.test(target)) continue;
     if (existsSync(resolve(from, target))) continue;
+
+    // The cwd is *already* that directory: the `cd` is a no-op the shell nonetheless aborts on,
+    // and handing back an absolute path to change into answers a question nobody asked.
+    // Recorded three times in a row in one session, and in five others besides.
+    if (basename(from) === target.replace(/\/+$/, '')) {
+      if (alreadyDenied(session, 'cdnoop', from)) return true;
+      deny(
+        `\`cd ${target}\` fails from ${from} — but only because you are already there. ` +
+          `\`${target}\` is this directory's own name, not a directory inside it, so the \`cd\` is a ` +
+          `no-op that zsh still aborts the whole command on.\n\n` +
+          `Send the rest of this command with the \`cd\` removed:\n` +
+          `  ${withoutLeadingCd(command)}\n\n` +
+          `Every call already runs in ${from}. Re-deriving the cwd from a path fragment is what ` +
+          `produced this: read it off the last \`my-command-tools state\` or \`worktree begin\` ` +
+          `result, or pass it — \`--cwd ${from}\`, \`git -C ${from}\`.`,
+      );
+      return true;
+    }
 
     const found = nearbyPath(from, target);
 
@@ -546,13 +616,14 @@ function relativeCd(event, input) {
 
 /**
  * The same command with the offending glob quoted — the form that runs, ready to send.
- * `--include=*.ts` keeps its flag and quotes only the pattern.
- * @param {string} command @param {string} glob
+ * `--include=*.ts` keeps its flag and quotes only the pattern. `repaired` is that pattern with
+ * any stray separator removed, so the form handed back is one that also matches.
+ * @param {string} command @param {string} glob @param {string} [repaired]
  * @returns {string}
  */
-function quotedGlob(command, glob) {
-  const eq = glob.indexOf('=');
-  const quoted = eq === -1 ? `'${glob}'` : `${glob.slice(0, eq + 1)}'${glob.slice(eq + 1)}'`;
+function quotedGlob(command, glob, repaired = glob) {
+  const eq = repaired.indexOf('=');
+  const quoted = eq === -1 ? `'${repaired}'` : `${repaired.slice(0, eq + 1)}'${repaired.slice(eq + 1)}'`;
   return command.split(glob).join(quoted);
 }
 
@@ -575,17 +646,272 @@ function nearbyPath(from, target) {
 }
 
 /**
+ * The command with a leading `cd` removed, ready to send. Only the leading one, and only when
+ * what remains is a command in its own right — anything more would be guesswork about intent.
+ * @param {string} command
+ * @returns {string}
+ */
+function withoutLeadingCd(command) {
+  const stripped = command.replace(/^\s*cd\s+("[^"]+"|'[^']+'|[^\s;&|)]+)\s*(?:&&|;)?\s*/, '');
+  return stripped.trim() || command;
+}
+
+/**
+ * Refuse `grep --include=<glob>` however it is quoted, and name the `rg -g` form.
+ *
+ * The unquoted-glob gate below catches this only when the pattern happens to match nothing, and
+ * that is the wrong question: **four** of the recorded patterns carried a stray trailing `;`, so
+ * quoting them as written — that gate's answer — turns an abort into a silent zero matches. With
+ * `rg -g '<glob>'` the glob is the program's own argument, so there is no quoting decision to get
+ * wrong and an unusable pattern is reported rather than matched against nothing.
+ * @param {string} command @param {string} session
+ * @returns {boolean} true when the call was denied
+ */
+function bareGrepInclude(command, session) {
+  const found = grepIncludeGlob(command);
+  if (!found) return false;
+  if (alreadyDenied(session, 'include', found.glob)) return false;
+  const { pattern, stray } = withoutStraySeparator(found.glob);
+
+  deny(
+    `\`${found.bin} ${found.flag}=${found.glob}\` hands a glob to the shell on its way to grep. ` +
+      `Unquoted, zsh either expands it against the current directory or aborts the whole command ` +
+      `with "no matches found"; quoted, grep applies it only to names in the directory it is ` +
+      `walking. Neither is the file filter that was meant.\n\n` +
+      (stray
+        ? `This pattern also ends in \`${stray}\`, which was never part of it — so even the quoted ` +
+          `form would match nothing at all, and say so by returning no results rather than an ` +
+          `error.\n\n`
+        : '') +
+      `\`rg\` takes the glob as its own argument:\n` +
+      `  rg -g '${pattern}' '<pattern>' <path>\n` +
+      `  rg --files -g '${pattern}'          # to list the matching files instead\n\n` +
+      `\`-g '!<glob>'\` is the exclude form, and \`rg\` honours .gitignore, so a sweep needs no ` +
+      `\`--exclude-dir\` either.`,
+  );
+  return true;
+}
+
+/**
+ * Refuse a command that is a shell *program* when it is sent from inside an isolated worktree,
+ * where Claude Code's own gate answers it with "this command is too complex to verify that it
+ * stays inside the worktree; break it into plain, separate commands".
+ *
+ * That refusal is not ours and cannot be narrowed from here — see the spec. What can be done from
+ * here is to stop it costing a turn to *learn*: it names no working form, it is not
+ * once-per-subject, and one recorded worktree collected **nine** of them across four sessions
+ * while another run took five inside its first fifteen calls before adapting. This fires first, on
+ * the same shape, and hands back the decomposition. Scoped to a worktree cwd because that is the
+ * only place the harness refuses: the identical loop outside one runs, and is left alone.
+ * @param {import('./lib/io.mjs').HookEvent} event @param {string} session
+ * @returns {boolean} true when the call was denied
+ */
+function programInsideWorktree(event, session) {
+  const command = event.command;
+  if (command === undefined) return false;
+  if (!event.cwd.includes(`${sep}.claude${sep}worktrees${sep}`)) return false;
+  const found = shellProgram(command);
+  if (!found) return false;
+  if (alreadyDenied(session, 'program', found.kind)) return false;
+
+  deny(
+    `This command is a shell program rather than a call: the \`${found.keyword}\` ${found.kind} ` +
+      `means its later words are computed by its own earlier ones. This call runs inside an ` +
+      `isolated worktree (${event.cwd}), and Claude Code's own worktree gate refuses what it ` +
+      `cannot statically resolve there — "too complex to verify that it stays inside the ` +
+      `worktree". That refusal names no alternative and does not stop repeating, so it is ` +
+      `answered here instead.\n\n` +
+      `Send the same work as plain, separate calls with every path written out:\n` +
+      `  • one \`Bash\` call per iteration, the paths literal rather than computed\n` +
+      `  • \`Read\`/\`Write\`/\`Edit\` for anything that reads or writes a file — no shell to judge\n` +
+      `  • a batch of parallel calls in one turn where the iterations are independent\n\n` +
+      `A loop that genuinely must run belongs in a script written with \`Write\` and then executed ` +
+      `by path, which is one resolvable command. An \`&&\` chain, an \`if\`, a bare \`$(( ))\` and an ` +
+      `assignment the next command reads all run here; a \`for\`/\`while\` body and a function ` +
+      `definition do not.`,
+  );
+  return true;
+}
+
+/**
+ * The OKF bundle a `grep`/`find` sweep in this command is walking, or null. A bundle declares
+ * itself in its own `index.md` frontmatter (`okf_version:`), so this is read off the filesystem
+ * rather than guessed from a directory being called `docs`.
+ * @param {string} command @param {string} cwd
+ * @returns {string | null}
+ */
+function sweptBundle(command, cwd) {
+  const bin = command.trim().split(/\s+/)[0]?.split('/').pop() ?? '';
+  if (bin !== 'grep' && bin !== 'egrep' && bin !== 'rgrep' && bin !== 'find') return null;
+  for (const word of command.split(/[\s'"`|;&()]+/)) {
+    if (!word || word.startsWith('-') || /[$*?]/.test(word)) continue;
+    const dir = isAbsolute(word) ? word : resolve(cwd, word);
+    try {
+      if (!statSync(dir).isDirectory()) continue;
+      const head = readFileSync(join(dir, 'index.md'), 'utf8').split('\n').slice(0, FRONTMATTER_LINES);
+      if (head.some((l) => l.startsWith('okf_version:'))) return dir;
+    } catch {
+      // Not a directory, or no `index.md` declaring one: nothing this gate can name.
+    }
+  }
+  return null;
+}
+
+/**
+ * Refuse a `grep`/`find` sweep of a directory that is an OKF bundle, and name `okq`.
+ *
+ * The recorded run issued three clusters of independent `find | xargs grep` sweeps over one
+ * `docs/` tree — and its own system prompt said the bundle is queryable with `okq`. Prose saying
+ * so exists in several places and `/docs` says "not `grep`" outright; the sweep happened anyway.
+ * A bundle can be recognized from disk, so this does not have to be remembered.
+ * @param {import('./lib/io.mjs').HookEvent} event @param {string} session
+ * @returns {boolean} true when the call was denied
+ */
+function sweepingAnOkfBundle(event, session) {
+  const command = event.command;
+  if (command === undefined) return false;
+  const bundle = sweptBundle(command, event.cwd);
+  if (!bundle) return false;
+  if (alreadyDenied(session, 'bundle', bundle)) return false;
+
+  deny(
+    `${bundle} is an OKF bundle — its \`index.md\` declares \`okf_version\` — and \`okq\` queries it ` +
+      `directly. A text sweep re-derives from file bytes what the bundle already states in its ` +
+      `frontmatter and links, and it answers one pattern at a time, so a survey becomes one round ` +
+      `trip per question.\n\n` +
+      `  okq --bundle ${bundle} search "<topic>"           # one call, ranked, across the bundle\n` +
+      `  okq --bundle ${bundle} find --type adr            # or --where <key>=<value>\n` +
+      `  okq --bundle ${bundle} get <id> --section <heading>\n` +
+      `  okq --bundle ${bundle} neighbors <id> --depth 1   # and \`backlinks <id>\`\n\n` +
+      `If independent questions remain after that, send them as parallel calls in one turn, or as ` +
+      `one \`rg -n 'a|b|c'\` — not one sweep per question.`,
+  );
+  return true;
+}
+
+/**
+ * Refuse `EnterWorktree` when the cwd is a repository root, which is the one place the harness
+ * refuses it: "Cannot enter worktree: the current working directory is the repository root".
+ *
+ * A run dispatched with the `Agent` tool starts at a repository root by construction, so for
+ * every delegated run this call is a certain refusal — and it was recorded as one of the run's
+ * *first* actions in nine sessions across three buckets, each at node 9 or 10. The prose already
+ * says entry is not needed and `worktree begin` already reports `workingRoot` for the purpose;
+ * the prose is the part that did not hold. Only the creating form is refused: `path` enters a
+ * worktree that already exists, which the tool supports from the launch directory.
+ * @param {import('./lib/io.mjs').HookEvent} event @param {string} session
+ * @returns {boolean} true when the call was denied
+ */
+function enteringFromRepoRoot(event, session) {
+  // A `path` names a worktree that already exists, which the tool supports from here.
+  if (event.input.path) return false;
+  if (!existsSync(join(event.cwd, '.git'))) return false;
+  if (alreadyDenied(session, 'enter', event.cwd)) return false;
+
+  deny(
+    `\`EnterWorktree\` is refused from a repository root, and ${event.cwd} is one — the harness ` +
+      `answers "the current working directory is the repository root". A run dispatched with the ` +
+      `\`Agent\` tool always starts at a root, so this call cannot succeed here.\n\n` +
+      `Nothing needs it. \`my-command-tools worktree begin --branch <name> --bootstrap\` reports ` +
+      `the workspace as \`path\`/\`workingRoot\`, and that path is this run's working root whether ` +
+      `or not the session ever moves into it:\n` +
+      `  • every \`Read\`/\`Edit\`/\`Write\` takes an absolute path under it\n` +
+      `  • every toolkit verb takes \`--cwd <workingRoot>\`\n` +
+      `  • git takes \`git -C <workingRoot> …\`\n\n` +
+      `Tear it down with \`my-command-tools worktree end --branch <branch>\` — the verb that made ` +
+      `it — rather than with \`ExitWorktree\`, which does not own it and will say so.`,
+  );
+  return true;
+}
+
+/**
+ * Refuse a `TaskCreate` that schedules the run's own closing message as a task.
+ *
+ * One recorded run spent its last three actions on `TaskCreate` calls, one of them reading
+ * "Deliver the final report as a message with text and zero tool calls" — and then sent nothing.
+ * Scheduling that message *guarantees* it is lost: creating the task is itself a tool call, so the
+ * run ends on the call that was meant to remind it to speak. The closing turn is not work to
+ * track; it is what the run does instead of a tool call.
+ *
+ * The todo-list anchor `/task` prescribes is untouched. That is a `TodoWrite`, written at the
+ * *start* of a run, and only completing it as a turn's sole content is refused — below.
+ * @param {import('./lib/io.mjs').HookEvent} event @param {string} session
+ * @returns {boolean} true when the call was denied
+ */
+function closingTurnAsTask(event, session) {
+  if (!CLOSING_TURN.test(JSON.stringify(event.input))) return false;
+  if (alreadyDenied(session, 'closingtask', 'create')) return false;
+
+  deny(
+    `This \`TaskCreate\` writes the run's own closing message down as a task. That cannot work: ` +
+      `creating the task is a tool call, so if this is the last thing scheduled the run ends on it ` +
+      `and records no outcome — the exact failure the item describes, arriving through the item.\n\n` +
+      `Do not schedule it. If the work is finished, reply now with the report in text alone — one ` +
+      `self-contained line saying where the run stands, then the detail. If real work remains, send ` +
+      `that work: the closing message needs no tracking, because it is what the run does once ` +
+      `there is nothing left to call.`,
+  );
+  return true;
+}
+
+/**
+ * Refuse a whole-file `Read` of a file too large for the tool's own token cap, and name the slice.
+ *
+ * Six recorded refusals of "exceeds maximum allowed tokens (25000)", rediscovered one file at a
+ * time by four separate sessions — every call was certain to fail before it was sent. A slice is
+ * never refused, so the corrected form always goes through, and one refusal per path leaves a
+ * second attempt to the caller.
+ * @param {import('./lib/io.mjs').HookEvent} event @param {string} session
+ * @returns {boolean} true when the call was denied
+ */
+function unreadableWholeFile(event, session) {
+  const path = event.filePath;
+  if (path === undefined) return false;
+  // A slice is the answer rather than the problem, and a PDF page range is capped in pages.
+  if (event.input.offset !== undefined || event.input.limit !== undefined) return false;
+  if (event.input.pages !== undefined) return false;
+
+  let size;
+  try {
+    const stat = statSync(path);
+    if (!stat.isFile()) return false;
+    size = stat.size;
+  } catch {
+    // Missing or unreadable: let the tool report that itself.
+    return false;
+  }
+  if (size <= UNREADABLE_BYTES) return false;
+  if (alreadyDenied(session, 'toobig', path)) return false;
+
+  deny(
+    `${path} is ${Math.round(size / 1024)}KB, which does not fit the \`Read\` tool's cap of 25,000 ` +
+      `tokens. This call comes back as "File content (N tokens) exceeds maximum allowed tokens ` +
+      `(25000)" and returns none of the file.\n\n` +
+      `Ask for the part you need, with numeric offset and limit:\n` +
+      `  Read({file_path: "${path}", offset: 1, limit: 400})\n\n` +
+      `Locate it first if you do not know where it is — one pass, not a read:\n` +
+      `  rg -n '<symbol>|<symbol>' ${path}\n` +
+      `  wc -l ${path}                      # to size the slices\n\n` +
+      `For a file that has to be consumed whole, walk it in slices and carry each slice's summary ` +
+      `forward rather than its bytes; for structured data, a \`jq\` query over the shape reads far ` +
+      `less than the document does.`,
+  );
+  return true;
+}
+
+/**
  * Refuse a whole-file `Read` of a file this session already read whole and that has not
  * changed since. Three conditions, all required: this read asks for the whole file, an
  * earlier read in this session also did, and the mtime predates that read. A file touched
  * since — by an `Edit`, a formatter, a generator, another agent — passes.
- * @param {Record<string, any>} input
+ * @param {import('./lib/io.mjs').HookEvent} event
  * @param {(import('./lib/transcript.mjs').Turn | null)[]} line @param {string} session
  * @returns {boolean} true when the call was denied
  */
-function redundantRead(input, line, session) {
-  const path = input?.file_path;
-  if (typeof path !== 'string') return false;
+function redundantRead(event, line, session) {
+  const path = event.filePath;
+  if (path === undefined) return false;
+  const input = event.input;
   // A targeted slice is the form this gate asks for; never refuse one.
   if (input.offset !== undefined || input.limit !== undefined) return false;
 

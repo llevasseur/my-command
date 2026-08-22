@@ -23,7 +23,9 @@ guard('not marked', async () => {
   const store = resolve();
   if (unresolved(store)) return say(`not marked: ${store.missing}`);
 
-  const mark = { slug, status, ...(note ? { note } : {}) };
+  /** @type {{slug: string, status: string, note?: string}} */
+  const mark = { slug, status };
+  if (note) mark.note = note;
   const result = await request(store, '/api/ideas/mark', { method: 'POST', body: { marks: [mark] } });
   if (!result.ok) return say(`not marked: ${result.reason}`);
 

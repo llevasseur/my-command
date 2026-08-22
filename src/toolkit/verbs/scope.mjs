@@ -84,7 +84,7 @@ export function run(ctx) {
     },
   );
 
-  return {
+  const answer = {
     root: cwd,
     branch,
     isCurrentBranch: workingTree,
@@ -98,8 +98,13 @@ export function run(ctx) {
     files: committed,
     workingTree,
     uncommitted: tracked.map((e) => ({ status: e.status, path: e.path })),
-    ...(bool(ctx.flags.diff) ? { diff: content(cwd, mergeBase, branch, workingTree, limitOf(ctx)) } : {}),
+    /** @type {ReturnType<typeof content> | undefined} */
+    diff: undefined,
   };
+  // Opt-in: `JSON.stringify` drops the key entirely for an answer that was not asked for
+  // a diff.
+  if (bool(ctx.flags.diff)) answer.diff = content(cwd, mergeBase, branch, workingTree, limitOf(ctx));
+  return answer;
 }
 
 /** @param {import('../cli.mjs').Ctx} ctx @returns {number} */

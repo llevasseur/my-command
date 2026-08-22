@@ -4,7 +4,7 @@ title: Workflow gates
 description: The PreToolUse and Stop hooks, and the toolkit recoveries, that enforce the workflow rules mechanically instead of relying on an agent recalling them.
 tags: [process, hooks, toolkit, install, guardrails]
 timestamp: 2026-08-04
-updated: 2026-08-11
+updated: 2026-08-18
 dirty: true
 ---
 
@@ -70,7 +70,16 @@ is allowed to be another sentence.
 | `must be a collaborator` | 3 | `pr` resolves the identity, itself |
 | Hand-composed probes the classifier refuses | 4 | named read-only verbs, plus an installed allowlist |
 | Turns lost to a shape-incidental refusal | 3 | `shared/classifier-refusal.md` names the form that works for each recorded shape — a chained probe reissued as the one bare command (or as `Read`), a heredoc composition written with `Write`/`Edit` — and states outright that a probe naming a `.env` file is refused for the *file*, so no smaller form of it is a fix and it is never allowlisted or worked around |
-| A run ending with no outcome | 3 | `Stop` refuses the stop — for the **outermost** run only |
+| A run ending with no outcome | 3 | `Stop` refuses the stop — for the **outermost** run only, and now with the three exemptions that were swallowing it closed: a re-entered stop is judged again under a ceiling, a subagent transcript beside this one no longer stands it down, and a background job is no longer exempt |
+| The closing turn scheduled as a task | 4 | `PreToolUse` refuses a `TaskCreate` naming the run's own final message. Creating the task *is* a tool call, so scheduling that message is what loses it |
+| A gate aimed at a tool the matcher omits | 4 | `check-commands.sh` fails when the `PreToolUse` matcher does not name every tool a gate judges. `TodoWrite` was missing, so the anchor gate had never fired |
+| `grep --include=<glob>` | 4 | `PreToolUse` refuses the flag whatever its quoting and hands back `rg -g '<glob>'`, with any stray trailing `;`/`,` stripped from the pattern |
+| A file composed in the shell | 3 | `PreToolUse` refuses `cat`/`printf`/`echo` redirected into a file, not only the heredoc form, keyed **per target** so the second composition in a session is refused too |
+| `cd <dir>` where the cwd already *is* `<dir>` | 3 | `PreToolUse` hands back the command with the `cd` removed, rather than an absolute path to change into |
+| A shell program sent from inside a worktree | 3 | `PreToolUse` refuses it first, with the decomposition named — the harness's own refusal names none and repeats |
+| `EnterWorktree` from a repository root | 3 | `PreToolUse` refuses the creating form, naming `workingRoot` and the absolute-path mode |
+| A whole-file `Read` that cannot fit the token cap | 3 | `PreToolUse` refuses it above 90KB and names the `offset`/`limit` slice |
+| A text sweep of an OKF bundle | 3 | `PreToolUse` refuses `grep`/`find` over a directory whose `index.md` declares `okf_version`, and names `okq` |
 
 High tool churn has no gate of its own as an aggregate — but its one recorded *cause* now
 does: a session that armed `Monitor`s on a stalled install and then hand-polled the same
@@ -378,6 +387,177 @@ identical reason given there: it is the harness handing back work the assistant 
 a person giving new instructions. Read as a prompt it restarted a discovery run nobody
 restarted and opened a task nothing could close, which is why `unclosed` climbed in every
 backgrounded session.
+
+### The outcome gate was armed and exempting itself
+
+The gate was measured again over 13 later buckets and had missed **eight** confirmed runs — a
+`/god --no-review` closing on `TaskUpdate(4)`, `TaskUpdate(5)`; two `/mc -t` runs closing on
+`worktree end` plus bookkeeping; `/task -b`, `/work --area`, `/ideate`, and two `/fb -t` runs, one
+of which failed at its seventh call with "branch does not exist locally or on origin", spent its
+last two calls listing branches, and never said so.
+
+The shape logic was not the problem — it already reads the turn rather than the tool. **Three
+exemptions were**, and each one is now either gone or bounded:
+
+- **`stop_hook_active` returned outright.** So the gate could speak at most once per session, and
+  a run that took the block and then ended on *one more* chore turn exited unreported. Two buckets
+  carry the injected "This run has not recorded its outcome" feedback **and** record nothing for
+  their root, which is that sequence exactly. The return was never what prevented the loop: the
+  per-turn denial key is, and it already speaks to one turn once however often the stop is
+  retried. A *different* turn is a decision the agent made after being told, and is judged again.
+  `MAX_REMARKS = 3` guarantees termination anyway, so a session can always end.
+- **`foreignTranscript()` stood it down.** It has no business in `Stop` at all. Only `Stop` is
+  registered — never `SubagentStop` — so every event this gate sees belongs to the session that
+  owns the path. And the test it uses is *recency*: "a subagent transcript beside this one is
+  newer". At a subagent's call that means "this is not your history"; at a **parent's stop** it
+  means only "this run dispatched something", which is true of every delegated pipeline — and the
+  misses are overwhelmingly `-t`, `-b` and dispatched runs. One line exempted the whole population
+  the gate exists for.
+- **`CLAUDE_JOB_DIR` stood it down.** On the stated assumption that a background job's harness
+  requires its own outcome line. It does not, and a backgrounded command run is precisely the shape
+  the misses came in. `CI` and `MY_COMMAND_NON_INTERACTIVE` stay: the first has no terminal for a
+  warning to reach and no agent left to correct anything, the second is this repo's documented
+  opt-out.
+
+And one thing was simply not wired. The `PreToolUse` matcher read
+`Read|Grep|Glob|Bash|Edit|Write|NotebookEdit|MultiEdit`, so the trailing-anchor gate — which judges
+`TodoWrite` — **had never been invoked**. It shipped, was documented at rung 4, and was a file
+nobody executed, which is the same failure as "the gates not being armed at all" one level down.
+`check-commands.sh` now fails when the matcher does not name every tool a gate judges.
+
+`TaskCreate` is now gated as well, and by subject rather than by shape, because its input carries
+one. One recorded run spent its last three calls creating tasks, one of them reading "Deliver the
+final report as a message with text and zero tool calls", and then sent nothing: creating the task
+is itself a tool call, so scheduling that message is the mechanism that loses it. The `TodoWrite`
+anchor `/task` prescribes is untouched — it is written at the *start* of a run, and only completing
+it as a turn's sole content is refused.
+
+**What is still not caught, deliberately.** Two of the eight misses end on a turn that carried
+read-only probes *and* text (`7a47b8ff`, probes plus `TaskUpdate(1)`; `3885b75c`, `ps` and `lsof`
+after a `kill`). Those get the warning, not the block, and folding read-only probes into the
+chore-only shape would mean blocking a turn that said "here is what I found" beside ten `Read`s —
+a false denial of the batched form, which no gate here is allowed to make.
+
+### A refusal that names no alternative is paid for every time
+
+Three of the shapes added above were already being refused — by Claude Code itself, not by
+anything here — and the refusals were costing turns anyway, because none of them names the working
+form and none of them is once-per-subject:
+
+- **The worktree-isolation refusal.** "This command is too complex to verify that it stays inside
+  the worktree; break it into plain, separate commands." Still not ours to narrow, and the section
+  below stands. But one recorded worktree collected **nine** of them across four sessions, and one
+  run took five inside its first fifteen calls before adapting. So `shellProgram()` — until now
+  deliberately unwired, on the argument that a second gate over the same shape could only refuse
+  what is refused anyway — **is wired**, scoped to a cwd under `.claude/worktrees/`, which is the
+  only place the harness refuses. The value is not the refusal; it is that this one hands back the
+  decomposition and then stays quiet. The same loop outside a worktree runs, and is untouched.
+- **`EnterWorktree` from a repository root.** A dispatched run starts at a root by construction,
+  so the call cannot succeed — and it was recorded as one of the run's *first* actions in nine
+  sessions across three buckets, at node 9 or 10. The prose already said entry is not needed and
+  `worktree begin` already reports `workingRoot` for the purpose; prose is the rung that failed.
+  Only the creating form is refused; `path` enters a worktree that already exists.
+- **A whole-file `Read` past the tool's token cap.** Six refusals of "File content (N tokens)
+  exceeds maximum allowed tokens (25000)", on files of 25,923–37,456 tokens, **rediscovered one
+  file at a time by four separate sessions**. This is the one gate here that fires on a *bound*
+  rather than a certainty — the cap is in tokens and a hook cannot tokenize — so the bound is set
+  where it is safe: 90KB, which fits 25,000 tokens only by averaging more than 3.6 bytes per token,
+  and a read that close to the ceiling is one edit from failing anyway. A slice is never refused,
+  so the corrected call always goes through, and the denial is once per path.
+
+### `grep --include` was the wrong question, quoted
+
+The unquoted-glob gate refuses a pattern that matches nothing and hands back the same command with
+that pattern quoted. For `grep --include=*.ts` — at least ten recorded sessions — that answer is
+incomplete, and for four of the recorded patterns it is **wrong**: they carried a stray trailing
+`;` (`*.tsx;`, `*.stories.tsx;`, `lib/aem-source/*.ts;`, `*.json;`), so quoting them as written
+turns an abort into a silent zero matches, which is worse because it looks like an answer.
+
+So `--include`/`--exclude` with a glob is refused on its own terms, whatever the quoting, and the
+denial hands back `rg -g '<glob>'`: there the glob is the program's own argument by construction,
+there is no quoting decision to get wrong, and `rg` reports a pattern it cannot use. The stray
+separator is stripped from the replacement and reported as a separate fact. The unquoted-glob
+denial also reports and repairs it now, for the patterns that reach it by another route.
+
+### Composing a file in the shell is not only a heredoc
+
+The heredoc gate saw a heredoc, and keyed one denial per session under `heredoc:write`. Both
+halves were too narrow for what was recorded across eight buckets: `cat >` writing **production
+source** (`server/nexus/src/lib/graph/errors.ts`), `cat >` composing a commit-message file that
+`commit --message-file` takes directly, `gh pr view` appended into a file. And a session composes
+several files, so the second one went through unrefused and failed in the shell instead.
+
+It now refuses any redirect whose content the **shell itself supplies** — `cat`, `echo`, `printf`,
+or any segment feeding a heredoc into a redirect — keyed per target file. A program capturing its
+own output (`pnpm test > log`, `gh pr view --json … > pr.json`) is not this shape and is left
+alone: that is capturing a result, not composing a document, and refusing it would take the
+backgrounded log file the watch gates depend on with it. A target the shell computes — `$…`, a
+backtick — is skipped, which keeps the `$CLAUDE_JOB_DIR` scratch write the job harness prescribes
+allowed, as the section below requires.
+
+**This is the one criterion in the range that did not climb a rung, and the reason is worth
+stating.** Rung 4 for a shell-composed write is removing `Bash`'s redirect, which is not available
+from this repository; the doc-prescription half is already rung 4 (`check-doc-snippets.mjs`), and
+the two toolkit affordances that drew the shape are already rung 4 (`--message-file`,
+`--body-file`). What was left was coverage, and coverage is what changed: the gate now sees the
+non-heredoc compositions and speaks once per file rather than once per session.
+
+### The polling gate judged a watch's arguments as its output
+
+`watchedPaths()` keyed on every filename-shaped token of a watch's command line, and answered the
+shell half of the polling gate. That refused a **first** probe of `server.ts` and of
+`artifactDownload.ts` because a `Monitor` command happened to name them — the script a watch runs
+and the config it was handed are on its command line too, and a first look at either is discovery.
+Both halves now ask the narrower question `watchedOutputs()` already answered for the `Read` half:
+the watch's own redirect, `tee`, or `tail` target. `watchedPaths()` is removed rather than left as
+the broad reading for one caller.
+
+The rest of that criterion's firings were the gate working: `verify.log`, `control.log`,
+`vite.log`, `gates.log` and a `.base.ref` redirect target were all genuine hand-polling of a live
+watch, and `verify --wait` is already the rung-4 answer for the largest of them.
+
+### `cd <dir>` from inside `<dir>`
+
+The relative-`cd` denial walks up from the issuing directory and names the absolute path the `cd`
+was reaching for. When the cwd **is** the target — `cd server` from inside `…/server`, recorded
+three times in a row in one session and in five others — that answer is beside the point: there is
+no directory to change into, the `cd` is a no-op the shell nonetheless aborts on, and the fix is to
+drop it. The denial now recognizes that case and hands back the command with the leading `cd`
+removed, plus where to read the cwd from instead.
+
+### Two criteria have no mechanism in this repository
+
+Recorded, judged, and confirmed — and both name a file that does not exist here:
+
+- **The environment-file read guard.** Five firings, every one a **false positive**: a test harness
+  piping fixture strings through the guard while hardening it, `tsx --env-file-if-exists` handing a
+  path to a runtime that never reads it into context, `set -a && . <file> && set +a` sourcing
+  variables before running a script, and — twice — a command whose only mention was a *quoted
+  phrase inside prose* being written to a JSON store, with no path and no read.
+
+  That last class reproduces on demand, and did so three times while this criterion was being
+  implemented: a shell command whose text merely *names* the file is refused, so the search that
+  located the guard, and the command that would have written this very section, were both blocked.
+  The section exists because the text was assembled from fragments instead.
+
+  The guard is `block-env-files.sh`, a device-level hook under `~/.claude`, and nothing in this
+  repository installs, registers, or references it. The fix is a change to that script, and it is a
+  **narrowing**: it should match a *read of the file's contents into context* — a `Read` of the
+  path, `cat`/`head`/`sed` over it, a substitution capturing it — and not a path handed to a
+  runtime as an argument, a `.`/`source` that sets variables, or the file's name inside a quoted
+  string.
+
+  The rung-4 answer, plainly: **stop matching the file's name at all.** The name is not the risk.
+  The risk is contents reaching the model's context, which is a property of *which tool* is handed
+  the path and whether its output returns to the transcript — not of those characters appearing
+  somewhere on a command line. A guard keyed on the name will go on refusing prose that talks about
+  it, and no narrowing of the pattern removes that class; keying on the reading tool does, and it
+  is strictly more accurate about the thing being protected.
+- **The cori-trends batch loop.** `src/commands/cori-trends.md` is named in the criterion and is
+  not in this repository — there is no such command here. The behaviour it describes is answered
+  generically instead, by the oversized-`Read` gate above, which fires for any command's batch loop
+  rather than for that one; the double-read of each batch file is already the redundant-read gate's
+  subject.
 
 ## Read-only classification
 
@@ -725,7 +905,16 @@ cannot contradict each other again.
   where the harness already enforces the same rule itself.
 - **Fail open, always.** No gate does its own error handling; `guard()` is the entire
   error policy.
-- **One denial per subject per session.** A gate cannot refuse the same thing twice.
+- **One denial per subject per session.** A gate cannot refuse the same thing twice. The outcome
+  gate is the one exception, and it is bounded rather than open: a *new* closing turn is a new
+  subject, and `MAX_REMARKS` caps the session.
+- **A gate must be wired to every tool it judges.** The `PreToolUse` matcher names each of them,
+  asserted by `check-commands.sh`. A gate aimed at a tool the matcher omits is a file nobody
+  executes, and reads exactly like a gate that is working.
+- **A gate may not exempt the population it exists for.** An exemption is justified by what it
+  keeps out and re-checked against who it keeps out: `foreignTranscript()` in `Stop` and
+  `CLAUDE_JOB_DIR` each stood the outcome gate down for the delegated and backgrounded runs where
+  every recorded miss happened.
 - **Only the outermost run owes an outcome.** No gate may demand a text-only turn from a run
   invoked inline by another, because spending one there strands the parent's remaining steps.
   A gate that would have to guess which case it is looking at stays silent.
@@ -843,6 +1032,28 @@ cannot contradict each other again.
       degrades to the bare instruction outside a repository.
 - [x] A `TodoWrite` that completes the closing-turn anchor and carries nothing else in its
       turn is refused once; the same `TodoWrite` alongside other work in the turn passes.
+- [x] The `PreToolUse` matcher names `TodoWrite`, `TaskCreate` and `EnterWorktree` as well as the
+      read and editor tools, and `check-commands.sh` fails if any tool a gate judges is missing.
+- [x] A re-entered stop on the **same** turn is silent, a re-entered stop on a **new** turn is
+      blocked again, and the session's blocks are capped so a run can always end.
+- [x] A subagent transcript newer than the one handed to `Stop` no longer stands it down; `CI` and
+      `MY_COMMAND_NON_INTERACTIVE` still do, and `CLAUDE_JOB_DIR` no longer does.
+- [x] A `TaskCreate` naming the run's own closing message is refused; an ordinary one passes.
+- [x] `grep --include=<glob>` / `--exclude=<glob>` is refused quoted or bare with `rg -g` named and
+      any stray trailing separator stripped from the replacement; `rg -g` itself and a grep with no
+      glob flag both pass.
+- [x] `cat`/`printf` redirected into a file is refused once **per target**; a program capturing its
+      own output, and a redirect target the shell computes, both pass.
+- [x] `cd <dir>` issued from inside `<dir>` is refused with the `cd` stripped from the command it
+      hands back, rather than with an absolute path to change into.
+- [x] A `for` loop sent from a cwd under `.claude/worktrees/` is refused with the decomposition
+      named; the same loop elsewhere, and an `&&` chain or `if` anywhere, all pass.
+- [x] `EnterWorktree({name})` from a repository root is refused naming `workingRoot`;
+      `EnterWorktree({path})`, and either form from a non-root cwd, pass.
+- [x] A whole-file `Read` of a file past the size bound is refused naming the slice; the same file
+      read with `offset`/`limit`, and any file inside the bound, pass.
+- [x] A `grep`/`find` sweep of a directory whose `index.md` declares `okf_version` is refused with
+      `okq` named; a directory that declares nothing is swept without comment.
 - [x] A nested inline handback — a turn carrying a tool call and text ending in a
       `RETURN /<command>` marker — is not refused, and neither is a stop taken while a `Skill`
       invocation since the last prompt has no marker accounting for it yet.
@@ -927,6 +1138,10 @@ Subagent runs and ad-hoc non-command prompts cannot carry an outcome line the wa
 command run does, so a share of the missing-outcome measurements are structural rather
 than behavioural. `SubagentStop` is deliberately **not** registered for that reason.
 Fixing the measurement is a change to claude-proxy's own rule, in another repository.
+
+Two more remainders now sit outside this repository outright, and are written up under "Two
+criteria have no mechanism in this repository" above: the environment-file read guard is a
+device-level hook under `~/.claude`, and `cori-trends` is not a command this repository ships.
 
 ## Related
 

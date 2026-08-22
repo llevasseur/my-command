@@ -87,25 +87,6 @@ function transcript(spec, startedAt = Date.now() - 600_000) {
   const path = join(dir, 'transcript.jsonl');
   const lines = spec.map((item, i) => {
     const timestamp = new Date(startedAt + i * 1000).toISOString();
-    if (item && !Array.isArray(item) && typeof item === 'object') {
-      return JSON.stringify({
-        type: 'assistant',
-        uuid: `a${i}`,
-        timestamp,
-        message: {
-          role: 'assistant',
-          content: [
-            { type: 'text', text: item.say },
-            ...(item.calls ?? []).map((u, n) => ({
-              type: 'tool_use',
-              id: `t${i}-${n}`,
-              name: u.name,
-              input: u.input,
-            })),
-          ],
-        },
-      });
-    }
     if (item === 'prompt') {
       return JSON.stringify({
         type: 'user',
@@ -122,6 +103,21 @@ function transcript(spec, startedAt = Date.now() - 600_000) {
         message: { role: 'assistant', content: [{ type: 'text', text: 'here is the answer' }] },
       });
     }
+    if (Array.isArray(item)) {
+      return JSON.stringify({
+        type: 'assistant',
+        uuid: `a${i}`,
+        timestamp,
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'text', text: 'looking' },
+            ...item.map((u, n) => ({ type: 'tool_use', id: `t${i}-${n}`, name: u.name, input: u.input })),
+          ],
+        },
+      });
+    }
+    // Everything left is the `{say, calls}` form: a turn whose own text matters.
     return JSON.stringify({
       type: 'assistant',
       uuid: `a${i}`,
@@ -129,8 +125,13 @@ function transcript(spec, startedAt = Date.now() - 600_000) {
       message: {
         role: 'assistant',
         content: [
-          { type: 'text', text: 'looking' },
-          ...item.map((u, n) => ({ type: 'tool_use', id: `t${i}-${n}`, name: u.name, input: u.input })),
+          { type: 'text', text: item.say },
+          ...(item.calls ?? []).map((u, n) => ({
+            type: 'tool_use',
+            id: `t${i}-${n}`,
+            name: u.name,
+            input: u.input,
+          })),
         ],
       },
     });
@@ -757,10 +758,323 @@ test('unmatched glob: the denial carries the same command with the pattern quote
     transcript_path: transcript(['prompt']),
     cwd: dir,
     tool_name: 'Bash',
-    tool_input: { command: 'grep -rn foo --include=*.ts .' },
+    tool_input: { command: 'ls -l *.ts' },
   });
   assert.equal(denied(answer), true);
-  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /--include='\*\.ts'/);
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /ls -l '\*\.ts'/);
+});
+
+test('unmatched glob: a stray trailing separator is reported and repaired, not quoted in place', () => {
+  // Four recorded patterns carried a trailing `;`. Quoting one as written stops the abort and
+  // leaves the program matching nothing, which is the worse answer because it looks like one.
+  const dir = scratch();
+  writeFileSync(join(dir, 'a.md'), '');
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'g10',
+    transcript_path: transcript(['prompt']),
+    cwd: dir,
+    tool_name: 'Bash',
+    tool_input: { command: 'ls -l *.tsx;' },
+  });
+  assert.equal(denied(answer), true);
+  const why = answer.hookSpecificOutput.permissionDecisionReason;
+  assert.match(why, /never part of it/);
+  assert.match(why, /ls -l '\*\.tsx'/);
+});
+
+test('grep --include: the bare glob is refused whatever its quoting, and rg -g is named', () => {
+  const dir = scratch();
+  // Matching files exist, so the unmatched-glob gate has nothing to say — this is the shape
+  // being refused, not a pattern that happens to match nothing.
+  writeFileSync(join(dir, 'a.ts'), '');
+  for (const [id, command] of [
+    ['inc1', 'grep -rn foo --include=*.ts .'],
+    ['inc2', "grep -rn foo --include='*.ts' ."],
+    ['inc3', 'grep -rn foo --exclude=*.test.ts .'],
+  ]) {
+    const answer = hook(PRE_TOOL_USE, {
+      session_id: id,
+      transcript_path: transcript(['prompt']),
+      cwd: dir,
+      tool_name: 'Bash',
+      tool_input: { command },
+    });
+    assert.equal(denied(answer), true, command);
+    assert.match(answer.hookSpecificOutput.permissionDecisionReason, /rg -g '/, command);
+  }
+});
+
+test('grep --include: the stray separator is stripped from the rg form it hands back', () => {
+  const dir = scratch();
+  writeFileSync(join(dir, 'a.tsx'), '');
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'inc4',
+    transcript_path: transcript(['prompt']),
+    cwd: dir,
+    tool_name: 'Bash',
+    tool_input: { command: 'grep -rn foo --include=*.tsx; .' },
+  });
+  assert.equal(denied(answer), true);
+  const why = answer.hookSpecificOutput.permissionDecisionReason;
+  assert.match(why, /rg -g '\*\.tsx'/);
+  assert.doesNotMatch(why, /rg -g '\*\.tsx;'/);
+});
+
+test('grep --include: rg with its own -g, and a grep with no glob flag, both pass', () => {
+  const dir = scratch();
+  writeFileSync(join(dir, 'a.ts'), '');
+  for (const [id, command] of [
+    ['inc5', "rg -g '*.ts' foo ."],
+    ['inc6', 'grep -rn foo src'],
+  ]) {
+    const answer = hook(PRE_TOOL_USE, {
+      session_id: id,
+      transcript_path: transcript(['prompt']),
+      cwd: dir,
+      tool_name: 'Bash',
+      tool_input: { command },
+    });
+    assert.equal(denied(answer), false, command);
+  }
+});
+
+test('relative cd: a cwd that is already the target is told to drop the cd, not to spell a path', () => {
+  // The highest-volume shape in this family: `cd server` from inside `…/server`. Naming an
+  // absolute path to change into answers a question nobody asked; the `cd` is a no-op.
+  const dir = join(scratch(), 'server');
+  mkdirSync(dir, { recursive: true });
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'noop1',
+    transcript_path: transcript(['prompt']),
+    cwd: dir,
+    tool_name: 'Bash',
+    tool_input: { command: 'cd server && pnpm typecheck' },
+  });
+  assert.equal(denied(answer), true);
+  const why = answer.hookSpecificOutput.permissionDecisionReason;
+  assert.match(why, /already there/);
+  assert.match(why, /pnpm typecheck/);
+  assert.doesNotMatch(why, /That path does exist here/);
+});
+
+test('worktree program: a loop sent from inside a worktree is refused with the decomposition', () => {
+  // Claude Code's own gate answers this with "too complex to verify that it stays inside the
+  // worktree", names no alternative, and repeats — nine times in one recorded worktree.
+  const dir = join(scratch(), '.claude', 'worktrees', 'feat-x');
+  mkdirSync(dir, { recursive: true });
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'wt1',
+    transcript_path: transcript(['prompt']),
+    cwd: dir,
+    tool_name: 'Bash',
+    tool_input: { command: 'for f in a b c; do cat "$f.md"; done' },
+  });
+  assert.equal(denied(answer), true);
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /separate calls/);
+});
+
+test('worktree program: the same loop outside a worktree passes, and an && chain always does', () => {
+  const outside = scratch();
+  const inside = join(scratch(), '.claude', 'worktrees', 'feat-y');
+  mkdirSync(inside, { recursive: true });
+  for (const [id, cwd, command] of [
+    ['wt2', outside, 'for f in a b; do echo "$f"; done'],
+    ['wt3', inside, 'ls -l && git status'],
+    ['wt4', inside, 'if [ -f a ]; then ls; fi'],
+  ]) {
+    const answer = hook(PRE_TOOL_USE, {
+      session_id: id,
+      transcript_path: transcript(['prompt']),
+      cwd,
+      tool_name: 'Bash',
+      tool_input: { command },
+    });
+    assert.equal(denied(answer), false, command);
+  }
+});
+
+test('okf bundle: a grep sweep of a bundle is refused and okq is named', () => {
+  const dir = scratch();
+  const bundle = join(dir, 'docs');
+  mkdirSync(bundle, { recursive: true });
+  writeFileSync(join(bundle, 'index.md'), '---\nokf_version: "0.1"\n---\n\n# KB\n');
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'okf1',
+    transcript_path: transcript(['prompt']),
+    cwd: dir,
+    tool_name: 'Bash',
+    tool_input: { command: 'grep -rn "not-found" docs' },
+  });
+  assert.equal(denied(answer), true);
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /okq --bundle/);
+});
+
+test('okf bundle: a directory that does not declare itself one is swept without comment', () => {
+  const dir = scratch();
+  const plain = join(dir, 'src');
+  mkdirSync(plain, { recursive: true });
+  writeFileSync(join(plain, 'index.md'), '---\ntitle: not a bundle\n---\n');
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'okf2',
+    transcript_path: transcript(['prompt']),
+    cwd: dir,
+    tool_name: 'Bash',
+    tool_input: { command: 'grep -rn "thing" src' },
+  });
+  assert.equal(denied(answer), false);
+});
+
+test('EnterWorktree: the creating form is refused from a repository root, path form is not', () => {
+  const dir = scratch();
+  mkdirSync(join(dir, '.git'), { recursive: true });
+  const denyAnswer = hook(PRE_TOOL_USE, {
+    session_id: 'ew1',
+    transcript_path: transcript(['prompt']),
+    cwd: dir,
+    tool_name: 'EnterWorktree',
+    tool_input: { name: 'feat-x' },
+  });
+  assert.equal(denied(denyAnswer), true);
+  assert.match(denyAnswer.hookSpecificOutput.permissionDecisionReason, /workingRoot/);
+
+  const allowed = hook(PRE_TOOL_USE, {
+    session_id: 'ew2',
+    transcript_path: transcript(['prompt']),
+    cwd: dir,
+    tool_name: 'EnterWorktree',
+    tool_input: { path: join(dir, '.claude', 'worktrees', 'feat-x') },
+  });
+  assert.equal(denied(allowed), false);
+});
+
+test('EnterWorktree: a cwd that is not a repository root is left alone', () => {
+  const dir = join(scratch(), 'nested');
+  mkdirSync(dir, { recursive: true });
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'ew3',
+    transcript_path: transcript(['prompt']),
+    cwd: dir,
+    tool_name: 'EnterWorktree',
+    tool_input: { name: 'feat-x' },
+  });
+  assert.equal(denied(answer), false);
+});
+
+test('closing turn: a TaskCreate that schedules the run-s own final message is refused', () => {
+  // One recorded run created exactly this task — "Deliver the final report as a message with text
+  // and zero tool calls" — and then sent nothing, because creating it was itself the last call.
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'ct1',
+    transcript_path: transcript(['prompt']),
+    cwd: scratch(),
+    tool_name: 'TaskCreate',
+    tool_input: { subject: 'Deliver the final report as a message with text and zero tool calls' },
+  });
+  assert.equal(denied(answer), true);
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /text alone/);
+});
+
+test('closing turn: an ordinary TaskCreate is untouched', () => {
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'ct2',
+    transcript_path: transcript(['prompt']),
+    cwd: scratch(),
+    tool_name: 'TaskCreate',
+    tool_input: { subject: 'Add the changelog entry for the new gate' },
+  });
+  assert.equal(denied(answer), false);
+});
+
+test('oversized read: a whole-file Read that cannot fit the token cap is refused, a slice is not', () => {
+  // Six recorded refusals of "exceeds maximum allowed tokens (25000)", rediscovered per file by
+  // four separate sessions — each call was certain to fail before it was sent.
+  const dir = scratch();
+  const big = join(dir, 'batch-17.json');
+  // Comfortably past the 90KB bound, which is where a whole-file read stops fitting the cap.
+  writeFileSync(big, `{"rows":[${'"aaaaaaaaaaaaaaaa",'.repeat(7000)}"z"]}`);
+  const refused = hook(PRE_TOOL_USE, {
+    session_id: 'big1',
+    transcript_path: transcript(['prompt']),
+    cwd: dir,
+    tool_name: 'Read',
+    tool_input: { file_path: big },
+  });
+  assert.equal(denied(refused), true);
+  assert.match(refused.hookSpecificOutput.permissionDecisionReason, /offset/);
+
+  const sliced = hook(PRE_TOOL_USE, {
+    session_id: 'big2',
+    transcript_path: transcript(['prompt']),
+    cwd: dir,
+    tool_name: 'Read',
+    tool_input: { file_path: big, offset: 1, limit: 200 },
+  });
+  assert.equal(denied(sliced), false);
+});
+
+test('oversized read: a file inside the cap is read whole without comment', () => {
+  const dir = scratch();
+  const small = join(dir, 'api.ts');
+  writeFileSync(small, 'export const a = 1;\n'.repeat(50));
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'big3',
+    transcript_path: transcript(['prompt']),
+    cwd: dir,
+    tool_name: 'Read',
+    tool_input: { file_path: small },
+  });
+  assert.equal(denied(answer), false);
+});
+
+test('shell-composed file: cat and printf redirected into a file are refused, per target', () => {
+  // The gate used to see only a heredoc, and to key one denial per session — so the second
+  // composition went through unrefused and failed in the shell instead.
+  const dir = scratch();
+  const state = scratch();
+  const first = hook(
+    PRE_TOOL_USE,
+    {
+      session_id: 'sc1',
+      transcript_path: transcript(['prompt']),
+      cwd: dir,
+      tool_name: 'Bash',
+      tool_input: { command: `cat > ${join(dir, 'errors.ts')} <<'EOF'\nexport const a = 1;\nEOF` },
+    },
+    state,
+  );
+  assert.equal(denied(first), true);
+  assert.match(first.hookSpecificOutput.permissionDecisionReason, /errors\.ts/);
+
+  const second = hook(
+    PRE_TOOL_USE,
+    {
+      session_id: 'sc1',
+      transcript_path: transcript(['prompt']),
+      cwd: dir,
+      tool_name: 'Bash',
+      tool_input: { command: `printf 'x\\n' > ${join(dir, 'notes.md')}` },
+    },
+    state,
+  );
+  assert.equal(denied(second), true, 'a different target is a different subject');
+});
+
+test('shell-composed file: a program capturing its own output is not composing one', () => {
+  const dir = scratch();
+  for (const [id, command] of [
+    ['sc2', 'pnpm test > /tmp/verify.log 2>&1'],
+    ['sc3', 'gh pr view 12 --json title > /tmp/pr.json'],
+    ['sc4', 'echo note > "$CLAUDE_JOB_DIR/tmp/note.txt"'],
+  ]) {
+    const answer = hook(PRE_TOOL_USE, {
+      session_id: id,
+      transcript_path: transcript(['prompt']),
+      cwd: dir,
+      tool_name: 'Bash',
+      tool_input: { command },
+    });
+    assert.equal(denied(answer), false, command);
+  }
 });
 
 test('heredoc: a stdin heredoc is untouched even beside a quoted arrow or a pipe', () => {
@@ -1672,42 +1986,95 @@ test('stop: the same turn is never spoken to twice, so a run can always end', ()
   assert.deepEqual(hook(STOP, event, state), {});
 });
 
-test('stop: an in-flight re-run of the same stop is left alone', () => {
+test('stop: a re-run of the same stop on the same turn is left alone', () => {
+  // The per-turn denial key is what prevents the loop: one turn is spoken to once, however many
+  // times the harness retries the stop from it.
+  const state = scratch();
   const line = transcript(['prompt', wordless(read('Bash', { command: 'ls' }))]);
-  const answer = hook(STOP, { session_id: 'f4', transcript_path: line, stop_hook_active: true });
-  assert.deepEqual(answer, {});
+  const event = { session_id: 'f4', transcript_path: line };
+  assert.equal(hook(STOP, event, state).decision, 'block');
+  assert.deepEqual(hook(STOP, { ...event, stop_hook_active: true }, state), {});
 });
 
-test('stop: a subagent transcript beside the one handed over stands the gate down', () => {
-  // The event carries the *parent's* path, so without this the gate judges one run by
-  // another's history.
+test('stop: a run blocked once and ending again anyway is blocked again, up to a ceiling', () => {
+  // `stop_hook_active` used to return outright, so a run that took the block and then ended on
+  // one more chore turn exited with nothing recorded — the recorded failure in two buckets.
+  const state = scratch();
+  const first = transcript(['prompt', wordless(read('Bash', { command: 'ls' }))]);
+  assert.equal(hook(STOP, { session_id: 'f4b', transcript_path: first }, state).decision, 'block');
+
+  // A *different* turn is a new decision the agent made after being told, so it is judged again.
+  const again = transcript([
+    'prompt',
+    wordless(read('Bash', { command: 'ls' })),
+    wordless(read('TaskUpdate', { taskId: '4', status: 'completed' })),
+  ]);
+  const second = hook(STOP, { session_id: 'f4b', transcript_path: again, stop_hook_active: true }, state);
+  assert.equal(second.decision, 'block');
+});
+
+test('stop: the ceiling holds, so a session can always end', () => {
+  const state = scratch();
+  // Four distinct closing turns, each a fresh subject: the gate speaks three times and then stops.
+  const spoken = [];
+  for (const n of [1, 2, 3, 4]) {
+    const line = transcript(['prompt', ...Array.from({ length: n }, () => wordless(read('Bash', { command: 'ls' })))]);
+    spoken.push(hook(STOP, { session_id: 'f4c', transcript_path: line, stop_hook_active: true }, state).decision);
+  }
+  assert.deepEqual(spoken, ['block', 'block', 'block', undefined]);
+});
+
+test('stop: a subagent transcript beside the one handed over does not stand the gate down', () => {
+  // Only `Stop` is registered — never `SubagentStop` — so every event this gate sees belongs to
+  // the session that owns the path. The recency test the PreToolUse gates use answers "a
+  // subagent wrote more recently than the parent", which at a *parent's* stop is true of any run
+  // that dispatched anything, and it exempted exactly the delegated runs the misses came from.
   const line = transcript(['prompt', wordless(read('Bash', { command: 'ls' }))]);
   const sub = join(dirname(line), 'transcript', 'subagents');
   mkdirSync(sub, { recursive: true });
   writeFileSync(join(sub, 'a.jsonl'), '{}\n');
-  // The gate reads recency, and two writes this close together share one mtime wherever the
-  // filesystem's granularity is coarser than the gap — so the parent is aged deliberately
-  // rather than left to be the older file by luck.
   const aged = new Date(Date.now() - 5000);
   utimesSync(line, aged, aged);
-  assert.deepEqual(hook(STOP, { session_id: 'fr1', transcript_path: line }), {});
+  assert.equal(hook(STOP, { session_id: 'fr1', transcript_path: line }).decision, 'block');
 });
 
-test('stop: a non-interactive session is left to the harness that already enforces this', () => {
+/**
+ * Run the Stop gate with one extra environment variable set, which is the whole subject of the
+ * two tests below.
+ * @param {string} session @param {string} line @param {Record<string, string>} extra
+ * @returns {string}
+ */
+function stopWithEnv(session, line, extra) {
   const state = scratch();
-  const line = transcript(['prompt', wordless(read('Bash', { command: 'ls' }))]);
-  const out = execFileSync('node', [STOP], {
-    input: JSON.stringify({ session_id: 'j1', transcript_path: line }),
+  return execFileSync('node', [STOP], {
+    input: JSON.stringify({ session_id: session, transcript_path: line }),
     encoding: 'utf8',
     env: {
       ...process.env,
       MY_COMMAND_HOOK_STATE: state,
       MY_COMMAND_HOOKS: '1',
       CLAUDE_CONFIG_DIR: state,
-      CLAUDE_JOB_DIR: join(state, 'job'),
+      CLAUDE_JOB_DIR: '',
+      MY_COMMAND_NON_INTERACTIVE: '',
+      CI: '',
+      ...extra,
     },
-  });
-  assert.equal(out.trim(), '');
+  }).trim();
+}
+
+test('stop: CI and the repo-s own opt-out are the only sessions left to their harness', () => {
+  const line = transcript(['prompt', wordless(read('Bash', { command: 'ls' }))]);
+  assert.equal(stopWithEnv('j1', line, { CI: '1' }), '');
+  assert.equal(stopWithEnv('j2', line, { MY_COMMAND_NON_INTERACTIVE: '1' }), '');
+});
+
+test('stop: a background job still owes an outcome, so CLAUDE_JOB_DIR exempts nothing', () => {
+  // The misses were overwhelmingly backgrounded command runs — `/god --no-review`, `/mc -t`,
+  // `/fb -t`, `/work --area …` — and every one of them was exempted before the gate saw it, on
+  // the assumption that a job's harness requires its own outcome line. It does not.
+  const line = transcript(['prompt', wordless(read('Bash', { command: 'ls' }))]);
+  const out = stopWithEnv('j3', line, { CLAUDE_JOB_DIR: '/tmp/job-dir' });
+  assert.equal(JSON.parse(out).decision, 'block');
 });
 
 test('stop: a transcript whose last turn just landed is re-read before it is judged', () => {

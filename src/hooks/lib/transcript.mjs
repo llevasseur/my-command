@@ -4,6 +4,7 @@
 // being installed mid-session where a sidecar state file would not.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
+import { asRecord, asText, isRecord, text } from './parse.mjs';
 
 /**
  * @typedef {object} Turn
@@ -42,9 +43,68 @@ export function entries(path) {
   return out;
 }
 
+/**
+ * One transcript line, decoded. A record's role, its ids, its timestamp and each of its
+ * content blocks are settled once here, and every reading below branches on those. `content`
+ * is null for a record that carried no content array — neither a turn nor a prompt, but
+ * nothing to read.
+ *
+ * @typedef {object} Entry
+ * @property {'user' | 'assistant' | 'other'} role
+ * @property {string} uuid
+ * @property {string} msgId  The id every block of one assistant message shares.
+ * @property {number} at     Epoch ms, 0 when the record carried no readable timestamp.
+ * @property {Block[] | null} content
+ */
+
+/**
+ * One content block, decoded to the four kinds these gates read. Anything else — an image, a
+ * thinking block, a block whose own fields were not what they claimed — is `other`.
+ *
+ * @typedef {{kind: 'text', text: string}} TextBlock
+ * @typedef {{kind: 'toolUse', id: string, name: string, input: Record<string, any>}} ToolUseBlock
+ * @typedef {{kind: 'toolResult', toolUseId: string | undefined, failed: boolean}} ToolResultBlock
+ * @typedef {{kind: 'other'}} OtherBlock
+ * @typedef {TextBlock | ToolUseBlock | ToolResultBlock | OtherBlock} Block
+ */
+
+/** @type {OtherBlock} */
+const OTHER = { kind: 'other' };
+
+/** @param {unknown} raw @returns {Block} */
+function block(raw) {
+  const b = asRecord(raw);
+  if (b.type === 'text') {
+    const said = asText(b.text);
+    return said === undefined ? OTHER : { kind: 'text', text: said };
+  }
+  if (b.type === 'tool_use') {
+    const name = asText(b.name);
+    return name === undefined ? OTHER : { kind: 'toolUse', id: text(b.id), name, input: asRecord(b.input) };
+  }
+  if (b.type === 'tool_result') {
+    return { kind: 'toolResult', toolUseId: asText(b.tool_use_id), failed: b.is_error === true };
+  }
+  return OTHER;
+}
+
+/** @param {unknown} raw @returns {Entry} */
+function entry(raw) {
+  const rec = asRecord(raw);
+  const message = asRecord(rec.message);
+  const role = rec.type === 'user' ? 'user' : rec.type === 'assistant' ? 'assistant' : 'other';
+  return {
+    role,
+    uuid: text(rec.uuid),
+    msgId: text(message.id),
+    at: epoch(rec.timestamp),
+    content: Array.isArray(message.content) ? message.content.map(block) : null,
+  };
+}
+
 /** @param {unknown} value @returns {number} */
 function epoch(value) {
-  const ms = typeof value === 'string' ? Date.parse(value) : NaN;
+  const ms = Date.parse(text(value));
   return Number.isFinite(ms) ? ms : 0;
 }
 
@@ -61,6 +121,8 @@ function epoch(value) {
  * @returns {(Turn | null)[]}
  */
 export function timeline(records) {
+  const decoded = records.map(entry);
+
   // A denied `Read` returned no content, so it is not a read. Collected first: a tool_result
   // is always written after the call it answers.
   /** @type {Set<string>} */
@@ -71,14 +133,14 @@ export function timeline(records) {
   /** Backgrounded calls a completion notice has since reported on. */
   /** @type {Set<string>} */
   const notified = new Set();
-  for (const rec of records) {
-    if (rec?.type !== 'user' || !Array.isArray(rec?.message?.content)) continue;
-    for (const b of rec.message.content) {
-      if (b?.type === 'tool_result' && typeof b.tool_use_id === 'string') {
-        answered.add(b.tool_use_id);
-        if (b.is_error === true) failed.add(b.tool_use_id);
+  for (const rec of decoded) {
+    if (rec.role !== 'user' || rec.content === null) continue;
+    for (const b of rec.content) {
+      if (b.kind === 'toolResult' && b.toolUseId !== undefined) {
+        answered.add(b.toolUseId);
+        if (b.failed) failed.add(b.toolUseId);
       }
-      if (b?.type === 'text' && typeof b.text === 'string') {
+      if (b.kind === 'text') {
         for (const m of b.text.matchAll(/<tool-use-id>([^<]+)<\/tool-use-id>/g)) notified.add(m[1].trim());
       }
     }
@@ -86,29 +148,28 @@ export function timeline(records) {
 
   /** @type {(Turn | null)[]} */
   const out = [];
-  for (const rec of records) {
-    const content = rec?.message?.content;
-    if (!Array.isArray(content)) continue;
+  for (const rec of decoded) {
+    const content = rec.content;
+    if (content === null) continue;
 
-    if (rec.type === 'user') {
-      const isPrompt = content.some((b) => b?.type !== 'tool_result') && !harnessNotice(content);
+    if (rec.role === 'user') {
+      const isPrompt = content.some((b) => b.kind !== 'toolResult') && !harnessNotice(content);
       if (isPrompt) out.push(null);
       continue;
     }
-    if (rec.type !== 'assistant') continue;
+    if (rec.role !== 'assistant') continue;
 
-    const toolUses = content
-      .filter((b) => b?.type === 'tool_use' && typeof b.name === 'string')
-      .map((b) => ({
-        name: b.name,
-        input: b.input ?? {},
-        id: b.id,
-        ok: !(typeof b.id === 'string' && failed.has(b.id)),
-        answered: typeof b.id === 'string' && answered.has(b.id),
-        notified: typeof b.id === 'string' && notified.has(b.id),
-      }));
-    const text = content
-      .filter((b) => b?.type === 'text' && typeof b.text === 'string')
+    const toolUses = content.filter(isToolUse).map((b) => ({
+      name: b.name,
+      input: b.input,
+      id: b.id,
+      // An id the transcript did not carry belongs to no result.
+      ok: !(b.id !== '' && failed.has(b.id)),
+      answered: b.id !== '' && answered.has(b.id),
+      notified: b.id !== '' && notified.has(b.id),
+    }));
+    const said = content
+      .filter(isText)
       .map((b) => b.text)
       .join('\n')
       .trim();
@@ -116,20 +177,36 @@ export function timeline(records) {
     // One assistant message is written as **one record per content block**, each carrying the
     // same `message.id` and its own `uuid` — so a turn issuing eight parallel `Read`s arrives
     // here as eight records, and the message id is the only turn boundary on offer.
-    const msgId = typeof rec?.message?.id === 'string' ? rec.message.id : '';
     const prev = out[out.length - 1];
-    if (msgId && prev && prev.msgId === msgId) {
+    if (rec.msgId && prev && prev.msgId === rec.msgId) {
       prev.toolUses.push(...toolUses);
-      if (text) {
-        prev.text = prev.text ? `${prev.text}\n${text}` : text;
+      if (said) {
+        prev.text = prev.text ? `${prev.text}\n${said}` : said;
         prev.hasText = true;
       }
       continue;
     }
 
-    out.push({ uuid: rec.uuid ?? '', msgId, at: epoch(rec.timestamp), toolUses, hasText: text.length > 0, text });
+    out.push({
+      uuid: rec.uuid,
+      msgId: rec.msgId,
+      at: rec.at,
+      toolUses,
+      hasText: said.length > 0,
+      text: said,
+    });
   }
   return out;
+}
+
+/** @param {Block} b @returns {b is ToolUseBlock} */
+function isToolUse(b) {
+  return b.kind === 'toolUse';
+}
+
+/** @param {Block} b @returns {b is TextBlock} */
+function isText(b) {
+  return b.kind === 'text';
 }
 
 /**
@@ -137,12 +214,12 @@ export function timeline(records) {
  * rather than a person giving new instructions. A backgrounded task's completion and a system
  * notification both arrive as `user` records carrying text, and each says outright that it is
  * not user input — so each is taken at its word instead of being read as a prompt.
- * @param {any[]} content
+ * @param {Block[]} content
  * @returns {boolean}
  */
 function harnessNotice(content) {
   for (const b of content) {
-    if (b?.type !== 'text' || typeof b.text !== 'string') continue;
+    if (b.kind !== 'text') continue;
     if (b.text.includes('<task-notification>')) return true;
     if (b.text.includes('[SYSTEM NOTIFICATION - NOT USER INPUT]')) return true;
   }
@@ -290,7 +367,7 @@ export function issued(turn, name, input) {
  */
 function canonical(value) {
   return JSON.stringify(value, (_key, val) =>
-    val && typeof val === 'object' && !Array.isArray(val)
+    isRecord(val)
       ? Object.fromEntries(
           Object.keys(val)
             .sort()
@@ -414,45 +491,16 @@ function liveWatch(use) {
 }
 
 /**
- * Path-shaped tokens named by a watch this session already armed and that is still running —
- * a `Monitor`, or a backgrounded Bash command and its log file. A live watch delivers its
- * events on its own, so polling the same file by hand is work already being done; a watch that
- * has already reported finishing names nothing here, because then there is nothing to wait for.
- * @param {(Turn | null)[]} line @param {string} [exceptTurnUuid]
- * @returns {string[]}
- */
-export function watchedPaths(line, exceptTurnUuid) {
-  /** @type {Set<string>} */
-  const out = new Set();
-  for (const turn of turns(line)) {
-    if (exceptTurnUuid && turn.uuid === exceptTurnUuid) continue;
-    for (const use of turn.toolUses) {
-      if (!liveWatch(use)) continue;
-      const text = `${use.input?.command ?? ''} ${JSON.stringify(use.input?.ws ?? '')}`;
-      // A basename with an extension is the only token specific enough to key on; a bare
-      // word would collide with any command mentioning the same noun. Split into shell
-      // tokens first and take each one's basename whole — a regex scanning the raw text
-      // matches only a *suffix* of the name ("y.log" out of "verify.log"), which is enough
-      // for a substring test and wrong for anything that compares names.
-      for (const token of text.split(/[\s'"`(){}[\]<>|;&,]+/)) {
-        if (!token) continue;
-        const base = token.split('/').pop() ?? '';
-        if (base.length >= 5 && /^[\w.-]+\.[A-Za-z]\w*$/.test(base)) out.add(base);
-      }
-    }
-  }
-  return [...out];
-}
-
-/**
  * The files a watch this session armed **and still has running** is writing or following: a
  * backgrounded command's redirect target, a `tee` destination, a `tail -f` argument. Paths as
  * written, for the caller to resolve against the cwd it knows.
  *
- * Deliberately narrower than `watchedPaths`, which keys on every filename-shaped token of the
- * command. That breadth is right for a substring test against another *shell command* and
- * wrong for judging a `Read`: the script a watch runs and the config it was handed are named
- * on its command line too, and a first look at either is not polling anything.
+ * Only the watch's own output counts. A broader reading that keyed on every filename-shaped
+ * token of the watch's command line used to answer the shell half of the polling gate, and it
+ * refused a first probe of `server.ts` and of `artifactDownload.ts` merely because a `Monitor`
+ * command named them — the script a watch runs and the config it was handed are on its command
+ * line too, and a first look at either is discovery rather than polling. Both halves now ask
+ * this narrower question.
  * @param {(Turn | null)[]} line @param {string} [exceptTurnUuid]
  * @returns {string[]}
  */

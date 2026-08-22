@@ -35,8 +35,8 @@
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { block, guard, readEvent, warn } from './lib/io.mjs';
-import { alreadyDenied, logPath } from './lib/state.mjs';
-import { entries, foreignTranscript, nestedRunOpen, returnMarker, timeline, turns } from './lib/transcript.mjs';
+import { alreadyDenied, logPath, timesDenied } from './lib/state.mjs';
+import { entries, nestedRunOpen, returnMarker, timeline, turns } from './lib/transcript.mjs';
 
 /**
  * How close to the stop the last turn's timestamp must be for the transcript to be suspect.
@@ -74,20 +74,39 @@ const TEARDOWN_TOOLS = new Set(['ExitWorktree']);
  */
 const TEARDOWN_BASH = /my-command-tools\s+(?:worktree\s+(?:end|reap)|cleanup)\b/;
 
+/**
+ * How many times this gate may speak in one session. A Stop hook that blocks without limit is an
+ * infinite loop, and one that blocks only once lets a run end unreported on its second attempt —
+ * which is what happened. Three is enough for the recorded shapes (a chore turn, a correction,
+ * one more chore turn) and small enough that a wedged session cannot be the cost.
+ */
+const MAX_REMARKS = 3;
+
 guard(() => {
   const event = readEvent();
   if (!event) return;
-  // Set on a stop the harness is re-running because a hook already blocked once. Blocking
-  // again from the same state is how a Stop hook becomes an infinite loop.
-  if (event.stop_hook_active === true) return;
+  const path = event.transcriptPath;
+  const session = event.sessionId;
 
-  const path = String(event.transcript_path ?? '');
-  // A subagent's event carries the *parent's* transcript, so without this the gate judges one
-  // run by another's history.
-  if (foreignTranscript(path)) return;
+  // Set on a stop the harness is re-running because a hook already blocked. Returning here
+  // outright is what let a blocked run end anyway with nothing recorded: the block landed, the
+  // agent sent one more chore-only turn, and this gate — the only thing that would have noticed —
+  // was standing down. Two buckets carry the injected "This run has not recorded its outcome"
+  // feedback and still recorded nothing for their root.
+  //
+  // The loop was never prevented by this return. It is prevented by the per-turn denial key
+  // further down, which speaks to one turn once however many times the stop is retried; a
+  // *different* turn is a new decision the agent made in between and is judged on its own. The
+  // ceiling is what guarantees termination even if every turn after a block is a fresh chore.
+  if (event.stopHookActive && timesDenied(session, 'outcome') >= MAX_REMARKS) return;
+
+  // `foreignTranscript()` is deliberately **not** consulted here, unlike in every PreToolUse
+  // gate. Only `Stop` is registered — `SubagentStop` is not — so every event this hook sees
+  // belongs to the session that owns `path`, and the recency test it uses answers "a subagent
+  // wrote more recently than the parent", which at a *parent's* stop is true of any run that
+  // dispatched anything and says nothing about whose transcript this is. It stood the gate down
+  // for exactly the delegated runs the misses were recorded in.
   if (nonInteractive()) return;
-
-  const session = String(event.session_id ?? '');
   let call = judge(timeline(entries(path)));
   // Only re-read when about to say something, so the pause is paid on the rare stop rather
   // than on every one. Once: if the record still is not there, it is not arriving.
@@ -215,7 +234,7 @@ function judge(line) {
   // a lone `worktree end` recorded no outcome either, and removing the workspace is no more the
   // run finishing than marking a row is.
   if (endsOnToolCall && bookkeepingOnly(last)) {
-    return { ...seen, owed, verdict: 'bookkeeping', chore: choreShape(last) };
+    return { ...seen, owed, verdict: 'bookkeeping', chore: closingChore(last) };
   }
 
   // A run this session set going is still open, so the stop lands mid-pipeline.
@@ -253,12 +272,12 @@ function isTeardown(use) {
 }
 
 /**
- * Which of the two closing-chore shapes this turn is, for the message. Both are refused; they
- * are told apart only so the refusal can name what it actually saw.
+ * Which closing chore this turn performed, for the message. All three are refused; they are
+ * told apart only so the refusal can name what it actually saw.
  * @param {import('./lib/transcript.mjs').Turn} turn
  * @returns {'bookkeeping' | 'teardown' | 'chores'}
  */
-function choreShape(turn) {
+function closingChore(turn) {
   const book = turn.toolUses.some((u) => BOOKKEEPING.has(u.name));
   const down = turn.toolUses.some((u) => isTeardown(u));
   if (book && down) return 'chores';
@@ -288,13 +307,19 @@ function yieldedByDesign(turn) {
 }
 
 /**
- * Whether this session is one no person is watching, where the gate has nothing to add. A
- * background job's harness already requires its own outcome line and reports on it, and a
- * headless run has no terminal for a warning to reach.
+ * Whether this session is one the gate has nothing to add to. `CI` is a run with no terminal for
+ * a warning to reach and no agent left to correct anything, and `MY_COMMAND_NON_INTERACTIVE` is
+ * this repo's own documented opt-out.
+ *
+ * `CLAUDE_JOB_DIR` used to be here too, on the stated assumption that a background job's harness
+ * requires its own outcome line. It does not: a backgrounded command run is *exactly* the shape
+ * the misses were recorded in — `/god --no-review`, `/mc -t`, `/fb -t`, `/work --area …` — and
+ * every one of them was exempted by that variable before the gate saw it. A job's outcome is
+ * still an outcome, and there is an agent there to write it.
  * @returns {boolean}
  */
 function nonInteractive() {
-  return Boolean(process.env.CLAUDE_JOB_DIR || process.env.MY_COMMAND_NON_INTERACTIVE || process.env.CI);
+  return Boolean(process.env.MY_COMMAND_NON_INTERACTIVE || process.env.CI);
 }
 
 /**

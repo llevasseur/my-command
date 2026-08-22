@@ -25,6 +25,7 @@
     "prepare": "tsc",
     "typecheck": "tsc --noEmit",
     "lint": "biome lint .",
+    "lint:anti-slop": "oxlint",
     "format": "biome check --write .",
     "check": "biome check .",
     "check:commands": "./scripts/check-commands.sh",
@@ -40,7 +41,9 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.8",
+    "@oxlint/plugins": "1.78.0",
     "@types/node": "^22.13.0",
+    "oxlint": "1.78.0",
     "typescript": "^5.7.3"
   }
 }
