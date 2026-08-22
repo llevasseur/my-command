@@ -261,6 +261,33 @@ function codexSkillsDir() {
   return agentsSkillsDir();
 }
 
+// The device-wide directory opencode reads slash commands from. A checkout can carry its own
+// in `<repo>/.opencode/command`; this is the global counterpart, so one install covers every
+// checkout.
+const opencodeCommandDir = () =>
+  process.env.OPENCODE_COMMAND_DIR ||
+  join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'opencode', 'command');
+
+/** The `description:` from a skill's frontmatter block, or '' when it has none. */
+function skillDescription(name: string): string {
+  try {
+    const text = readFileSync(join(SKILLS_DIR, name, 'SKILL.md'), 'utf8');
+    const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1];
+    return /^description:[ \t]*(.+)$/m.exec(front ?? '')?.[1].trim() ?? '';
+  } catch {
+    return '';
+  }
+}
+
+// One command file, handing the request to the skill of the same name — not a copy of
+// src/commands/<name>.md, which would be a second body of the same prose to keep in step.
+// JSON.stringify quotes the description, so one carrying a colon stays valid YAML.
+function opencodeCommandBody(name: string): string {
+  const description = skillDescription(name);
+  const front = description ? `---\ndescription: ${JSON.stringify(description)}\n---\n\n` : '';
+  return `${front}Use the "${name}" skill for this request: $ARGUMENTS\n`;
+}
+
 async function installPersonal() {
   const dest = process.env.CLAUDE_COMMANDS_DIR || join(homedir(), '.claude', 'commands');
   await installFiles({
@@ -291,6 +318,20 @@ async function installCodexSkills() {
   });
 }
 
+// The slash commands an opencode session invokes as /task, written device-wide. opencode reads
+// skills and commands from separate places: a skill in ~/.agents/skills answers to no `/name`.
+async function installOpencodeCommands(dest = opencodeCommandDir()) {
+  await installFiles({
+    items: skills,
+    dest,
+    itemLabel: 'command',
+    targetPath: (command) => join(dest, `${command}.md`),
+    install: (command) => writeFileSync(join(dest, `${command}.md`), opencodeCommandBody(command)),
+    summary: 'They run as bare slash commands in an opencode session:',
+    display: (command) => `/${command}`,
+  });
+}
+
 interface OpencodeResult {
   installed: boolean;
   /** Where the skills landed. */
@@ -308,7 +349,7 @@ interface OpencodeResult {
 //
 // COPIED rather than symlinked, like installHooks() and installAgents() — npx runs from an
 // ephemeral cache directory cleaned up after the wizard exits, so a link into it would dangle.
-function installOpencodeSkills(dest = agentsSkillsDir()): OpencodeResult {
+function installOpencodeSkills(dest = agentsSkillsDir(), { skipExisting = false } = {}): OpencodeResult {
   const base: OpencodeResult = { installed: false, dest };
   if (!existsSync(SKILLS_DIR) || skills.length === 0) return { ...base, reason: `no skills in ${SKILLS_DIR}` };
 
@@ -324,6 +365,8 @@ function installOpencodeSkills(dest = agentsSkillsDir()): OpencodeResult {
         symlinked++;
         continue;
       }
+      // Backfilling only what is absent leaves a skill declined on the skills choice as it is.
+      if (skipExisting && existsSync(join(skillDir, 'SKILL.md'))) continue;
       mkdirSync(skillDir, { recursive: true });
       copyFileSync(join(SKILLS_DIR, skill, 'SKILL.md'), join(skillDir, 'SKILL.md'));
       copied++;
@@ -634,6 +677,24 @@ function reportOpencodeSkills(result: OpencodeResult) {
   }
 }
 
+// The backfill's own report: the copy here is not a redirected Codex install, but command
+// files that hand off to skills by name and load into nothing without them.
+function reportOpencodeCommandSkills(result: OpencodeResult) {
+  if (!result.installed) {
+    console.log(`\nSkills not installed for opencode (${result.reason}).`);
+    console.log('Each command above hands its request to the skill of the same name, so they will');
+    console.log('load and find nothing to run. Re-run the wizard and pick 3 to install the skills.');
+    return;
+  }
+  if (result.copied === 0) {
+    console.log(`\nSkills already in place: ${result.dest} — left every one untouched.`);
+    return;
+  }
+  console.log(`\nInstalled ${result.copied} missing skill(s): ${result.dest}`);
+  console.log('The commands hand off to these by name. Skills already there were left as they are,');
+  console.log('and choice 3 is the option that updates them.');
+}
+
 function reportHooks(result: HooksResult) {
   if (result.installed) {
     if (result.symlinked) {
@@ -664,7 +725,8 @@ async function main() {
   console.log('  1) Claude Code plugin   → namespaced commands, e.g. /my-command:task (auto-updates)');
   console.log('  2) Personal commands    → bare commands, e.g. /task (copied into ~/.claude/commands)');
   console.log('  3) Skills               → $task for Codex and opencode (copied into ~/.agents/skills)');
-  console.log('  4) Cancel');
+  console.log('  4) opencode commands    → /task in opencode (copied into ~/.config/opencode/command)');
+  console.log('  5) Cancel');
 
   const rl = createInterface({ input, output });
   const choice = (await rl.question('\nChoice [1]: ')).trim() || '1';
@@ -695,6 +757,14 @@ async function main() {
     // tool only — never for the Read/Edit/Write calls two of these gates judge. These
     // scripts also speak Claude Code's protocol and parse a Claude transcript. A
     // Codex-native port is its own piece of work.
+  } else if (choice === '4') {
+    await installOpencodeCommands();
+    // Unguarded, unlike the skills choice's call: a command is inert without its skill, and
+    // skipExisting writes only the absent ones.
+    reportOpencodeCommandSkills(installOpencodeSkills(agentsSkillsDir(), { skipExisting: true }));
+    reportToolkit(installToolkit());
+    reportConceptStore();
+    // No gates here either: they are Claude Code's hook protocol, and opencode does not run it.
   } else {
     console.log('Cancelled. Nothing changed.');
   }
@@ -718,6 +788,7 @@ export {
   installAgents,
   installCodexSkills,
   installHooks,
+  installOpencodeCommands,
   installOpencodeSkills,
   installPersonal,
   installToolkit,

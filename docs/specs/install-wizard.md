@@ -1,10 +1,10 @@
 ---
 type: spec
 title: Install wizard
-description: The npx wizard that installs the command suite as a Claude Code plugin, bare personal commands, or Codex Skills, with per-item overwrite.
+description: The npx wizard that installs the command suite as a Claude Code plugin, bare personal commands, Codex Skills, or opencode commands, with per-item overwrite.
 tags: [process, wizard, install, codex]
 timestamp: 2026-07-28
-updated: 2026-08-09
+updated: 2026-08-22
 ---
 
 # Install wizard
@@ -13,9 +13,10 @@ updated: 2026-08-09
 
 `npx github:llevasseur/my-command` runs `dist/my-command.js` (compiled from
 `src/my-command.ts` by the `prepare` script), a zero-dependency wizard that
-installs the suite as a Claude Code plugin, bare Claude commands, or Codex-native
-skills. Every mode also installs the shared [command toolkit](command-toolkit.md)
-in that product's device config root and links it onto PATH when possible.
+installs the suite as a Claude Code plugin, bare Claude commands, Codex-native
+skills, or opencode slash commands. Every mode also installs the shared
+[command toolkit](command-toolkit.md) in that product's device config root and
+links it onto PATH when possible.
 
 ## Behavior
 
@@ -46,6 +47,21 @@ in that product's device config root and links it onto PATH when possible.
   reason `installHooks()` does, and skips a skill directory that is already a symlink into a
   checkout (what `scripts/install-codex-personal.sh` leaves behind) rather than writing
   through it. A failure is reported, not fatal.
+- **Mode 4 — opencode commands.** Writes one `<name>.md` per shipped skill into the
+  device-wide opencode command directory: `${XDG_CONFIG_HOME:-~/.config}/opencode/command`,
+  which `OPENCODE_COMMAND_DIR` overrides outright. opencode reads slash commands from there
+  and skills from `~/.agents/skills`, and neither directory serves the other — mode 3 alone
+  leaves a session able to load `task` and unable to type `/task`. Each file is a shim
+  carrying the skill's own `description:` as frontmatter and a body that hands the request to
+  the skill of the same name (`Use the "<name>" skill for this request: $ARGUMENTS`) — not a
+  copy of `src/commands/<name>.md`, because the skill is the opencode-native form of the
+  workflow and a second body would be a second thing to keep in step. The description is
+  JSON-quoted, so one containing a colon stays valid YAML.
+- **Mode 4 backfills only the skills that are absent.** A command file is inert without its
+  skill, so mode 4 calls `installOpencodeSkills(agentsSkillsDir(), { skipExisting: true })`.
+  Unguarded, unlike mode 3's call, and safe for the same reason it is needed: `skipExisting`
+  writes only what is missing, so a skill the user declined to overwrite on mode 3 is never
+  overwritten behind that answer. Mode 3 remains the option that updates the skills.
 - **All modes install the toolkit.** `installToolkit()` copies `src/toolkit/` to
   the product's device root—`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/my-command` for
   Claude or `${CODEX_HOME:-$HOME/.codex}/my-command` for Codex—places the executable
@@ -100,8 +116,9 @@ overwrite prompt.
   `skills/<name>/SKILL.md`; the data-driven lists include each native form.
 - **New command ⇒ feature doc.** See [Adding a command](adding-a-command.md).
 - The module stays importable: `checkboxPrompt`, `installPersonal`,
-  `installCodexSkills`, `installOpencodeSkills`, `installToolkit`, `installHooks`, and
-  `linkOnPath` are exported, and `main()` runs only when the file is invoked directly.
+  `installCodexSkills`, `installOpencodeCommands`, `installOpencodeSkills`,
+  `installToolkit`, `installHooks`, and `linkOnPath` are exported, and `main()` runs only
+  when the file is invoked directly.
 - **One option per surface, and the skills option covers opencode.** Mode 3 is the only mode
   that installs skills; the Claude modes install commands and never write
   `~/.agents/skills`. `installOpencodeSkills()` stays behind its
@@ -110,6 +127,12 @@ overwrite prompt.
   prompt over its own files. Enforced by `check-commands.sh` (invariant 25), which holds the
   guarded call present, the unguarded count at zero, the copy — not a symlink — the fixed
   destination, and the menu label naming both Codex and opencode.
+- **A skill installed is not a command installed.** opencode resolves `/name` from its
+  command directory alone, so mode 4 must write there and mode 3 must not be expected to
+  cover it. Enforced by `check-commands.sh` (invariant 26), which holds the call present, the
+  destination at `<config>/opencode/command`, the shim body naming the skill and
+  `$ARGUMENTS`, the backfill's `skipExisting`, and the menu entry that makes the option
+  reachable.
 - **No Claude install without the gates.** Both Claude modes call `installHooks()`;
   dropping it from either ships the commands with the gates inert on that surface, which
   is the failure the gates' own spec records. Enforced by `check-commands.sh` (invariant
@@ -142,6 +165,12 @@ overwrite prompt.
       user declined to overwrite stays as it was.
 - [ ] The opencode step leaves a skill directory symlinked into a checkout untouched.
 - [ ] Neither Claude mode writes `~/.agents/skills`.
+- [ ] Mode 4 leaves one `<name>.md` per shipped workflow in
+      `~/.config/opencode/command/`, and an opencode session lists `/task` among them.
+- [ ] `/task` in opencode runs the same workflow `$task` runs, via the installed skill.
+- [ ] Mode 4 on a device that already has the skills copies none of them.
+- [ ] Mode 4 on a device that has none installs them all.
+- [ ] A non-interactive mode 4 re-run leaves an edited command file untouched.
 - [ ] Both Claude modes leave `my-command-tools doctor` reporting `hooks.armed: true`.
 - [ ] The hook scripts land executable, without the tests, and a second run does not
       stack a duplicate registration or a duplicate allowlist entry.

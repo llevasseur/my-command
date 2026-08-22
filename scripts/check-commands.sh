@@ -805,6 +805,35 @@ if ! grep -q '3) Skills .*Codex and opencode' src/my-command.ts; then
   fail=1
 fi
 
+# 26. opencode reads slash commands from a directory it reads no skill from: a skill in
+# ~/.agents/skills loads and answers to no /name, which is what choice 4 exists to fix.
+if ! grep -q 'installOpencodeCommands(' src/my-command.ts; then
+  echo "::error::src/my-command.ts no longer calls installOpencodeCommands(); an opencode session would have the skills and no slash command to invoke them by."
+  fail=1
+fi
+
+if ! grep -q "'opencode', 'command'" src/my-command.ts; then
+  echo "::error::src/my-command.ts no longer resolves the device-wide opencode command directory; opencode reads commands from <config>/opencode/command and nowhere else."
+  fail=1
+fi
+
+# The body is the whole file: without the skill name and the placeholder it invokes nothing.
+if ! grep -Fq 'Use the "${name}" skill for this request: $ARGUMENTS' src/my-command.ts; then
+  echo "::error::src/my-command.ts no longer writes a command body that hands the request to the skill of the same name; the installed commands would invoke nothing."
+  fail=1
+fi
+
+# The backfill stays skip-existing: overwriting here would undo an answer choice 3 already took.
+if ! grep -Fq 'installOpencodeSkills(agentsSkillsDir(), { skipExisting: true })' src/my-command.ts; then
+  echo "::error::src/my-command.ts no longer backfills only the missing skills from the opencode commands choice; it must not overwrite a skill the user declined to update."
+  fail=1
+fi
+
+if ! grep -q '4) opencode commands' src/my-command.ts; then
+  echo "::error::src/my-command.ts no longer offers the opencode commands choice in the menu; an option nobody can pick installs nothing."
+  fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then
   echo "check-commands: all command invariants satisfied ($(ls src/commands/*.md | wc -l | tr -d ' ') commands, $(ls agents/*.md | wc -l | tr -d ' ') subagent definitions)."
 fi
