@@ -42,9 +42,9 @@
 #      the device makes a named one do the same. Each declared model matches the tier the spec's
 #      table assigns it, and the one site that departs from its definition's tier still says so
 #      (docs/specs/subagent-definitions.md).
-#  25. both Claude install paths also copy the skills into ~/.agents/skills, where opencode
-#      discovers them for every model it drives — without that copy the workflows reach
-#      Anthropic models only, and an opencode session finds nothing.
+#  25. the skills choice is the one surface that installs skills, it says in the menu that it
+#      serves opencode as well as Codex, and it still reaches ~/.agents/skills — where opencode
+#      discovers them for every model it drives — when the environment redirects it elsewhere.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -761,19 +761,26 @@ else
   fi
 fi
 
-# 25. Both Claude install paths also place the skills where opencode finds them. opencode
-# discovers ~/.agents/skills for every model it drives, so this copy is the only thing that
-# carries the workflows to a non-Anthropic model; dropping it leaves an opencode session
-# with no workflows and no way to tell any were meant to be there.
+# 25. The skills choice is the one surface that installs skills, and it covers opencode.
+# ~/.agents/skills is where opencode discovers them for every model it drives, and that choice
+# already writes it by default — so the wizard's menu stays one option per surface, and the
+# extra copy exists only for the case that default is redirected away.
 if ! grep -q 'installOpencodeSkills(' src/my-command.ts; then
-  echo "::error::src/my-command.ts no longer calls installOpencodeSkills(); an npx install would leave opencode sessions without the workflows."
+  echo "::error::src/my-command.ts no longer calls installOpencodeSkills(); a redirected Codex install would leave opencode with no skills at all."
   fail=1
 fi
 
-# Anchored at the statement start, so the Codex path's guarded call does not count.
-wired_opencode="$(grep -cE '^ *reportOpencodeSkills\(installOpencodeSkills\(\)\);$' src/my-command.ts || true)"
-if [ "$wired_opencode" -ne 2 ]; then
-  echo "::error::src/my-command.ts wires the opencode skills into $wired_opencode of the 2 Claude install paths; both the plugin and personal choices must place them."
+# The guarded call, whole: without the guard it would overwrite the choice the overwrite prompt
+# just offered, and without the call a redirected install reaches opencode nowhere.
+if ! grep -Fq 'if (codexSkillsDir() !== agentsSkillsDir()) reportOpencodeSkills(installOpencodeSkills());' src/my-command.ts; then
+  echo "::error::src/my-command.ts no longer places the skills in ~/.agents/skills when CODEX_SKILLS_DIR or CODEX_HOME redirects the Codex install; opencode reads that path and would find nothing."
+  fail=1
+fi
+
+# And it stays guarded. Anchored at the statement start, so the guarded call above does not count.
+unguarded="$(grep -cE '^ *reportOpencodeSkills\(installOpencodeSkills\(\)\);$' src/my-command.ts || true)"
+if [ "$unguarded" -ne 0 ]; then
+  echo "::error::src/my-command.ts calls reportOpencodeSkills(installOpencodeSkills()) unguarded in $unguarded place(s); the skills belong to the skills choice, which already writes ~/.agents/skills by default."
   fail=1
 fi
 
@@ -788,6 +795,13 @@ fi
 # install nothing opencode finds.
 if ! grep -q "agentsSkillsDir = () => join(homedir(), '.agents', 'skills')" src/my-command.ts; then
   echo "::error::src/my-command.ts no longer resolves the opencode skills directory to a fixed ~/.agents/skills; opencode reads that path and nowhere else."
+  fail=1
+fi
+
+# The menu names the surfaces that choice serves. Labelled "Codex Skills" while already writing
+# the directory opencode reads, the support looked missing.
+if ! grep -q '3) Skills .*Codex and opencode' src/my-command.ts; then
+  echo "::error::src/my-command.ts no longer labels choice 3 for both Codex and opencode; the option that installs opencode's skills must say so in the menu."
   fail=1
 fi
 
