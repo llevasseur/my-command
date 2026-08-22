@@ -66,8 +66,10 @@ lands every time, and the message meant to follow it never arrives.
    lives in this pipeline rather than there. A finding on a line this run never
    touched is pre-existing: name it in the report instead of widening the diff.
    Because the fixes are code changes, re-run the repository's verification gates
-   afterwards, waited on with the single blocking call above, and treat a failing
-   verdict as this step being unfinished. The lint's output is input, not a gate:
+   afterwards as a **fresh** run, blocking on the wait command that new run
+   reports rather than re-sending the earlier one — the earlier verdict is
+   already written, so re-waiting on it returns the pre-fix report at once and
+   verifies nothing. Treat a failing verdict as this step being unfinished. The lint's output is input, not a gate:
    a finding deliberately left standing is reported with its reason, never
    silenced by editing lint configuration.
 6. Add changelog work when the repository tracks it. Commit logical scoped
