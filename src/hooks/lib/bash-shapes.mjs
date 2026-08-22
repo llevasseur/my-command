@@ -121,6 +121,47 @@ export function unmatchedGlob(command, cwd) {
 }
 
 /**
+ * Separators that end up glued to the end of a glob when the pattern is composed rather than
+ * recalled. Four recorded patterns carried a trailing `;` — `*.tsx;`, `*.stories.tsx;`,
+ * `lib/aem-source/*.ts;`, `*.json;` — and one a trailing comma. Quoting such a pattern makes
+ * the shell stop complaining and the program match nothing, which is worse than the abort.
+ */
+const STRAY_SEPARATOR = /[;,]+$/;
+
+/**
+ * A glob with any separator that was never part of the pattern removed, and the separator found.
+ * @param {string} glob
+ * @returns {{pattern: string, stray: string}}
+ */
+export function withoutStraySeparator(glob) {
+  const found = STRAY_SEPARATOR.exec(glob);
+  return { pattern: found ? glob.slice(0, found.index) : glob, stray: found ? found[0] : '' };
+}
+
+/** The grep family, whose `--include` is the recorded way a bare glob reaches a shell. */
+const GREPS = new Set(['grep', 'egrep', 'fgrep', 'rgrep']);
+
+/**
+ * A `grep --include=<glob>` / `--exclude=<glob>` in this command, or null — whatever the quoting.
+ * Unlike the unmatched-glob check this does not ask whether the pattern matches anything; the
+ * caller refuses the shape itself.
+ * @param {string} command
+ * @returns {{flag: string, glob: string, bin: string} | null}
+ */
+export function grepIncludeGlob(command) {
+  // Not split into segments first: splitting on `;` would strip a stray trailing one here while
+  // the shell still sees it, so the whole command is tokenized and the separator is reported.
+  const tokens = tokenize(command);
+  const bin = tokens.map((t) => t.text.split('/').pop() ?? '').find((word) => GREPS.has(word));
+  if (bin === undefined) return null;
+  for (const token of tokens) {
+    const m = /^--(include|exclude)=(.+)$/.exec(token.text);
+    if (m && /[*?]/.test(m[2])) return { flag: `--${m[1]}`, glob: m[2], bin };
+  }
+  return null;
+}
+
+/**
  * The `sleep` invocation in a foreground command, or null. The harness blocks it, and blocks
  * the whole call with it, so a probe chained after the wait never runs either.
  * @param {string} command @param {boolean} background
@@ -166,6 +207,40 @@ export function heredocWrite(command) {
     .map((t) => t.text)
     .join(' ');
   return /(^|[^0-9<>&])>{1,2}([^>]|$)/.test(bare) || /\btee\b/.test(bare);
+}
+
+/** Binaries whose output is content the shell itself supplies, rather than a program's result. */
+const COMPOSERS = new Set(['cat', 'echo', 'printf']);
+
+/**
+ * The file a command composes in the shell, or null. Wider than `heredocWrite`, which sees only a
+ * heredoc: a composer redirected into a file is the same act, refused in the same places, and done
+ * by the `Write` tool with no shell in the way.
+ *
+ * A redirect whose source is a real program's output is **not** this shape — that is capturing a
+ * result, and refusing it would take the backgrounded log file the other gates depend on with it.
+ * So the segment's first word has to be a composer, or the segment has to feed a heredoc into the
+ * redirect.
+ * @param {string} command
+ * @returns {{target: string, how: 'heredoc' | 'composer'} | null}
+ */
+export function shellComposedWrite(command) {
+  const heredoc = heredocWrite(command);
+  for (const segment of command.split(/\|\||&&|[;\n]/)) {
+    const tokens = tokenize(segment.trim());
+    const bin = tokens[0]?.text.split('/').pop() ?? '';
+    const redirect = />>?\s*("[^"]+"|'[^']+'|[^\s;&|<>]+)/.exec(segment);
+    if (!redirect) continue;
+    const target = redirect[1].replace(/^['"]|['"]$/g, '');
+    // `2>&1` and friends duplicate a descriptor; `/dev/*` is not a document. A computed target
+    // cannot be named, and the recorded one is the `$CLAUDE_JOB_DIR` scratch write no gate may
+    // refuse.
+    if (!target || target.startsWith('&') || target.startsWith('/dev/')) continue;
+    if (/[$`]/.test(target)) continue;
+    if (COMPOSERS.has(bin)) return { target, how: 'composer' };
+    if (heredoc) return { target, how: 'heredoc' };
+  }
+  return heredoc ? { target: '', how: 'heredoc' } : null;
 }
 
 /**

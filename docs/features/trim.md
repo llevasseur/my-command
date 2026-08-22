@@ -38,3 +38,5 @@ turn.
 
 - Command source: `src/commands/trim.md`
 - Spec: [Adding a command](../specs/adding-a-command.md)
+- [health](health.md) — the other read-only assessment command; both end in a
+  verdict rather than an edit.
