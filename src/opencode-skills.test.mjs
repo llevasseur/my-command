@@ -1,6 +1,6 @@
-// The wizard's opencode step, which is the only thing that carries the workflows to a model
-// that is not Anthropic's. These assert what makes the copy real — a SKILL.md on the device
-// under the name opencode looks up — never against the real ~/.agents/skills.
+// The wizard's opencode step, which reaches ~/.agents/skills when the skills install was
+// redirected away from it. These assert what makes the copy real — a SKILL.md on the device
+// under the name opencode looks it up by — never against the real ~/.agents/skills.
 import assert from 'node:assert/strict';
 import {
   existsSync,

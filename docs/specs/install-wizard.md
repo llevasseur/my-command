@@ -25,25 +25,27 @@ in that product's device config root and links it onto PATH when possible.
   commands run namespaced (`/my-command:<cmd>`) and auto-update on push.
 - **Mode 2 — personal.** Copies each `src/commands/*.md` into `~/.claude/commands`
   as a bare `/<cmd>`.
-- **Mode 3 — Codex Skills.** Copies each complete Codex-native
+- **Mode 3 — Skills, for Codex and opencode.** Copies each complete Codex-native
   `skills/<cmd>/` directory to `<dest>/<cmd>/`, including `SKILL.md` and any
   supporting scripts, references, assets, or tool metadata. The
   default user destination is `~/.agents/skills`; `CODEX_SKILLS_DIR` overrides it,
   and `CODEX_HOME` selects `<CODEX_HOME>/skills` for legacy Codex setups.
-- **Claude modes also install the skills for opencode.** `installOpencodeSkills()` copies
-  each `skills/<name>/SKILL.md` to `~/.agents/skills/<name>/SKILL.md`. opencode discovers
-  skills from `~/.agents/skills` and `~/.claude/skills` for **every** model it drives, not
-  only the Anthropic ones, so that copy is what carries these workflows to a GPT or Gemini
-  session — and installing Claude commands says nothing about which model the user then
-  points at them. The destination is fixed rather than env-overridable: opencode reads that
-  path and nowhere else, so `CODEX_SKILLS_DIR` and `CODEX_HOME` move the Codex install
-  without moving this one. It **copies** for the reason `installHooks()` does, and skips a
-  skill directory that is already a symlink into a checkout (what
-  `scripts/install-codex-personal.sh` leaves behind) rather than writing through it. Mode 3
-  runs the step only when its own destination is somewhere else — on the default
-  `~/.agents/skills` it has just written that directory through the overwrite prompt, and a
-  second unconditional copy would undo the answer the user gave. A failure is reported, not
-  fatal.
+- **Mode 3 is the opencode install too.** opencode discovers skills from `~/.agents/skills`
+  and `~/.claude/skills` for **every** model it drives, not only the Anthropic ones — and
+  that is mode 3's default destination, so the skills it copies are already what an opencode
+  session on GPT or Gemini reads. The menu says so; it was labelled "Codex Skills" while
+  writing that directory, which is what made the support look absent. One option per surface:
+  the Claude modes install commands and never touch this directory.
+- **Mode 3 also backfills `~/.agents/skills` when redirected away from it.**
+  `installOpencodeSkills()` copies each `skills/<name>/SKILL.md` to
+  `~/.agents/skills/<name>/SKILL.md`, and runs **only** when `CODEX_SKILLS_DIR` or
+  `CODEX_HOME` sent the mode 3 install somewhere else — on the default destination that
+  install has just written the same directory through the overwrite prompt, and a second copy
+  would undo the answer the user gave. Its own destination is fixed rather than
+  env-overridable, since opencode reads that path and nowhere else. It **copies** for the
+  reason `installHooks()` does, and skips a skill directory that is already a symlink into a
+  checkout (what `scripts/install-codex-personal.sh` leaves behind) rather than writing
+  through it. A failure is reported, not fatal.
 - **All modes install the toolkit.** `installToolkit()` copies `src/toolkit/` to
   the product's device root—`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/my-command` for
   Claude or `${CODEX_HOME:-$HOME/.codex}/my-command` for Codex—places the executable
@@ -100,11 +102,14 @@ overwrite prompt.
 - The module stays importable: `checkboxPrompt`, `installPersonal`,
   `installCodexSkills`, `installOpencodeSkills`, `installToolkit`, `installHooks`, and
   `linkOnPath` are exported, and `main()` runs only when the file is invoked directly.
-- **No Claude install without the opencode copy.** Both Claude modes call
-  `installOpencodeSkills()` unconditionally; dropping it from either leaves the workflows
-  reachable by Anthropic models alone, and an opencode session finds nothing to report as
-  missing. Enforced by `check-commands.sh` (invariant 25), which also holds the copy — not a
-  symlink — and the fixed destination in place.
+- **One option per surface, and the skills option covers opencode.** Mode 3 is the only mode
+  that installs skills; the Claude modes install commands and never write
+  `~/.agents/skills`. `installOpencodeSkills()` stays behind its
+  `codexSkillsDir() !== agentsSkillsDir()` guard — unguarded on a Claude path it would
+  install skills from an option that says it installs commands, and make the next mode 3 run
+  prompt over its own files. Enforced by `check-commands.sh` (invariant 25), which holds the
+  guarded call present, the unguarded count at zero, the copy — not a symlink — the fixed
+  destination, and the menu label naming both Codex and opencode.
 - **No Claude install without the gates.** Both Claude modes call `installHooks()`;
   dropping it from either ships the commands with the gates inert on that surface, which
   is the failure the gates' own spec records. Enforced by `check-commands.sh` (invariant
@@ -129,11 +134,14 @@ overwrite prompt.
 - [ ] All modes leave it callable as a bare `my-command-tools` in a new shell, or say
       why not and how to fix it.
 - [ ] A second run reports the existing PATH link rather than duplicating or breaking it.
-- [ ] Both Claude modes leave every shipped skill at `~/.agents/skills/<name>/SKILL.md`,
-      so an opencode session on any model lists the same workflows.
+- [ ] Mode 3 on its default destination leaves every shipped skill at
+      `~/.agents/skills/<name>/`, so an opencode session on any model lists the same workflows.
+- [ ] Mode 3 under `CODEX_HOME` leaves the skills at both `<CODEX_HOME>/skills` and
+      `~/.agents/skills`.
+- [ ] Mode 3 on the default destination runs the opencode step no second time, so a skill the
+      user declined to overwrite stays as it was.
 - [ ] The opencode step leaves a skill directory symlinked into a checkout untouched.
-- [ ] Codex mode on the default destination runs the opencode step no second time, so a
-      skill the user declined to overwrite stays as it was.
+- [ ] Neither Claude mode writes `~/.agents/skills`.
 - [ ] Both Claude modes leave `my-command-tools doctor` reporting `hooks.armed: true`.
 - [ ] The hook scripts land executable, without the tests, and a second run does not
       stack a duplicate registration or a duplicate allowlist entry.

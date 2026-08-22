@@ -301,10 +301,10 @@ interface OpencodeResult {
   reason?: string;
 }
 
-// The Codex skill translations, placed where opencode discovers them — for EVERY model it
-// drives, not only the Anthropic ones, so this copy is what gives a GPT or Gemini session
-// the same workflows a Claude session gets. Run on both Claude choices, like the toolkit,
-// the gates and the definitions.
+// The skill translations, placed in ~/.agents/skills for opencode, which discovers them there
+// for EVERY model it drives rather than the Anthropic ones alone. The skills choice already
+// writes that directory by default, so this runs only when CODEX_SKILLS_DIR or CODEX_HOME sent
+// that install elsewhere and left opencode with nothing.
 //
 // COPIED rather than symlinked, like installHooks() and installAgents() — npx runs from an
 // ephemeral cache directory cleaned up after the wizard exits, so a link into it would dangle.
@@ -625,12 +625,12 @@ function reportOpencodeSkills(result: OpencodeResult) {
   if (result.installed) {
     console.log(`\nWorkflows installed for opencode: ${result.dest}`);
     console.log(`Copied ${result.copied} skill(s)${result.symlinked ? ', left existing symlinks alone' : ''}.`);
-    console.log('opencode reads this directory for every model it drives, so the same workflows run');
-    console.log('under a GPT or Gemini session there, invoked as skills rather than slash commands.');
+    console.log('Your Codex install went elsewhere, and opencode reads only this directory — so the');
+    console.log('same workflows run under a GPT or Gemini session there too.');
   } else {
-    // Not fatal: the Claude install is complete either way, and only opencode loses the workflows.
+    // Not fatal: the Codex install above is complete either way, and only opencode loses them.
     console.log(`\nWorkflows not installed for opencode (${result.reason}).`);
-    console.log('Claude reaches them as normal; an opencode session simply will not find them.');
+    console.log('Codex reaches them at the destination above; an opencode session will not find them.');
   }
 }
 
@@ -663,7 +663,7 @@ async function main() {
   console.log('How would you like to install?');
   console.log('  1) Claude Code plugin   → namespaced commands, e.g. /my-command:task (auto-updates)');
   console.log('  2) Personal commands    → bare commands, e.g. /task (copied into ~/.claude/commands)');
-  console.log('  3) Codex Skills         → skills such as $task (copied into ~/.agents/skills)');
+  console.log('  3) Skills               → $task for Codex and opencode (copied into ~/.agents/skills)');
   console.log('  4) Cancel');
 
   const rl = createInterface({ input, output });
@@ -674,14 +674,12 @@ async function main() {
     await installPlugin();
     reportToolkit(installToolkit());
     reportAgents(installAgents());
-    reportOpencodeSkills(installOpencodeSkills());
     reportConceptStore();
     reportHooks(await installHooks());
   } else if (choice === '2') {
     await installPersonal();
     reportToolkit(installToolkit());
     reportAgents(installAgents());
-    reportOpencodeSkills(installOpencodeSkills());
     reportConceptStore();
     reportHooks(await installHooks());
   } else if (choice === '3') {
