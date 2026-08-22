@@ -19,6 +19,7 @@ Add one with `okq new feature "<title>"`.
 | docs | [docs.md](docs.md) |
 | fb | [fb.md](fb.md) |
 | god | [god.md](god.md) |
+| health | [health.md](health.md) |
 | ideate | [ideate.md](ideate.md) |
 | improve | [improve.md](improve.md) |
 | judge | [judge.md](judge.md) |
