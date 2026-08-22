@@ -669,10 +669,7 @@ else
       echo "::error::no command in src/commands/ names 'subagent_type: \"$name\"'; a definition no dispatch site names is dead weight on every device."
       fail=1
     fi
-    # The spec's tier table is the single source of truth for a definition's model — Claude
-    # frontmatter holds one value and Codex reads none of these files, so the table is the only
-    # place both runtimes can be stated. A table nothing checks describes the files instead of
-    # deciding them, so assert the two agree in both directions.
+    # The spec's tier table decides a definition's model; assert the two agree both ways.
     # Matched on the tier column, not on the name alone: the spec opens with a shape table
     # keyed by the same names, and a looser pattern reads a row out of both.
     row="$(grep -E "^\| \`$name\` \| (strong|cheap) \|" "$AGENT_SPEC" || true)"
@@ -690,8 +687,7 @@ else
   done
 
   # One definition serves both /docs and /truncate, whose work sits in different tiers, so the
-  # difference lives at the dispatch site rather than in a forked definition. Unchecked, a later
-  # edit drops the override and the density rewrite quietly runs on the audit's tier.
+  # difference lives at the dispatch site. Unchecked, a later edit drops it silently.
   if ! grep -Fq 'model: "opus"' src/commands/truncate.md; then
     echo "::error::src/commands/truncate.md no longer overrides mycommand-doc-auditor's declared tier; its every-claim-survives rewrite would run on the cheap tier the audit shape chose ($AGENT_SPEC)."
     fail=1
