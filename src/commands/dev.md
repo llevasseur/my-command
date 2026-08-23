@@ -1,9 +1,9 @@
 ---
 description: Take one complex idea all the way to merged, unattended — grill it against the repo's specs and ADRs, record every decision /dev made as a real ADR, chart it as a wayfinder campaign, build the tickets in waves through /manage, and land the campaign PR
-argument-hint: "[--slug <s>] [--parallel|-p <n>] [--sequential] [--rounds <n>] [--dry-run|-n] [--no-grill] <complex idea> | --resume <slug>"
+argument-hint: "[--slug <s>] [--into|-i <branch>] [--parallel|-p <n>] [--sequential] [--rounds <n>] [--dry-run|-n] [--no-grill] <complex idea> | --resume <slug>"
 ---
 
-Take **one complex idea** and drive it to merged into the default branch with **no human in the loop**. This command composes the existing suite — `/wayfinder` charts and tracks, `/manage` schedules, `/god` merges, `/task` implements — and **reimplements none of it**. It cuts no branch, writes no ticket code, opens no PR itself, and issues no merge of its own: every one of those already has an owner, and a second owner corrupts the run.
+Take **one complex idea** and drive it to merged into the campaign's **integration branch** — the repository default unless `--into` names another — with **no human in the loop**. This command composes the existing suite — `/wayfinder` charts and tracks, `/manage` schedules, `/god` merges, `/task` implements — and **reimplements none of it**. It cuts no branch, writes no ticket code, opens no PR itself, and issues no merge of its own: every one of those already has an owner, and a second owner corrupts the run.
 
 What it does own is the part nothing else covers: **the decisions it makes on the human's behalf, and the record of them**. An unattended run of this size makes calls a human would otherwise make, and a call made in passing and never written down is the failure this command exists to prevent.
 
@@ -25,10 +25,12 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 ## Flags
 
 - `--slug <s>` — the campaign slug handed to `/wayfinder start`. Absent it, `/wayfinder` picks one.
+- `--into <branch>` / `-i <branch>` — the campaign's **integration branch**: what the campaign base branch `wayfinder/<slug>` is cut from, and what the planning PR and the campaign PR merge into. Absent the flag, that branch is the `defaultBranch` `my-command-tools state` reports — the behaviour every `/dev` run had before this flag existed. Neither path hardcodes a branch name: `main` is never written into a decision here, and neither is whatever branch one campaign happened to name. Step 1 resolves it once as `<integration branch>`, and every later step names that resolved term rather than re-deriving it.
+  - **It is not `--base`, and `--base` is not it.** `--into` is the merge target; `--base` is the cut point; neither implies the other, and that distinction is unchanged. Ticket runs still go out as `/god --base wayfinder/<slug> --into wayfinder/<slug>` — the campaign base named twice — so this flag changes what the *campaign base branch itself* is cut from and merged into, never where a ticket lands.
 - `--parallel <n>` / `-p <n>` — cap how many tickets are in flight at once. Forwarded to `/manage`, whose **hard cap is 8**; a larger value is clamped there and the clamp is reported.
 - `--sequential` — one ticket at a time regardless of file-scope independence. The escape hatch from waves, and forwarded to `/manage` as its own `--sequential`.
 - `--rounds <n>` — override the grill's 12-round cap.
-- `--dry-run` / `-n` — grill the idea, print the campaign it would chart (the tickets, the waves, the branch names the map would own, and every decision it would record as an ADR), then **stop**. No ADR is written, no branch is cut, no PR is opened, and nothing is dispatched.
+- `--dry-run` / `-n` — grill the idea, print the campaign it would chart (the resolved `<integration branch>` and where it came from, the tickets, the waves, the branch names the map would own, and every decision it would record as an ADR), then **stop**. No ADR is written, no branch is cut, no PR is opened, and nothing is dispatched.
 - `--no-grill` — skip phase 1 entirely. The idea goes straight to charting, and no decision ADR comes out of a grill that never ran.
 - `--resume <slug>` — resume the surviving campaign named by `<slug>`. Mutually exclusive with an idea: see *Resume is always explicit*.
 - Anything not a recognized flag is part of the idea.
@@ -40,9 +42,10 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 **Never ask me a question.** This command runs unattended end to end. Where a decision is missing, it is **decided and recorded** (Step 3), not deferred. Where a precondition is genuinely unmet — no git repo, an unresolvable command, `--resume` naming a slug with no map — stop and say what is missing.
 
 1. `my-command-tools state` — one call gives `branch`, `defaultBranch`, `root`, and `worktree`. **The default branch comes from that call**; this command never hardcodes `main`. `<default branch>` below means that value.
-2. Resolve every command this run composes — `/wayfinder`, `/manage`, `/god`, `/pr` — from what is actually installed on this device, the way `/task` Step 0 resolves an added command. An unresolvable one is a stop, not a workaround.
-3. Under `--resume <slug>`, read the surviving map at `<plans>/wayfinder-<slug>.md` **before deciding anything** and jump to Step 6. The map, not memory, says which tickets are done.
-4. Confirm the idea is genuinely complex. An idea that charts into fewer than three tickets is not worth this pipeline — say so and name the single `/task` or `/god` invocation that does the job.
+2. **Resolve the campaign's integration branch here, once.** `<integration branch>` is the `--into <branch>` value when that flag was typed on this invocation, and the `<default branch>` from step 1 otherwise. Every later step names `<integration branch>` — the campaign's cut point at Step 4, the planning-PR merge target at Step 4, and the campaign-PR merge target at Step 7 — so nothing downstream re-reads the flag or re-derives the branch. **Announce which branch it resolved to and where that came from** (the flag, or the repo default), so the campaign's target is stated rather than inferred. Confirm it exists on origin before anything is cut from it: a typo'd integration branch is a campaign built on nothing, and this run has no human to catch it.
+3. Resolve every command this run composes — `/wayfinder`, `/manage`, `/god`, `/pr` — from what is actually installed on this device, the way `/task` Step 0 resolves an added command. An unresolvable one is a stop, not a workaround.
+4. Under `--resume <slug>`, read the surviving map at `<plans>/wayfinder-<slug>.md` **before deciding anything** and jump to Step 6. The map, not memory, says which tickets are done — and the map's `**Integration branch:**` header, not `--into`, is where a resumed campaign's integration branch comes from. `/wayfinder` records it at start for exactly that reason, so a resume that re-derived it could retarget a live campaign mid-flight.
+5. Confirm the idea is genuinely complex. An idea that charts into fewer than three tickets is not worth this pipeline — say so and name the single `/task` or `/god` invocation that does the job.
 
 ## Step 2 — Grill the idea
 
@@ -131,18 +134,20 @@ Those govern the ADR prose this step writes. They are not a licence to rewrite a
 **Invoke `/wayfinder start` DIRECTLY — not through `/manage`.** `/manage` plans a branch name per unit, and the wayfinder map already owns those names. Routing the charting through it would give one campaign two branch-naming authorities, and the map would lose.
 
 ```text
-/wayfinder --unattended start [--slug <s>] <the idea, as grilled>
+/wayfinder --unattended start [--slug <s>] --integration <integration branch> <the idea, as grilled>
 ```
 
-`/wayfinder start` writes the campaign map and its task plans and **opens the planning PR through `/pr`**. That planning PR merges to the default branch:
+`--integration` is `/wayfinder`'s own flag for this and is **read on `start` alone**: it names the branch `wayfinder/<slug>` is cut from and written into the map's header, after which every later `/wayfinder` operation reads the branch out of the map. Type it on the `start` invocation whatever `<integration branch>` resolved to — passing the repo default explicitly costs nothing and keeps the campaign's target stated in the map rather than inferred from what `state` happened to report.
+
+`/wayfinder start` writes the campaign map and its task plans and **opens the planning PR through `/pr`**. That planning PR merges to the integration branch:
 
 ```text
-/god --into <default branch> <merge the planning PR>
+/god --into <integration branch> <merge the planning PR>
 ```
 
-`--into` names the **merge target** and `--base` names the **cut point**; neither implies the other, so the planning merge names the default branch explicitly. The planning PR has to land before any ticket branch is cut, so the default branch carries the plans the ticket runs read.
+`--into` names the **merge target** and `--base` names the **cut point**; neither implies the other, so the planning merge names the integration branch explicitly. The planning PR has to land before any ticket branch is cut, so the integration branch carries the plans the ticket runs read.
 
-Under `--dry-run` / `-n`, print the charted campaign and **stop here** — before the map is written, before the branch is cut, before any ADR from Step 3 is committed.
+Under `--dry-run` / `-n`, print the charted campaign — **naming the resolved `<integration branch>` and whether it came from `--into` or the repo default**, so the campaign's target is visible before anything runs — and **stop here** — before the map is written, before the branch is cut, before any ADR from Step 3 is committed.
 
 ## Step 5 — Build the tickets
 
@@ -162,7 +167,7 @@ Do not type `--delegate`, `--base`, or `--into` on the `/manage` invocation. Eac
 /god --base wayfinder/<slug> --into wayfinder/<slug> <the plan's criteria>
 ```
 
-— the campaign base named twice, once as the cut point and once as the merge target. A ticket that cannot be given `--into` is a stop, not a merge into the default branch.
+— the campaign base named twice, once as the cut point and once as the merge target. That pairing is unaffected by this run's `--into`: `--into` sets where the *campaign* lands, and a ticket still lands on `wayfinder/<slug>`. A ticket that cannot be given `--into wayfinder/<slug>` is a stop, not a merge into the integration branch.
 
 **Waves are the DEFAULT.** Run as many tickets in parallel as the **file-scope lanes** allow, bounded by `/manage`'s existing hard cap of **8**. Two tickets editing one file on a shared base branch is a conflict this run would pay **unattended, with no human at the merge** — which is why the lanes are the bound rather than the ticket count. `--sequential` is the escape hatch; `--parallel <n>` caps concurrency below the lanes. Both forward to `/manage` untouched.
 
@@ -189,7 +194,7 @@ That is what deletes the ticket's plan, appends what was *actually built* to the
 **If that round also fails, FALL BACK.** The campaign does not vanish and it does not merge:
 
 - **`/wayfinder close` still runs**, so there is a campaign PR for a human to review.
-- **Do NOT merge it** to the default branch. No `/god --into <default branch>`.
+- **Do NOT merge it** to the integration branch. No `/god --into <integration branch>`.
 - **Do NOT retire the wayfinder scaffolding.** The map and the failed ticket's plan are kept alive — deleting them is what makes the campaign unresumable.
 - **Report**: which ticket failed, its cause, both rounds spent, the campaign PR, and `--resume <slug>` as the way back in.
 
@@ -201,10 +206,10 @@ That is what deletes the ticket's plan, appends what was *actually built* to the
 /wayfinder --unattended close
 ```
 
-`/wayfinder close` opens the **campaign PR** through `/pr` from `wayfinder/<slug>` to the default branch, and this merges it:
+`/wayfinder close` opens the **campaign PR** through `/pr` from `wayfinder/<slug>` to the integration branch the map records — the same `<integration branch>` Step 1 resolved — and this merges it:
 
 ```text
-/god --into <default branch> <merge the campaign PR>
+/god --into <integration branch> <merge the campaign PR>
 ```
 
 **The campaign PR body LEADS with the `needs-human` decisions.** Before the merge, read the body `/pr` wrote and confirm the list from Step 3 is at the top of it — every ADR carrying `needs-human: true`, each as its path and its one-line decision. `okq --bundle docs find --where needs-human=true` is the list. If the body does not lead with it, edit the body so it does, then merge. A human's review of this run is the only place those calls get made, and a list buried under a change summary is not a review.
@@ -242,7 +247,7 @@ A subagent can itself spawn a subagent and then continue it with `SendMessage`, 
 ## Notes
 
 - **This command implements nothing.** No branch, no commit, no PR, no merge, no worktree teardown, no plan file written by hand. `/wayfinder` owns the map and the plans, `/manage` owns the schedule, `/god` owns the merge, `/task` owns the implementation.
-- **Never batch-merge the ticket branches onto the default branch.** The campaign base branch *is* the integration branch, and the campaign PR is the one PR off it.
+- **Never batch-merge the ticket branches onto the integration branch.** Every ticket lands on the campaign base branch `wayfinder/<slug>`, and the campaign PR is the one PR off it.
 - **A decision made and not recorded is the failure mode of this command**, more than a failed ticket is. A failed ticket is visible in the report; an unrecorded decision is invisible until someone hits it.
 - **Never merge a red PR, never force-push, never reach for `--admin`.** A campaign multiplies whatever it authorises.
 - <!-- include: shared/approval-own-call.md -->**A command that may need approval goes in its own Bash call** — `git fetch`, `git config`, and, as a narrow exception to the general rule to chain dependent mutations, branch-lifecycle operations such as checkout/switch, pull, remote-branch inspection, and local branch deletion. Folding one into an `&&` chain escalates approval to the whole compound command and costs a turn plus a retry. Put status output, pipes, and follow-up verification in separate read-only calls.<!-- /include -->
@@ -274,4 +279,4 @@ A subagent can itself spawn a subagent and then continue it with `SendMessage`, 
 - **Do not tack the report onto the tool call before it — in the two closing cases.** `ExitWorktree`, `worktree end`, `verify`, and a closing `gh` call are exactly the calls that sit at the end of an outermost or subagent run and swallow the outcome. The nested handback is the deliberate exception and the only one: there the report rides the parent's **next** call, which is what keeps the parent's turn alive.
 <!-- /include-block -->
 
-For this command: lead with whether the campaign **merged into the default branch**, was **left open for review** after the bounded failure round, or **stopped** before charting. Then the slug, the ticket outcomes, the ADRs this run wrote — naming the `needs-human` ones first — and, on a fallback, `--resume <slug>` as the way back in.
+For this command: lead with whether the campaign **merged into its integration branch** — named, along with whether that came from `--into` or the repo default — was **left open for review** after the bounded failure round, or **stopped** before charting. Then the slug, the ticket outcomes, the ADRs this run wrote — naming the `needs-human` ones first — and, on a fallback, `--resume <slug>` as the way back in.

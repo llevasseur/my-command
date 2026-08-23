@@ -5,8 +5,9 @@ description: Take one complex idea all the way to merged, unattended — grill i
 
 # Dev
 
-Take **one complex idea** and drive it to merged into the default branch with no
-human in the loop. This workflow composes the existing ones — the campaign
+Take **one complex idea** and drive it to merged into the campaign's **integration
+branch** — the repository default unless `--into` names another — with no human in
+the loop. This workflow composes the existing ones — the campaign
 workflow charts and tracks, the orchestrator schedules, the merge-through
 workflow merges, the task workflow implements — and reimplements none of them. It
 cuts no branch, writes no ticket code, opens no pull request itself, and issues no
@@ -22,14 +23,26 @@ Parse leading flags off the front; the rest is the idea.
 
 - `--slug <s>` — the campaign slug handed to the campaign workflow's start
   operation. Absent it, that workflow picks one.
+- `--into <branch>` / `-i <branch>` — the campaign's **integration branch**: what
+  the campaign base branch is cut from, and what the planning pull request and the
+  campaign pull request merge into. Absent the flag, that branch is the default
+  branch the repository helper reports, which is how every run before this flag
+  behaved. Neither path hardcodes a branch name. Step 1 resolves it once, and every
+  later step names the resolved branch rather than re-deriving it.
+  **It is not a cut point.** A merge target and a cut point are independent, and
+  that distinction is unchanged: each ticket still names the campaign base branch
+  twice, as its own cut point and as its own merge target, so this flag changes
+  what the *campaign base branch itself* is cut from and merged into, never where a
+  ticket lands.
 - `--parallel <n>` / `-p <n>` — cap how many tickets are in flight at once,
   forwarded to the orchestrator, whose hard cap is **8**. A larger value is
   clamped there and the clamp is reported.
 - `--sequential` — one ticket at a time regardless of independence.
 - `--rounds <n>` — override the grill's 12-round cap.
-- `--dry-run` / `-n` — grill, print the campaign this run would chart, and stop.
-  No decision record is written, no branch is cut, no pull request is opened, and
-  nothing is dispatched.
+- `--dry-run` / `-n` — grill, print the campaign this run would chart — including
+  the resolved integration branch and whether it came from `--into` or the
+  repository default — and stop. No decision record is written, no branch is cut,
+  no pull request is opened, and nothing is dispatched.
 - `--no-grill` — skip the grill entirely.
 - `--resume <slug>` — resume the surviving campaign named by that slug.
 
@@ -59,12 +72,26 @@ Where a precondition is genuinely unmet, stop and say what is missing.
 1. Read live repository state from the repository helper: current branch, default
    branch, root, and whether this is a worktree. **The default branch comes from
    that call**; never hardcode `main`.
-2. Resolve every workflow this run composes — campaign, orchestrator,
+2. **Resolve the campaign's integration branch here, once**: the `--into <branch>`
+   value when that flag was typed on this invocation, and the default branch from
+   step 1 otherwise. Every later step names that resolved branch — the campaign's
+   cut point and the planning pull request's target in step 4, and the campaign
+   pull request's target in step 7 — so nothing downstream re-reads the flag or
+   re-derives the branch. Announce which branch it resolved to and where that came
+   from, the flag or the repository default, so the campaign's target is stated
+   rather than inferred. Confirm the branch exists on the remote before anything is
+   cut from it: a mistyped integration branch is a campaign built on nothing, and
+   this run has no human to catch it.
+3. Resolve every workflow this run composes — campaign, orchestrator,
    merge-through, pull request — from what is actually installed in this session,
    never from a name looking plausible. An unresolvable one is a stop.
-3. Under `--resume`, read the surviving map for that slug **before deciding
-   anything** and jump to step 6. The map, not memory, says which tickets are done.
-4. Confirm the idea is genuinely complex. An idea charting into fewer than three
+4. Under `--resume`, read the surviving map for that slug **before deciding
+   anything** and jump to step 6. The map, not memory, says which tickets are done
+   — and the map's integration-branch header, not `--into`, is where a resumed
+   campaign's integration branch comes from. The campaign workflow records it at
+   start for exactly that reason, so a resume that re-derived it could retarget a
+   live campaign mid-flight.
+5. Confirm the idea is genuinely complex. An idea charting into fewer than three
    tickets is not worth this pipeline — say so and name the single task or
    merge-through run that does the job.
 
@@ -172,15 +199,25 @@ orchestrator.** The orchestrator plans a branch name per unit, and the campaign
 map already owns those names. Routing charting through it would give one campaign
 two branch-naming authorities.
 
+**Name the integration branch on that start invocation**, with the campaign
+workflow's own `--integration <branch>` flag. That flag is read on start alone: it
+names the branch the campaign base branch is cut from and is written into the map's
+header, after which every later campaign operation reads the branch out of the map.
+Type it whatever the branch resolved to — passing the repository default explicitly
+costs nothing and keeps the campaign's target stated in the map rather than
+inferred from what the repository helper happened to report.
+
 Start writes the campaign map and its task plans and opens the **planning pull
 request** through the pull-request workflow. That planning pull request is then
-merged to the default branch by the merge-through workflow, given the default
-branch as its **merge target**. Merge target and cut point are independent
-parameters and neither implies the other, so the merge target is named explicitly.
-The planning pull request must land before any ticket branch is cut, so the
-default branch carries the plans the ticket runs read.
+merged to the integration branch by the merge-through workflow, given that branch
+as its **merge target**. Merge target and cut point are independent parameters and
+neither implies the other, so the merge target is named explicitly. The planning
+pull request must land before any ticket branch is cut, so the integration branch
+carries the plans the ticket runs read.
 
-Under `--dry-run`, print the charted campaign and stop here — before the map is
+Under `--dry-run`, print the charted campaign — naming the resolved integration
+branch and whether it came from `--into` or the repository default, so the
+campaign's target is visible before anything runs — and stop here — before the map is
 written, before the branch is cut, before any decision record from step 3 is
 committed.
 
@@ -200,8 +237,10 @@ execution to the merge-through workflow and authorises the ticket merge.
 Do not type a delegate, a cut point, or a merge target on the orchestrator's own
 invocation. Each ticket lands on the campaign base branch because the campaign
 workflow passes that branch through itself — **twice**, once as the merge-through
-run's cut point and once as its merge target. A ticket that cannot be given a
-merge target is a stop, not a merge into the default branch.
+run's cut point and once as its merge target. That pairing is unaffected by this
+run's `--into`, which sets where the *campaign* lands while a ticket still lands on
+the campaign base branch. A ticket that cannot be given the campaign base branch as
+its merge target is a stop, not a merge into the integration branch.
 
 **Waves are the default.** Run as many tickets in parallel as the **file-scope
 lanes** allow, bounded by the orchestrator's hard cap of 8. Two tickets editing
@@ -236,7 +275,7 @@ where a run stops being able to say what it did.
 
 - The campaign workflow's **close operation still runs**, so there is a campaign
   pull request for a human to review.
-- **Do not merge it** to the default branch.
+- **Do not merge it** to the integration branch.
 - **Do not retire the campaign scaffolding.** The map and the failed ticket's plan
   are kept alive — deleting them is what makes the campaign unresumable.
 - **Report** which ticket failed, its cause, both rounds spent, the campaign pull
@@ -249,9 +288,9 @@ through step 7. It re-grills nothing and writes no new campaign.
 ## 7. Land the campaign
 
 The campaign workflow's close operation opens the **campaign pull request**
-through the pull-request workflow, from the campaign base branch to the default
-branch, and the merge-through workflow merges it with the default branch named as
-its merge target.
+through the pull-request workflow, from the campaign base branch to the integration
+branch the map records — the same branch step 1 resolved — and the merge-through
+workflow merges it with that branch named as its merge target.
 
 **The campaign pull-request body leads with the `needs-human` decisions.** Before
 the merge, read the body that was written and confirm the list from step 3 sits at
@@ -297,9 +336,9 @@ assumed.
 
 - **This workflow implements nothing.** No branch, no commit, no pull request, no
   merge, no worktree teardown, no plan file written by hand.
-- Never batch-merge the ticket branches onto the default branch. The campaign base
-  branch **is** the integration branch, and the campaign pull request is the one
-  pull request off it.
+- Never batch-merge the ticket branches onto the integration branch. Every ticket
+  lands on the campaign base branch, and the campaign pull request is the one pull
+  request off it.
 - **A decision made and not recorded is this workflow's real failure mode**, more
   than a failed ticket is. A failed ticket is visible in the report; an unrecorded
   decision is invisible until someone hits it.

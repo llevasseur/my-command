@@ -11,8 +11,9 @@ dirty: true
 
 ## Summary
 
-`/dev` takes **one complex idea** and drives it to merged into the default branch
-with no human in the loop. It composes the existing suite rather than
+`/dev` takes **one complex idea** and drives it to merged into the campaign's
+**integration branch** — the repo default unless `--into` names another — with no
+human in the loop. It composes the existing suite rather than
 reimplementing any of it: [`/wayfinder`](wayfinder.md) charts the campaign and
 tracks it, [`/manage`](manage.md) schedules the tickets into waves,
 [`/god`](god.md) merges, and [`/task`](task.md) implements. `/dev` cuts no branch,
@@ -28,15 +29,25 @@ closes.
 
 - `--slug <s>` — the campaign slug handed to `/wayfinder start`. Absent it,
   `/wayfinder` picks one.
+- `--into <branch>` / `-i <branch>` — the campaign's **integration branch**: what
+  `wayfinder/<slug>` is cut from, and what the planning PR and the campaign PR merge
+  into. Absent it, the branch is the `defaultBranch` from `my-command-tools state`,
+  which is how every `/dev` run behaved before the flag existed; neither path
+  hardcodes a branch name. Resolved once in Step 1 and passed to
+  `/wayfinder start --integration <branch>` and to both `/god` merges.
+  **Not a cut point:** each ticket still runs as
+  `/god --base wayfinder/<slug> --into wayfinder/<slug>`, so this flag moves the
+  campaign, never a ticket.
 - `--parallel <n>` / `-p <n>` — cap how many tickets are in flight at once.
   Forwarded to `/manage`, whose hard cap is **8**; a larger value is clamped there
   and the clamp is reported.
 - `--sequential` — one ticket at a time regardless of file-scope independence.
   The escape hatch from waves.
 - `--rounds <n>` — override the grill's 12-round cap.
-- `--dry-run` / `-n` — grill, print the campaign that would be charted (tickets,
-  waves, the branch names the map would own, and every decision that would be
-  recorded), then stop. No ADR, no branch, no PR, nothing dispatched.
+- `--dry-run` / `-n` — grill, print the campaign that would be charted (the
+  resolved integration branch and where it came from, tickets, waves, the branch
+  names the map would own, and every decision that would be recorded), then stop.
+  No ADR, no branch, no PR, nothing dispatched.
 - `--no-grill` — skip phase 1 entirely.
 - `--resume <slug>` — resume the surviving campaign named by that slug. Mutually
   exclusive with an idea.
@@ -99,9 +110,12 @@ matches arbitrary keys, per
 
 `/dev` invokes `/wayfinder start` **directly, not through `/manage`**, because
 `/manage` plans a branch name per unit and the wayfinder map already owns those
-names. `/wayfinder start` writes the campaign map and its task plans and opens the
-planning PR through [`/pr`](pr.md); that planning PR merges to the default branch
-via `/god --into <default branch>`.
+names. The invocation carries `--integration <integration branch>`, which
+`/wayfinder` reads on `start` alone and writes into the map header, so every later
+campaign operation takes the branch from the map rather than re-deriving it.
+`/wayfinder start` writes the campaign map and its task plans and opens the
+planning PR through [`/pr`](pr.md); that planning PR merges to the integration
+branch via `/god --into <integration branch>`.
 
 ### Phase 3 — Build
 
@@ -123,9 +137,9 @@ orchestrator.
 
 ### Phase 4 — Land
 
-`/wayfinder close` opens the campaign PR through `/pr`, and
-`/god --into <default branch>` merges it. `/wayfinder` then retires its own
-scaffolding.
+`/wayfinder close` opens the campaign PR through `/pr` against the integration
+branch the map records, and `/god --into <integration branch>` merges it.
+`/wayfinder` then retires its own scaffolding.
 
 ### Failure handling
 
@@ -136,11 +150,11 @@ re-plans it, and re-dispatches it. The bound exists so the orchestrator terminat
 succeeds does not.
 
 If that round also fails, `/dev` **falls back**: `/wayfinder close` still runs so
-there is a campaign PR to review, but `/dev` does **not** merge it to the default
-branch and does **not** retire the wayfinder scaffolding — the map and the failed
-ticket's plan are kept alive — and it reports. `/dev --resume <slug>` then reads
-that surviving map, skips completed tickets, re-dispatches the outstanding ones,
-and closes.
+there is a campaign PR to review, but `/dev` does **not** merge it to the
+integration branch and does **not** retire the wayfinder scaffolding — the map
+and the failed ticket's plan are kept alive — and it reports. `/dev --resume
+<slug>` then reads that surviving map, skips completed tickets, re-dispatches
+the outstanding ones, and closes.
 
 ### Nesting
 
