@@ -86,7 +86,14 @@ steps that are easy to forget, and what happens if you do:
    edit. Never hand-edit `commands/`; it is overwritten.
 2. **Maintain the Codex skill** — every `src/commands/<name>.md` needs a
    Codex-native `skills/<name>/SKILL.md`. Translate workflow semantics; do not
-   copy Claude-only tool names, invocation syntax, or paths.
+   copy Claude-only tool names, invocation syntax, or paths. **Other repositories
+   vendor their own copy** of that file at `<repo>/.agents/skills/<name>/SKILL.md`,
+   and that copy — not this one — is what loads there, because their
+   `.claude/skills/<name>` symlinks into it. Nothing in this repo's CI can see a
+   copy in another repository, so a skill change a vendoring repo depends on is
+   resynced by hand:
+   [`docs/specs/vendored-skill-copies.md`](docs/specs/vendored-skill-copies.md)
+   carries the drift check and the recipe.
 3. **Write the feature doc** — `docs/features/<name>.md`. A command without one is
    incomplete.
 4. **The wizard needs NO manual list edit.** `src/my-command.ts` enumerates both
