@@ -1,5 +1,5 @@
 ---
-description: Interview a repo's tech stack, then generate that repo's own worktree bootstrap (scripts/bootstrap-worktree.sh and/or a "Worktree Setup" doc section) that /task's Step 1.5 discovers. One-time per repo; keeps /task device- and project-agnostic.
+description: Interview a repo's tech stack and its run contract, then generate that repo's own worktree bootstrap (scripts/bootstrap-worktree.sh and/or a "Worktree Setup" doc section) that /task's Step 1.5 discovers and /verify reads. One-time per repo; keeps /task device- and project-agnostic.
 argument-hint: "[--here|-h] [--base <branch>] [--draft|-d] [notes about the stack]"
 ---
 
@@ -47,6 +47,7 @@ Read the repo so you ask only about what you can't infer:
 - **Gitignored env files:** find `.env` / `.env.*`, then test each with `git check-ignore` — only the **gitignored** ones are symlink candidates (tracked env like `.env.example` stays put).
 - **Derived/generated code + its generator:** `schema.prisma`→`prisma generate`; `codegen.ts`/`codegen.yml`→`graphql-codegen`; TanStack route trees; `*.proto`; etc. Map each generator to the `package.json` script that runs it **and the package dir it runs in**.
 - **Repo conventions:** existing `scripts/` shebang style + `set -euo pipefail`; whether a `CHANGELOG.md` or changelog command exists; `shellcheck` availability.
+- **Boot + routes:** a `dev`, `start`, or `preview` script in `package.json`; a health or readiness endpoint; the route directories a framework implies (`app/`, `pages/`, `routes/`, `src/routes/`).
 
 ## Step 3 — Interview to confirm + fill gaps
 
@@ -59,6 +60,22 @@ Present what you detected and ask only for the unknowns and confirmations — on
 - **Extra setup:** native builds, `docker compose up`, DB migrate/seed, config-file copies, tool installs.
 - **Output form:** committed `scripts/bootstrap-worktree.sh` (recommended) / a "Worktree Setup" doc section / both.
 
+## Step 3.5 — Second round: the run contract
+
+`/verify` and `/task` Step 2.6 boot this repo's app and check the change inside it. They need
+four facts. Ask for them in one round; skip whatever Step 2 already settled.
+
+- **Boot** — the command that starts the app. `pnpm dev`, `make serve`, whatever it is.
+- **Health** — a URL that answers once the app is up, path included.
+- **Login** — a seeded dev account, in the repo's own shape. Optional. Say plainly when asking:
+  it is used only against a localhost URL the verification run itself booted, and never against
+  any other host.
+- **Routes** — a map of source glob to route. `src/settings/**` → `/settings`. Several entries
+  is normal, and a diff matching none is what lets a verification round skip itself.
+
+Nothing to boot — a library, a CLI, a docs repo — is a real answer. Record it, emit no contract,
+and `/verify` skips. Never invent a boot command to fill the field.
+
 ## Step 4 — Recommendations (rules the generated bootstrap MUST follow)
 
 Design the bootstrap around these, and explain each as you apply it:
@@ -70,6 +87,8 @@ Design the bootstrap around these, and explain each as you apply it:
 - **Regenerate lazily** by target; docs-only work can skip generation.
 - **Refuse to run from the main checkout** (guard: detected main == worktree root → exit non-zero).
 - **Commit it, don't gitignore it.** Only *tracked* files land in fresh worktrees (where `/task` looks for it), and teammates who share the `/task` command should get the bootstrap too. Keeping it free of machine-specific paths (via auto-detection) is what makes committing safe.
+- **Print the run contract behind `--print-verify-contract`.** It prints `{boot, health, login, routes}` as JSON on stdout, exits 0, and does nothing else — no install, no symlink, no codegen. Handle it **first**, ahead of the main-checkout guard: a caller asking what the contract is has no worktree yet, and the guard would refuse it.
+- **Omitting the contract is allowed.** A bootstrap without the flag makes `/verify` fall through to detection — the `dev`/`start`/`preview` script, and the real bound port read out of the startup log. Emit the flag when the answers are worth pinning; leave it out for a repo with no app.
 - Match repo conventions: shebang + `set -euo pipefail`, `chmod +x`.
 
 ## Step 5 — Write the bootstrap
@@ -81,6 +100,18 @@ Design the bootstrap around these, and explain each as you apply it:
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
+# The run contract, first: /verify asks for it from anywhere, worktree or not.
+if [ "${1:-}" = "--print-verify-contract" ]; then
+  cat <<'JSON'
+{
+  "boot": "pnpm dev",
+  "health": "http://localhost:3000/api/health",
+  "login": {"email": "dev@example.com", "password": "dev-only"},
+  "routes": {"src/settings/**": "/settings", "src/api/**": "/api/health"}
+}
+JSON
+  exit 0
+fi
 WORKTREE_ROOT="$(git rev-parse --show-toplevel)"
 # --git-common-dir points at the MAIN checkout's .git even from a linked worktree
 GIT_COMMON_DIR="$(cd "$WORKTREE_ROOT" && cd "$(git rev-parse --git-common-dir)" && pwd)"
@@ -95,6 +126,7 @@ cd "$WORKTREE_ROOT"
 ## Step 6 — Verify
 
 - `bash -n scripts/bootstrap-worktree.sh`; run `shellcheck` if it's available.
+- If the script emits a contract, prove it parses: `bash scripts/bootstrap-worktree.sh --print-verify-contract | node -e "JSON.parse(require('fs').readFileSync(0,'utf8'))"`. Run it from the main checkout too — the flag must answer before the guard, not be refused by it.
 - **Dry-run the logic without a slow real install:** shim the package manager onto `PATH` (a stub that just echoes its args), run the script, and confirm — env symlinks point at the main checkout, missing files are skipped, a re-run keeps existing files, target selection works, and it refuses to run from the main checkout.
 - Optionally offer a real run to confirm install + codegen actually succeed.
 

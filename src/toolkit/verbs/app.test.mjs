@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { flagsFrom } from '../lib/flags.mjs';
-import { portFromLog, run as app, runContract } from './app.mjs';
+import { run as app, portFromLog, runContract } from './app.mjs';
 
 /** @type {string[]} */
 const made = [];

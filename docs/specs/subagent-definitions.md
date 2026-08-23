@@ -1,7 +1,7 @@
 ---
 type: spec
 title: Subagent definitions
-description: The five agent definitions in agents/, one per shape of delegation, that every dispatch site names by subagent_type — so a delegate's role is stated once in a file rather than restated in each dispatch prompt.
+description: The six agent definitions in agents/, one per shape of delegation, that every dispatch site names by subagent_type — so a delegate's role is stated once in a file rather than restated in each dispatch prompt.
 tags: [process, commands, agents, install]
 timestamp: 2026-08-22
 ---
@@ -30,7 +30,7 @@ delegate is.
 A definition is written per shape of delegation, **not per command**. Two
 commands that delegate the same kind of work share one definition; that sharing is
 the point, because it is the restatement across those two sites that used to
-drift. Five shapes cover the eight sites:
+drift. Six shapes cover the ten sites:
 
 | Definition | Shape | Dispatched by |
 |---|---|---|
@@ -39,6 +39,7 @@ drift. Five shapes cover the eight sites:
 | `mycommand-reviewer` | Review one PR independently and return findings only | `/review` |
 | `mycommand-doc-auditor` | Audit one document against the code it describes, or evaluate one for density | `/docs`, `/truncate` |
 | `mycommand-griller` | A long-lived read-only adversarial interlocutor, one question per round | `/dev` |
+| `mycommand-verifier` | A long-lived observer that runs the repo's app and reports whether a change is demonstrably true in it | `/verify`, `/task` Step 2.6 |
 
 `/god` needs no dispatch site of its own: it always adds `--sub` to the `/task`
 invocation it makes, so its finisher dispatch happens inside `/task`, which names
@@ -56,7 +57,10 @@ are decisions rather than boilerplate:
   **without `Edit` or `Write`** — "report findings, never apply them" is the rule
   it is under, and omitting the tools is what makes that rule structural instead
   of advisory. `mycommand-griller` and `mycommand-doc-auditor` are read-only for
-  the same reason. `mycommand-delegate` takes `"*"`, because it runs a whole
+  the same reason. `mycommand-verifier` is the one boundary that is not a tool
+  omission: it needs `Write` for the evidence it leaves behind, so the rule it is
+  under — write only under `$CLAUDE_JOB_DIR/tmp`, never inside the worktree — is
+  stated in the definition rather than enforced by the tool list. `mycommand-delegate` takes `"*"`, because it runs a whole
   workflow command whose own file decides what it needs.
 - **`model` is a tier, not a model name.** Two tiers exist — **strong** and
   **cheap** — and which one a definition takes follows from the shape of its work.
@@ -75,8 +79,10 @@ Three rules decide it, and they are about the work rather than the command:
 - **Work that reshapes text under a rule takes the cheap tier.** The rule is
   already written; applying it is inventory rather than judgement.
 
-Applied to the five shapes: `mycommand-delegate` writes the implementation and
-`mycommand-reviewer` and `mycommand-griller` judge, so all three take strong.
+Applied to the six shapes: `mycommand-delegate` writes the implementation, and
+`mycommand-reviewer`, `mycommand-griller` and `mycommand-verifier` judge, so all four take
+strong — a verdict on whether a change is true in the running app is worth exactly what the
+judgement behind it is worth, and a manufactured `green` is worse than no check.
 `mycommand-doc-auditor` inventories claims against source, and `mycommand-finisher`
 reshapes comments under `/clean`'s already-written rule and writes a description
 from what is on the branch — its commit is that reshaping, not the work — so both
@@ -97,6 +103,7 @@ runtime resolves it:
 | `mycommand-reviewer` | strong | `inherit` | opus | `gpt-5.6-sol` |
 | `mycommand-griller` | strong | `inherit` | opus | `gpt-5.6-sol` |
 | `mycommand-finisher` | cheap | `sonnet` | sonnet | `gpt-5.6-luna` |
+| `mycommand-verifier` | strong | `inherit` | opus | `gpt-5.6-sol` |
 | `mycommand-doc-auditor` | cheap | `sonnet` | sonnet | `gpt-5.6-luna` |
 
 The `model:` column is what the frontmatter carries, and **invariant 24 asserts
@@ -156,7 +163,7 @@ than a universal one.
 any one of them alone is silent when it breaks. It asserts that every
 `agents/*.md` declares all four frontmatter fields and a `name` matching its
 filename; that every definition is named by at least one command; that each of the
-eight dispatching commands still contains a `subagent_type`; that every
+dispatching commands still contains a `subagent_type`; that every
 `subagent_type` a command names has a file; and that both Claude install surfaces
 plus the plugin manifest still place them.
 

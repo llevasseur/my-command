@@ -6,8 +6,8 @@
 // worktree path and misses a dev server whose argv does not name it, and under `/task --here`
 // there is no worktree for it to scan at all. A recorded pid closes both gaps.
 import { spawn } from 'node:child_process';
-import { createServer } from 'node:net';
 import { existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bool, str } from '../lib/flags.mjs';
@@ -335,7 +335,9 @@ async function start(ctx, root) {
     bootSource: source,
     contract: contract ? 'declared' : 'detected',
     record,
-    ...(healthy ? {} : { reason: `the app did not answer ${health} within ${Math.round(timeoutMs / 1000)}s — read ${log}` }),
+    ...(healthy
+      ? {}
+      : { reason: `the app did not answer ${health} within ${Math.round(timeoutMs / 1000)}s — read ${log}` }),
   };
 }
 
