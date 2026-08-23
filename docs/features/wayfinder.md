@@ -103,7 +103,7 @@ for a different action.
 | Status | Means | What a resuming agent does |
 |--------|-------|----------------------------|
 | `todo` | Never started — no branch, no PR, no history. | Pick it up and execute it. |
-| `in-progress` | A ticket run is executing it now. | Leave it alone. |
+| `in-progress` | A ticket run is executing it now. | Leave it alone **while that run is live**; where nothing is behind it, read the branch and repair the row (below). |
 | `paused` | Deliberately stopped, resumable as it stands. Nothing wrong with it. | Pick it back up and carry on. |
 | `blocked-limit` | Stopped mid-run because the usage window or rate limit ran out. **Nothing is wrong with the work.** | Resume once the window resets; execute something else in the meantime. |
 | `rejected` | A human reviewed it and turned it down. | **Never retry it.** It needs a new human decision or a rewritten plan. |
@@ -122,6 +122,25 @@ stopped it: a deliberate choice rather than a limit.
 
 A long unattended campaign pausing and resuming is a normal event rather than an
 incident, and `paused` / `blocked-limit` are how the map records it.
+
+**Repairing a stale `in-progress` row.** `blocked-limit` is the one status the
+run that needs it often cannot write — a run whose usage window ran out mid-ticket
+rarely gets another turn to edit the map, so the status meant to survive a hard
+stop is the one most likely to be missing, and the row is left on `in-progress`.
+Unrepaired that compounds: each agent skips the stale row, starts another ticket,
+and hits the same wall, until every row reads `in-progress` and the campaign
+reports no eligible task while nothing is running. So repairing those rows is a
+resuming agent's job, and it comes **before** picking a task. Where a live
+worktree, a recently pushed branch, or an open PR is behind the row, it stays.
+Where none is, the branch is read and the row rewritten — `blocked-limit` with a
+Note where work is in hand, `todo` where there is nothing worth resuming. The map
+template's kickoff prompt carries the same rule in provider-neutral wording, so a
+campaign is repairable from the map alone.
+
+A task on `rejected` counts as blocked on a human and one on `blocked-limit` as
+blocked on the clock: with only those left, the campaign is reported as blocked
+on that dependency rather than as ready to close, which is true only when no
+active tasks remain at all.
 
 The table carries one short free-text **Note** beside the Status — the only
 column the vocabulary adds. Three of the six are useless without a reason:

@@ -92,7 +92,7 @@ A task's **Status** in the map is one of exactly six values, and no others. The 
 | Status | Means | What a resuming agent does |
 |--------|-------|----------------------------|
 | `todo` | Never started. No branch, no worktree, no PR, nothing to read. | Pick it up and execute it. |
-| `in-progress` | A ticket run is executing it right now. | Leave it alone. Only if that run is known dead, read the branch before touching anything. |
+| `in-progress` | A ticket run is executing it right now. | Leave it alone **while that run is live**. If nothing is behind it, read the branch and then **rewrite the row** — see below; a stale `in-progress` is the one row that can freeze a campaign. |
 | `paused` | Deliberately stopped, and resumable exactly as it stands. Nothing is wrong with it. | Pick it back up and carry on from where it stopped. |
 | `blocked-limit` | Stopped mid-run because the usage window or rate limit ran out. **Nothing is wrong with the work** — the clock ran out, not the plan. | Resume it once the window resets. Until then execute a different task rather than waiting on it. |
 | `rejected` | I reviewed it and turned it down. | **Do not retry it.** It needs a new decision from me, or a rewritten plan. Report it and move on to another task. |
@@ -105,6 +105,17 @@ A task's **Status** in the map is one of exactly six values, and no others. The 
 - `blocked-limit` — **stopped because the usage window ran out.** It was attempted, nothing about it was judged, and it resumes untouched when the window resets. No human decision is owed, and treating it like `rejected` strands work that is simply waiting on a clock.
 
 `paused` sits alongside `blocked-limit` on that split — attempted, unjudged, resumable as-is — and differs only in what stopped it: a deliberate choice rather than a limit.
+
+### Repairing a stale `in-progress` row
+
+**`blocked-limit` is the one status the run that needs it often cannot write.** A run whose usage window ran out mid-ticket rarely gets another turn to edit the map, so the status meant to survive a hard stop is exactly the one most likely to be missing — and the row is left on `in-progress`, which reads as live work and freezes the next agent out of it. Left unrepaired that compounds: each successive agent skips the stale row, starts another ticket, and hits the same wall, until every row reads `in-progress` and the campaign reports no eligible task while nothing at all is running.
+
+So **repairing the row is a resuming agent's job, and it comes before picking a task**. For each `in-progress` row, establish whether a run is actually behind it — a live worktree, a branch pushed within the run's lifetime, an open PR. If one is, leave it. If none is, read the branch to see how far it got and rewrite the row before choosing anything:
+
+- The branch carries work and nothing was judged → **`blocked-limit`**, Note saying the run stopped without recording a status and when the window resets.
+- The branch carries nothing worth resuming → **`todo`**, Note empty, because nothing was really started.
+
+Never delete the row and never leave it on `in-progress` once you have established no run is behind it. Repairing it is not the same as executing it: repair every stale row first, then pick a task from the repaired map.
 
 ### The Note column
 
@@ -148,8 +159,16 @@ at <plans>/wayfinder-<slug>.md. Inspect the live Git and worktree state before m
 Execute the next unblocked active task from the map. A task is eligible when its status is one of:
 never started, deliberately paused, stopped because a usage window ran out (and that window has
 since reset), or marked for redoing differently. Never re-execute a task a human rejected — that
-one needs a new human decision or a rewritten plan, so report it and pick another. A task already
-marked in progress belongs to a live run.
+one needs a new human decision or a rewritten plan, so report it and pick another.
+
+Before choosing a task, repair any task marked in progress that no run is actually behind — check
+for a live worktree, a recently pushed branch, or an open pull request. A run stopped by a usage
+window usually never gets the turn in which it would have recorded that, so a task can sit marked
+in progress with nothing running it, and skipping it every time is how a campaign stalls with every
+row marked in progress and nothing executing. Where a run is behind it, leave it. Where none is,
+read the branch and rewrite the status: stopped with work in hand becomes stopped-by-usage-window
+with a note saying no status was recorded, and stopped with nothing worth resuming becomes never
+started. Repair every such row first, then pick a task from the repaired map.
 
 Read its linked plan completely, mark it in progress, then run the task workflow against the plan's
 criteria with the campaign base branch as its base, so the work happens in an isolated worktree and
