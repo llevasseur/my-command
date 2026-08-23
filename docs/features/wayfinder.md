@@ -51,13 +51,16 @@ charting operations (start, add task, complete, close) ignore them.
   `main` nor any named branch is hardcoded on either path.
 - `--unattended` — authorise this run to merge the PRs it opens, and route ticket
   execution to [`/god`](god.md) instead of [`/task`](task.md). **Must be typed on
-  the invocation that acts, and never inherited** — not from the map, not from
-  the kickoff prompt the map carries, not from a command that invoked this one,
-  and not from an earlier operation in the same campaign. A wayfinder multiplies
-  whatever it authorises, and N unattended merges out of one invocation is a
-  different risk from one, which is why [`/manage`](manage.md) likewise requires
-  `--delegate god` to be typed. Absent the flag the command opens PRs and merges
-  nothing.
+  the invocation that acts.** No operation infers it — not from a command that
+  invoked this one, not from an earlier operation in the same campaign, and not
+  from the map, which records the campaign's mode but authorises nothing by
+  itself. A wayfinder multiplies whatever it authorises, and N unattended merges
+  out of one invocation is a different risk from one, which is why
+  [`/manage`](manage.md) likewise requires `--delegate god` to be typed. Absent
+  the flag on this invocation the command opens PRs and merges nothing, whatever
+  the map says. **One path deliberately puts the flag in front of the next agent
+  to type** — the map's own kickoff prompt, for a campaign the map records as
+  unattended; see [Resuming an unattended campaign](#resuming-an-unattended-campaign).
 
 ## Behavior
 
@@ -66,7 +69,9 @@ Five operations, one per invocation:
 1. **Start** — pick a slug, resolve the **integration branch** (`--integration`
    if typed, else the repo default), cut `wayfinder/<slug>` from it, write the
    map at `<plans>/wayfinder-<slug>.md` — recording that branch in the header
-   beside the base branch — with an instantiated agent kickoff prompt, create
+   beside the base branch, along with `**Unattended:**`, the campaign's mode,
+   fixed here by whether `--unattended` was typed on this `start` — with an
+   agent kickoff prompt generated against that mode, create
    the plans that can be specified now — including the campaign's **final
    ticket**, `<slug>-zz-retire-done-plans` — and open a **planning PR** with
    [`/pr`](pr.md) while the branch holds only that commit — so the map and its
@@ -273,10 +278,47 @@ true before the merge. A ticket that cannot be given `--into` is a stop, not a
 merge. A PR this run did not open is never merged, and a red PR is never merged
 at all.
 
-The flag is never inherited. The map's agent kickoff prompt keeps its
-"stop after opening the pull request" wording even for a campaign started with
-`--unattended`, because that prompt is pasted into a later agent's session —
-precisely the inheritance path the flag refuses.
+### Resuming an unattended campaign
+
+The flag is not inherited. No operation reads it from the map, from a command
+that invoked this one, or from an earlier operation in the same campaign — a
+`start` given the flag authorises nothing for the `execute` that follows it, and
+a run without the flag typed on it merges nothing whatever the map says.
+
+**One path is a deliberate exception, and only one: the map's own agent kickoff
+prompt.** That prompt is not documentation about the campaign — it *is* the
+resume path, the literal text a fresh agent is handed to pick the campaign back
+up. It used to be written with its "stop after opening the pull request" line
+fixed, including for a campaign started with `--unattended`, so every resume
+silently downgraded an unattended campaign to the reviewed default. Nothing
+errored: each ticket produced a correct, reviewed, open PR, and the campaign
+accumulated open PRs instead of a merged base branch. Since a multi-week campaign
+resumes as a matter of course — `paused` and `blocked-limit` exist because it
+does — a campaign whose whole premise was no human in the loop could not finish
+without one.
+
+So `start` records the campaign's mode in the map header as `**Unattended:**`,
+`yes` or `no`, from whether the flag was typed on that `start`. The kickoff
+prompt's closing paragraph is **generated** against it: on `no` it is today's
+stop-and-let-a-human-review wording, unchanged, which is also what every map
+written before this change reads as; on `yes` it tells the resuming agent to type
+`--unattended` and to carry the ticket through to merged into the campaign base
+rather than stopping at the PR. Naming the flag there keeps the prompt
+provider-neutral — it is this workflow's own flag, spelled the same wherever the
+workflow is installed — and the prompt still names no runner command, saying
+"the merge-through runner" instead.
+
+**The flag is still read only from the invocation that acts.** The map
+authorises nothing; it decides which sentence gets written, so that the agent who
+resumes the campaign types the flag rather than having to know it was owed.
+
+[ADR 0006](../adrs/0006-unattended-campaigns-resume-unattended.md) records the
+decision and states the risk it accepts outright: a map is a file in the
+repository, so anyone who can edit it can flip the line and put a merge in a
+later resume's hands, and `--unattended` is no longer a per-invocation *human*
+act for a campaign started unattended. It stays per-invocation, and the
+escalation still needs either a `start` a human gave the flag to or a commit to
+the map — both of which land in a diff.
 
 ## Related
 
@@ -286,4 +328,6 @@ precisely the inheritance path the flag refuses.
 - Command: [manage](manage.md) — the same typed-not-inherited rule for
   `--delegate god`
 - Command: [pr](pr.md) — opens the planning and campaign PRs
+- ADR: [0006 — A campaign recorded as unattended resumes
+  unattended](../adrs/0006-unattended-campaigns-resume-unattended.md)
 - Spec: [Adding a command](../specs/adding-a-command.md)
