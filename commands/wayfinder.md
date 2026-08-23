@@ -85,6 +85,47 @@ This is a step of the workflow, not a habit to recall. Run it whenever a phase o
 
 That applies squarely to the complete and close operations, which read the map and every plan beside it: enumerate them from one listing, then read the whole list in one turn rather than one plan per turn.
 
+## Task status vocabulary
+
+A task's **Status** in the map is one of exactly six values, and no others. The vocabulary is deliberately flat — no sub-states, no transitions to memorise — because its whole job is to tell a fresh agent resuming from the map **why** a task is not running. Each answer calls for a different action, so the status has to carry the action with it:
+
+| Status | Means | What a resuming agent does |
+|--------|-------|----------------------------|
+| `todo` | Never started. No branch, no worktree, no PR, nothing to read. | Pick it up and execute it. |
+| `in-progress` | A ticket run is executing it right now. | Leave it alone **while that run is live**. If nothing is behind it, read the branch and then **rewrite the row** — see below; a stale `in-progress` is the one row that can freeze a campaign. |
+| `paused` | Deliberately stopped, and resumable exactly as it stands. Nothing is wrong with it. | Pick it back up and carry on from where it stopped. |
+| `blocked-limit` | Stopped mid-run because the usage window or rate limit ran out. **Nothing is wrong with the work** — the clock ran out, not the plan. | Resume it once the window resets. Until then execute a different task rather than waiting on it. |
+| `rejected` | I reviewed it and turned it down. | **Do not retry it.** It needs a new decision from me, or a rewritten plan. Report it and move on to another task. |
+| `redo` | The work landed but has to be done again differently. | Restart it from the plan: read the Note for what must differ, then execute it as a fresh run. |
+
+**Three of those mean "this task is stopped", and they are not interchangeable.** State the difference outright rather than leaving a reader to infer it from the status names:
+
+- `todo` — **never started.** Nobody has attempted it, so there is no history to read and nothing to resume; executing it is the ordinary thing to do.
+- `rejected` — **stopped because I turned it down.** It was attempted, reviewed, and refused. Silently retrying it re-does work a human has already said no to, which is why it is the one status a resuming agent must never act on by itself.
+- `blocked-limit` — **stopped because the usage window ran out.** It was attempted, nothing about it was judged, and it resumes untouched when the window resets. No human decision is owed, and treating it like `rejected` strands work that is simply waiting on a clock.
+
+`paused` sits alongside `blocked-limit` on that split — attempted, unjudged, resumable as-is — and differs only in what stopped it: a deliberate choice rather than a limit.
+
+### Repairing a stale `in-progress` row
+
+**`blocked-limit` is the one status the run that needs it often cannot write.** A run whose usage window ran out mid-ticket rarely gets another turn to edit the map, so the status meant to survive a hard stop is exactly the one most likely to be missing — and the row is left on `in-progress`, which reads as live work and freezes the next agent out of it. Left unrepaired that compounds: each successive agent skips the stale row, starts another ticket, and hits the same wall, until every row reads `in-progress` and the campaign reports no eligible task while nothing at all is running.
+
+So **repairing the row is a resuming agent's job, and it comes before picking a task**. For each `in-progress` row, establish whether a run is actually behind it — a live worktree, a branch pushed within the run's lifetime, an open PR. If one is, leave it. If none is, read the branch to see how far it got and rewrite the row before choosing anything:
+
+- The branch carries work and nothing was judged → **`blocked-limit`**, Note saying the run stopped without recording a status and when the window resets.
+- The branch carries nothing worth resuming → **`todo`**, Note empty, because nothing was really started.
+
+Never delete the row and never leave it on `in-progress` once you have established no run is behind it. Repairing it is not the same as executing it: repair every stale row first, then pick a task from the repaired map.
+
+### The Note column
+
+The map's **Active tasks** table carries a short free-text **Note** beside the Status. It is there because three of the six statuses are useless to a resuming agent without a reason: `rejected` without my objection cannot be turned into a rewritten plan, `redo` without "differently how" is a re-run of the same thing, and `blocked-limit` without a reset time makes the next agent guess whether to wait.
+
+- **Required** for `rejected`, `blocked-limit`, and `redo` — one clause, not a paragraph.
+- **Empty** for `todo`, `in-progress`, and `paused`. A paused task that needs explaining is really a `rejected` or a `blocked-limit` one.
+
+That column is the only thing the vocabulary adds to the table. Do not add a second, and do not split a status into sub-states — a distinction that needs more than one word belongs in the Note or in the plan.
+
 ## Operations
 
 ### 1. Start a wayfinder
@@ -115,12 +156,29 @@ Continue the `<slug>` wayfinder in this repository.
 Read the repository instructions, the wayfinder workflow at <workflow-path>, and the campaign map
 at <plans>/wayfinder-<slug>.md. Inspect the live Git and worktree state before making changes.
 
-Execute the next unblocked active task from the map. Read its linked plan completely, mark it in
-progress, then run the task workflow against the plan's criteria with the campaign base branch as
-its base, so the work happens in an isolated worktree and is carried through cleanup and a pull
-request. Retarget that pull request to the campaign base branch if the task workflow opened it
-against the default branch. Follow every repository verification, documentation, and visual-proof
-requirement.
+Execute the next unblocked active task from the map. A task is eligible when its status is one of:
+never started, deliberately paused, stopped because a usage window ran out (and that window has
+since reset), or marked for redoing differently. Never re-execute a task a human rejected — that
+one needs a new human decision or a rewritten plan, so report it and pick another.
+
+Before choosing a task, repair any task marked in progress that no run is actually behind — check
+for a live worktree, a recently pushed branch, or an open pull request. A run stopped by a usage
+window usually never gets the turn in which it would have recorded that, so a task can sit marked
+in progress with nothing running it, and skipping it every time is how a campaign stalls with every
+row marked in progress and nothing executing. Where a run is behind it, leave it. Where none is,
+read the branch and rewrite the status: stopped with work in hand becomes stopped-by-usage-window
+with a note saying no status was recorded, and stopped with nothing worth resuming becomes never
+started. Repair every such row first, then pick a task from the repaired map.
+
+Read its linked plan completely, mark it in progress, then run the task workflow against the plan's
+criteria with the campaign base branch as its base, so the work happens in an isolated worktree and
+is carried through cleanup and a pull request. Retarget that pull request to the campaign base
+branch if the task workflow opened it against the default branch. Follow every repository
+verification, documentation, and visual-proof requirement.
+
+If you stop before the pull request is open, set the task's status to say why — deliberately paused,
+or stopped because the usage window ran out — with a short note, rather than leaving it marked in
+progress.
 
 When reporting back, include the task completed, verification results, the pull-request link, and
 any remaining risks or decisions. Stop after opening the pull request so a human can review it.
@@ -128,7 +186,7 @@ Never merge it, and never leave it targeting the default branch.
 ```
 ````
 
-Use this workflow's own repo-relative location for `<workflow-path>`. If every active task is blocked, report the blocking dependency instead of starting unrelated work. If none remain, report that the campaign is ready to close.
+Use this workflow's own repo-relative location for `<workflow-path>`. If every active task is blocked, report the blocking dependency instead of starting unrelated work — a task sitting on `rejected` counts as blocked on a human, and a task on `blocked-limit` as blocked on the clock. If none remain, report that the campaign is ready to close.
 
 **The kickoff prompt never carries `--unattended`, and its "stop after opening the pull request" line is written as-is even for a campaign started with the flag.** The prompt is pasted into some later agent's session, which is precisely the inheritance path the flag refuses: whoever runs that prompt types the flag themselves or gets the reviewed default.
 
@@ -136,7 +194,7 @@ Use this workflow's own repo-relative location for `<workflow-path>`. If every a
 
 1. Read the map for the next task number `NN`.
 2. Write the plan to `<plans>/<slug>-NN-<task-slug>.md` — pass that exact path, so it lands beside the map rather than at whatever default filename a planning tool would choose. State the task's criteria plainly enough that `/my-command:task` can be handed them unedited.
-3. Add a row to the map's **Active tasks** table: number, task slug, plan link, branch `task/<slug>-NN-<task-slug>`, status `todo`.
+3. Add a row to the map's **Active tasks** table: number, task slug, plan link, branch `task/<slug>-NN-<task-slug>`, status **`todo`**, Note empty. `todo` is the only status this operation ever writes, because a freshly added task is by definition one that was never started.
 4. Regenerate the docs index. Report the new task and its plan path.
 
 ### 3. Execute a task
@@ -148,8 +206,10 @@ Use this workflow's own repo-relative location for `<workflow-path>`. If every a
 - **Default — `/my-command:task`.** It stops at an open, reviewed PR and leaves me the merge.
 - **`--unattended` — `/my-command:god`.** It runs that same `/my-command:task` pipeline and adds the last mile: conflicts resolved, CI waited on, the ticket PR retargeted onto its merge target and merged there. That merge target must be named with `--into`, or it is the default branch.
 
+**Which tasks this operation may pick up is read straight off the Status column**, and the vocabulary above says what each one means: `todo` (start it), `paused` (resume it as it stands), `blocked-limit` (resume it once the window has reset — otherwise execute a different task rather than waiting on the clock), and `redo` (restart it from the plan, doing differently whatever the Note names). **`rejected` is never executed here** — I turned that ticket down, so it needs a new decision from me or a rewritten plan before it is a ticket again; report it and pick another. `in-progress` belongs to a live run.
+
 1. Read the task's plan in full.
-2. Mark the task `in-progress` in the map.
+2. Mark the task **`in-progress`** in the map — the only status this operation writes on the way in, whichever of the four eligible statuses the row carried before, and clear any Note that status left behind.
 3. Invoke the runner with the campaign base and any forwarded flags:
    ```text
    /my-command:task --base wayfinder/<slug> [forwarded flags] <the plan's criteria>
@@ -163,6 +223,12 @@ Use this workflow's own repo-relative location for `<workflow-path>`. If every a
    Confirm the retarget landed — a ticket left pointing at the default branch is the one failure this command cannot absorb.
    - **Under `--unattended` this step is `/my-command:god`'s, not mine.** `--into wayfinder/<slug>` makes the campaign base its merge target, and `/my-command:god` retargets the PR onto that target itself, before it merges. Retargeting from out here would be too late anyway: `/my-command:god` merges before it returns. Confirm from `/my-command:god`'s own report that the ticket PR was merged into `wayfinder/<slug>`.
 5. **By default, do not merge it — I review every PR.** That is this command's documented default rather than a limit of the operation. **With `--unattended`, the ticket merge is authorised** and `/my-command:god` performs it against the retargeted base as part of its own run; there is nothing left to merge here.
+6. **If the ticket stops before it lands, write the status that says why.** This is the operation that records it, and a row left on `in-progress` by a run that stopped is what makes dead work read as live to the next agent:
+   - The usage window or rate limit ran out mid-run → **`blocked-limit`**, Note naming when it resets. Nothing is wrong with the work.
+   - Stopped deliberately and resumable as it stands → **`paused`**, Note empty. This is the status a pause writes, and it is a normal event in a long campaign rather than a failure.
+   - I reviewed the ticket and turned it down → **`rejected`**, Note carrying my objection in one clause. Do not re-execute it afterwards.
+
+   Otherwise the ticket landed, and **Complete a task** is the operation that records it.
 
 ### 4. Complete a task
 
@@ -171,8 +237,10 @@ Run this after a ticket's PR merges into the base branch. This is the operation 
 1. Make sure the base branch actually carries the merged work before recording it as done.
 2. **Delete the plan file** — `git rm <plans>/<slug>-NN-<task-slug>.md`.
 3. **Append a summary** to the map's **Completed** section from the **Completed entry template** below. Describe what was *actually built*, not what the plan proposed — the deviations are the part worth keeping.
-4. **Remove the task's row** from **Active tasks**.
+4. **Remove the task's row** from **Active tasks**. A completed task carries no status at all — the Completed entry replaces the row rather than joining the vocabulary, which is why there is no `done` among the six.
 5. Regenerate the docs index and commit the map edit and the deletion together on the base branch.
+
+**Re-opening a completed task is the one path that writes `redo`.** When work that already landed has to be done again differently, restore its row to **Active tasks** with status **`redo`** and a Note naming what must differ, and leave its Completed entry in place as the record of what shipped the first time. Its plan file was deleted at completion, so rewrite the plan before executing — `redo` means restart from the plan, and there has to be one to restart from.
 
 ### 5. Close the wayfinder
 
@@ -201,9 +269,23 @@ Write to `<plans>/wayfinder-<slug>.md`, carrying whatever frontmatter the repo's
 
 ## Active tasks
 
-| # | Task | Plan | Branch | Status |
-|---|------|------|--------|--------|
-| 01 | <task slug> | [<slug>-01-...](<slug>-01-....md) | `task/<slug>-01-...` | todo |
+| # | Task | Plan | Branch | Status | Note |
+|---|------|------|--------|--------|------|
+| 01 | <task slug> | [<slug>-01-...](<slug>-01-....md) | `task/<slug>-01-...` | todo | |
+
+<!--
+Status is exactly one of these six:
+  todo          — never started; nothing to resume. Pick it up.
+  in-progress   — a ticket run is executing it now. Leave it alone.
+  paused        — deliberately stopped, resumable as-is. Pick it back up.
+  blocked-limit — the usage window ran out mid-run; nothing is wrong with the
+                  work. Resume it once the window resets.
+  rejected      — a human reviewed it and turned it down. Do NOT retry it; it
+                  needs a new human decision or a rewritten plan.
+  redo          — the work landed but must be done again differently. Restart
+                  it from the plan.
+Note is required for blocked-limit, rejected, and redo; empty for the rest.
+-->
 
 ## Completed
 
@@ -255,6 +337,7 @@ The merge steps are where this pipeline's failed shell calls concentrate, and al
 - **Never leave a ticket PR targeting the default branch.** Retarget it the moment `/my-command:pr` opens it. Only the planning PR and the campaign PR leave `wayfinder/<slug>`, and they target the campaign's **integration branch** rather than the default branch as such.
 - **The integration branch and `--base` are two different things, and conflating them is the mistake this note exists to stop.** `--integration <branch>` is the campaign's: what `wayfinder/<slug>` is cut from and what the planning and campaign PRs merge into. `--base <branch>` is a ticket's: forwarded verbatim to the ticket runner as that one ticket's cut point. Naming one never sets the other. A campaign integrating with `release/2.0` still cuts its tickets from `wayfinder/<slug>`, and a ticket cut from somewhere unusual with `--base` changes nothing about where the campaign lands.
 - **After start, the integration branch is read from the map and nowhere else.** Not from `state`, not from the flag, not from the branch that happens to be checked out. Re-deriving it is how a campaign resumed by a fresh agent quietly retargets itself at the default branch halfway through.
+- **The Status column is the resuming agent's whole briefing, so keep it true.** A task left on `in-progress` by a run that stopped reads as live work and freezes the next agent out of it; a stopped task never given a status reads as `todo` and gets silently re-executed. However a ticket run ends short, write the status before the run is over — `paused`, `blocked-limit`, or `rejected` — and never re-execute a `rejected` one without a new decision from me. **A long unattended campaign pausing and resuming is a normal event, not an incident**: `paused` and `blocked-limit` are how that is recorded, and neither implies anything is wrong with the work.
 - **No issues, no project board.** This command is the replacement for that flow, not a companion to it.
 - **Delete on completion, don't archive.** A finished task's plan is removed and distilled into the map's Completed log; the closed campaign's map is removed once the repo's own docs carry the record. An archived plan is a second source of truth that immediately starts drifting.
 - **Base every decision on live git state**, never a stale snapshot. Confirm the branch you are on before cutting another.
