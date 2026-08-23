@@ -110,6 +110,60 @@ After any compaction boundary or hand-off, re-read the files the next edit pass
 will write before editing, because a continuation summary does not satisfy a
 file-editing tool's read-before-write precondition.
 
+## Task status vocabulary
+
+A task's status in the map is one of exactly six values and no others. The
+vocabulary is deliberately flat — no sub-states and no transitions to memorise —
+because its whole job is to tell an agent resuming from the map **why** a task is
+not running, and each answer calls for a different action.
+
+- `todo` — never started: no branch, no worktree, no pull request, no history to
+  read. Pick it up and execute it.
+- `in-progress` — a ticket run is executing it right now. Leave it alone; only if
+  that run is known dead, read the branch before touching anything.
+- `paused` — deliberately stopped and resumable exactly as it stands. Nothing is
+  wrong with it. Pick it back up and carry on from where it stopped.
+- `blocked-limit` — stopped mid-run because the usage window or rate limit ran
+  out. Nothing is wrong with the work; the clock ran out, not the plan. Resume it
+  once the window resets, and until then execute a different task rather than
+  waiting on it.
+- `rejected` — the user reviewed it and turned it down. Do **not** retry it. It
+  needs a new decision from the user, or a rewritten plan. Report it and move on
+  to another task.
+- `redo` — the work landed but has to be done again differently. Restart it from
+  the plan: read the note for what must differ, then execute it as a fresh run.
+
+**Three of those mean the task is stopped, and they are not interchangeable.**
+State the difference outright rather than leaving a reader to infer it from the
+status names:
+
+- `todo` means **never started**. Nobody attempted it, so there is nothing to
+  resume and executing it is the ordinary thing to do.
+- `rejected` means **stopped because the user turned it down**. It was attempted,
+  reviewed, and refused. Silently retrying it re-does work a human already said
+  no to, which is why it is the one status a resuming agent must never act on by
+  itself.
+- `blocked-limit` means **stopped because the usage window ran out**. It was
+  attempted, nothing about it was judged, and it resumes untouched once the
+  window resets. No human decision is owed, and treating it like `rejected`
+  strands work that is only waiting on a clock.
+
+`paused` sits with `blocked-limit` on that split — attempted, unjudged,
+resumable as-is — and differs only in what stopped it: a deliberate choice rather
+than a limit.
+
+The active-tasks table carries a short free-text **note** beside the status,
+because three of the six are useless to a resuming agent without a reason:
+`rejected` without the user's objection cannot become a rewritten plan, `redo`
+without "differently how" is a re-run of the same thing, and `blocked-limit`
+without a reset time makes the next agent guess whether to wait. The note is
+required for `rejected`, `blocked-limit`, and `redo` — one clause, not a
+paragraph — and empty for `todo`, `in-progress`, and `paused`. A paused task that
+needs explaining is really a rejected or a limit-blocked one. That note is the
+only column the vocabulary adds: do not add a second, and do not split a status
+into sub-states, because a distinction needing more than one word belongs in the
+note or in the plan.
+
 ## Operations
 
 ### 1. Start
@@ -157,7 +211,9 @@ workflow replaces.
    so it lands beside the map. State criteria plainly enough that `$task` can be
    handed them unedited.
 3. Add a row to the map's active-tasks table: number, task slug, plan link,
-   branch, status `todo`.
+   branch, status `todo`, note empty. `todo` is the only status this operation
+   ever writes, because a freshly added task is by definition one that was never
+   started.
 4. Regenerate the docs index and report the plan path.
 
 ### 3. Execute a task
@@ -170,8 +226,19 @@ runs that same pipeline and adds the last mile — conflicts resolved, checks
 waited on, the ticket pull request retargeted onto its merge target and merged
 there.
 
+Which tasks this operation may pick up is read straight off the status column.
+Eligible: `todo` (start it), `paused` (resume it as it stands), `blocked-limit`
+(resume it once the window has reset, and otherwise execute a different task
+rather than waiting on the clock), and `redo` (restart it from the plan, doing
+differently whatever the note names). **`rejected` is never executed here** — the
+user turned that ticket down, so it needs a new decision or a rewritten plan
+before it is a ticket again; report it and pick another. `in-progress` belongs to
+a live run.
+
 1. Read the plan in full.
-2. Mark the task in progress in the map.
+2. Mark the task `in-progress` in the map — the only status this operation writes
+   on the way in, whichever of the four eligible statuses the row carried before
+   — and clear any note that status left behind.
 3. Run the chosen workflow with the campaign base branch as its base and any
    forwarded flags, handing it the plan's criteria. Under `--unattended`, name
    the campaign base branch **twice** — once as `$god`'s cut point and once as
@@ -192,6 +259,16 @@ there.
    `--unattended` the ticket merge is authorised and the runner performs it
    against the retargeted base as part of its own run, so nothing is left to
    merge here.
+6. If the ticket stops before it lands, write the status that says why. This is
+   the operation that records it, and a row left on `in-progress` by a run that
+   stopped is what makes dead work read as live to the next agent. The usage
+   window or rate limit running out mid-run writes `blocked-limit` with a note
+   naming when it resets — nothing is wrong with the work. A deliberate stop that
+   is resumable as it stands writes `paused` with an empty note; that is the
+   status a pause writes, and a normal event in a long campaign rather than a
+   failure. A ticket the user reviewed and turned down writes `rejected` with the
+   objection in one clause, and is not re-executed afterwards. Otherwise the
+   ticket landed, and the complete operation records it.
 
 ### 4. Complete a task
 
@@ -202,8 +279,17 @@ Run after a ticket's pull request merges into the base branch.
 3. Append a summary to the map's Completed section describing what was actually
    built rather than what the plan proposed; the deviations are the part worth
    keeping.
-4. Remove the task's row from the active-tasks table.
+4. Remove the task's row from the active-tasks table. A completed task carries no
+   status at all — the Completed entry replaces the row rather than joining the
+   vocabulary, which is why there is no `done` among the six.
 5. Regenerate the docs index and commit the map edit and the deletion together.
+
+Re-opening a completed task is the one path that writes `redo`. When work that
+already landed has to be done again differently, restore its row to the
+active-tasks table with status `redo` and a note naming what must differ, and
+leave its Completed entry in place as the record of what shipped the first time.
+Its plan was deleted at completion, so rewrite the plan before executing: `redo`
+means restart from the plan, and there has to be one to restart from.
 
 ### 5. Close
 
@@ -241,9 +327,23 @@ repository's docs bundle requires:
 
 ## Active tasks
 
-| # | Task | Plan | Branch | Status |
-|---|------|------|--------|--------|
-| 01 | <task slug> | [<slug>-01-...](<slug>-01-....md) | `task/<slug>-01-...` | todo |
+| # | Task | Plan | Branch | Status | Note |
+|---|------|------|--------|--------|------|
+| 01 | <task slug> | [<slug>-01-...](<slug>-01-....md) | `task/<slug>-01-...` | todo | |
+
+<!--
+Status is exactly one of these six:
+  todo          — never started; nothing to resume. Pick it up.
+  in-progress   — a ticket run is executing it now. Leave it alone.
+  paused        — deliberately stopped, resumable as-is. Pick it back up.
+  blocked-limit — the usage window ran out mid-run; nothing is wrong with the
+                  work. Resume it once the window resets.
+  rejected      — a human reviewed it and turned it down. Do NOT retry it; it
+                  needs a new human decision or a rewritten plan.
+  redo          — the work landed but must be done again differently. Restart
+                  it from the plan.
+Note is required for blocked-limit, rejected, and redo; empty for the rest.
+-->
 
 ## Completed
 
@@ -261,6 +361,15 @@ inspect live Git and worktree state; execute the next unblocked active task by
 running the task workflow against its plan with the campaign base branch as the
 base; retarget the resulting pull request to that base branch; and stop after
 opening it. Name no model, vendor, or product-specific command in that prompt.
+
+The prompt states which statuses are eligible in plain language rather than by
+name, so any agent can act on it: a task is eligible when it was never started,
+was deliberately paused, was stopped because a usage window ran out and that
+window has since reset, or is marked for redoing differently. It says outright
+never to re-execute a task a human rejected — report it and pick another — and
+that a task already marked in progress belongs to a live run. It also tells the
+agent that if it stops before the pull request is open, it must set the status to
+say why, with a short note, rather than leaving the task marked in progress.
 
 The kickoff prompt never carries `--unattended`, and its stop-after-opening line
 is written as-is even for a campaign started with the flag. The prompt is pasted
@@ -282,6 +391,15 @@ refuses: whoever runs it types the flag themselves or gets the reviewed default.
   from the state verb, not from the flag, not from whichever branch happens to be
   checked out. Re-deriving it is how a campaign resumed by a fresh agent quietly
   retargets itself at the default branch halfway through.
+- The status column is the resuming agent's whole briefing, so keep it true. A
+  task left on `in-progress` by a run that stopped reads as live work and freezes
+  the next agent out of it; a stopped task never given a status reads as `todo`
+  and gets silently re-executed. However a ticket run ends short, write the
+  status before the run is over — `paused`, `blocked-limit`, or `rejected` — and
+  never re-execute a `rejected` one without a new decision from the user. A long
+  unattended campaign pausing and resuming is a normal event rather than an
+  incident: `paused` and `blocked-limit` are how that is recorded, and neither
+  implies anything is wrong with the work.
 - Create no issues and touch no project board.
 - Delete a finished task's plan rather than archiving it; an archived plan is a
   second source of truth that immediately drifts.

@@ -71,8 +71,8 @@ Five operations, one per invocation:
    [`/pr`](pr.md) while the branch holds only that commit — so the map and its
    tickets land on the integration branch before any ticket branch is cut.
 2. **Add a task** — write a plan to `<plans>/<slug>-NN-<task-slug>.md` and add
-   its row to the map's Active tasks table.
-3. **Execute a task** — mark it in progress, then run the ticket runner with
+   its row to the map's Active tasks table with status `todo`.
+3. **Execute a task** — mark it `in-progress`, then run the ticket runner with
    `--base wayfinder/<slug>` against the plan's criteria — `/task` by default,
    `/god --base wayfinder/<slug> --into wayfinder/<slug>` under `--unattended` —
    and **retarget the resulting PR** to the base branch, since `/pr` targets the
@@ -92,6 +92,62 @@ pointing at the default branch is the failure the command guards hardest against
 The default branch is read from the toolkit's `state` verb rather than assumed to
 be `main`, and `<plans>` is the repo's own plans directory, resolved once at
 start and recorded in the map.
+
+### Task status
+
+A task's **Status** in the map is one of exactly six values. The vocabulary is
+flat by design — no sub-states, no state machine — because its job is to tell an
+agent resuming from the map **why** a task is not running, and each answer calls
+for a different action.
+
+| Status | Means | What a resuming agent does |
+|--------|-------|----------------------------|
+| `todo` | Never started — no branch, no PR, no history. | Pick it up and execute it. |
+| `in-progress` | A ticket run is executing it now. | Leave it alone. |
+| `paused` | Deliberately stopped, resumable as it stands. Nothing wrong with it. | Pick it back up and carry on. |
+| `blocked-limit` | Stopped mid-run because the usage window or rate limit ran out. **Nothing is wrong with the work.** | Resume once the window resets; execute something else in the meantime. |
+| `rejected` | A human reviewed it and turned it down. | **Never retry it.** It needs a new human decision or a rewritten plan. |
+| `redo` | The work landed but must be done again differently. | Restart it from the plan. |
+
+**Three of those mean "stopped", and the command says the difference outright**
+rather than leaving it to be read off the names. `todo` is **never started** —
+nothing was attempted, so there is nothing to resume. `rejected` is **stopped
+because a human turned it down** — it was attempted, reviewed, and refused, which
+is why it is the one status a resuming agent must never act on by itself.
+`blocked-limit` is **stopped because the usage window ran out** — it was
+attempted, nothing about it was judged, and it resumes untouched when the window
+resets, so treating it like `rejected` strands work that is only waiting on a
+clock. `paused` sits with `blocked-limit` on that split and differs only in what
+stopped it: a deliberate choice rather than a limit.
+
+A long unattended campaign pausing and resuming is a normal event rather than an
+incident, and `paused` / `blocked-limit` are how the map records it.
+
+The table carries one short free-text **Note** beside the Status — the only
+column the vocabulary adds. Three of the six are useless without a reason:
+`rejected` without the objection cannot become a rewritten plan, `redo` without
+"differently how" is a re-run of the same thing, and `blocked-limit` without a
+reset time makes the next agent guess whether to wait. The Note is **required**
+for those three and **empty** for `todo`, `in-progress`, and `paused`.
+
+Every operation that writes a status names which one it writes:
+
+- **Add a task** writes `todo`, and only `todo` — a freshly added task is by
+  definition one that was never started.
+- **Execute a task** writes `in-progress` on the way in, from any of the four
+  eligible statuses (`todo`, `paused`, `blocked-limit`, `redo`). `rejected` is
+  never picked up here. If the ticket stops before it lands, the same operation
+  writes why: `blocked-limit` (window ran out, Note names the reset),
+  `paused` (deliberate stop, Note empty), or `rejected` (turned down, Note
+  carries the objection). This is also what a pause writes.
+- **Complete a task** writes no status — it removes the row, which is why there
+  is no `done` among the six. Re-opening completed work is the one path that
+  writes `redo`: the row is restored with `redo` and a Note naming what must
+  differ, and the plan is rewritten, since `redo` means restart from the plan.
+
+The map template's Active tasks table ships with a legend listing all six and the
+Note rule, so every campaign map carries the vocabulary rather than depending on
+whoever reads it having read this doc.
 
 ### The integration branch
 
