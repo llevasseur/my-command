@@ -151,10 +151,10 @@ succeeds does not.
 
 If that round also fails, `/dev` **falls back**: `/wayfinder close` still runs so
 there is a campaign PR to review, but `/dev` does **not** merge it to the
-integration branch and does **not** retire the wayfinder scaffolding — the map and the failed
-ticket's plan are kept alive — and it reports. `/dev --resume <slug>` then reads
-that surviving map, skips completed tickets, re-dispatches the outstanding ones,
-and closes.
+integration branch and does **not** retire the wayfinder scaffolding — the map
+and the failed ticket's plan are kept alive — and it reports. `/dev --resume
+<slug>` then reads that surviving map, skips completed tickets, re-dispatches
+the outstanding ones, and closes.
 
 ### Nesting
 
