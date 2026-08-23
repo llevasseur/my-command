@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { bool, flag, str } from './lib/flags.mjs';
 import { ToolkitError } from './lib/proc.mjs';
 import { GATED_VERBS, requireArmed } from './lib/require-armed.mjs';
+import * as app from './verbs/app.mjs';
 import * as cleanup from './verbs/cleanup.mjs';
 import * as commit from './verbs/commit.mjs';
 import * as concepts from './verbs/concepts.mjs';
@@ -40,6 +41,7 @@ const VERBS = {
   state,
   scope,
   verify,
+  app,
   commit,
   pr,
   prs,
@@ -70,6 +72,7 @@ const SWITCHES = new Set([
   'no-clipboard',
   'consume',
   'background',
+  'all',
   'keep-remote',
   'keep-local',
 ]);
