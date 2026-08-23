@@ -1,6 +1,6 @@
 ---
 description: Run a wayfinder — a named campaign of related work tracked as markdown plans in the repo rather than on an issue tracker: one base branch, a map of active tasks, one /task per ticket, and a summary appended as each lands
-argument-hint: "[--unattended] [--here|-h] [--base <branch>] [--draft|-d] [--add|-a <command + prompt>[, <command + prompt>]] <start|add task|execute|complete|close> <description>"
+argument-hint: "[--unattended] [--integration <branch>] [--here|-h] [--base <branch>] [--draft|-d] [--add|-a <command + prompt>[, <command + prompt>]] <start|add task|execute|complete|close> <description>"
 ---
 
 A **wayfinder** is a named campaign of related work — several tasks that ship together — tracked entirely in markdown inside the repo. It exists to plan and execute a multi-task effort **without an issue tracker or project board**: fewer moving layers for an agent to keep in sync, and everything reviewable in a diff.
@@ -9,7 +9,7 @@ The request is the text in the `<command-args>` block above. Parse leading flags
 
 **Announce the operation you picked before acting** — start, add task, execute, complete task, or close — so the run reads as one of five things rather than as improvised branching.
 
-**The git plumbing runs through `my-command-tools`.** Every verb prints JSON on stdout — read the fields rather than re-deriving them with your own `git` calls. `state` is where the default branch comes from: this command never hardcodes `main`. If the bare call answers `command not found`, the shim is not linked onto PATH — reach the same CLI at `~/.claude/my-command/toolkit/bin/my-command-tools` (or `~/.codex/my-command/toolkit/bin/my-command-tools`), run `doctor` through that path, and report the `onPath` fix it prints. Do not fall back to hand-rolled shell.
+**The git plumbing runs through `my-command-tools`.** Every verb prints JSON on stdout — read the fields rather than re-deriving them with your own `git` calls. `state` is where the default branch comes from: this command never hardcodes `main`. It is also the fallback for the campaign's integration branch when `--integration` was not typed at start — and once start has resolved that branch, the **map** is where every later operation reads it. If the bare call answers `command not found`, the shim is not linked onto PATH — reach the same CLI at `~/.claude/my-command/toolkit/bin/my-command-tools` (or `~/.codex/my-command/toolkit/bin/my-command-tools`), run `doctor` through that path, and report the `onPath` fix it prints. Do not fall back to hand-rolled shell.
 
 <!-- include: shared/closing-turn-anchor.md -->**Before the first tool call, anchor the way this run ends.** Put "close the run in a text-only turn" in the harness todo/task list as its own final item — worded on its own, never folded into the work it follows. The todo list is live session state that a compaction carries forward; this prompt is not, so once this run is summarized that item is the only surviving record that an outcome is still owed. **A run another command invoked inline with the `Skill` tool anchors its handback instead**, worded as "hand back to the invoking command in its next turn": a nested run that spends a text-only turn ends the whole assistant turn and strands every step its parent still owes, so the item it carries must not tell it to. A run the user invoked directly, and one dispatched as a subagent, both anchor the text-only close. **Resolve the item in the same tool-call turn as the run's last piece of real work** — the teardown, the final `verify`, the closing `gh` call — so the anchor is already marked completed when that turn returns and the only thing left for the run to do is speak. **Never leave marking it as a call of its own after the work ends.** A run whose last scheduled action is a bookkeeping tool call ends on that call: the mark lands, the message that was meant to follow it does not, and the run records no outcome — the exact failure this anchor exists to prevent, arriving through the anchor itself. Compose the closing message against a task list that is already clean, and if the anchor somehow survives the work, close it alongside whatever you are already calling rather than scheduling a turn for it — a still-open anchor is never a reason to end the run on a tool call.<!-- /include -->
 
@@ -31,7 +31,7 @@ The request is the text in the `<command-args>` block above. Parse leading flags
 These are the ticket runner's own flags, and they matter only when this run **executes a ticket** — that operation is one invocation of that runner, and these are forwarded to it verbatim. The charting operations (start, add task, complete, close) ignore them.
 
 - `--here` / `-h` — execute the ticket on the current branch, no worktree.
-- `--base <branch>` — cut the ticket worktree from `<branch>` instead of the campaign base branch (the default is `wayfinder/<slug>`).
+- `--base <branch>` — cut the ticket worktree from `<branch>` instead of the campaign base branch (the default is `wayfinder/<slug>`). **This is the ticket's cut point and nothing else.** It is not the campaign's integration branch, which is `--integration` below; the two answer different questions and a run that means both says both.
 - `--draft` / `-d` — open the ticket PR as a draft. **Refused alongside `--unattended`**, which routes tickets through `/god`, and `/god` rejects `--draft` outright because a draft cannot merge. Stop and say to run the campaign without `--unattended` if the tickets are meant to stay in draft.
 - `--add` / `-a` — weave extra commands into the ticket run, as a comma-separated list of `<command> <prompt>` entries.
 - Anything not a recognized flag names the operation and its subject.
@@ -40,30 +40,34 @@ The ticket runner owns the authoritative semantics for every one of these — do
 
 ### Owned here
 
+- `--integration <branch>` — the campaign's **integration branch**: the branch `wayfinder/<slug>` is cut from, and the branch the campaign's own PRs target. **Read on the `start` operation only**, because that is where the campaign base branch is cut and where the map is written; every later operation reads the resolved branch **out of the map** rather than re-deriving it, so the flag is not retyped and is ignored if it is. Absent the flag, the integration branch is the repository default branch reported by `my-command-tools state` — the behaviour every campaign started before this flag existed already had. Neither the default nor the flag is a hardcoded branch name: `main` is never written into a decision here, and neither is whatever branch a given campaign happened to name.
+  - It governs exactly three things, and nothing else: the **cut point** for `wayfinder/<slug>`, the target of the **planning PR** at start, and the target of the **campaign PR** at close. Ticket PRs are untouched by it — they target `wayfinder/<slug>` exactly as they always have.
+  - **It is not `--base`, and `--base` is not it.** `--base` is forwarded to the ticket runner and names *a ticket's* cut point inside the campaign; `--integration` names what the *campaign itself* is cut from and merged into. A campaign whose integration branch is `release/2.0` still runs its tickets off `wayfinder/<slug>`. Do not read one as shorthand for the other and do not collapse them into a single flag.
 - `--unattended` — authorise this run to merge the PRs it opens, and route ticket execution to `/god` instead of `/task`. **It must be TYPED on the invocation that acts, and it is never inherited.** Not from the map, not from the kickoff prompt the map carries, not from a command that invoked this one, and not from an earlier operation in the same campaign — a start run given the flag authorises nothing for the execute run that follows it. The reason is what a wayfinder is: it multiplies whatever it authorises, and **N unattended merges out of one invocation is a different risk from one**, which is exactly why `/manage` requires `--delegate god` to be typed rather than inherited. Absent the flag, this command opens PRs and merges nothing.
   - **Say in the opening announcement that this run will merge**, alongside the operation you picked, so an unattended run is never the thing a reader has to infer.
 
 ## Mental model
 
-- One wayfinder = one **base branch** `wayfinder/<slug>`, cut from the repo's default branch.
+- One wayfinder = one **integration branch** — the branch the campaign is cut from and merged back into. `--integration <branch>` names it at start; absent that, it is the repo's default branch from `my-command-tools state`. Whichever it resolves to, **it is written into the map at start and read from there afterwards**, so a fresh agent resuming from the map never re-derives it.
+- One wayfinder = one **base branch** `wayfinder/<slug>`, cut from that integration branch.
 - One wayfinder = one **map** file `<plans>/wayfinder-<slug>.md` listing its active tasks and logging its completed ones.
 - Each task = one **plan** file `<plans>/<slug>-NN-<task-slug>.md` and one branch `task/<slug>-NN-<task-slug>` cut from the base branch. **Every ticket PR targets the base branch — never the default branch.**
 - `<plans>` is the repo's own plans directory — `docs/plans/` where the repo has one, otherwise the directory its docs convention names. Resolve it once at the start operation and record it in the map; do not invent a second location later in the campaign.
 - Everything under `<plans>` for a wayfinder is **ephemeral scaffolding**. The durable record is the merged code plus the repo's own feature, spec, and decision docs. When the wayfinder closes, the map and every plan it created are deleted.
 
 ```
-<default branch>
+<integration branch>              (--integration <branch>, else the default branch)
  └── wayfinder/<slug>            (base branch — accumulates every ticket)
       ├── task/<slug>-01-...     (/task --base wayfinder/<slug>)
       ├── task/<slug>-02-...     (/task --base wayfinder/<slug>)
-      └── ...                    → one PR wayfinder/<slug> → default branch at the end
+      └── ...                    → one PR wayfinder/<slug> → integration branch at the end
 ```
 
-Exactly two PRs legitimately target the default branch: the **planning PR** at start, which lands the map and its tickets so agents can read them, and the **campaign PR** at close, which lands the built code. Neither is a batch merge — each is one branch with one PR.
+Exactly two PRs legitimately target the **integration branch**: the **planning PR** at start, which lands the map and its tickets so agents can read them, and the **campaign PR** at close, which lands the built code. Neither is a batch merge — each is one branch with one PR. On a campaign that never named an integration branch, that branch *is* the default branch and this reads exactly as it always did.
 
 ## Steps
 
-1. **Read the live state first.** `my-command-tools state` gives the branch, the `defaultBranch`, and the worktree — never work from the session's startup snapshot. If a map already exists, read it before deciding anything; the map, not memory, says which tasks are active.
+1. **Read the live state first.** `my-command-tools state` gives the branch, the `defaultBranch`, and the worktree — never work from the session's startup snapshot. If a map already exists, read it before deciding anything; the map, not memory, says which tasks are active **and which branch this campaign integrates with**.
 2. **Pick the operation** that matches the request and run only that one. Each is written to be re-runnable: re-read the map, act, regenerate the docs index, report.
 3. **Report** what changed — the operation, the map path, the branch, and any PR — as this run's closing turn.
 
@@ -86,12 +90,13 @@ That applies squarely to the complete and close operations, which read the map a
 ### 1. Start a wayfinder
 
 1. Pick a short kebab-case **slug** (e.g. `auth-revamp`). Confirm it with me if the request is ambiguous.
-2. Cut the base branch from the up-to-date default branch. `my-command-tools state` names that branch; do not assume it is `main`.
-3. Create the map at `<plans>/wayfinder-<slug>.md` from the **Map template** below, including an instantiated **Agent kickoff prompt**.
-4. Create the task plans you can specify now with **Add a task**, so the tickets land alongside the map rather than trickling in later.
-5. Regenerate the docs index (see *Index upkeep*) and commit the map plus its plans on the base branch.
-6. **Open the planning PR with `/pr`**, from the base branch, while the branch still holds only that planning commit — so the PR carries the scaffolding and no task code. **By default do not mark it draft and do not merge it yourself** — I review every PR, and that default holds for every run without `--unattended`. **With `--unattended` typed on this invocation, merging the planning PR is authorised**: wait for it to be green and merge it yourself. Either way it has to land before any ticket branch is cut, so the default branch carries the plans agents read.
-7. Report the base branch, the map path, the planning-PR link, and the kickoff prompt.
+2. **Resolve the integration branch, once, here.** `--integration <branch>` if it was typed on this invocation; otherwise the `defaultBranch` `my-command-tools state` reports. Do not assume it is `main`, and do not assume it is not. Confirm the resolved branch exists on origin before cutting anything from it — a typo'd integration branch is a campaign built on nothing. **Announce which branch it resolved to and where that came from** (the flag, or the repo default), so the campaign's target is stated rather than inferred.
+3. Cut the base branch `wayfinder/<slug>` from the up-to-date **integration branch** resolved in step 2.
+4. Create the map at `<plans>/wayfinder-<slug>.md` from the **Map template** below, recording that resolved integration branch in the header beside the base branch, and including an instantiated **Agent kickoff prompt**. **The map is the record from here on** — no later operation re-reads the flag or re-derives the branch from `state`.
+5. Create the task plans you can specify now with **Add a task**, so the tickets land alongside the map rather than trickling in later.
+6. Regenerate the docs index (see *Index upkeep*) and commit the map plus its plans on the base branch.
+7. **Open the planning PR with `/pr`**, from the base branch, while the branch still holds only that planning commit — so the PR carries the scaffolding and no task code. **Its target is the integration branch the map now records.** `/pr` targets the repo's default branch by design, so when the map's integration branch is something else, retarget it the moment it exists — `gh pr edit <number> --base <integration branch>` — and confirm the retarget landed, exactly as a ticket PR is retargeted onto the campaign base. **By default do not mark it draft and do not merge it yourself** — I review every PR, and that default holds for every run without `--unattended`. **With `--unattended` typed on this invocation, merging the planning PR is authorised**: wait for it to be green and merge it yourself. Either way it has to land before any ticket branch is cut, so the integration branch carries the plans agents read.
+8. Report the integration branch, the base branch, the map path, the planning-PR link, and the kickoff prompt.
 
 Do **not** create issues, labels, or project-board items. That is the layer this command replaces.
 
@@ -174,7 +179,7 @@ Run this after a ticket's PR merges into the base branch. This is the operation 
 Run when every task is complete and the durable docs exist.
 
 1. Confirm each completed task produced its durable artifacts in the repo's own docs — the feature, spec, or decision doc the change owes. The map's Completed log is scaffolding, not the deliverable.
-2. Open **one** PR from `wayfinder/<slug>` to the default branch with `/pr`, summarizing the whole campaign and linking the map's Completed log. **By default, do not merge it — I review it**, and that default holds for every run without `--unattended`. **With `--unattended` typed on this invocation, merging the campaign PR is authorised** once it is green.
+2. Open **one** PR from `wayfinder/<slug>` to the **integration branch the map records** with `/pr`, summarizing the whole campaign and linking the map's Completed log. Read that branch from the map's header — do not re-derive it from `state`, and do not assume the campaign integrates with the default branch. `/pr` targets the default branch by design, so retarget when they differ (`gh pr edit <number> --base <integration branch>`) and confirm it landed before merging anything. **By default, do not merge it — I review it**, and that default holds for every run without `--unattended`. **With `--unattended` typed on this invocation, merging the campaign PR is authorised** once it is green.
 3. **After that PR merges**, retire the scaffolding: delete the map and every `<plans>/<slug>-*.md` plan, regenerate the docs index, and commit as `chore: retire <slug> wayfinder scaffolding` — folded into the campaign PR if it has not merged yet, otherwise as a small follow-up PR. Then delete the base branch locally and on origin.
 
 ## Map template
@@ -185,7 +190,8 @@ Write to `<plans>/wayfinder-<slug>.md`, carrying whatever frontmatter the repo's
 # Wayfinder — <Human Name>
 
 **Slug:** `<slug>`
-**Base branch:** `wayfinder/<slug>` (cut from the default branch; every ticket PR targets it)
+**Integration branch:** `<resolved integration branch>` (this campaign is cut from it and merges back into it; the planning and campaign PRs target it)
+**Base branch:** `wayfinder/<slug>` (cut from the integration branch above; every ticket PR targets it)
 **Plans directory:** `<plans>`
 **Started:** YYYY-MM-DD
 **Goal:** <one sentence — what this campaign ships>
@@ -227,7 +233,7 @@ Expect churn in that index: the plans directory is deliberately fast-moving.
 
 This section applies only to a run with `--unattended` typed on it. Without the flag this command issues no merge at all, and none of the forms below are reached.
 
-Three merges are authorised, and no more: the **planning PR** at start, each **ticket PR** (performed by `/god` inside the ticket run, into the `--into wayfinder/<slug>` merge target it was given), and the **campaign PR** at close. A PR this run did not open is never merged. Never reach for `--admin`, never force-push, and never merge a red PR — a campaign is exactly where one bad merge is multiplied.
+Three merges are authorised, and no more: the **planning PR** at start, each **ticket PR** (performed by `/god` inside the ticket run, into the `--into wayfinder/<slug>` merge target it was given), and the **campaign PR** at close. The planning and campaign merges land on the **integration branch the map records**, which is the default branch only when the campaign never named another one — so confirm each of those two PRs is based on that branch before merging it, rather than trusting the base `/pr` opened it with. A PR this run did not open is never merged. Never reach for `--admin`, never force-push, and never merge a red PR — a campaign is exactly where one bad merge is multiplied.
 
 <!-- include-block: shared/merge-command-forms.md -->
 ### Merge command forms
@@ -246,7 +252,9 @@ The merge steps are where this pipeline's failed shell calls concentrate, and al
 
 ## Notes
 
-- **Never leave a ticket PR targeting the default branch.** Retarget it the moment `/pr` opens it. Only the planning PR and the campaign PR belong there.
+- **Never leave a ticket PR targeting the default branch.** Retarget it the moment `/pr` opens it. Only the planning PR and the campaign PR leave `wayfinder/<slug>`, and they target the campaign's **integration branch** rather than the default branch as such.
+- **The integration branch and `--base` are two different things, and conflating them is the mistake this note exists to stop.** `--integration <branch>` is the campaign's: what `wayfinder/<slug>` is cut from and what the planning and campaign PRs merge into. `--base <branch>` is a ticket's: forwarded verbatim to the ticket runner as that one ticket's cut point. Naming one never sets the other. A campaign integrating with `release/2.0` still cuts its tickets from `wayfinder/<slug>`, and a ticket cut from somewhere unusual with `--base` changes nothing about where the campaign lands.
+- **After start, the integration branch is read from the map and nowhere else.** Not from `state`, not from the flag, not from the branch that happens to be checked out. Re-deriving it is how a campaign resumed by a fresh agent quietly retargets itself at the default branch halfway through.
 - **No issues, no project board.** This command is the replacement for that flow, not a companion to it.
 - **Delete on completion, don't archive.** A finished task's plan is removed and distilled into the map's Completed log; the closed campaign's map is removed once the repo's own docs carry the record. An archived plan is a second source of truth that immediately starts drifting.
 - **Base every decision on live git state**, never a stale snapshot. Confirm the branch you are on before cutting another.
@@ -255,7 +263,7 @@ The merge steps are where this pipeline's failed shell calls concentrate, and al
 - <!-- include: shared/approval-own-call.md -->**A command that may need approval goes in its own Bash call** — `git fetch`, `git config`, and, as a narrow exception to the general rule to chain dependent mutations, branch-lifecycle operations such as checkout/switch, pull, remote-branch inspection, and local branch deletion. Folding one into an `&&` chain escalates approval to the whole compound command and costs a turn plus a retry. Put status output, pipes, and follow-up verification in separate read-only calls.<!-- /include -->
 - <!-- include: shared/gh-identity.md -->This device is logged in as more than one GitHub account, and `gh`'s GraphQL-backed writes (`gh pr create`, `gh pr edit`) authenticate as whichever one is active — so on a repo owned by another of them GitHub answers `must be a collaborator`. That is the wrong identity, not a permission to request, and the right account is not a guess: it is the remote's owner. `my-command-tools pr` resolves it internally and reports the `identity` that worked, so nothing extra is needed there. For any other `gh` write, ask the toolkit — `my-command-tools identity` names the `owner`, the `active` account, and the one plain `select` command, and `my-command-tools identity --select` runs it. **Never compose `GH_TOKEN="$(gh auth token --user <login>)" <command>`**: an assignment wrapping a command substitution is refused on shape, and it guesses at a login the remote already states.<!-- /include -->
 - <!-- include: shared/refusal-final.md -->A refusal of a **PR merge or a remote-ref deletion is final.** Surface it to the human and carry on with the rest of the work. Re-expressing the same operation is refused for the same reason and costs a second turn: `gh api -X PUT .../pulls/N/merge` is `gh pr merge`, and `gh api --method DELETE .../git/refs/heads/...` is `git push origin --delete`, so neither is a narrow retry — nor is re-running one under `GH_TOKEN=...`.<!-- /include -->
-- Report the operation, the map path, the branch, any PR link, and — under `--unattended` — which of those PRs this run merged. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
+- Report the operation, the map path, the branch, any PR link, and — under `--unattended` — which of those PRs this run merged. A start also names the integration branch it resolved and whether that came from `--integration` or the repo default; a close names the branch the campaign PR targets. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
 
 ## Close the run in a text-only turn
 
@@ -283,4 +291,4 @@ The merge steps are where this pipeline's failed shell calls concentrate, and al
 - **Do not tack the report onto the tool call before it — in the two closing cases.** `ExitWorktree`, `worktree end`, `verify`, and a closing `gh` call are exactly the calls that sit at the end of an outermost or subagent run and swallow the outcome. The nested handback is the deliberate exception and the only one: there the report rides the parent's **next** call, which is what keeps the parent's turn alive.
 <!-- /include-block -->
 
-For this command: lead with which operation ran and what it changed — the base branch and planning PR on a start, the plan path on an add, the ticket PR on an execute, the map entry on a complete, the campaign PR on a close — or with what stopped the run.
+For this command: lead with which operation ran and what it changed — the integration branch, the base branch, and the planning PR on a start, the plan path on an add, the ticket PR on an execute, the map entry on a complete, the campaign PR on a close — or with what stopped the run.
