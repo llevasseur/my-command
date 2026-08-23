@@ -10,7 +10,7 @@ timestamp: 2026-08-22
 
 ## Summary
 
-MyCommand dispatches subagents from eight sites across seven commands, and until
+MyCommand dispatches subagents from ten sites across eight commands, and until
 now every one of them took the **default agent**. Nothing named a type, so the
 role each delegate was supposed to play had to be restated in the dispatch prompt
 — once per site, in each site's own words, drifting per site. Measured on the
