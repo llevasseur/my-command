@@ -147,9 +147,14 @@ function ephemeralPort() {
   });
 }
 
-/** @param {number} ms @returns {Promise<void>} */
+/**
+ * Deliberately not unref'd: the health wait and the SIGTERM grace period are the only things
+ * pending while they run, so an unref'd timer would let Node exit mid-wait — which on CI
+ * cancelled this verb's own tests rather than failing them.
+ * @param {number} ms @returns {Promise<void>}
+ */
 function pause(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms).unref?.());
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
