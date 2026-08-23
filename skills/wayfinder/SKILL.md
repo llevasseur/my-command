@@ -10,11 +10,35 @@ together — tracked entirely in markdown inside the repository. It plans and
 executes a multi-task effort with no issue tracker and no project board: fewer
 layers to keep in sync, and everything reviewable in a diff.
 
-Parse `--unattended`, `--here`, `--base <branch>`, `--draft`, and
-`--add <command prompt,...>`; the remaining text names the operation and its
-subject. Every flag but `--unattended` belongs to the ticket runner and applies
-only when this run executes a ticket, because that operation is one invocation of
-that runner and forwards them verbatim. The charting operations ignore them.
+Parse `--unattended`, `--integration <branch>`, `--here`, `--base <branch>`,
+`--draft`, and `--add <command prompt,...>`; the remaining text names the
+operation and its subject. Every flag but `--unattended` and `--integration`
+belongs to the ticket runner and applies only when this run executes a ticket,
+because that operation is one invocation of that runner and forwards them
+verbatim. The charting operations ignore them.
+
+`--integration <branch>` belongs to this workflow and names the campaign's
+**integration branch**: the branch `wayfinder/<slug>` is cut from, and the branch
+the campaign's own pull requests target. It is read on the **start** operation
+only — that is where the base branch is cut and the map is written — and every
+later operation reads the resolved branch **out of the map** rather than
+re-deriving it. Absent the flag, the integration branch is the repository default
+branch reported by the repository helper's state verb, which is what every
+campaign started before this flag existed already used. Neither branch name is
+hardcoded: not `main`, and not whatever branch one campaign happens to name.
+
+It governs exactly three things and nothing else — the cut point for
+`wayfinder/<slug>`, the target of the planning pull request at start, and the
+target of the campaign pull request at close. Ticket pull requests are untouched
+by it and still target `wayfinder/<slug>`.
+
+**`--integration` is not `--base`, and `--base` is not it.** `--base` is
+forwarded to the ticket runner and names *a ticket's* cut point inside the
+campaign; `--integration` names what the *campaign itself* is cut from and merged
+into. Naming one never sets the other. A campaign integrating with `release/2.0`
+still cuts its tickets from `wayfinder/<slug>`, and a ticket cut from somewhere
+unusual with `--base` changes nothing about where the campaign lands. Do not read
+either as shorthand for the other, and do not collapse them into one flag.
 
 `--unattended` belongs to this workflow. It authorises the run to merge the pull
 requests it opens, and routes ticket execution to `$god` rather than the
@@ -50,9 +74,14 @@ from the heading rather than from a count of steps already finished.
 
 ## Mental model
 
-- One wayfinder is one base branch `wayfinder/<slug>`, cut from the repository's
-  default branch. Read that branch from the repository helper's state verb;
-  never hardcode `main`.
+- One wayfinder is one integration branch — the branch the campaign is cut from
+  and merged back into. `--integration <branch>` names it at start; absent the
+  flag it is the repository default branch from the repository helper's state
+  verb. Never hardcode `main`. Whichever it resolves to, start writes it into the
+  map and every later operation reads it from there, so an agent resuming from
+  the map never re-derives it.
+- One wayfinder is one base branch `wayfinder/<slug>`, cut from that integration
+  branch.
 - One wayfinder is one map file `<plans>/wayfinder-<slug>.md` listing active
   tasks and logging completed ones.
 - Each task is one plan file `<plans>/<slug>-NN-<task-slug>.md` and one branch
@@ -65,8 +94,10 @@ from the heading rather than from a count of steps already finished.
   merged code plus the repository's feature, spec, and decision docs; the map
   and its plans are deleted when the campaign closes.
 
-Exactly two pull requests legitimately target the default branch: the planning
-pull request at start, and the campaign pull request at close.
+Exactly two pull requests legitimately target the integration branch: the
+planning pull request at start, and the campaign pull request at close. On a
+campaign that never named an integration branch, that branch is the default
+branch and this reads exactly as it always did.
 
 ## Discovery
 
@@ -84,20 +115,37 @@ file-editing tool's read-before-write precondition.
 ### 1. Start
 
 1. Pick a short kebab-case slug and confirm it if the request is ambiguous.
-2. Cut `wayfinder/<slug>` from the up-to-date default branch reported by the
-   repository helper.
-3. Write the map from the template below, including the agent kickoff prompt.
-4. Create the plans you can specify now with the add-task operation, so the
+2. Resolve the integration branch, once, here: `--integration <branch>` if it was
+   typed on this invocation, otherwise the default branch the repository helper
+   reports. Do not assume it is `main`, and do not assume it is not. Confirm the
+   resolved branch exists on the remote before cutting anything from it — a
+   mistyped integration branch is a campaign built on nothing. Announce which
+   branch it resolved to and whether that came from the flag or the repository
+   default.
+3. Cut `wayfinder/<slug>` from the up-to-date integration branch resolved in
+   step 2.
+4. Write the map from the template below, recording that resolved integration
+   branch in the header beside the base branch, and including the agent kickoff
+   prompt. The map is the record from here on: no later operation re-reads the
+   flag or re-derives the branch from the state verb.
+5. Create the plans you can specify now with the add-task operation, so the
    tickets land alongside the map.
-5. Regenerate the docs index where the repository generates one, then commit the
+6. Regenerate the docs index where the repository generates one, then commit the
    map and plans on the base branch.
-6. Open the planning pull request with `$pr` while the branch holds only that
-   planning commit, so it carries scaffolding and no task code. By default do not
-   mark it draft and do not merge it — the user reviews every pull request, and
-   that default holds for every run without `--unattended`. With `--unattended`
-   typed on this invocation, merging the planning pull request is authorised once
-   it is green. Either way it must land before any ticket branch is cut.
-7. Report the base branch, map path, planning pull request, and kickoff prompt.
+7. Open the planning pull request with `$pr` while the branch holds only that
+   planning commit, so it carries scaffolding and no task code. Its target is the
+   integration branch the map now records: the pull-request workflow targets the
+   repository default branch by design, so where the map names something else,
+   retarget the pull request to that branch as soon as it exists and confirm the
+   retarget landed — the same move a ticket pull request gets onto the campaign
+   base. By default do not mark it draft and do not merge it — the user reviews
+   every pull request, and that default holds for every run without
+   `--unattended`. With `--unattended` typed on this invocation, merging the
+   planning pull request is authorised once it is green. Either way it must land
+   before any ticket branch is cut, so the integration branch carries the plans
+   agents read.
+8. Report the integration branch, base branch, map path, planning pull request,
+   and kickoff prompt.
 
 Create no issues, labels, or project-board items — that is the layer this
 workflow replaces.
@@ -161,10 +209,14 @@ Run after a ticket's pull request merges into the base branch.
 
 1. Confirm each completed task produced its durable docs in the repository's own
    bundle. The Completed log is scaffolding, not the deliverable.
-2. Open one pull request from the base branch to the default branch with `$pr`,
-   summarizing the campaign and linking the Completed log. By default do not
-   merge it — the user reviews it. With `--unattended` typed on this invocation,
-   merging the campaign pull request is authorised once it is green.
+2. Open one pull request from the base branch to the integration branch the map
+   records, with `$pr`, summarizing the campaign and linking the Completed log.
+   Read that branch from the map's header — do not re-derive it from the state
+   verb, and do not assume the campaign integrates with the default branch. The
+   pull-request workflow targets the default branch by design, so where the two
+   differ, retarget and confirm it landed before merging anything. By default do
+   not merge it — the user reviews it. With `--unattended` typed on this
+   invocation, merging the campaign pull request is authorised once it is green.
 3. After it merges, delete the map and every plan for the slug, regenerate the
    index, commit as a scaffolding-retirement change, and delete the base branch
    locally and on the remote.
@@ -178,7 +230,8 @@ repository's docs bundle requires:
 # Wayfinder — <Human Name>
 
 **Slug:** `<slug>`
-**Base branch:** `wayfinder/<slug>` (cut from the default branch; every ticket targets it)
+**Integration branch:** `<resolved integration branch>` (cut from it, merged back into it; the planning and campaign pull requests target it)
+**Base branch:** `wayfinder/<slug>` (cut from the integration branch above; every ticket targets it)
 **Plans directory:** `<plans>`
 **Started:** YYYY-MM-DD
 **Goal:** <one sentence — what this campaign ships>
@@ -216,7 +269,19 @@ refuses: whoever runs it types the flag themselves or gets the reviewed default.
 
 ## Guardrails
 
-- Never leave a ticket pull request targeting the default branch.
+- Never leave a ticket pull request targeting the default branch. Only the
+  planning and campaign pull requests leave `wayfinder/<slug>`, and they target
+  the campaign's integration branch rather than the default branch as such.
+- The integration branch and `--base` are different things, and conflating them
+  is the mistake this guardrail exists to stop. The integration branch is the
+  campaign's: what `wayfinder/<slug>` is cut from and what the planning and
+  campaign pull requests merge into. `--base` is a ticket's: forwarded verbatim
+  to the ticket runner as that one ticket's cut point. Naming one never sets the
+  other.
+- After start, read the integration branch from the map and nowhere else — not
+  from the state verb, not from the flag, not from whichever branch happens to be
+  checked out. Re-deriving it is how a campaign resumed by a fresh agent quietly
+  retargets itself at the default branch halfway through.
 - Create no issues and touch no project board.
 - Delete a finished task's plan rather than archiving it; an archived plan is a
   second source of truth that immediately drifts.
@@ -230,7 +295,11 @@ refuses: whoever runs it types the flag themselves or gets the reviewed default.
 - Under `--unattended`, exactly three merges are authorised and no more: the
   planning pull request at start, each ticket pull request (performed by `$god`
   into the campaign base branch it was given as its merge target), and the
-  campaign pull request at close. Never merge a pull request this run did not open, never merge one whose
+  campaign pull request at close. The planning and campaign merges land on the
+  integration branch the map records, which is the default branch only when the
+  campaign named no other — so confirm each of those two pull requests is based
+  on that branch before merging it, rather than trusting the base the
+  pull-request workflow opened it with. Never merge a pull request this run did not open, never merge one whose
   checks are red, never force-push, and never reach for an administrator
   override — a campaign is exactly where one bad merge is multiplied. Issue a
   merge once and read the resulting state rather than re-issuing it: a merge
@@ -276,7 +345,9 @@ message, or dropped because the turn continues.
 This step is never skipped and never delegated, and every exit routes through it:
 the operation completed, nothing to do, a step blocked or refused, or the run
 awaiting an answer. Lead with one self-contained line naming which operation ran
-and what it changed — the base branch and planning pull request on a start, the
+and what it changed — the integration branch, the base branch, and the planning
+pull request on a start (saying whether the integration branch came from the flag
+or the repository default), the
 plan path on an add, the ticket pull request on an execute, the map entry on a
 complete, the campaign pull request on a close — or what stopped the run.
 

@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-08-23
+
+### Added
+
+- **A wayfinder can be told which branch it integrates with, so a campaign no longer has to run against the repository default.** Every wayfinder cut `wayfinder/<slug>` from the `defaultBranch` the toolkit's `state` verb reported, opened its planning PR there, and merged its campaign PR back there — correct for the common case and unusable for a campaign that ships onto a release branch. `--integration <branch>`, owned by `/wayfinder` and read on the **start** operation only, now names that branch. Absent the flag the resolved value is still the repo default from `state`, so every campaign started before this behaves exactly as it did; neither path hardcodes a branch name — not `main`, and not whatever branch one campaign happened to name. Start resolves it once, confirms it exists on origin before cutting anything from it, and writes it into the map's header beside the base branch as `**Integration branch:**`. **Every later operation reads it from the map** rather than from the flag, from `state`, or from whichever branch is checked out — which is what lets a fresh agent resume a campaign off the map alone instead of quietly retargeting it at the default branch mid-flight. It governs exactly three things, each now reading it from the map: the cut point for `wayfinder/<slug>`, the target of the planning PR at start, and the target of the campaign PR at close. `/pr` opens both of those against the repo default by design, so each is retargeted with `gh pr edit <number> --base <integration branch>` when the map names something else — the same move a ticket PR already gets onto the campaign base. Ticket PRs are untouched and still target `wayfinder/<slug>`. **It is deliberately not `--base`**, which is forwarded verbatim to the ticket runner and means one *ticket's* cut point: the two answer different questions, neither implies the other, and the command, the skill, the feature doc, and the README each say so outright so a later reader does not merge the concepts — a campaign integrating with `release/2.0` still cuts every ticket from `wayfinder/<slug>`. `skills/wayfinder/SKILL.md` carries the same semantics in Codex idiom and `commands/` was regenerated rather than hand-edited.
+
 ## 2026-08-22
 
 ### Added
