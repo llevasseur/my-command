@@ -43,13 +43,15 @@ The ticket runner owns the authoritative semantics for every one of these — do
 - `--integration <branch>` — the campaign's **integration branch**: the branch `wayfinder/<slug>` is cut from, and the branch the campaign's own PRs target. **Read on the `start` operation only**, because that is where the campaign base branch is cut and where the map is written; every later operation reads the resolved branch **out of the map** rather than re-deriving it, so the flag is not retyped and is ignored if it is. Absent the flag, the integration branch is the repository default branch reported by `my-command-tools state` — the behaviour every campaign started before this flag existed already had. Neither the default nor the flag is a hardcoded branch name: `main` is never written into a decision here, and neither is whatever branch a given campaign happened to name.
   - It governs exactly three things, and nothing else: the **cut point** for `wayfinder/<slug>`, the target of the **planning PR** at start, and the target of the **campaign PR** at close. Ticket PRs are untouched by it — they target `wayfinder/<slug>` exactly as they always have.
   - **It is not `--base`, and `--base` is not it.** `--base` is forwarded to the ticket runner and names *a ticket's* cut point inside the campaign; `--integration` names what the *campaign itself* is cut from and merged into. A campaign whose integration branch is `release/2.0` still runs its tickets off `wayfinder/<slug>`. Do not read one as shorthand for the other and do not collapse them into a single flag.
-- `--unattended` — authorise this run to merge the PRs it opens, and route ticket execution to `/god` instead of `/task`. **It must be TYPED on the invocation that acts, and it is never inherited.** Not from the map, not from the kickoff prompt the map carries, not from a command that invoked this one, and not from an earlier operation in the same campaign — a start run given the flag authorises nothing for the execute run that follows it. The reason is what a wayfinder is: it multiplies whatever it authorises, and **N unattended merges out of one invocation is a different risk from one**, which is exactly why `/manage` requires `--delegate god` to be typed rather than inherited. Absent the flag, this command opens PRs and merges nothing.
+- `--unattended` — authorise this run to merge the PRs it opens, and route ticket execution to `/god` instead of `/task`. **It must be TYPED on the invocation that acts.** No operation infers it: not from a command that invoked this one, not from an earlier operation in the same campaign — a start run given the flag authorises nothing for the execute run that follows it — and not from the map, which records the mode but authorises nothing by itself. The reason is what a wayfinder is: it multiplies whatever it authorises, and **N unattended merges out of one invocation is a different risk from one**, which is exactly why `/manage` requires `--delegate god` to be typed rather than inherited. Absent the flag on this invocation, this command opens PRs and merges nothing, whatever the map says.
   - **Say in the opening announcement that this run will merge**, alongside the operation you picked, so an unattended run is never the thing a reader has to infer.
+  - **One path deliberately puts the flag in front of the next agent to type, and only one:** the map's own **Agent kickoff prompt**, for a campaign whose map header records `**Unattended:** yes`. That prompt is not documentation about the campaign — it *is* the resume path, the literal text a fresh agent is handed to pick the campaign back up. A resume that drops the flag silently downgrades the campaign to stopping at every PR, and since a long campaign resumes as a matter of course, an unattended campaign that resumes attended never finishes. So `start` records the mode and generates the prompt to carry `--unattended` when it is set. **The flag is still read off the invocation and nowhere else**; what this adds is a prompt that tells the resuming agent to type it. The decision, and the escalation risk it accepts, are recorded in `docs/adrs/0006-unattended-campaigns-resume-unattended.md`.
 
 ## Mental model
 
 - One wayfinder = one **integration branch** — the branch the campaign is cut from and merged back into. `--integration <branch>` names it at start; absent that, it is the repo's default branch from `my-command-tools state`. Whichever it resolves to, **it is written into the map at start and read from there afterwards**, so a fresh agent resuming from the map never re-derives it.
 - One wayfinder = one **base branch** `wayfinder/<slug>`, cut from that integration branch.
+- One wayfinder = one **mode**, attended or unattended, fixed at start by whether `--unattended` was typed there and written into the map as `**Unattended:**`. It decides one thing and one thing only: whether the map's kickoff prompt is generated carrying `--unattended`. It is never read as authorisation by an operation — every merge still needs the flag typed on the invocation that performs it.
 - One wayfinder = one **map** file `<plans>/wayfinder-<slug>.md` listing its active tasks and logging its completed ones.
 - Each task = one **plan** file `<plans>/<slug>-NN-<task-slug>.md` and one branch `task/<slug>-NN-<task-slug>` cut from the base branch. **Every ticket PR targets the base branch — never the default branch.**
 - `<plans>` is the repo's own plans directory — `docs/plans/` where the repo has one, otherwise the directory its docs convention names. Resolve it once at the start operation and record it in the map; do not invent a second location later in the campaign.
@@ -134,11 +136,12 @@ That column is the only thing the vocabulary adds to the table. Do not add a sec
 2. **Resolve the integration branch, once, here.** `--integration <branch>` if it was typed on this invocation; otherwise the `defaultBranch` `my-command-tools state` reports. Do not assume it is `main`, and do not assume it is not. Confirm the resolved branch exists on origin before cutting anything from it — a typo'd integration branch is a campaign built on nothing. **Announce which branch it resolved to and where that came from** (the flag, or the repo default), so the campaign's target is stated rather than inferred.
 3. Cut the base branch `wayfinder/<slug>` from the up-to-date **integration branch** resolved in step 2.
 4. Create the map at `<plans>/wayfinder-<slug>.md` from the **Map template** below, recording that resolved integration branch in the header beside the base branch, and including an instantiated **Agent kickoff prompt**. **The map is the record from here on** — no later operation re-reads the flag or re-derives the branch from `state`.
+   - **Record the campaign's mode in the same header**: `**Unattended:** yes` when `--unattended` was typed on *this* `start` invocation, `**Unattended:** no` when it was not. Resolve it once, here, exactly as the integration branch is resolved once here — a campaign's mode is a property of how it was started, not of whoever resumes it. It governs one thing: which of the two closing blocks the **Agent kickoff prompt** below is generated with. A map written before this line existed reads as `no`.
 5. Create the task plans you can specify now with **Add a task**, so the tickets land alongside the map rather than trickling in later.
 6. **Create the campaign's final ticket here, alongside the rest.** It is `<slug>-zz-retire-done-plans` — a real ticket with a real plan and a real branch, sitting last in **Active tasks**, where the reserved `zz` keeps it however many numbered tickets are added later. Its criteria: delete every `<plans>/<slug>-*.md` plan file, its own included, regenerate the docs index, and leave the map alone for **Close** to retire. **This ticket is critical, and it is not optional bookkeeping.** Every other plan is deliberately kept and marked done for the campaign's whole life, so this ticket is the only thing that ever removes any of them: skip it and the campaign's scaffolding stays in the repository permanently — a directory of done plans belonging to a campaign that ended, owned by nobody, that every later reader has to work out is dead.
 7. Regenerate the docs index (see *Index upkeep*) and commit the map plus its plans on the base branch.
 8. **Open the planning PR with `/pr`**, from the base branch, while the branch still holds only that planning commit — so the PR carries the scaffolding and no task code. **Its target is the integration branch the map now records.** `/pr` targets the repo's default branch by design, so when the map's integration branch is something else, retarget it the moment it exists — `gh pr edit <number> --base <integration branch>` — and confirm the retarget landed, exactly as a ticket PR is retargeted onto the campaign base. **By default do not mark it draft and do not merge it yourself** — I review every PR, and that default holds for every run without `--unattended`. **With `--unattended` typed on this invocation, merging the planning PR is authorised**: wait for it to be green and merge it yourself. Either way it has to land before any ticket branch is cut, so the integration branch carries the plans agents read.
-9. Report the integration branch, the base branch, the map path, the planning-PR link, and the kickoff prompt.
+9. Report the integration branch, the base branch, the campaign's recorded mode, the map path, the planning-PR link, and the kickoff prompt.
 
 Do **not** create issues, labels, or project-board items. That is the layer this command replaces.
 
@@ -187,14 +190,39 @@ or stopped because the usage window ran out — with a short note, rather than l
 progress.
 
 When reporting back, include the task completed, verification results, the pull-request link, and
-any remaining risks or decisions. Stop after opening the pull request so a human can review it.
-Never merge it, and never leave it targeting the default branch.
+any remaining risks or decisions.
+
+<closing block — one of the two below, chosen by the map's **Unattended:** line>
 ```
 ````
 
 Use this workflow's own repo-relative location for `<workflow-path>`. If every active task is blocked, report the blocking dependency instead of starting unrelated work — a task sitting on `rejected` counts as blocked on a human, and a task on `blocked-limit` as blocked on the clock. If none remain, report that the campaign is ready to close.
 
-**The kickoff prompt never carries `--unattended`, and its "stop after opening the pull request" line is written as-is even for a campaign started with the flag.** The prompt is pasted into some later agent's session, which is precisely the inheritance path the flag refuses: whoever runs that prompt types the flag themselves or gets the reviewed default.
+##### The closing block is generated, not fixed
+
+The prompt's last paragraph is the only part that differs between an attended campaign and an unattended one, and **which one gets written is read off the map header's `**Unattended:**` line** — that is, off whether `--unattended` was typed at `start`. Write exactly one of these in place of the placeholder:
+
+**`**Unattended:** no` — the reviewed default, and the wording every campaign has always had:**
+
+```text
+Stop after opening the pull request so a human can review it. Never merge it, and never leave it
+targeting the default branch.
+```
+
+**`**Unattended:** yes` — resume the campaign the way it was started:**
+
+```text
+This campaign is recorded as unattended in the map header above, so resume it that way: type this
+workflow's `--unattended` flag on the invocation you run. That routes the ticket through the
+merge-through runner, which resolves conflicts, waits for checks, retargets the pull request onto
+the campaign base branch, and merges it there. Do not stop at the open pull request — carry the
+ticket through to merged, and never leave it targeting the default branch. Include the merge in
+what you report back.
+```
+
+**Naming `--unattended` there does not break the prompt's provider-neutrality.** The rule that bars model, vendor, and product-specific command names still holds in full — `--unattended` is this *workflow's* own flag, parsed identically wherever the workflow is installed, so it reads the same in any agent CLI. Do not name the runner commands themselves in the prompt; "the merge-through runner" is the neutral phrasing, and this workflow's own docs say which command that resolves to.
+
+**Everywhere else, the kickoff prompt still carries no flag it was not generated with, and the never-inherited rule is otherwise untouched.** This one exception exists because the prompt *is* the resume path: a campaign that stops at every pull request when it was started not to never finishes, and a resume is the ordinary event in a multi-week campaign rather than the exception. The flag is still read only from the invocation that acts — the map does not authorise anything, it decides which sentence gets written. `docs/adrs/0006-unattended-campaigns-resume-unattended.md` records the decision and states the escalation risk it accepts: a map is a file in the repository, so whoever can edit it can put the flag in a later resume's hands.
 
 ### 2. Add a task to the wayfinder
 
@@ -289,6 +317,7 @@ Write to `<plans>/wayfinder-<slug>.md`, carrying whatever frontmatter the repo's
 **Slug:** `<slug>`
 **Integration branch:** `<resolved integration branch>` (this campaign is cut from it and merges back into it; the planning and campaign PRs target it)
 **Base branch:** `wayfinder/<slug>` (cut from the integration branch above; every ticket PR targets it)
+**Unattended:** `<yes|no>` (fixed at start by whether `--unattended` was typed there; `yes` means the kickoff prompt below resumes this campaign unattended)
 **Plans directory:** `<plans>`
 **Started:** YYYY-MM-DD
 **Goal:** <one sentence — what this campaign ships>
@@ -377,7 +406,8 @@ The merge steps are where this pipeline's failed shell calls concentrate, and al
 - **No issues, no project board.** This command is the replacement for that flow, not a companion to it.
 - **Mark done in place, don't archive.** A finished task's plan is marked done at the path it already occupies and distilled into the map's Completed log. It is never copied into an `archive/` or a `done/` directory: an archived plan is a second source of truth that immediately starts drifting, which is precisely why the marker goes in the file rather than the file going somewhere else. It is not deleted at completion either — it is kept for the campaign's life so a task can be restarted from what was *asked*, and the campaign's final `zz` ticket is what deletes every plan at the end. The closed campaign's map is removed once the repo's own docs carry the record.
 - **Base every decision on live git state**, never a stale snapshot. Confirm the branch you are on before cutting another.
-- **By default this command merges nothing** — I review and merge each PR. That is the documented default, not a limit of the command: `--unattended`, typed on the invocation that acts, is the one thing that authorises the planning, ticket, and campaign merges. Absent it, every PR this run opens is left open for me, and a run that merges without the flag typed on it has exceeded what it was asked to do.
+- **By default this command merges nothing** — I review and merge each PR. That is the documented default, not a limit of the command: `--unattended`, typed on the invocation that acts, is the one thing that authorises the planning, ticket, and campaign merges. Absent it, every PR this run opens is left open for me, and a run that merges without the flag typed on it has exceeded what it was asked to do. **The map's `**Unattended:** yes` never substitutes for the flag** — it authorises nothing on its own and no operation reads it as authorisation. Its only effect is on generation: it decides which closing block the map's kickoff prompt is written with, so the next agent to resume the campaign is told to type the flag. See `docs/adrs/0006-unattended-campaigns-resume-unattended.md`.
+- **After start, the campaign's mode is read from the map, exactly like the integration branch** — and for the same reason. It is not re-derived from whether the current invocation carries `--unattended`: that flag says what *this run* may do, while the map's line says what the *campaign* was started as, and a `start` run's answer to the second is the one that has to survive into every session after it.
 - If the request does not clearly name one of the five operations, ask me one focused question rather than guessing — starting a second wayfinder for a request that meant "add a task" is expensive to unwind.
 - <!-- include: shared/approval-own-call.md -->**A command that may need approval goes in its own Bash call** — `git fetch`, `git config`, and, as a narrow exception to the general rule to chain dependent mutations, branch-lifecycle operations such as checkout/switch, pull, remote-branch inspection, and local branch deletion. Folding one into an `&&` chain escalates approval to the whole compound command and costs a turn plus a retry. Put status output, pipes, and follow-up verification in separate read-only calls.<!-- /include -->
 - <!-- include: shared/gh-identity.md -->This device is logged in as more than one GitHub account, and `gh`'s GraphQL-backed writes (`gh pr create`, `gh pr edit`) authenticate as whichever one is active — so on a repo owned by another of them GitHub answers `must be a collaborator`. That is the wrong identity, not a permission to request, and the right account is not a guess: it is the remote's owner. `my-command-tools pr` resolves it internally and reports the `identity` that worked, so nothing extra is needed there. For any other `gh` write, ask the toolkit — `my-command-tools identity` names the `owner`, the `active` account, and the one plain `select` command, and `my-command-tools identity --select` runs it. **Never compose `GH_TOKEN="$(gh auth token --user <login>)" <command>`**: an assignment wrapping a command substitution is refused on shape, and it guesses at a login the remote already states.<!-- /include -->

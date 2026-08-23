@@ -42,14 +42,28 @@ either as shorthand for the other, and do not collapse them into one flag.
 
 `--unattended` belongs to this workflow. It authorises the run to merge the pull
 requests it opens, and routes ticket execution to `$god` rather than the
-stop-at-a-pull-request `$task`. **It must be typed on the invocation
-that acts, and it is never inherited** — not from the map, not from the kickoff
-prompt the map carries, not from a workflow that invoked this one, and not from
-an earlier operation in the same campaign. The reason is what a campaign is: it
-multiplies whatever it authorises, and N unattended merges out of one invocation
-is a different risk from one, which is why `$manage` likewise requires its
-merge-through delegate to be typed rather than inherited. Absent the flag, this
-workflow opens pull requests and merges nothing.
+stop-at-a-pull-request `$task`. **It must be typed on the invocation that acts.**
+No operation infers it — not from a workflow that invoked this one, not from an
+earlier operation in the same campaign, and not from the map, which records the
+campaign's mode but authorises nothing by itself. The reason is what a campaign
+is: it multiplies whatever it authorises, and N unattended merges out of one
+invocation is a different risk from one, which is why `$manage` likewise requires
+its merge-through delegate to be typed rather than inherited. Absent the flag on
+this invocation, this workflow opens pull requests and merges nothing, whatever
+the map says.
+
+**One path deliberately puts the flag in front of the next agent to type, and
+only one:** the map's own agent kickoff prompt, for a campaign whose map header
+records `Unattended: yes`. That prompt is not documentation about the campaign —
+it *is* the resume path, the literal text a fresh agent is handed to pick the
+campaign back up. A resume that drops the flag silently downgrades the campaign
+to stopping at every pull request, and because a long campaign resumes as a
+matter of course, an unattended campaign that resumes attended never finishes. So
+start records the mode and generates the prompt to carry `--unattended` when it
+is set. The flag is still read off the invocation and nowhere else; what this
+adds is a prompt that tells the resuming agent to type it. The decision, and the
+escalation risk it accepts, are recorded in the repository's decision records at
+`docs/adrs/0006-unattended-campaigns-resume-unattended.md`.
 
 `--draft` is refused alongside `--unattended`: `$god` rejects a draft outright,
 because a draft cannot merge. Say to run the campaign without
@@ -82,6 +96,11 @@ from the heading rather than from a count of steps already finished.
   the map never re-derives it.
 - One wayfinder is one base branch `wayfinder/<slug>`, cut from that integration
   branch.
+- One wayfinder is one mode, attended or unattended, fixed at start by whether
+  `--unattended` was typed there and written into the map as `Unattended:`. It
+  decides one thing only: whether the map's kickoff prompt is generated carrying
+  `--unattended`. No operation reads it as authorisation — every merge still
+  needs the flag typed on the invocation that performs it.
 - One wayfinder is one map file `<plans>/wayfinder-<slug>.md` listing active
   tasks and logging completed ones.
 - Each task is one plan file `<plans>/<slug>-NN-<task-slug>.md` and one branch
@@ -206,7 +225,13 @@ note or in the plan.
 4. Write the map from the template below, recording that resolved integration
    branch in the header beside the base branch, and including the agent kickoff
    prompt. The map is the record from here on: no later operation re-reads the
-   flag or re-derives the branch from the state verb.
+   flag or re-derives the branch from the state verb. Record the campaign's mode
+   in the same header — `Unattended: yes` when `--unattended` was typed on *this*
+   start invocation, `Unattended: no` when it was not. Resolve it once, here,
+   exactly as the integration branch is resolved once here: a campaign's mode is
+   a property of how it was started, not of whoever resumes it. It governs one
+   thing, which closing block the kickoff prompt is generated with, and a map
+   written before this line existed reads as `no`.
 5. Create the plans you can specify now with the add-task operation, so the
    tickets land alongside the map.
 6. Create the campaign's final ticket here, alongside the rest: a real ticket,
@@ -235,8 +260,8 @@ note or in the plan.
    planning pull request is authorised once it is green. Either way it must land
    before any ticket branch is cut, so the integration branch carries the plans
    agents read.
-9. Report the integration branch, base branch, map path, planning pull request,
-   and kickoff prompt.
+9. Report the integration branch, base branch, the campaign's recorded mode, map
+   path, planning pull request, and kickoff prompt.
 
 Create no issues, labels, or project-board items — that is the layer this
 workflow replaces.
@@ -424,6 +449,7 @@ repository's docs bundle requires:
 **Slug:** `<slug>`
 **Integration branch:** `<resolved integration branch>` (cut from it, merged back into it; the planning and campaign pull requests target it)
 **Base branch:** `wayfinder/<slug>` (cut from the integration branch above; every ticket targets it)
+**Unattended:** `<yes|no>` (fixed at start by whether `--unattended` was typed there; `yes` means the kickoff prompt resumes this campaign unattended)
 **Plans directory:** `<plans>`
 **Started:** YYYY-MM-DD
 **Goal:** <one sentence — what this campaign ships>
@@ -472,8 +498,8 @@ The map carries a plain-language, provider-neutral prompt that any agent CLI can
 resume from: read the repository instructions, this workflow, and the map;
 inspect live Git and worktree state; execute the next unblocked active task by
 running the task workflow against its plan with the campaign base branch as the
-base; retarget the resulting pull request to that base branch; and stop after
-opening it. Name no model, vendor, or product-specific command in that prompt.
+base; and retarget the resulting pull request to that base branch. Name no model,
+vendor, or product-specific command in that prompt.
 
 The prompt states which statuses are eligible in plain language rather than by
 name, so any agent can act on it: a task is eligible when it was never started,
@@ -500,10 +526,42 @@ and never treated as done work or dropped from the map, because it is the only
 thing that removes the plan files and a campaign that skips it leaves its
 scaffolding in the repository permanently.
 
-The kickoff prompt never carries `--unattended`, and its stop-after-opening line
-is written as-is even for a campaign started with the flag. The prompt is pasted
-into some later agent's session, which is exactly the inheritance path the flag
-refuses: whoever runs it types the flag themselves or gets the reviewed default.
+**The prompt's closing paragraph is generated rather than fixed**, and it is the
+only part that differs between an attended campaign and an unattended one. Which
+one gets written is read off the map header's `Unattended:` line — that is, off
+whether `--unattended` was typed at start.
+
+On `Unattended: no`, the closing paragraph is the reviewed default and the
+wording every campaign has always had: stop after opening the pull request so a
+human can review it, never merge it, and never leave it targeting the default
+branch.
+
+On `Unattended: yes`, the closing paragraph resumes the campaign the way it was
+started. It says that the map header records this campaign as unattended, so the
+resuming agent types this workflow's `--unattended` flag on the invocation it
+runs — which routes the ticket through the merge-through runner that resolves
+conflicts, waits for checks, retargets the pull request onto the campaign base
+branch, and merges it there. It says outright not to stop at the open pull
+request but to carry the ticket through to merged, still never leaving it
+targeting the default branch, and to include the merge in what it reports back.
+
+Naming `--unattended` there does not break the prompt's provider-neutrality. The
+rule barring model, vendor, and product-specific command names holds in full:
+`--unattended` is this *workflow's* own flag, parsed identically wherever the
+workflow is installed, so it reads the same in any agent CLI. Do not name the
+runner workflows themselves in the prompt — "the merge-through runner" is the
+neutral phrasing, and this workflow's own documentation says which one that is.
+
+Everywhere else the kickoff prompt still carries no flag it was not generated
+with, and the never-inherited rule is otherwise untouched. This one exception
+exists because the prompt *is* the resume path: a campaign that stops at every
+pull request when it was started not to never finishes, and a resume is the
+ordinary event in a multi-week campaign rather than the exception. The flag is
+still read only from the invocation that acts — the map does not authorise
+anything, it decides which sentence gets written. The repository's decision
+record at `docs/adrs/0006-unattended-campaigns-resume-unattended.md` states the
+escalation risk that accepts: a map is a file in the repository, so whoever can
+edit it can put the flag in a later resume's hands.
 
 ## Guardrails
 
@@ -543,7 +601,17 @@ refuses: whoever runs it types the flag themselves or gets the reviewed default.
   on the invocation that acts, is the one thing that authorises the planning,
   ticket, and campaign merges. Absent it, every pull request this run opens is
   left open for the user, and a run that merges without the flag typed on it has
-  exceeded what it was asked to do.
+  exceeded what it was asked to do. The map's `Unattended: yes` never substitutes
+  for the flag: it authorises nothing on its own and no operation reads it as
+  authorisation. Its only effect is on generation — it decides which closing
+  block the map's kickoff prompt is written with, so the next agent to resume the
+  campaign is told to type the flag.
+- After start, read the campaign's mode from the map, exactly like the
+  integration branch and for the same reason. Do not re-derive it from whether
+  the current invocation carries `--unattended`: that flag says what *this run*
+  may do, while the map's line says what the *campaign* was started as, and the
+  start run's answer to the second is the one that has to survive into every
+  session after it.
 - Under `--unattended`, exactly three merges are authorised and no more: the
   planning pull request at start, each ticket pull request (performed by `$god`
   into the campaign base branch it was given as its merge target), and the

@@ -16,4 +16,5 @@ Add one with `okq new adr "<title>"`.
 | A dirty frontmatter flag hands changed docs to a separate density pass | [0003-dirty-flag-for-doc-density.md](0003-dirty-flag-for-doc-density.md) |
 | Docs completes the density pass in the same task | [0004-docs-completes-density-pass.md](0004-docs-completes-density-pass.md) |
 | Agent-authored decisions are marked in frontmatter | [0005-agent-authored-decisions-are-marked-in-frontmatter.md](0005-agent-authored-decisions-are-marked-in-frontmatter.md) |
+| A campaign recorded as unattended resumes unattended | [0006-unattended-campaigns-resume-unattended.md](0006-unattended-campaigns-resume-unattended.md) |
 <!-- okq:index:end -->
