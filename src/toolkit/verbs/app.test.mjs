@@ -69,7 +69,7 @@ test('start boots the app, reports the port the log announced, and stop is idemp
 
   const started = await app(ctx(dir, ['start'], { boot: 'node server.mjs', timeout: '30' }));
   assert.equal(started.healthy, true, `boot was not healthy: ${JSON.stringify(started)}`);
-  assert.ok(typeof started.pid === 'number' && started.pid > 0);
+  assert.ok(Number(started.pid) > 0, `no pid recorded: ${JSON.stringify(started)}`);
   // The log's port, not the PORT the spawn requested — the server bound 0 and said so.
   assert.equal(started.port, portFromLog(String(started.log)));
   assert.equal(started.url, `http://localhost:${started.port}`);

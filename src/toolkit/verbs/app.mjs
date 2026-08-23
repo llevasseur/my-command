@@ -140,8 +140,8 @@ function ephemeralPort() {
     const server = createServer();
     server.on('error', reject);
     server.listen(0, '127.0.0.1', () => {
-      const address = server.address();
-      const port = typeof address === 'object' && address ? address.port : 0;
+      // A pipe address is a string and carries no port, so `?.port` is the whole parse.
+      const port = Number(/** @type {{port?: number}} */ (server.address())?.port ?? 0);
       server.close(() => (port ? resolve(port) : reject(new ToolkitError('could not reserve a port'))));
     });
   });
@@ -275,7 +275,7 @@ async function start(ctx, root) {
 
   // Anything already recorded for this root is last round's server. Stop it first, or the
   // record is overwritten and that process becomes unreachable to every later `stop`.
-  await stopRecorded(record, { quiet: true });
+  await stopRecorded(record);
 
   const started = Date.now();
   const child = spawn(boot, {
@@ -322,7 +322,7 @@ async function start(ctx, root) {
     writeFileSync(record, `${JSON.stringify({ root, pid, port: bound, log, boot, startedAt: started }, null, 2)}\n`);
   }
 
-  return {
+  const answer = {
     root,
     pid,
     port: bound,
@@ -335,10 +335,14 @@ async function start(ctx, root) {
     bootSource: source,
     contract: contract ? 'declared' : 'detected',
     record,
-    ...(healthy
-      ? {}
-      : { reason: `the app did not answer ${health} within ${Math.round(timeoutMs / 1000)}s — read ${log}` }),
+    /** @type {string | undefined} */
+    reason: undefined,
   };
+  // Only an unhealthy boot owes an explanation; JSON.stringify drops the key otherwise.
+  if (!healthy) {
+    answer.reason = `the app did not answer ${health} within ${Math.round(timeoutMs / 1000)}s — read ${log}`;
+  }
+  return answer;
 }
 
 /**
@@ -356,23 +360,36 @@ function rebase(health, port) {
 }
 
 /**
- * @param {string} record @param {{quiet?: boolean}} [opts]
+ * A start record, parsed at the one place it is read. A missing file, unparsable JSON, and a
+ * field that is not a positive integer all answer the same way, so nothing downstream has to
+ * ask what shape the record was in.
+ * @param {string} record @returns {{pid: number | null, port: number | null}}
+ */
+function readRecord(record) {
+  /** @param {unknown} value */
+  const id = (value) => {
+    const n = Number(value);
+    return Number.isInteger(n) && n > 0 ? n : null;
+  };
+  try {
+    const saved = recordOrEmpty(asRecord(JSON.parse(readFileSync(record, 'utf8'))));
+    return { pid: id(saved.pid), port: id(saved.port) };
+  } catch {
+    return { pid: null, port: null };
+  }
+}
+
+/**
+ * @param {string} record
  * @returns {Promise<{stopped: number[], port: number | null}>}
  */
-async function stopRecorded(record, opts = {}) {
-  /** @type {{pid?: number, port?: number} | null} */
-  let saved = null;
-  try {
-    saved = JSON.parse(readFileSync(record, 'utf8'));
-  } catch {
-    return { stopped: [], port: null };
-  }
-  const port = typeof saved?.port === 'number' ? saved.port : null;
+async function stopRecorded(record) {
+  const { pid, port } = readRecord(record);
   /** @type {number[]} */
   const targets = [];
-  if (typeof saved?.pid === 'number' && alive(saved.pid)) targets.push(saved.pid);
+  if (pid && alive(pid)) targets.push(pid);
   // The port sweep is what catches a server the recorded pid handed off to.
-  if (port) for (const pid of listenersOn(port)) if (!targets.includes(pid)) targets.push(pid);
+  if (port) for (const listener of listenersOn(port)) if (!targets.includes(listener)) targets.push(listener);
 
   const stopped = await stopPids(targets);
   try {
@@ -380,7 +397,6 @@ async function stopRecorded(record, opts = {}) {
   } catch {
     // Nothing to remove.
   }
-  if (opts.quiet) return { stopped, port };
   return { stopped, port };
 }
 
