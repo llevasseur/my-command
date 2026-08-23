@@ -17,6 +17,7 @@
 | `god` | Take a task all the way to **merged**: `task` with `review` woven in, `mc` on conflict, wait for CI, merge the PR into `main`, pull `main`. No human in the loop. |
 | `fb` | Implement a feedback request. Thin wrapper around `task` — current branch by default, or a worktree of an existing branch with `--target`. |
 | `review` | Independently review an open PR against the codebase, then apply its findings via `fb`. Spawns a fresh reviewer by default; `--here` reviews directly in the current agent. |
+| `verify` | Close the loop on a branch against the **running app** — boot it on an ephemeral port, have a long-lived agent exercise the change in it, repair what comes back, and re-check the same booted server until the verdict is green or the rounds run out. Four flat verdicts (`green`, `red`, `unverified`, `skipped`), and `green` requires naming the route, the interaction, and the observed result. Also runs as `task` Step 2.6. The verdict is **advisory** — it never blocks a merge. |
 | `pr` | Create/update the PR for the current branch with a concise bulleted description, written straight to GitHub. |
 | `clean` | Clean up comments across a branch's changes — lean and to the point, comments only, never code. |
 | `mc` | Merge each branch's own PR base into it (or one branch), resolve every conflict, and push. Stacked PRs get their real base, not `main`. |
@@ -67,6 +68,9 @@ skill syntax—for example, `$task -h ...`, `$review -t 42`, or `$mc -t feat/sea
 | `review` | `/review` | Default — review the current branch's open PR in a fresh worktree with a new agent, then apply its findings via `/fb`, run **inline** rather than in another agent. |
 | `review` | `/review -h` | `--here` / `-h` — the current agent reviews the current branch's PR directly: no worktree and no spawned reviewer. Use when already running in a fresh review agent. |
 | `review` | `/review -t 42` | `--target` / `-t <PR-number-or-branch>` — review PR #42 (or a named branch) instead of the current branch's PR. |
+| `verify` | `/verify` | Default — infer the intent from the branch diff and the PR body (and say so), boot the app, exercise the change, repair, re-check. Up to 12 rounds. |
+| `verify` | `/verify the settings toggle should persist across a reload` | Stated intent — verified as given rather than inferred, which makes the verdict worth more. |
+| `verify` | `/verify --rounds 20 --smoke` | `--rounds <n>` raises the ceiling (default 12, and it must exceed 10 — a smaller value is refused, not clamped); `--smoke` also exercises the repo's own smoke scenarios, off by default. `--no-verify` reports `skipped` and changes nothing. |
 | `mc` | `/mc` | Default — for **every** open PR, merge that PR's own base branch into its head, resolve conflicts, push. |
 | `mc` | `/mc -h` | `--here` / `-h` — only the **current branch**. |
 | `mc` | `/mc -t feat/search` | `--target` / `-t <branch>` — only the named branch `feat/search`, merged in an **isolated worktree** so the current checkout is never touched. |

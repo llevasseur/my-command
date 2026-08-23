@@ -72,7 +72,28 @@ lands every time, and the message meant to follow it never arrives.
    verifies nothing. Treat a failing verdict as this step being unfinished. The lint's output is input, not a gate:
    a finding deliberately left standing is reported with its reason, never
    silenced by editing lint configuration.
-6. Add changelog work when the repository tracks it. Commit logical scoped
+6. Verify the change against the running application before any cleanup or
+   pull-request step, unless the invocation asked to skip it. Skip and record the
+   skip when the repository declares no run contract — its bootstrap script
+   printing none, and no dev, start, or preview script to detect — and skip and
+   record it when the diff touches nothing the application serves. Never write a
+   bootstrap or add a script to make this step runnable; a repository with no
+   application has not opted in. Otherwise boot the application through the
+   repository helper on an ephemeral port, spawn the verification agent once with
+   the task criteria, the changed files, and the run contract, and continue that
+   same agent by message each round against that same booted server. Repair in
+   this run's own context, which holds the criteria; the agent observes and never
+   edits code. Loop to at most twelve rounds, then stop the application through
+   the repository helper on every exit path, including a refusal or an early
+   stop. Green means the criteria are demonstrably true in the running
+   application, not that nothing crashed: an agent that cannot name the route,
+   the interaction, and the observed result reports `unverified` instead. The
+   verdict is advisory — the pull request opens either way, the verdict and round
+   count go into its description, and no downstream workflow treats a red result
+   as a reason not to merge, because a check that can block shipping is one people
+   switch off. Repository-wide smoke scenarios are optional and off by default,
+   and persisted browser specification files are out of scope.
+7. Add changelog work when the repository tracks it. Commit logical scoped
    changes with explicit paths through `my-command-tools commit` when available;
    never sweep in unrelated work. For a multi-line message, write it to a file and
    pass `--message-file <absolute path>` rather than piping a heredoc on stdin — a
@@ -83,10 +104,10 @@ lands every time, and the message meant to follow it never arrives.
    the same commit once after the prompt is approved. Never rewrite the commit,
    pass `--no-gpg-sign`, or change the repo's signing configuration to get
    around it.
-7. Use `my-command-tools state` when available for the no-change gate. If the run
+8. Use `my-command-tools state` when available for the no-change gate. If the run
    produced no relevant commits or edits, report that the criteria already hold
    and safely remove any worktree.
-8. Otherwise run `$clean`, commit any cleanup, then run `$pr`. Run that pair in
+9. Otherwise run `$clean`, commit any cleanup, then run `$pr`. Run that pair in
    this session by default and delegate it to a single subagent only when `--sub`
    was requested; the order, cleanup commit, and PR result are identical either
    way. After the PR exists, confirm the worktree is clean and its HEAD is on the
@@ -99,7 +120,7 @@ lands every time, and the message meant to follow it never arrives.
      through the repository helper from outside the worktree, which re-verifies
      the branch reached origin. If another live session still holds it, stop and
      report the path as left in place.
-9. Close the run in a text-only turn: one final message carrying text and zero
+10. Close the run in a text-only turn: one final message carrying text and zero
    tool calls, sent after the last tool call returns rather than alongside it. A
    run's outcome is recorded only from a message with no tool call in it, so
    ending on one — or bundling the report into one — records no outcome at all.

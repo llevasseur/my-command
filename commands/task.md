@@ -1,6 +1,6 @@
 ---
 description: Take a task from criteria to PR — set up an isolated branch/worktree, implement, then /my-command:clean and /my-command:pr (inline, or in one subagent with --sub)
-argument-hint: "[--here|-h] [--base <branch>] [--draft|-d] [--sub|-s] [--add|-a <command + prompt>[, <command + prompt>]] <task criteria>"
+argument-hint: "[--here|-h] [--base <branch>] [--draft|-d] [--sub|-s] [--no-verify] [--add|-a <command + prompt>[, <command + prompt>]] <task criteria>"
 ---
 
 Take a task from a plain-language description all the way to an open PR — feature, bug fix, update, refactor, anything. The end goal is always a PR, and I always run `/my-command:clean` before `/my-command:pr`.
@@ -27,6 +27,7 @@ The task is the text in the `<command-args>` block above. Parse leading flags of
 - `--base <branch>` — branch off `<branch>` instead of `main`. Ignored when `--here` is set.
 - `--draft` / `-d` — open the resulting PR as a draft. Passed straight through to `/my-command:pr` in step 3. Default is **not** draft. It does **not** keep the worktree around — step 3's teardown still removes it.
 - `--sub` / `-s` — run Step 3's `/my-command:clean` + `/my-command:pr` stage in **one fresh subagent** instead of inline. Default is **inline**: this command spawns no subagents of its own unless you ask for one.
+- `--no-verify` — skip Step 2.6's closed-loop check against the running app. Default is **on**, and the step skips itself anyway where the repo has no app to boot or the diff serves nothing.
 - `--add` / `-a` — register one or more commands available to the user for the agent to weave into this `/my-command:task` run, each paired with a prompt that guides its use. See Step 0 below.
 - Anything not a recognized flag is part of the task criteria.
 
@@ -143,6 +144,60 @@ Run the repo's own anti-slop lint over what Step 2 produced, before `/my-command
 5. **Re-run the repo's gates afterwards, as a fresh run** — a new `my-command-tools verify --background`, blocked on with the `wait.blockingCall` **that new run returns**, never polled. Step 2's verdict file is already written, so re-sending Step 2's wait comes back instantly carrying Step 2's pre-fix report and verifies nothing at all; the one-wait-per-run rule bars a second watch over the *same* run, not a second run. The lint fixes are code changes, so `pass: true` on that new run is what proves they broke nothing; `pass: false` means this step is not finished. Commit them on this branch like any other Step 2 work.
 
 The lint's output is input, not a gate. A finding you deliberately leave standing — a false positive, or a rule the repo's own conventions override — is reported with that reason, never silenced by editing lint config or the script.
+
+## Step 2.6 — Verify against the running app, while the code is still yours to change
+
+Step 2.5 asked whether the code reads well. This asks whether it **works** — in the repo's own
+app, exercised, not inferred from a green build. Default-on and self-skipping, exactly like
+Step 2.5.
+
+### Skip conditions — check both first, and record whichever fired
+
+1. **No run contract and nothing detectable.** `bash scripts/bootstrap-worktree.sh
+   --print-verify-contract` prints nothing usable, and `package.json` has no `dev`, `start`, or
+   `preview` script → **skip**. Record it in this run's report and in the PR description. Never
+   write a bootstrap, add a script, or install anything to make this step runnable; a repo
+   without an app has not opted in, and opting it in is `/my-command:task-bootstrap`, not a side effect
+   here.
+2. **The diff touches nothing the app serves.** No changed file matches a `routes` glob, and
+   nothing else in the diff reaches a served surface → **skip**, and record that.
+
+`--no-verify`, if the invocation carried it, skips the step outright.
+
+### Otherwise
+
+1. **Boot:** `my-command-tools app start`. Ephemeral port, health-waited, pid recorded. Never
+   background a dev server by hand.
+2. **Spawn once:** `Agent` with `subagent_type: "mycommand-verifier"`, handed the **task
+   criteria**, the changed-file list, and the run contract (or the detected boot). Once — every
+   later round is a `SendMessage` to that same live agent, against that same booted server.
+3. **Read the verdict**, not the logs. It replies with `green`, `red`, `unverified`, or
+   `skipped`, a driver tier, an `exercised` line, and an evidence path. Open the path only if
+   you need it.
+4. **Repair here.** This context holds the criteria; the verifier does not and never edits code.
+   Fix, commit on this branch, then `SendMessage` the same verifier to re-check.
+5. **Loop to at most 12 rounds.** `green`, `unverified`, and `skipped` all end it — only `red`
+   is worth another round.
+6. **`my-command-tools app stop`, always.** Every exit path, including a refusal or an early
+   stop. A booted server outlives this run otherwise, and `worktree reap` misses one whose argv
+   does not carry the worktree path — which under `--here` is every one of them.
+
+**`green` means the task criteria are demonstrably true in the running app.** Not that nothing
+crashed. A verifier that cannot name the route, the interaction, and the observed result must
+report `unverified`, and a `green` without a filled `exercised` field is not one.
+
+### The verdict is advisory
+
+**Green or red, Step 3 runs and the PR opens.** The verdict and the round count go into the PR
+description; nothing here blocks a merge, and `/my-command:god`, `/my-command:manage` and `/my-command:dev` are unchanged — a red
+loop merges like any other. The tradeoff is deliberate and it is stated with the verdict
+vocabulary in `agents/mycommand-verifier.md`: a verification loop that can block shipping is one
+people switch off, and an advisory loop that is always on catches more than a blocking one that
+is not.
+
+Repo-wide smoke scenarios are optional and off by default — this step exercises the diff.
+Persisted browser spec files are out of scope; the verifier's evidence is scratch under
+`$CLAUDE_JOB_DIR/tmp`.
 
 ## Step 3 — Clean, then PR (inline by default; one fresh subagent with `--sub`)
 

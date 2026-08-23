@@ -26,6 +26,7 @@ noise, what a PR description should say, or whether a failure is worth fixing.
 | `state` | branch, base, commits, tracked vs untracked changes, `hasWork` |
 | `scope` | what a branch changed: the ref to diff, its commits, its files, and with `--diff` the hunks themselves |
 | `verify` | which of the repo's gates ran and passed; bounded output only on failure |
+| `app start\|stop` | boot this repo's app on an ephemeral port and stop it again, by recorded pid |
 | `commit` | stage an explicit path list and commit, with guards |
 | `pr` | push, then create or update the branch's PR |
 | `prs view\|list\|checks` | read-only pull-request lookups; never writes |
@@ -34,6 +35,15 @@ noise, what a PR description should say, or whether a failure is worth fixing.
 | `identity` | which GitHub account this checkout's remote wants, and `--select` to switch to it |
 | `stash write\|restore\|list` | `/cp`'s five-deep clipboard ring under `~/.claude`, and the clipboard sink |
 | `doctor` | where the toolkit resolved from, what's on PATH, and which clone it tracks |
+
+`app` is the one verb that starts something and leaves it running. `verify` runs the
+repo's gates and returns; a closed-loop check needs the repo's *app*, answering on a
+port, for as long as the round takes. It records the pid and port at `start` because
+argv is not reliable evidence: `worktree reap` finds a survivor by matching the
+worktree path in its command line, which misses a dev server its own watcher re-exec'd
+without that path — and under `/task --here` there is no worktree to scan at all.
+`stop` reads the record, then sweeps the port for whatever the recorded pid handed
+off to.
 
 `state` collapses the rev-parse / status / log / diff opening volley into one call
 and settles `/task`'s no-change gate with a single `hasWork` boolean.
