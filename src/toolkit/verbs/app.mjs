@@ -148,9 +148,8 @@ function ephemeralPort() {
 }
 
 /**
- * Deliberately not unref'd: the health wait and the SIGTERM grace period are the only things
- * pending while they run, so an unref'd timer would let Node exit mid-wait — which on CI
- * cancelled this verb's own tests rather than failing them.
+ * Not unref'd: the health wait and the SIGTERM grace period are the only pending work while
+ * they run, so an unref'd timer lets Node exit mid-wait — on CI that cancelled these tests.
  * @param {number} ms @returns {Promise<void>}
  */
 function pause(ms) {
