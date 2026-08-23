@@ -90,9 +90,12 @@ from the heading rather than from a count of steps already finished.
 - `<plans>` is the repository's own plans directory — `docs/plans/` where it has
   one, otherwise whatever its docs convention names. Resolve it once at start
   and record it in the map.
-- Everything under `<plans>` is ephemeral scaffolding. The durable record is the
-  merged code plus the repository's feature, spec, and decision docs; the map
-  and its plans are deleted when the campaign closes.
+- Everything under `<plans>` is ephemeral scaffolding, on a schedule rather than
+  by accident. The durable record is the merged code plus the repository's
+  feature, spec, and decision docs. A finished task's plan is marked done where
+  it already lives and stays there for the rest of the campaign, so any task can
+  still be restarted from what was asked. The campaign's final ticket deletes
+  every plan; the map goes when the campaign closes.
 
 Exactly two pull requests legitimately target the integration branch: the
 planning pull request at start, and the campaign pull request at close. On a
@@ -206,9 +209,21 @@ note or in the plan.
    flag or re-derives the branch from the state verb.
 5. Create the plans you can specify now with the add-task operation, so the
    tickets land alongside the map.
-6. Regenerate the docs index where the repository generates one, then commit the
+6. Create the campaign's final ticket here, alongside the rest: a real ticket,
+   with a real plan and a real branch, named `<slug>-zz-retire-done-plans` and
+   sitting last in the active-tasks table, where the reserved `zz` keeps it
+   however many numbered tickets are added later. Its criteria are to delete
+   every `<plans>/<slug>-*.md` plan file, its own included, regenerate the docs
+   index, and leave the map alone for the close operation to retire. This ticket
+   is critical, and it is not optional bookkeeping. Every other plan is
+   deliberately kept and marked done for the campaign's whole life, so this
+   ticket is the only thing that ever removes any of them: skip it and the
+   campaign's scaffolding stays in the repository permanently — a directory of
+   done plans belonging to a campaign that ended, owned by nobody, that every
+   later reader has to work out is dead.
+7. Regenerate the docs index where the repository generates one, then commit the
    map and plans on the base branch.
-7. Open the planning pull request with `$pr` while the branch holds only that
+8. Open the planning pull request with `$pr` while the branch holds only that
    planning commit, so it carries scaffolding and no task code. Its target is the
    integration branch the map now records: the pull-request workflow targets the
    repository default branch by design, so where the map names something else,
@@ -220,7 +235,7 @@ note or in the plan.
    planning pull request is authorised once it is green. Either way it must land
    before any ticket branch is cut, so the integration branch carries the plans
    agents read.
-8. Report the integration branch, base branch, map path, planning pull request,
+9. Report the integration branch, base branch, map path, planning pull request,
    and kickoff prompt.
 
 Create no issues, labels, or project-board items — that is the layer this
@@ -230,8 +245,9 @@ workflow replaces.
 
 1. Read the map for the next task number.
 2. Write the plan to `<plans>/<slug>-NN-<task-slug>.md`, passing that exact path
-   so it lands beside the map. State criteria plainly enough that `$task` can be
-   handed them unedited.
+   so it lands beside the map. Open it with the plan header described below,
+   whose `Status: active` line is the marker completion later flips. State
+   criteria plainly enough that `$task` can be handed them unedited.
 3. Add a row to the map's active-tasks table: number, task slug, plan link,
    branch, status `todo`, note empty. `todo` is the only status this operation
    ever writes, because a freshly added task is by definition one that was never
@@ -264,6 +280,10 @@ starting unrelated work: a task sitting on `rejected` counts as blocked on a
 human, and one on `blocked-limit` as blocked on the clock. "No eligible task" is
 not the same as "ready to close" — report the campaign ready to close only when
 no active tasks remain at all.
+
+The `zz` plan-retirement ticket is executed last, after every other task has
+completed. It is eligible like any other ticket, but running it early deletes the
+plans of tasks still to come, so pick it only when nothing else is active.
 
 1. Read the plan in full.
 2. Mark the task `in-progress` in the map — the only status this operation writes
@@ -305,27 +325,55 @@ no active tasks remain at all.
 Run after a ticket's pull request merges into the base branch.
 
 1. Confirm the base branch actually carries the merged work.
-2. Delete the plan file from version control.
+2. Mark the plan done where it already is: set its header's `Status:` line to
+   `done · YYYY-MM-DD`. Do not delete it, do not move it, and do not copy it
+   anywhere; the file stays at the exact path the map already links.
 3. Append a summary to the map's Completed section describing what was actually
    built rather than what the plan proposed; the deviations are the part worth
    keeping.
 4. Remove the task's row from the active-tasks table. A completed task carries no
    status at all — the Completed entry replaces the row rather than joining the
-   vocabulary, which is why there is no `done` among the six.
-5. Regenerate the docs index and commit the map edit and the deletion together.
+   vocabulary, which is why there is no `done` among the six. The plan file's own
+   done marker is a different thing on a different object: the row describes work
+   in flight and goes away, the file describes what was asked and stays.
+5. Regenerate the docs index and commit the map edit and the plan's status flip
+   together.
+
+The plan stays until the campaign's final ticket because the Completed entry and
+the plan record different things. The entry records what was built — prose
+written afterwards about the outcome. The plan records what was asked: the
+criteria, the constraints, the conditions the work had to meet. Only the second
+can be handed to a runner again, so a campaign that deletes plans at completion
+can re-open a task only from a summary of the very thing it is trying to redo.
+Keeping the plan costs one status line and is what makes `redo` an operation
+rather than a rewrite.
 
 Re-opening a completed task is the one path that writes `redo`. When work that
 already landed has to be done again differently, restore its row to the
 active-tasks table with status `redo` and a note naming what must differ, and
 leave its Completed entry in place as the record of what shipped the first time.
-Its plan was deleted at completion, so rewrite the plan before executing: `redo`
-means restart from the plan, and there has to be one to restart from.
+Its plan is still there, marked done: flip its `Status:` back to `active` and
+amend it with whatever must differ this time. `redo` means restart from what was
+asked, and the plan is what carries that.
+
+The final `zz` ticket is the one completion with no plan left to mark, since it
+deletes every plan in the campaign including its own. Record it with steps 3
+through 5, skip step 2, and say so rather than hunting for the file.
 
 ### 5. Close
 
 1. Confirm each completed task produced its durable docs in the repository's own
    bundle. The Completed log is scaffolding, not the deliverable.
-2. Open one pull request from the base branch to the integration branch the map
+2. Confirm the campaign's final ticket has landed. This operation expects
+   `<slug>-zz-retire-done-plans` to be in the map and executed, because that
+   ticket — not this step — is what removes the campaign's plan files. Where it
+   exists but has not run, execute it now with the execute operation before
+   opening the campaign pull request; where the map never carried it, add it with
+   the add-task operation and then execute it. Do not sweep the plans by hand
+   here: a deletion performed as a side effect of closing is exactly the
+   untracked cleanup this ticket exists to replace, and doing it here would
+   quietly make the ticket optional again.
+3. Open one pull request from the base branch to the integration branch the map
    records, with `$pr`, summarizing the campaign and linking the Completed log.
    Read that branch from the map's header — do not re-derive it from the state
    verb, and do not assume the campaign integrates with the default branch. The
@@ -333,9 +381,37 @@ means restart from the plan, and there has to be one to restart from.
    differ, retarget and confirm it landed before merging anything. By default do
    not merge it — the user reviews it. With `--unattended` typed on this
    invocation, merging the campaign pull request is authorised once it is green.
-3. After it merges, delete the map and every plan for the slug, regenerate the
-   index, commit as a scaffolding-retirement change, and delete the base branch
-   locally and on the remote.
+4. After it merges, retire what is left: delete the map, regenerate the index,
+   commit as a scaffolding-retirement change, and delete the base branch locally
+   and on the remote. The plans are already gone, removed by the final ticket in
+   step 2; a plan still standing here means that ticket was skipped, and step 2
+   is where to go back to rather than deleting it from under the map.
+
+## Plan header
+
+Every plan opens with a header above its criteria, carrying the task's
+identifier, its wayfinder slug, its branch, and a `Status:` line:
+
+```markdown
+# <slug>-NN — <task title>
+
+**Wayfinder:** `<slug>`
+**Branch:** `task/<slug>-NN-<task-slug>`
+**Status:** active
+```
+
+`Status:` is the plan file's own marker and takes exactly two values: `active`
+while the task is unfinished, and `done · YYYY-MM-DD` once its pull request
+merged and the complete operation ran. It is not the map's status column and
+shares nothing with that six-value vocabulary — the map's column describes a row
+in the table, which a completed task no longer has, while this describes the
+file, which a completed task keeps. That is why completion writes `done` here and
+still writes no `done` there.
+
+Marking it done in place is the whole mechanism: one file, at one path, in one
+state. Nothing is copied into an `archive/` or a `done/` directory, because a
+second copy of a plan is a second source of truth and starts drifting from the
+first immediately.
 
 ## Map template
 
@@ -352,14 +428,17 @@ repository's docs bundle requires:
 **Started:** YYYY-MM-DD
 **Goal:** <one sentence — what this campaign ships>
 
-> Ephemeral scaffolding, deleted when the wayfinder closes. The durable output is
-> the merged code and the repository's feature and spec docs.
+> Ephemeral scaffolding, on a schedule. Every `<slug>-*.md` plan beside this file stays here for
+> the campaign's life — marked done once its task lands — so any task can be restarted from what
+> was asked. The final ticket `<slug>-zz` deletes them all; this map goes when the wayfinder
+> closes. The durable output is the merged code and the repository's feature and spec docs.
 
 ## Active tasks
 
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
 | 01 | <task slug> | [<slug>-01-...](<slug>-01-....md) | `task/<slug>-01-...` | todo | |
+| zz | retire-done-plans | [<slug>-zz-retire-done-plans](<slug>-zz-retire-done-plans.md) | `task/<slug>-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
 
 <!--
 Status is exactly one of these six:
@@ -373,6 +452,10 @@ Status is exactly one of these six:
   redo          — the work landed but must be done again differently. Restart
                   it from the plan.
 Note is required for blocked-limit, rejected, and redo; empty for the rest.
+
+The `zz` row is this campaign's final ticket. It always sorts last, it is executed
+after every other task, and it deletes every plan in this directory. Do not drop it:
+nothing else removes them, so without it they outlive the campaign permanently.
 -->
 
 ## Completed
@@ -410,6 +493,13 @@ status, to stopped-by-usage-window where work is in hand and to never-started
 where there is nothing worth resuming. Without that clause a campaign stalls with
 every row marked in progress and nothing executing.
 
+The prompt also tells the agent how to treat the campaign's final task — the one
+numbered `zz`, which deletes the campaign's plan files. It is executed only once
+it is the last active task left: skipped while any other task is still active,
+and never treated as done work or dropped from the map, because it is the only
+thing that removes the plan files and a campaign that skips it leaves its
+scaffolding in the repository permanently.
+
 The kickoff prompt never carries `--unattended`, and its stop-after-opening line
 is written as-is even for a campaign started with the flag. The prompt is pasted
 into some later agent's session, which is exactly the inheritance path the flag
@@ -440,8 +530,13 @@ refuses: whoever runs it types the flag themselves or gets the reviewed default.
   incident: `paused` and `blocked-limit` are how that is recorded, and neither
   implies anything is wrong with the work.
 - Create no issues and touch no project board.
-- Delete a finished task's plan rather than archiving it; an archived plan is a
-  second source of truth that immediately drifts.
+- Mark a finished task's plan done in place rather than archiving it. It is never
+  copied into an `archive/` or a `done/` directory: an archived plan is a second
+  source of truth that immediately drifts, which is precisely why the marker goes
+  in the file rather than the file going somewhere else. It is not deleted at
+  completion either — it is kept for the campaign's life so a task can be
+  restarted from what was asked, and the campaign's final `zz` ticket is what
+  deletes every plan at the end.
 - Base every decision on live Git state, never a stale snapshot.
 - By default merge nothing — the user reviews and merges each pull request. That
   is the documented default, not a limit of the workflow: `--unattended`, typed

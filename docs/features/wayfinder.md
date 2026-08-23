@@ -67,23 +67,27 @@ Five operations, one per invocation:
    if typed, else the repo default), cut `wayfinder/<slug>` from it, write the
    map at `<plans>/wayfinder-<slug>.md` — recording that branch in the header
    beside the base branch — with an instantiated agent kickoff prompt, create
-   the plans that can be specified now, and open a **planning PR** with
+   the plans that can be specified now — including the campaign's **final
+   ticket**, `<slug>-zz-retire-done-plans` — and open a **planning PR** with
    [`/pr`](pr.md) while the branch holds only that commit — so the map and its
    tickets land on the integration branch before any ticket branch is cut.
-2. **Add a task** — write a plan to `<plans>/<slug>-NN-<task-slug>.md` and add
-   its row to the map's Active tasks table with status `todo`.
+2. **Add a task** — write a plan to `<plans>/<slug>-NN-<task-slug>.md`, opening
+   it with the plan header's `**Status:** active` marker, and add its row to the
+   map's Active tasks table with status `todo`.
 3. **Execute a task** — mark it `in-progress`, then run the ticket runner with
    `--base wayfinder/<slug>` against the plan's criteria — `/task` by default,
    `/god --base wayfinder/<slug> --into wayfinder/<slug>` under `--unattended` —
    and **retarget the resulting PR** to the base branch, since `/pr` targets the
    default branch by design. Under `--unattended` that retarget is `/god`'s, done
    from the `--into` merge target before it merges.
-4. **Complete a task** — after its PR merges into the base branch, delete the
-   plan file, append a Completed entry describing what was *actually built*, and
-   remove the Active tasks row.
-5. **Close** — open one **campaign PR** from `wayfinder/<slug>` to the
-   integration branch the map records, then retire every plan and the map once
-   it merges and delete the base branch.
+4. **Complete a task** — after its PR merges into the base branch, mark the plan
+   **done in place** (`**Status:** done · YYYY-MM-DD`), append a Completed entry
+   describing what was *actually built*, and remove the Active tasks row. The
+   plan file is not deleted and not moved.
+5. **Close** — confirm the final `zz` ticket has landed, open one **campaign PR**
+   from `wayfinder/<slug>` to the integration branch the map records, then retire
+   the map once it merges and delete the base branch. The plans are already gone,
+   deleted by that ticket rather than by this operation.
 
 Exactly two PRs legitimately target the integration branch — the planning PR and
 the campaign PR. Every ticket PR targets `wayfinder/<slug>`; a ticket left
@@ -205,10 +209,45 @@ exists to prevent. Where the repo generates a docs index, it is
 regenerated and re-checked after any plan or map change; where it does not, the
 step is reported as not applicable rather than invented.
 
+The command creates no issues or project-board items.
+
+### Plan lifecycle
+
 Everything under `<plans>` is ephemeral scaffolding: the durable record is the
-merged code plus the repo's own feature, spec, and decision docs. A finished
-plan is deleted and distilled into the map, never archived. The command creates
-no issues or project-board items.
+merged code plus the repo's own feature, spec, and decision docs. But it is
+scaffolding on a schedule, not scaffolding that vanishes a piece at a time.
+
+A finished task's plan is **marked done where it already lives** — its header's
+`**Status:**` line flips from `active` to `done · YYYY-MM-DD` — and distilled
+into the map's Completed log. It is not deleted, not moved, and above all not
+archived: a copy of a plan under `archive/` or `done/` is a second source of
+truth that starts drifting from the first immediately, which is exactly why the
+marker goes into the file rather than the file going somewhere else. One file,
+one path, one state.
+
+**It stays for the rest of the campaign**, and the reason is concrete. The
+Completed entry records what was *built* — prose written after the fact about the
+outcome. The plan records what was *asked*: the criteria, the constraints, the
+conditions the work had to meet. Only the second can be handed to a runner again,
+so `redo` — re-opening a landed task to do it differently — is a real operation
+rather than a rewrite. A campaign that deleted its plans at completion could
+re-open a task only from a summary of the thing it was trying to replace.
+
+**The campaign's final ticket deletes them, as scheduled work.** `zz` is a
+reserved task number that always sorts last; `<slug>-zz-retire-done-plans` is
+created at start with the rest of the tickets, executed after every other task,
+and removes every `<plans>/<slug>-*.md` plan including its own. `close` expects
+it to exist and will not sweep the plans by hand in its place. **That ticket is
+critical, not optional bookkeeping**: it is the only thing that ever removes a
+plan, so skipping it leaves the campaign's scaffolding in the repository
+permanently — a directory of done plans for a campaign that ended, owned by
+nobody. `close` retires the map; the ticket retires the plans.
+
+The plan file's `done` marker is not the map's Status column and does not join
+that six-value vocabulary. The column describes a **row**, which a completed task
+no longer has; the marker describes a **file**, which a completed task keeps.
+That is why completion writes `done` on the plan and still writes no `done`
+status on any task.
 
 ### Merging
 
