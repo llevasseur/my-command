@@ -34,3 +34,29 @@ for source in "$SRC_DIR"/*.md; do
 done
 
 echo "Installed $installed marketplace command(s) into $DEST_DIR as bare commands."
+
+# The subagent definitions every dispatch site names by subagent_type. A command naming one the
+# device does not have silently takes the default agent instead, so these have to land alongside
+# the commands. Symlinked rather than copied — unlike the commands above they carry no namespaced
+# /command references to rewrite, so a link is enough and `git pull` in the clone updates them.
+AGENTS_SRC="$REPO_ROOT/agents"
+AGENTS_DEST="${CLAUDE_AGENTS_DIR:-$HOME/.claude/agents}"
+if [ -d "$AGENTS_SRC" ]; then
+  mkdir -p "$AGENTS_DEST"
+  agents_linked=0 agents_skipped=0
+  for f in "$AGENTS_SRC"/*.md; do
+    [ -e "$f" ] || continue
+    name="$(basename "$f")"
+    target="$AGENTS_DEST/$name"
+    if [ -L "$target" ]; then
+      # Already a symlink — repoint it (handles the clone moving) and move on.
+      ln -sf "$f" "$target"; agents_linked=$((agents_linked+1)); continue
+    fi
+    if [ -e "$target" ]; then
+      echo "skip: $name already exists as a real file in $AGENTS_DEST (not overwriting)" >&2
+      agents_skipped=$((agents_skipped+1)); continue
+    fi
+    ln -s "$f" "$target"; agents_linked=$((agents_linked+1))
+  done
+  echo "Linked $agents_linked subagent definition(s) into $AGENTS_DEST (skipped $agents_skipped)."
+fi
