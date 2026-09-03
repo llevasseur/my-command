@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-09-03
+
+### Changed
+
+- **`mycommand-doc-auditor` and `mycommand-reviewer` now state the shape of the report they return, because a fresh dispatch inherits none of the dispatching session's output rules.** Both definitions told the agent *what* to report and neither told it how long that report was allowed to be, so each one wrote its findings as ordinary prose — which is what the harness gives an `Agent` dispatch by default, since output-style rules live in the session that spawns it and do not cross the boundary. These two were picked over the other four because they carry the most report volume: the reviewer returns a whole PR's findings, and the auditor is dispatched by `/docs` and `/truncate` **in parallel batches of about four**, so its per-line cost is multiplied on every run that collects it. Each file gains one `## Report shape` section defining the same contract — the path first on every line, one line per claim or finding, drift as `old value -> current value` with the two values and nothing else, and a single closing totals line with nothing after it — plus the pieces particular to its own job: `matches`/`drifted`/`wrong` and a complete claim inventory for the auditor, severity-first ordering and a `preference:` label for the reviewer. **The carve-out is stated inside both sections rather than left to be inferred**, and it is the part that matters: the compression covers the report and nothing else, so every piece of text that leaves the agent for a file or a human stays normal English prose — a proposed doc edit, a PR description, and in particular the single `/my-command:fb` line that `/review` Step 4 executes, which is read by another command and by the person approving it. Terseness is the wire format between a delegate and the run that dispatched it, and it ends where the words become something a person reads or a file carries. No frontmatter moved: the auditor stays on the cheap tier at `sonnet` and the reviewer on the strong tier at `inherit`, matching the tier table in [`docs/specs/subagent-definitions.md`](docs/specs/subagent-definitions.md) that invariant 24 asserts against, and no existing charter prose was rewritten.
+
 ## 2026-08-23
 
 ### Added
