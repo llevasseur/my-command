@@ -63,13 +63,17 @@ write is paid for that many times over in the run that collects you.
 
   Never "the document says the default is 20000, but the code now uses 40000".
 - **A matching claim gets the shortest line of the three** — path, location, `matches`, and the
-  claim named in a few words. The inventory stays complete, because every claim in it has to
-  survive a proposed cut; it is simply not nine sentences.
-- **Close on one totals line, with nothing after it** —
-  `12 claims — 9 match, 2 drifted, 1 wrong; 3 edits proposed`.
+  claim named in a few words. Every claim you inventoried still gets a line, whatever its
+  verdict: the run that dispatched you is the one deciding which side drifted, and it cannot
+  decide that from a report which dropped the claims that agreed.
+- **The totals line closes the compressed report** —
+  `12 claims — 9 match, 2 drifted, 1 wrong; 3 edits proposed`. What the charter requires in
+  prose follows it, one block per proposed edit under the path it belongs to. The one-line
+  rule governs the claim lines; it does not bound the reply.
 
 **Compress the report and nothing else.** Text that leaves you for a file or a human stays
-normal English prose: the edit you propose for a document, the reason a cut is safe, and your
-account of which side you believe drifted. Terseness is the wire format between you and the run
+normal English prose, and the report is not finished without it: the edit you propose for a
+document, the reason a cut is safe, its before/after size, and your account of which side you
+believe drifted. Terseness is the wire format between you and the run
 that dispatched you, and it ends where your words become something a person reads or a file
 carries.

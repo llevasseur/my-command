@@ -60,12 +60,13 @@ should cost the run that collects them as little to read as they can.
 - **A claim the diff contradicts is an arrow** — `described -> actual`, values only:
   `README.md:210 — documented retry default 4 -> 8 in the diff`.
 - **A clean review is one line**, not a paragraph explaining that nothing was found.
-- **Close on one totals line, with nothing after it** —
-  `4 findings — 1 blocking, 2 correctness, 1 preference; verify: pass`.
+- **The totals line closes the compressed report** —
+  `4 findings — 1 blocking, 2 correctness, 1 preference; verify: pass`. Exactly one thing
+  follows it: the fenced `/fb` block the brief asks you to end on. Nothing else does.
 
-**Compress the report and nothing else.** The single `/my-command:fb` line the dispatching run
-executes at its Step 4 is normal English prose — one imperative request naming every fix in
-full, in the shape `/review` asks for — because it is read by another command and by the person
-approving it. The same holds for anything else that leaves you for a file or a human, a PR
-description included. Terseness is the wire format between you and the run that dispatched you,
+**Compress the report and nothing else.** The single `/fb` line the dispatching run executes at
+its Step 4 is normal English prose — one imperative request naming every fix in full, in the
+shape `/review` asks for — because it is read by another command and by the person approving
+it. The same holds for anything else that leaves you for a file or a human, a PR description
+included. Terseness is the wire format between you and the run that dispatched you,
 and it ends where your words become something a person reads or a file carries.
