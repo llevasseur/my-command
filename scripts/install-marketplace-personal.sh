@@ -35,10 +35,9 @@ done
 
 echo "Installed $installed marketplace command(s) into $DEST_DIR as bare commands."
 
-# The subagent definitions every dispatch site names by subagent_type. A command naming one the
-# device does not have silently takes the default agent instead, so these have to land alongside
-# the commands. Symlinked rather than copied — unlike the commands above they carry no namespaced
-# /command references to rewrite, so a link is enough and `git pull` in the clone updates them.
+# The subagent definitions every dispatch site names by subagent_type; a command naming one the
+# device does not have silently takes the default agent instead. Symlinked rather than copied and
+# rewritten like the commands above, because these carry no namespaced /command references.
 AGENTS_SRC="$REPO_ROOT/agents"
 AGENTS_DEST="${CLAUDE_AGENTS_DIR:-$HOME/.claude/agents}"
 if [ -d "$AGENTS_SRC" ]; then
@@ -49,7 +48,7 @@ if [ -d "$AGENTS_SRC" ]; then
     name="$(basename "$f")"
     target="$AGENTS_DEST/$name"
     if [ -L "$target" ]; then
-      # Already a symlink — repoint it (handles the clone moving) and move on.
+      # Repoint an existing link so a moved clone still resolves.
       ln -sf "$f" "$target"; agents_linked=$((agents_linked+1)); continue
     fi
     if [ -e "$target" ]; then
