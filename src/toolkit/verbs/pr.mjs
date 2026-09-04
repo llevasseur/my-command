@@ -7,10 +7,8 @@ import { run as exec, ToolkitError, UsageError } from '../lib/proc.mjs';
 import { commitsSince, currentBranch, defaultBranch, repoRoot, resolveBase } from '../lib/repo.mjs';
 import { textArg } from '../lib/text-arg.mjs';
 
-// A description is prose the caller wrote, and no count of it is worth refusing a PR over —
-// so these are reported and never enforced. The budget matches what the command prose asks
-// for, and the zero-bullet case catches the failure the numbers alone miss: a body that came
-// in under 400 words as four paragraphs.
+// Reported, never enforced: no count of the caller's prose is worth refusing a PR over.
+// Bullets are counted alongside words because a four-paragraph body can come in under budget.
 const WORD_BUDGET = 400;
 const WORD_LIMIT = 600;
 
@@ -46,8 +44,7 @@ A \`must be a collaborator\` rejection is resolved here — by retrying under a 
 belonging to the repository owner, then over REST — and never returned as an error.`;
 
 /**
- * What is wrong with the shape of a description, if anything. Empty when it is within budget
- * and carries at least one bullet.
+ * What is wrong with a description's shape. Empty when it is within budget and has a bullet.
  * @param {string} body
  * @returns {string[]}
  */
@@ -97,9 +94,8 @@ function restCall(cwd, method, path, body) {
 }
 
 /**
- * What the verb reports back. One shape for both paths, so a caller reads the same fields
- * whether the PR was created or updated; `assetsPreserved` is an update's count and
- * `bodyWarnings` is present only when the description's shape is worth flagging.
+ * What the verb reports back — one shape for both paths. `assetsPreserved` is an update's
+ * count; `bodyWarnings` appears only when the description's shape is worth flagging.
  * @typedef {object} PrResult
  * @property {'created' | 'updated'} action
  * @property {number | null} number
