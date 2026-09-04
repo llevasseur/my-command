@@ -51,8 +51,7 @@ belonging to the repository owner, then over REST — and never returned as an e
 export function bodyWarnings(body) {
   const words = body.split(/\s+/).filter(Boolean).length;
 
-  // A pasted diff or shell snippet is full of lines starting `- `, and counting those would
-  // let a body of pure prose claim a bullet it never wrote.
+  // A pasted diff is full of `- ` lines; counting them lets a prose body claim a bullet.
   let fenced = false;
   let bullets = 0;
   for (const line of body.split('\n')) {

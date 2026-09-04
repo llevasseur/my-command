@@ -639,8 +639,7 @@ if ! grep -Fq 'verify --wait' src/commands/review.md; then
   echo "::error::src/commands/review.md no longer names 'verify --wait'; its verification step would leave the run polling a report that does not exist until the run is over."
   fail=1
 fi
-# The PR-description shape is the rule a run is likeliest to agree with and then ignore, so
-# losing the include would take the whole rule out of /pr with nothing failing.
+# Losing the include takes the whole description rule out of /pr with nothing failing.
 if ! grep -Fq 'include-block: shared/pr-body-shape.md' src/commands/pr.md; then
   echo "::error::src/commands/pr.md dropped the shared/pr-body-shape.md include; its description step would go back to one adjective, which is what a 1244-word PR body already beat."
   fail=1

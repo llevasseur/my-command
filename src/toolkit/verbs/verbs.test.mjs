@@ -626,7 +626,6 @@ test('pr escalates the warning past the hard limit', () => {
 });
 
 test('bodyWarnings ignores bullets inside a fenced code block', () => {
-  // A prose-only body that pastes a diff would otherwise claim a bullet it never wrote.
   const pasted = ['Some prose about the change.', '', '```diff', '- const a = 1;', '+ const a = 2;', '```', ''].join(
     '\n',
   );
