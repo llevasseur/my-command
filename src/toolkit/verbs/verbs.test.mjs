@@ -14,7 +14,7 @@ import { porcelain } from '../lib/repo.mjs';
 import { run as cleanup } from './cleanup.mjs';
 import { run as commit, usage as commitUsage } from './commit.mjs';
 import { run as concepts, line as conceptsLine } from './concepts.mjs';
-import { run as pr, usage as prUsage } from './pr.mjs';
+import { bodyWarnings, run as pr, usage as prUsage } from './pr.mjs';
 import { run as scope } from './scope.mjs';
 import { run as state } from './state.mjs';
 import { run as verify } from './verify.mjs';
@@ -620,6 +620,27 @@ test('pr escalates the warning past the hard limit', () => {
     const long = `- ${'word '.repeat(700)}`;
     const r = pr(ctx(dir, [], { title: 'T', body: long }));
     assert.match((r.bodyWarnings ?? []).join('\n'), /past the 600-word limit/);
+  } finally {
+    restore();
+  }
+});
+
+test('bodyWarnings ignores bullets inside a fenced code block', () => {
+  // A prose-only body that pastes a diff would otherwise claim a bullet it never wrote.
+  const pasted = ['Some prose about the change.', '', '```diff', '- const a = 1;', '+ const a = 2;', '```', ''].join(
+    '\n',
+  );
+  assert.match(bodyWarnings(pasted).join('\n'), /no bullets/);
+  assert.deepEqual(bodyWarnings('## H\n\n- a real bullet\n'), []);
+});
+
+test('pr reports bodyWarnings on the created path too', () => {
+  // Anything but OPEN reads as no existing PR, which is the create branch of the verb.
+  const { dir, restore } = repoWithFakeGh(openPr({ state: 'CLOSED' }));
+  try {
+    const r = pr(ctx(dir, [], { title: 'T', body: 'Prose with no bullet anywhere in it.' }));
+    assert.equal(r.action, 'created');
+    assert.match((r.bodyWarnings ?? []).join('\n'), /no bullets/);
   } finally {
     restore();
   }

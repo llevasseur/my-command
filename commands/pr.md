@@ -65,11 +65,14 @@ Once the body file exists, run the **`unslop` skill** over it with the `Skill` t
 Run this over the body file immediately before the `my-command-tools pr` call, and **state the four numbers in the run's report**. A rule that is checked survives; a rule that is only stated does not.
 
 ```sh
-wc -w < "$BODY"                                     # target < 400, hard stop 600
-grep -c '—' "$BODY" || true                         # em dashes
-grep -co '\*\*[^*]*\*\*' "$BODY" || true            # bold runs
-grep -cvE '^\s*($|[-*] |#{1,6} |```|\|)' "$BODY"    # non-bullet, non-header lines
+BODY="/absolute/path/to/pr-body.md"                          # the file you just wrote
+wc -w < "$BODY"                                              # target < 400, hard stop 600
+grep -o '—' "$BODY" | wc -l                                  # em dashes
+grep -o '\*\*[^*]*\*\*' "$BODY" | wc -l                      # bold runs
+grep -cvE '^\s*($|[-*] |#{1,6} |```|\|)' "$BODY" || true     # non-bullet, non-header lines
 ```
+
+**Assign `BODY` in the same call as the counts** — shell state does not survive between calls, so a block that inherits the variable from an earlier one counts nothing and says so in four confusing ways. The two `grep -o … | wc -l` forms count occurrences rather than matching lines, which `grep -c` cannot do even with `-o`; and the last grep takes `|| true` because a compliant body makes it print `0` and exit 1, which is the one outcome the step is aiming for.
 
 A non-zero last count names lines the shape above says do not belong: go back and cut them rather than reporting the number and publishing anyway.
 

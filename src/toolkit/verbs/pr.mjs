@@ -49,9 +49,19 @@ belonging to the repository owner, then over REST — and never returned as an e
  * @returns {string[]}
  */
 export function bodyWarnings(body) {
-  const lines = body.split('\n');
   const words = body.split(/\s+/).filter(Boolean).length;
-  const bullets = lines.filter((l) => /^\s*[-*] /.test(l)).length;
+
+  // A pasted diff or shell snippet is full of lines starting `- `, and counting those would
+  // let a body of pure prose claim a bullet it never wrote.
+  let fenced = false;
+  let bullets = 0;
+  for (const line of body.split('\n')) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      fenced = !fenced;
+      continue;
+    }
+    if (!fenced && /^\s*[-*] /.test(line)) bullets += 1;
+  }
 
   /** @type {string[]} */
   const warnings = [];
