@@ -7,9 +7,26 @@ description: Create or update the current branch's pull request with a concise, 
 
 Parse `--draft` / `-d`; treat remaining text as optional title or context.
 
-1. Refuse the default branch. Derive an accurate title and concise bulleted body
-   from commits and the full branch diff.
-2. Use `my-command-tools pr` when available to push and create or update the PR
+1. Refuse the default branch. Derive an accurate title and a bulleted body from
+   commits and the full branch diff.
+2. Write the body to a file, and hold it to a shape rather than to the word
+   "concise". Bullets only: a line that is neither a `-` bullet nor a `##` header
+   does not belong. The first line is a header, never prose. One idea per bullet,
+   one to two sentences; a bullet past about 40 words is a paragraph wearing a
+   dash, so split it or cut it. Headers only past about 6 bullets and 4 at most,
+   sentence case, 2 to 4 words. Target under 400 words; past 600 the body is
+   being written for the author rather than the reviewer.
+   - The body is for the reviewer, and it is not a record of the author's work.
+     Requirement-by-requirement compliance notes, verification and gate output,
+     docs inventories, and "what I checked" material each earn one terse bullet
+     or none. Any section that exists to prove the task was done belongs in the
+     run's closing turn instead. The test for a line: would a reviewer who never
+     saw the request act differently for having read it?
+   - Cut the slop before publishing, then count. Word count, em dashes, bold
+     runs, and lines that are neither bullet nor header — run those over the body
+     file immediately before the publish call and state the numbers in the
+     report. A rule that is checked survives; a rule that is only stated does not.
+3. Use `my-command-tools pr` when available to push and create or update the PR
    without embedding credentials. Preserve existing body assets. Convert to
    draft only when requested; never silently mark a draft ready.
    - **Hand the body over as a file, never on stdin.** Write the description to a
@@ -24,7 +41,9 @@ Parse `--draft` / `-d`; treat remaining text as optional title or context.
      and selects it for any other `gh` call. Never wrap a command in a
      `GH_TOKEN="$(gh auth token --user …)"` assignment — that shape is refused on
      sight; REST is the remaining fallback.
-3. Do not create commits. If the owning workflow asks this skill not to tear down
+   - The verb measures the body it is handed and returns `bodyWarnings` when it is
+     over budget or carries no bullets. It warns; it never refuses.
+4. Do not create commits. If the owning workflow asks this skill not to tear down
    its worktree, leave it intact. Otherwise remove a linked worktree only after
    confirming it is clean and its HEAD exists on the remote branch.
    - Remove a worktree through the same mechanism that created it. One this
@@ -32,7 +51,8 @@ Parse `--draft` / `-d`; treat remaining text as optional title or context.
      out, then remove it through the repository helper from outside the worktree,
      which re-verifies the branch reached origin. If another live session still
      holds it, stop and report the path as left in place.
-4. Report the PR number and URL.
+5. Report the PR number and URL, the counts from step 2, and whether the
+   slop-cutting pass ran.
 
 ## Git call shape
 

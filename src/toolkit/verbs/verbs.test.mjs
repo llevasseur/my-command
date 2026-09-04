@@ -582,6 +582,49 @@ test('pr adds nothing when the previous description had no assets', () => {
   }
 });
 
+test('pr reports no bodyWarnings for a short bulleted description', () => {
+  const { dir, restore } = repoWithFakeGh(openPr({}));
+  try {
+    const r = pr(ctx(dir, [], { title: 'T', body: '## What changed\n\n- tightened the shape rule\n' }));
+    assert.equal(r.bodyWarnings, undefined);
+  } finally {
+    restore();
+  }
+});
+
+test('pr warns about a body with no bullets, and still publishes it', () => {
+  const { dir, restore } = repoWithFakeGh(openPr({}));
+  try {
+    const r = pr(ctx(dir, [], { title: 'T', body: 'This PR does a thing, at length, in prose.' }));
+    assert.equal(r.action, 'updated');
+    assert.match((r.bodyWarnings ?? []).join('\n'), /no bullets/);
+  } finally {
+    restore();
+  }
+});
+
+test('pr warns about a body past the word budget', () => {
+  const { dir, restore } = repoWithFakeGh(openPr({}));
+  try {
+    const long = `- ${'word '.repeat(450)}`;
+    const r = pr(ctx(dir, [], { title: 'T', body: long }));
+    assert.match((r.bodyWarnings ?? []).join('\n'), /over the 400-word target/);
+  } finally {
+    restore();
+  }
+});
+
+test('pr escalates the warning past the hard limit', () => {
+  const { dir, restore } = repoWithFakeGh(openPr({}));
+  try {
+    const long = `- ${'word '.repeat(700)}`;
+    const r = pr(ctx(dir, [], { title: 'T', body: long }));
+    assert.match((r.bodyWarnings ?? []).join('\n'), /past the 600-word limit/);
+  } finally {
+    restore();
+  }
+});
+
 test('worktree begin --existing refuses a branch that does not exist', () => {
   const { dir } = repo();
   assert.throws(() => worktree(ctx(dir, ['begin'], { branch: 'feat/nope', existing: true })), /does not exist/);
