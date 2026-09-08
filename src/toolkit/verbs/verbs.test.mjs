@@ -6,7 +6,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { flagsFrom } from '../lib/flags.mjs';
@@ -328,6 +328,125 @@ test('worktree end reaps by default and --no-reap opts out', () => {
     [doomed],
   );
   assert.equal(alive(doomed), false);
+});
+
+/**
+ * A throwaway stand-in for `~/.my-command/shots`, so the keep is exercised for real without
+ * a test writing into the developer's home directory.
+ * @returns {string}
+ */
+function keep() {
+  const dir = mkdtempSync(join(tmpdir(), 'mct-shots-'));
+  made.push(dir);
+  process.env.MY_COMMAND_SHOTS_DIR = dir;
+  return dir;
+}
+
+after(() => {
+  delete process.env.MY_COMMAND_SHOTS_DIR;
+});
+
+/** @param {unknown} r @returns {{path: string, shotsDir: string}} */
+const begun = (r) => /** @type {never} */ (r);
+
+/** @param {unknown} r @returns {{shotsKept: string|null, shotsDropped: boolean}} */
+const ended = (r) => /** @type {never} */ (r);
+
+test('worktree begin opens a shots directory in the checkout, created branch or existing', () => {
+  const { dir, git } = repo();
+  const fresh = begun(worktree(ctx(dir, ['begin'], { branch: 'feat/fresh' })));
+  assert.equal(fresh.shotsDir, join(fresh.path, '.my-command', 'shots'));
+  assert.equal(existsSync(fresh.shotsDir), true);
+
+  git(['branch', 'feat/already']);
+  const existing = begun(worktree(ctx(dir, ['begin'], { branch: 'feat/already', existing: true })));
+  assert.equal(existing.shotsDir, join(existing.path, '.my-command', 'shots'));
+  assert.equal(existsSync(existing.shotsDir), true);
+});
+
+test('worktree begin re-opens a shots directory that is already there', () => {
+  const { dir } = repo();
+  const first = begun(worktree(ctx(dir, ['begin'], { branch: 'feat/again' })));
+  writeFileSync(join(first.shotsDir, 'home.png'), 'first run\n');
+  worktree(ctx(dir, ['end'], { branch: 'feat/again', force: true, 'drop-shots': true }));
+
+  // The keep from the first run is beside the point: what matters is that creating the
+  // directory a second time is not an error.
+  const second = begun(worktree(ctx(dir, ['begin'], { branch: 'feat/again', existing: true })));
+  assert.equal(existsSync(second.shotsDir), true);
+});
+
+test('worktree end keeps the screenshots under <keep>/<repo>/<branch>/ before removing', () => {
+  const root = keep();
+  const { dir } = repo();
+  const tree = begun(worktree(ctx(dir, ['begin'], { branch: 'feat/shots/deep' })));
+  writeFileSync(join(tree.shotsDir, 'home.png'), 'pixels\n');
+  mkdirSync(join(tree.shotsDir, 'round-2'));
+  writeFileSync(join(tree.shotsDir, 'round-2', 'detail.png'), 'more pixels\n');
+
+  const r = ended(worktree(ctx(dir, ['end'], { branch: 'feat/shots/deep', force: true })));
+  // A slashed branch nests, one directory per segment — the destination git's own ref
+  // namespace guarantees is free.
+  assert.equal(r.shotsKept, join(root, basename(dir), 'feat', 'shots', 'deep'));
+  assert.equal(r.shotsDropped, false);
+  assert.equal(readFileSync(join(String(r.shotsKept), 'home.png'), 'utf8'), 'pixels\n');
+  assert.equal(readFileSync(join(String(r.shotsKept), 'round-2', 'detail.png'), 'utf8'), 'more pixels\n');
+  // The keep happened first: the checkout really is gone.
+  assert.equal(existsSync(tree.path), false);
+});
+
+test('worktree end keeps screenshots without overwriting a previous run', () => {
+  const root = keep();
+  const { dir } = repo();
+  const first = begun(worktree(ctx(dir, ['begin'], { branch: 'feat/twice' })));
+  writeFileSync(join(first.shotsDir, 'home.png'), 'run one\n');
+  worktree(ctx(dir, ['end'], { branch: 'feat/twice', force: true }));
+
+  const second = begun(worktree(ctx(dir, ['begin'], { branch: 'feat/twice', existing: true })));
+  writeFileSync(join(second.shotsDir, 'home.png'), 'run two\n');
+  const r = ended(worktree(ctx(dir, ['end'], { branch: 'feat/twice', force: true })));
+
+  const kept = join(root, basename(dir), 'feat', 'twice');
+  assert.equal(r.shotsKept, kept);
+  assert.equal(readFileSync(join(kept, 'home.png'), 'utf8'), 'run one\n');
+  assert.equal(readFileSync(join(kept, 'home-2.png'), 'utf8'), 'run two\n');
+});
+
+test('worktree end reports no destination when there is nothing to keep', () => {
+  keep();
+  const { dir } = repo();
+  const tree = begun(worktree(ctx(dir, ['begin'], { branch: 'feat/quiet' })));
+  // Empty is the common case, and an absent directory has to read the same way.
+  rmSync(tree.shotsDir, { recursive: true });
+
+  const r = ended(worktree(ctx(dir, ['end'], { branch: 'feat/quiet', force: true })));
+  assert.equal(r.shotsKept, null);
+  assert.equal(r.shotsDropped, false);
+});
+
+test('worktree end --drop-shots deletes the screenshots instead of keeping them', () => {
+  const root = keep();
+  const { dir } = repo();
+  const tree = begun(worktree(ctx(dir, ['begin'], { branch: 'feat/throwaway' })));
+  writeFileSync(join(tree.shotsDir, 'home.png'), 'not worth keeping\n');
+
+  const r = ended(worktree(ctx(dir, ['end'], { branch: 'feat/throwaway', force: true, 'drop-shots': true })));
+  assert.equal(r.shotsDropped, true);
+  assert.equal(r.shotsKept, null);
+  assert.equal(existsSync(join(root, basename(dir), 'feat', 'throwaway')), false);
+});
+
+test('worktree end leaves the screenshots in place when it refuses to remove', () => {
+  keep();
+  const { dir, git } = repoWithOrigin();
+  git(['branch', 'feat/unpushed']);
+  const tree = begun(worktree(ctx(dir, ['begin'], { branch: 'feat/unpushed', existing: true })));
+  execFileSync('git', ['commit', '-qm', 'unpushed', '--allow-empty'], { cwd: tree.path });
+  writeFileSync(join(tree.shotsDir, 'home.png'), 'still being worked on\n');
+
+  assert.throws(() => worktree(ctx(dir, ['end'], { branch: 'feat/unpushed' })), /not on origin/);
+  // The worktree survived, so its screenshots belong to it still.
+  assert.equal(readFileSync(join(tree.shotsDir, 'home.png'), 'utf8'), 'still being worked on\n');
 });
 
 /** A repo whose `main` is pushed to a real bare `origin`, still checked out on `main`. */
