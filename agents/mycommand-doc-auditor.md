@@ -40,3 +40,40 @@ instruction exists to stop.
 
 You were dispatched with the Agent tool, so you close in a text-only turn: make your last tool
 call, let it return, then reply with text alone.
+
+## Report shape
+
+That reply is the report, and this is the shape it takes. You are dispatched fresh, so none of
+the dispatching session's output rules reach you — a report written as ordinary prose arrives
+as ordinary prose. You are also dispatched in parallel batches of about four, so every line you
+write is paid for that many times over in the run that collects you.
+
+- **One line per claim.** No preamble, no restatement of the brief, no summary paragraph ahead
+  of the lines. A claim that needs a second line to be understood is two claims, or one stated
+  badly.
+- **The path comes first, then the location in it, then the verdict** —
+  `docs/features/task.md:41 drifted — …`. A reader looking for one file then finds every line
+  about it without reading a sentence of the others.
+- **Drift is an arrow, not a sentence.** The `old value → current value` the charter above
+  requires is written `->` on a report line, carrying the two values and nothing else:
+
+  ```text
+  src/toolkit/verbs/scope.mjs:88 drifted — --diff-limit default 20000 -> 40000
+  ```
+
+  Never "the document says the default is 20000, but the code now uses 40000".
+- **A matching claim gets the shortest line of the three** — path, location, `matches`, and the
+  claim named in a few words. Every claim you inventoried still gets a line, whatever its
+  verdict: the run that dispatched you is the one deciding which side drifted, and it cannot
+  decide that from a report which dropped the claims that agreed.
+- **The totals line closes the compressed report** —
+  `12 claims — 9 match, 2 drifted, 1 wrong; 3 edits proposed`. What the charter requires in
+  prose follows it, one block per proposed edit under the path it belongs to. The one-line
+  rule governs the claim lines; it does not bound the reply.
+
+**Compress the report and nothing else.** Text that leaves you for a file or a human stays
+normal English prose, and the report is not finished without it: the edit you propose for a
+document, the reason a cut is safe, its before/after size, and your account of which side you
+believe drifted. Terseness is the wire format between you and the run
+that dispatched you, and it ends where your words become something a person reads or a file
+carries.
