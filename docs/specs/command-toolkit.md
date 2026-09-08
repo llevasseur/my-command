@@ -300,6 +300,54 @@ Whether a *repository* has Playwright of its own is a separate question, asked b
 [`/verify`](../features/verify.md) when it picks a tier. This field is about the device,
 which is why it sits beside `node`, `git`, and `gh`.
 
+### `gitExcludes`
+
+The workflow commands drop artifact directories — `.playwright-cli/` for a browser driver,
+`.my-command/` for a run's scratch — inside whichever repository they happen to run in.
+Those directories belong to the tooling, not to the project, so they are ignored **once
+per device** in the user's global git excludes file. No repository's own `.gitignore` is
+ever edited: a per-repo edit would surface as a stray diff in every repository a workflow
+command had ever touched, in a file that repository's own contributors own.
+
+`gitExcludes` is that arrangement reported rather than assumed:
+
+| Field | What it answers |
+|---|---|
+| `configured` | whether `core.excludesFile` is set in the global git config at all |
+| `path` | the file git effectively reads, `~` expanded |
+| `exists` | whether that file is readable |
+| `patterns` | a map from each pattern to whether the file declares it |
+| `missing` | the patterns it does not |
+| `complete` | `missing` being empty, as one answer |
+| `hint` | the append command that closes a partial state, or `null` |
+
+`patterns` and `missing` are why this is not a boolean. Half-written is the state that
+actually happens — one pattern added by an older installer, the other not — and a bare
+`false` would send a human to re-read a file that is most of the way there. The slashless
+spelling counts as present, so someone who already wrote `.my-command` by hand is not
+handed a near-duplicate; a commented-out line does not.
+
+`configured` and `path` are separate because git reads that file whether or not the config
+names it: with `core.excludesFile` unset, git still honors `$XDG_CONFIG_HOME/git/ignore`.
+So `path` resolves to that default rather than to nothing, and a device whose default file
+already holds both patterns reads `complete: true` with `configured: false` — which is the
+truth, where a `null` path would have reported a file git is actively reading as absent.
+
+`scripts/install-marketplace-personal.sh` is the only thing that writes. Where
+`core.excludesFile` is unset it picks git's own XDG location —
+`${XDG_CONFIG_HOME:-$HOME/.config}/git/ignore`, derived at run time, never a baked-in home
+— sets the config to it, and creates the file. Where the file already exists it **appends
+only the missing lines**, so the user's existing entries are neither rewritten nor
+reordered, and a file with no trailing newline gets one before the append rather than
+having its last entry joined to ours. Running it twice changes nothing the second time.
+Every failure around this is swallowed: an unwritable git config or an uncreatable
+excludes path prints one line to stderr and the install completes, because nothing here is
+needed for a command to run.
+
+The step runs first and is reachable on its own — `install-marketplace-personal.sh
+--excludes-only` does the ignore and stops — so repairing a partial device ignore does not
+mean reinstalling every command file.
+
 ## Shipping constraint
 
 **The toolkit ships as raw `.mjs` under `src/toolkit/`, never as build output.**
@@ -371,6 +419,16 @@ with `allowJs` + `checkJs` + `noEmit`, run as `pnpm run check:toolkit`.
       installs the CLI, downloads a browser, or outruns its 5s bound.
 - [ ] `scripts/install-marketplace-personal.sh` prints `npm i -g playwright` when that
       field is absent, runs nothing, and exits 0 either way.
+- [ ] `doctor` reports `gitExcludes` with the resolved `path` of `core.excludesFile` and a
+      `patterns` map naming which of `.playwright-cli/` and `.my-command/` that file
+      declares, so a half-written state reads as one present and one `missing` rather than
+      as a bare false; an unset `core.excludesFile` resolves `path` to git's own XDG
+      default rather than to nothing, and `doctor` still exits 0.
+- [ ] `scripts/install-marketplace-personal.sh` appends only the missing patterns to that
+      file — setting `core.excludesFile` to `${XDG_CONFIG_HOME:-$HOME/.config}/git/ignore`
+      and creating the file when it is unset — leaves existing entries in their original
+      order, is byte-identical on a second run, never edits any repository's own
+      `.gitignore`, and exits 0 when the config or the path is unwritable.
 - [ ] `pnpm run check:toolkit` and `pnpm test` pass in CI.
 - [ ] A fresh `npx` install lands a runnable shim on the device root **and** leaves a
       bare `my-command-tools` call working in a new shell.
