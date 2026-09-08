@@ -3,10 +3,9 @@
 // Playwright: the probe order, that a missing binary is an answer rather than a throw, and
 // that the time bound is real.
 //
-// Device git excludes: that a partial state reads as one pattern present and one missing,
-// and that the installer writing those patterns is idempotent and never touches a
-// repository's own `.gitignore` — checked by running the real installer against a
-// sandboxed HOME and git config, twice.
+// Device git excludes: that a partial state reads as one present and one missing, and that
+// the installer is idempotent and never touches a repository's own ignore file — checked by
+// running the real installer against a sandboxed HOME and git config.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -130,8 +129,6 @@ test('doctor reports the playwright object on this device, whatever it holds', (
   }
 });
 
-// --- device git excludes -----------------------------------------------------------
-
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const INSTALLER = join(REPO_ROOT, 'scripts', 'install-marketplace-personal.sh');
 
@@ -146,7 +143,7 @@ function excludesOver(configured, contents) {
 
 test('the default excludes path is derived, never a baked-in home', () => {
   assert.equal(defaultExcludesFile({ XDG_CONFIG_HOME: '/xdg' }, '/home/someone'), join('/xdg', 'git', 'ignore'));
-  // Empty is as good as unset: an exported-but-blank XDG_CONFIG_HOME must not yield `/git/ignore`.
+  // Empty is as good as unset: a blank XDG_CONFIG_HOME must not yield `/git/ignore`.
   assert.equal(defaultExcludesFile({ XDG_CONFIG_HOME: '' }, '/home/someone'), '/home/someone/.config/git/ignore');
   assert.equal(defaultExcludesFile({}, '/home/someone'), '/home/someone/.config/git/ignore');
   // The committed source may not name one device's home.
@@ -166,8 +163,7 @@ test('a tilde in the configured path is expanded at read time', () => {
 test('an unset core.excludesFile still reports the file git effectively reads', () => {
   const r = excludesOver(null, null);
   assert.equal(r.configured, false);
-  // git honors its XDG default with the config unset, so reporting null there would call a
-  // file git is reading absent.
+  // git honors its XDG default with the config unset, so `null` would call a live file absent.
   assert.equal(r.path, defaultExcludesFile());
   assert.equal(r.exists, false);
   assert.deepEqual(r.missing, DEVICE_IGNORE_PATTERNS);
@@ -254,9 +250,8 @@ function sandboxEnv(home) {
 }
 
 /**
- * Run the real installer against that sandbox. `--excludes-only` by default: the ignore
- * step is what these tests are about, and reinstalling forty command files to reach it
- * costs ~10s a call.
+ * Run the real installer against that sandbox. `--excludes-only` by default: reaching the
+ * ignore step through the full command install costs ~10s a call.
  * @param {string} home
  * @param {string} sandbox
  * @param {string[]} [args]
@@ -294,9 +289,8 @@ test('the installer writes the device excludes file, and a second run changes no
     // And doctor, reading that same sandbox, calls it complete.
     assert.equal(gitExcludes({ config: () => configured, readFile: (p) => readFileSync(p, 'utf8') }).complete, true);
 
-    // The whole installer this time, not just the ignore step: the device ignore is
-    // unchanged by it, and no repository's own ignore file is written — checked against
-    // the filesystem rather than only against the installer's source text.
+    // The whole installer this time: the device ignore is unchanged by it, and no
+    // repository's own ignore file is written — checked against the filesystem, not the source.
     runInstaller(home, sandbox, []);
     assert.equal(readFileSync(excludes, 'utf8'), first, 'the second run is byte-identical');
     assert.equal(readFileSync(repoIgnore, 'utf8'), repoIgnoreBefore, 'the repo .gitignore is untouched');
@@ -359,8 +353,7 @@ test('an unwritable excludes path is reported, not fatal', () => {
   });
 
   try {
-    // The whole installer, so the claim is the real one: an unwritable ignore path costs
-    // the ignore and nothing else.
+    // The whole installer, so the claim is the real one: it costs the ignore and nothing else.
     const out = runInstaller(home, sandbox, []);
     assert.match(out, /Installed \d+ marketplace command\(s\)/, 'the install itself still completed');
   } finally {

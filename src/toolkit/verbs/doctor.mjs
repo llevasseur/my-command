@@ -130,10 +130,9 @@ export function playwright(runner = boundedProbe) {
 }
 
 /**
- * The artifact directories the workflow commands drop inside whatever repository they are
- * run in. They belong to the tooling rather than to any one project, so they are ignored
- * once per **device** — a repository's own `.gitignore` is never touched, which is what
- * keeps the tooling invisible in repositories that know nothing about it.
+ * The artifact directories the workflow commands drop inside whatever repository they run
+ * in. They belong to the tooling, so they are ignored once per **device**; no repository's
+ * own `.gitignore` is ever touched.
  *
  * Spelled with the trailing slash git uses for a directory-only match.
  * `scripts/install-marketplace-personal.sh` names these verbatim; `doctor.test.mjs` pins
@@ -143,9 +142,8 @@ export function playwright(runner = boundedProbe) {
 export const DEVICE_IGNORE_PATTERNS = ['.playwright-cli/', '.my-command/'];
 
 /**
- * Where the installer puts the device excludes file when `core.excludesFile` is unset.
- * git's own XDG location, so the choice is the one git would have made and the path is
- * derived at call time rather than baked in.
+ * Where the installer puts the device excludes file when `core.excludesFile` is unset:
+ * git's own XDG location, which git reads whether or not the config names it.
  * @param {NodeJS.ProcessEnv} [env]
  * @param {string} [home]
  * @returns {string}
@@ -156,9 +154,8 @@ export function defaultExcludesFile(env = process.env, home = homedir()) {
 }
 
 /**
- * `~` resolved at read time. git stores `core.excludesFile` exactly as it was typed, and
- * `~/.gitignore` is the spelling most guides hand people — an unexpanded one would have
- * `doctor` report a path that does not exist and call a correct install broken.
+ * `~` resolved at read time: git stores `core.excludesFile` exactly as it was typed, so an
+ * unexpanded path would have `doctor` call a correct install broken.
  * @param {string} p
  * @param {string} [home]
  * @returns {string}
@@ -171,8 +168,7 @@ export function expandTilde(p, home = homedir()) {
 
 /**
  * The excludes lines a file actually declares: blank lines and comments dropped, nothing
- * trimmed. Untrimmed because git treats a trailing space in an ignore line as
- * significant, so ` .my-command/` is genuinely a different pattern.
+ * trimmed — git treats a trailing space in an ignore line as significant.
  * @param {string} contents
  * @returns {Set<string>}
  */
@@ -181,9 +177,8 @@ function excludeLines(contents) {
 }
 
 /**
- * Whether a file already ignores `pattern`. The slashless spelling counts: a user who
- * wrote `.my-command` is already ignoring the directory, and appending the slashed form
- * beside it would be the near-duplicate this field exists to avoid.
+ * Whether a file already ignores `pattern`. The slashless spelling counts, so a
+ * hand-written entry gets no near-duplicate appended beside it.
  * @param {Set<string>} declared
  * @param {string} pattern
  * @returns {boolean}
@@ -193,8 +188,7 @@ function declares(declared, pattern) {
 }
 
 /**
- * The one command that closes a partial state, for a human to run. The installer does
- * this itself; this is for the case where someone wants to see what it would write.
+ * The one command that closes a partial state, for a human to run.
  * @param {string} path
  * @param {string[]} missing
  * @returns {string}
@@ -208,9 +202,8 @@ function excludesHint(path, missing) {
  * Whether this **device** ignores the tooling's artifact directories, and how completely.
  * Read-only: it never sets the config and never creates the file.
  *
- * `path` is the file git *effectively* reads, which is not the same as the configured one:
- * with `core.excludesFile` unset git still honors its XDG default, so resolving to `null`
- * there would report a file git is reading as absent. `configured` keeps the two apart.
+ * `path` is the file git *effectively* reads, not the configured one: with
+ * `core.excludesFile` unset git still honors its XDG default. `configured` keeps them apart.
  * @param {{config?: () => string | null, readFile?: (path: string) => string | null}} [io]
  * @returns {{configured: boolean, path: string, exists: boolean, patterns: Record<string, boolean>, missing: string[], complete: boolean, hint: string | null}}
  */
@@ -332,8 +325,7 @@ export function run() {
     gh: probe('gh', ['--version']),
     // Needed by no verb; reported because a closed-loop check picks its driver tier from it.
     playwright: playwright(),
-    // Also device-level: whether the tooling's own artifacts are ignored once here,
-    // instead of by an edit to every repository it runs in.
+    // Also device-level: whether the tooling's own artifacts are ignored once here.
     gitExcludes: gitExcludes(),
   };
 }

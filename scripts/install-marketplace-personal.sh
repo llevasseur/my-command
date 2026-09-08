@@ -4,15 +4,14 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Ignore the tooling's artifact directories once for this device, in the user's global git
-# excludes file. Never in a repository's own ignore file: these directories belong to the
-# tooling, not to any project it runs in, and a per-repo edit would show up as a stray diff
-# in every repository a workflow command ever touched.
+# excludes file — never in a repository's own ignore file, which would leave a stray diff in
+# every repository a workflow command ever touched.
 #
-# The pattern list lives in src/toolkit/verbs/doctor.mjs (DEVICE_IGNORE_PATTERNS) and
+# The pattern list lives in src/toolkit/verbs/doctor.mjs (DEVICE_IGNORE_PATTERNS);
 # doctor.test.mjs pins these lines to that export.
 DEVICE_IGNORE_PATTERNS=('.playwright-cli/' '.my-command/')
 
-# git stores core.excludesFile as typed, and ~/… is the spelling most guides hand people.
+# git stores core.excludesFile as typed, so a ~/… path arrives unexpanded.
 expand_tilde() {
   case "$1" in
   '~') printf '%s\n' "$HOME" ;;
@@ -21,8 +20,7 @@ expand_tilde() {
   esac
 }
 
-# Every failure below returns 0: a device whose git config is read-only still gets a
-# working install, just without the ignore. Nothing here is required for the commands to run.
+# Every failure below returns 0: a read-only git config costs the ignore, not the install.
 install_device_excludes() {
   local configured file dir pattern
   local -a missing=()
@@ -31,7 +29,7 @@ install_device_excludes() {
   if [ -n "$configured" ]; then
     file="$(expand_tilde "$configured")"
   else
-    # git's own XDG location, so the choice is the one git would have made anyway.
+    # git's own default location, which it reads whether or not the config names it.
     file="${XDG_CONFIG_HOME:-$HOME/.config}/git/ignore"
     if ! git config --global core.excludesFile "$file" 2>/dev/null; then
       echo "Device ignores: git config is not writable, so core.excludesFile was left unset." >&2
@@ -50,9 +48,8 @@ install_device_excludes() {
   fi
 
   for pattern in "${DEVICE_IGNORE_PATTERNS[@]}"; do
-    # -x so a line is matched whole, -F so a dot is a dot. The slashless spelling counts as
-    # present: a user who wrote `.my-command` already ignores it, and adding the slashed
-    # form beside it would be a near-duplicate. Matches `declares()` in doctor.mjs.
+    # -x matches a whole line, -F takes a dot literally. The slashless spelling counts too, so
+    # a hand-written entry gets no near-duplicate. Matches `declares()` in doctor.mjs.
     grep -qxF -- "$pattern" "$file" 2>/dev/null && continue
     grep -qxF -- "${pattern%/}" "$file" 2>/dev/null && continue
     missing+=("$pattern")
@@ -63,9 +60,8 @@ install_device_excludes() {
     return 0
   fi
 
-  # A file whose last byte is not a newline would otherwise have its final entry joined to
-  # ours. In a command substitution a trailing newline is stripped, so an empty result here
-  # means the file already ends in one.
+  # Without this, a file not ending in a newline gets its last entry joined to ours. A
+  # command substitution strips a trailing newline, so an empty result means one is there.
   if [ -s "$file" ] && [ -n "$(tail -c 1 "$file" 2>/dev/null)" ]; then
     printf '\n' >>"$file" 2>/dev/null || true
   fi
@@ -80,8 +76,7 @@ install_device_excludes() {
 
 install_device_excludes
 
-# The ignore step is self-contained, so it is reachable on its own: repairing a partial
-# device ignore should not mean reinstalling every command file.
+# Reachable on its own, so repairing a partial device ignore needs no command reinstall.
 if [ "${1:-}" = "--excludes-only" ]; then
   exit 0
 fi
