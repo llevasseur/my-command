@@ -41,21 +41,15 @@ function probe(bin, args) {
   return { available: !r.missing && r.ok, version: r.ok ? r.stdout.split('\n')[0] : null };
 }
 
-/**
- * How long any one Playwright probe may take before it is abandoned. `npx` reaches for a
- * registry on a cold cache and a probe that can block forever would make `doctor` — the
- * verb a stuck device runs to find out what is wrong — the thing that hangs.
- */
+/** How long any one Playwright probe may run before it is abandoned. `npx` can block on a cold cache. */
 export const PROBE_TIMEOUT_MS = 5000;
 
 /**
- * Tried in order, first one that answers wins. Both are read-only: `--version` writes
- * nothing, and `--no-install` is what keeps the second a probe rather than an install —
- * plain `npx playwright` fetches the package on a device that lacks it, and nothing in
- * `doctor` may install anything.
+ * Tried in order, first one that answers wins. `--no-install` is what keeps the second a
+ * probe: plain `npx playwright` fetches the package on a device that lacks it.
  *
- * `scripts/install-marketplace-personal.sh` reads this same verb rather than re-probing,
- * so the order lives here only.
+ * `scripts/install-marketplace-personal.sh` reads the verb rather than re-probing, so the
+ * order lives here only.
  * @type {{source: string, cmd: string, args: string[]}[]}
  */
 export const PLAYWRIGHT_PROBES = [
@@ -67,10 +61,9 @@ export const PLAYWRIGHT_PROBES = [
 export const PLAYWRIGHT_INSTALL_HINT = 'npm i -g playwright';
 
 /**
- * A bounded, throw-free single probe. `proc.mjs`'s `run` has no timeout, and a probe
- * that outlives its answer is the failure this bound exists for — so this reaches
- * `spawnSync` directly. A missing binary, a non-zero exit, and a timeout are all one
- * answer here: "this did not resolve".
+ * A bounded, throw-free single probe. Reaches `spawnSync` directly because `proc.mjs`'s
+ * `run` has no timeout. A missing binary, a non-zero exit, and a timeout are one answer:
+ * this did not resolve.
  * @param {string} cmd
  * @param {string[]} args
  * @param {number} [timeoutMs]
@@ -87,16 +80,15 @@ export function boundedProbe(cmd, args, timeoutMs = PROBE_TIMEOUT_MS) {
     });
     return { ok: !r.error && r.status === 0, stdout: r.stdout ?? '' };
   } catch {
-    // spawnSync reports ENOENT and a timeout through `error` rather than by throwing;
-    // this covers whatever else it might throw, because doctor never fails on a probe.
+    // ENOENT and a timeout arrive through `error`; this covers anything spawnSync throws.
     return { ok: false, stdout: '' };
   }
 }
 
 /**
- * The version number out of a `--version` line, which the two CLIs word differently
- * ("Version 1.49.0", a bare "1.49.0"). Falls back to the whole first line rather than
- * reporting nothing, so an unrecognized wording still names what answered.
+ * The version number out of a `--version` line, whose wording differs between the two
+ * CLIs. Falls back to the whole first line, so an unrecognized wording still names
+ * what answered.
  * @param {string} out
  * @returns {string | null}
  */
@@ -107,9 +99,8 @@ function versionFrom(out) {
 }
 
 /**
- * Whether this **device** has Playwright, and by which route. A repository having
- * Playwright of its own is a different question, asked elsewhere; this one is about the
- * machine, so it is reported next to `node`, `git`, and `gh`.
+ * Whether this **device** has Playwright, and by which route. Whether a *repository* has
+ * Playwright of its own is a separate question, asked elsewhere.
  * @param {(cmd: string, args: string[]) => {ok: boolean, stdout: string}} [runner]
  * @returns {{installed: boolean, version: string | null, source: string | null}}
  */
@@ -206,8 +197,7 @@ export function run() {
     git: probe('git', ['--version']),
     // gh is only needed by the `pr` verb; the rest of the toolkit works without it.
     gh: probe('gh', ['--version']),
-    // Playwright is needed by no verb at all — it is reported because a closed-loop check
-    // picks its driver tier from it, and that decision needs a fact rather than a guess.
+    // Needed by no verb; reported because a closed-loop check picks its driver tier from it.
     playwright: playwright(),
   };
 }

@@ -1,6 +1,5 @@
-// `doctor`'s Playwright probe. The three properties worth proving are the ones a device
-// with no Playwright would otherwise turn into a hang or a crash: the probe order, that a
-// missing binary is an answer rather than a throw, and that the time bound is real.
+// `doctor`'s Playwright probe: the probe order, that a missing binary is an answer rather
+// than a throw, and that the time bound is real.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -27,7 +26,7 @@ function stub(answers) {
 test('the global CLI answers first and nothing else is probed', () => {
   const { runner, calls } = stub({ 'playwright-cli': 'Version 1.49.0\n', npx: '1.40.0\n' });
   assert.deepEqual(playwright(runner), { installed: true, version: '1.49.0', source: 'playwright-cli' });
-  // Order matters: the second probe must not run once the first resolved.
+  // The second probe must not run once the first resolved.
   assert.equal(calls.length, 1);
 });
 
@@ -53,7 +52,7 @@ test('the npx probe never installs', () => {
   assert.ok(npx.args.includes('--no-install'));
   // Every probe is a version read and nothing else.
   for (const p of PLAYWRIGHT_PROBES) assert.ok(p.args.includes('--version'));
-  // The hint is printed by the installer; it must stay a single command.
+  // The installer echoes the hint, so it must stay a single command.
   assert.ok(!PLAYWRIGHT_INSTALL_HINT.includes('\n'));
 });
 
@@ -72,10 +71,10 @@ test('a probe that would hang is abandoned at its bound', () => {
 test('the marketplace installer prints that command, and installs nothing', () => {
   const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
   const installer = readFileSync(join(repoRoot, 'scripts', 'install-marketplace-personal.sh'), 'utf8');
-  // Pinned to the export so the two cannot drift apart silently.
+  // Pinned to the export so the two cannot drift apart.
   assert.ok(installer.includes(PLAYWRIGHT_INSTALL_HINT), 'the installer names the hint verbatim');
-  // Printed, never run. Every line mentioning Playwright must be a comment, the hint's
-  // own assignment, an `echo`, or the non-installing `doctor` probe — never an install.
+  // Every line mentioning Playwright must be a comment, the hint's own assignment, an
+  // `echo`, or the non-installing `doctor` probe — never an install.
   for (const line of installer.split('\n')) {
     if (!/playwright/i.test(line)) continue;
     assert.ok(
@@ -96,8 +95,8 @@ test('doctor reports the playwright object on this device, whatever it holds', (
     doctor()
   );
   const { installed, version, source } = result.playwright;
-  // Whichever way this device answers, the three fields agree with each other: a probe
-  // that resolved names both a version and itself, and one that did not nulls both.
+  // The three fields agree either way: a probe that resolved names a version and itself,
+  // one that did not nulls both.
   if (installed === true) {
     assert.ok(version !== null && version.length > 0, 'an installed Playwright names a version');
     assert.ok(

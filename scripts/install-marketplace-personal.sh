@@ -60,24 +60,16 @@ if [ -d "$AGENTS_SRC" ]; then
   echo "Linked $agents_linked subagent definition(s) into $AGENTS_DEST (skipped $agents_skipped)."
 fi
 
-# Playwright is a device-level fact, not something this installer provides: a closed-loop
-# check reads it off `my-command-tools doctor` to pick a driver tier. It is *printed* when
-# absent and never installed — neither the CLI nor a browser. Downloading a browser is not
-# a side effect anyone asked for by installing command files, and a device without
-# Playwright has not opted into that tier. Absent Playwright is therefore never a failure
-# here: this block reports whatever it finds and exits successfully either way.
-#
-# The probe order and the printed command both live in src/toolkit/verbs/doctor.mjs
-# (PLAYWRIGHT_PROBES, PLAYWRIGHT_INSTALL_HINT) and are read back off `doctor` rather than
-# re-probed here, so there is one place a probe can change. doctor.test.mjs pins the
-# command below to that export.
+# Report the device's Playwright and print the install command when it is absent. Never
+# installs the CLI or a browser, and absence is not a failure — this block exits 0 either way.
+# The probe order and this command live in src/toolkit/verbs/doctor.mjs
+# (PLAYWRIGHT_PROBES, PLAYWRIGHT_INSTALL_HINT); doctor.test.mjs pins the two together.
 PLAYWRIGHT_HINT="npm i -g playwright"
 
 playwright_state() {
   command -v node >/dev/null 2>&1 || { echo unknown; return 0; }
   [ -f "$REPO_ROOT/src/toolkit/cli.mjs" ] || { echo unknown; return 0; }
-  # `--compact` prints the whole result on one line, so the nested field is greppable
-  # without a JSON parser — the toolkit ships zero dependencies and jq is not a given.
+  # `--compact` puts the result on one line, so the nested field is greppable without jq.
   if node "$REPO_ROOT/src/toolkit/cli.mjs" doctor --compact 2>/dev/null |
     grep -q '"playwright":{"installed":true'; then
     echo present
