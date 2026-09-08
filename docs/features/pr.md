@@ -34,6 +34,35 @@ existing draft stays a draft, flag or not, and `/pr` never promotes one — the 
 `gh pr ready --undo` only to move a non-draft PR *into* draft. Only
 `/god` promotes a draft, deliberately, right before merging.
 
+### The description's shape is stated, checked, and measured
+
+"Concise bullet-point form" was one sentence at the head of a step that then spent about
+350 words on transport mechanics, plus one Notes bullet at the foot of the file that a run
+only reached after the body was already written. It lost: a recorded run produced a
+1244-word body with 9 headers and 10 standalone prose paragraphs with that rule in place.
+
+The rule now owns its own step and states numbers instead of adjectives, in
+`src/shared/pr-body-shape.md` so it travels with any command that reaches `/pr`. Bullets
+only — a line that is neither a `-` bullet nor a `##` header does not belong; the first
+line is a header, never prose; one idea per bullet at one to two sentences, and a bullet
+past about 40 words is split or cut; headers only past about 6 bullets and 4 at most,
+sentence case, 2 to 4 words; under 400 words, hard stop at 600. The named failure mode is
+writing the body as a record of the author's work — compliance notes, gate output, docs
+inventories, "what I checked" — each of which earns one terse bullet or none, and belongs
+in the run's closing turn instead. The test for any line is whether a reviewer who never
+saw the request would act differently for having read it.
+
+Three things hold the rule up rather than one. The `unslop` skill runs over the body file
+before publishing, conditional on it being installed device-locally at
+`~/.claude/skills/unslop` — it is a skill, so its absence from `ls ~/.claude/commands/`
+proves nothing, and a run that genuinely cannot find it says so in its report. A numeric
+self-check runs immediately before the `my-command-tools pr` call — word count, em dashes,
+bold runs, non-bullet lines — with the four numbers stated in the report, mirroring
+`/task` Step 2.5's anti-slop lint. And the verb itself measures what it is handed:
+`my-command-tools pr` computes the word count and bullet count from the `--body-file` and
+returns `bodyWarnings` when the body is over budget or carries no bullets. That last one
+warns and never blocks, and it is the only one a model cannot skim past.
+
 ### Assets in the description are never dropped
 
 Updating a PR rewrites its body wholesale, and the replacement is authored from the

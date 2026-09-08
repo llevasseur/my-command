@@ -14,7 +14,7 @@ import { porcelain } from '../lib/repo.mjs';
 import { run as cleanup } from './cleanup.mjs';
 import { run as commit, usage as commitUsage } from './commit.mjs';
 import { run as concepts, line as conceptsLine } from './concepts.mjs';
-import { run as pr, usage as prUsage } from './pr.mjs';
+import { bodyWarnings, run as pr, usage as prUsage } from './pr.mjs';
 import { run as scope } from './scope.mjs';
 import { run as state } from './state.mjs';
 import { run as verify } from './verify.mjs';
@@ -577,6 +577,69 @@ test('pr adds nothing when the previous description had no assets', () => {
     const r = pr(ctx(dir, [], { title: 'T', body: '- new prose' }));
     assert.equal(r.assetsPreserved, 0);
     assert.doesNotMatch(calls(), /## Assets/);
+  } finally {
+    restore();
+  }
+});
+
+test('pr reports no bodyWarnings for a short bulleted description', () => {
+  const { dir, restore } = repoWithFakeGh(openPr({}));
+  try {
+    const r = pr(ctx(dir, [], { title: 'T', body: '## What changed\n\n- tightened the shape rule\n' }));
+    assert.equal(r.bodyWarnings, undefined);
+  } finally {
+    restore();
+  }
+});
+
+test('pr warns about a body with no bullets, and still publishes it', () => {
+  const { dir, restore } = repoWithFakeGh(openPr({}));
+  try {
+    const r = pr(ctx(dir, [], { title: 'T', body: 'This PR does a thing, at length, in prose.' }));
+    assert.equal(r.action, 'updated');
+    assert.match((r.bodyWarnings ?? []).join('\n'), /no bullets/);
+  } finally {
+    restore();
+  }
+});
+
+test('pr warns about a body past the word budget', () => {
+  const { dir, restore } = repoWithFakeGh(openPr({}));
+  try {
+    const long = `- ${'word '.repeat(450)}`;
+    const r = pr(ctx(dir, [], { title: 'T', body: long }));
+    assert.match((r.bodyWarnings ?? []).join('\n'), /over the 400-word target/);
+  } finally {
+    restore();
+  }
+});
+
+test('pr escalates the warning past the hard limit', () => {
+  const { dir, restore } = repoWithFakeGh(openPr({}));
+  try {
+    const long = `- ${'word '.repeat(700)}`;
+    const r = pr(ctx(dir, [], { title: 'T', body: long }));
+    assert.match((r.bodyWarnings ?? []).join('\n'), /past the 600-word limit/);
+  } finally {
+    restore();
+  }
+});
+
+test('bodyWarnings ignores bullets inside a fenced code block', () => {
+  const pasted = ['Some prose about the change.', '', '```diff', '- const a = 1;', '+ const a = 2;', '```', ''].join(
+    '\n',
+  );
+  assert.match(bodyWarnings(pasted).join('\n'), /no bullets/);
+  assert.deepEqual(bodyWarnings('## H\n\n- a real bullet\n'), []);
+});
+
+test('pr reports bodyWarnings on the created path too', () => {
+  // Anything but OPEN reads as no existing PR, which is the create branch of the verb.
+  const { dir, restore } = repoWithFakeGh(openPr({ state: 'CLOSED' }));
+  try {
+    const r = pr(ctx(dir, [], { title: 'T', body: 'Prose with no bullet anywhere in it.' }));
+    assert.equal(r.action, 'created');
+    assert.match((r.bodyWarnings ?? []).join('\n'), /no bullets/);
   } finally {
     restore();
   }

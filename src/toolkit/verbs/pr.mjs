@@ -7,6 +7,11 @@ import { run as exec, ToolkitError, UsageError } from '../lib/proc.mjs';
 import { commitsSince, currentBranch, defaultBranch, repoRoot, resolveBase } from '../lib/repo.mjs';
 import { textArg } from '../lib/text-arg.mjs';
 
+// Reported, never enforced: no count of the caller's prose is worth refusing a PR over.
+// Bullets are counted alongside words because a four-paragraph body can come in under budget.
+const WORD_BUDGET = 400;
+const WORD_LIMIT = 600;
+
 export const usage = `pr [--title <text>] --body-file <path> [--draft] [--base <branch>] [--retitle]
 
 Push the current branch and create or update its PR.
@@ -31,8 +36,46 @@ heredoc is refused wholesale inside an isolated worktree. Use \`--body-file\`.
 Assets already in an existing PR's description — images, videos, GitHub attachment
 links — are always carried over into the new body. They are never dropped.
 
+The description's shape is measured, never enforced: a body over ${WORD_BUDGET} words, or one
+carrying no bullet at all, comes back as \`bodyWarnings\` alongside the PR that was still
+created or updated.
+
 A \`must be a collaborator\` rejection is resolved here — by retrying under a token
 belonging to the repository owner, then over REST — and never returned as an error.`;
+
+/**
+ * What is wrong with a description's shape. Empty when it is within budget and has a bullet.
+ * @param {string} body
+ * @returns {string[]}
+ */
+export function bodyWarnings(body) {
+  const words = body.split(/\s+/).filter(Boolean).length;
+
+  // A pasted diff is full of `- ` lines; counting them lets a prose body claim a bullet.
+  let fenced = false;
+  let bullets = 0;
+  for (const line of body.split('\n')) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      fenced = !fenced;
+      continue;
+    }
+    if (!fenced && /^\s*[-*] /.test(line)) bullets += 1;
+  }
+
+  /** @type {string[]} */
+  const warnings = [];
+  if (words > WORD_LIMIT) {
+    warnings.push(
+      `body is ${words} words, past the ${WORD_LIMIT}-word limit — it is being written for the author rather than the reviewer`,
+    );
+  } else if (words > WORD_BUDGET) {
+    warnings.push(`body is ${words} words, over the ${WORD_BUDGET}-word target`);
+  }
+  if (bullets === 0 && words > 0) {
+    warnings.push('body has no bullets — a PR description is bullets and short headers, not prose');
+  }
+  return warnings;
+}
 
 /**
  * The subject of the branch's first commit, used when `--title` is absent.
@@ -59,6 +102,21 @@ function restCall(cwd, method, path, body) {
   return () => exec('gh', ['api', '--method', method, path, '--input', '-'], { cwd, input: JSON.stringify(body) });
 }
 
+/**
+ * What the verb reports back — one shape for both paths. `assetsPreserved` is an update's
+ * count; `bodyWarnings` appears only when the description's shape is worth flagging.
+ * @typedef {object} PrResult
+ * @property {'created' | 'updated'} action
+ * @property {number | null} number
+ * @property {string | null} url
+ * @property {string} branch
+ * @property {boolean} draft
+ * @property {string} identity
+ * @property {string} [base]
+ * @property {number} [assetsPreserved]
+ * @property {string[]} [bodyWarnings]
+ */
+
 /** @param {import('../cli.mjs').Ctx} ctx */
 export function run(ctx) {
   const cwd = repoRoot(ctx.cwd);
@@ -71,6 +129,7 @@ export function run(ctx) {
   const draft = bool(ctx.flags.draft);
   const base = str(ctx.flags.base) ?? def;
   const title = str(ctx.flags.title)?.trim() || firstCommitSubject(cwd, str(ctx.flags.base));
+  const warnings = bodyWarnings(body);
 
   const push = exec('git', ['push', '-u', 'origin', 'HEAD'], { cwd });
   if (!push.ok) throw new ToolkitError('git push failed', { code: push.code, stderr: push.stderr });
@@ -104,7 +163,8 @@ export function run(ctx) {
     // Only ever move a PR toward draft on request; never silently flip an existing
     // draft to ready, which would put it in front of reviewers early.
     if (draft && !existing.isDraft) exec('gh', ['pr', 'ready', String(existing.number), '--undo'], { cwd });
-    return {
+    /** @type {PrResult} */
+    const result = {
       action: 'updated',
       number: existing.number,
       url: existing.url,
@@ -113,6 +173,8 @@ export function run(ctx) {
       assetsPreserved: merged.preserved,
       identity: attempt.identity,
     };
+    if (warnings.length) result.bodyWarnings = warnings;
+    return result;
   }
 
   const args = ['pr', 'create', '--base', base, '--title', title, '--body', body];
@@ -138,7 +200,8 @@ export function run(ctx) {
   }
 
   const now = findExisting(cwd);
-  return {
+  /** @type {PrResult} */
+  const result = {
     action: 'created',
     number: now?.number ?? null,
     url: now?.url ?? created.stdout.split('\n').pop() ?? null,
@@ -147,6 +210,8 @@ export function run(ctx) {
     draft,
     identity: attempt.identity,
   };
+  if (warnings.length) result.bodyWarnings = warnings;
+  return result;
 }
 
 /**
