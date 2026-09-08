@@ -370,8 +370,6 @@ test('worktree begin re-opens a shots directory that is already there', () => {
   writeFileSync(join(first.shotsDir, 'home.png'), 'first run\n');
   worktree(ctx(dir, ['end'], { branch: 'feat/again', force: true, 'drop-shots': true }));
 
-  // The keep from the first run is beside the point: what matters is that creating the
-  // directory a second time is not an error.
   const second = begun(worktree(ctx(dir, ['begin'], { branch: 'feat/again', existing: true })));
   assert.equal(existsSync(second.shotsDir), true);
 });
@@ -385,8 +383,7 @@ test('worktree end keeps the screenshots under <keep>/<repo>/<branch>/ before re
   writeFileSync(join(tree.shotsDir, 'round-2', 'detail.png'), 'more pixels\n');
 
   const r = ended(worktree(ctx(dir, ['end'], { branch: 'feat/shots/deep', force: true })));
-  // A slashed branch nests, one directory per segment — the destination git's own ref
-  // namespace guarantees is free.
+  // A slashed branch nests, one directory per segment.
   assert.equal(r.shotsKept, join(root, basename(dir), 'feat', 'shots', 'deep'));
   assert.equal(r.shotsDropped, false);
   assert.equal(readFileSync(join(String(r.shotsKept), 'home.png'), 'utf8'), 'pixels\n');
@@ -416,7 +413,7 @@ test('worktree end reports no destination when there is nothing to keep', () => 
   keep();
   const { dir } = repo();
   const tree = begun(worktree(ctx(dir, ['begin'], { branch: 'feat/quiet' })));
-  // Empty is the common case, and an absent directory has to read the same way.
+  // An absent directory has to read the same way as an empty one.
   rmSync(tree.shotsDir, { recursive: true });
 
   const r = ended(worktree(ctx(dir, ['end'], { branch: 'feat/quiet', force: true })));
@@ -445,7 +442,6 @@ test('worktree end leaves the screenshots in place when it refuses to remove', (
   writeFileSync(join(tree.shotsDir, 'home.png'), 'still being worked on\n');
 
   assert.throws(() => worktree(ctx(dir, ['end'], { branch: 'feat/unpushed' })), /not on origin/);
-  // The worktree survived, so its screenshots belong to it still.
   assert.equal(readFileSync(join(tree.shotsDir, 'home.png'), 'utf8'), 'still being worked on\n');
 });
 

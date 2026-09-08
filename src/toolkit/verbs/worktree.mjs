@@ -9,8 +9,7 @@
 //
 // `begin` and `end` also bracket the worktree's screenshots: `begin` opens
 // `.my-command/shots/` inside the checkout for anything that captures the running app,
-// and `end` moves what landed there into a device-wide keep before the directory is
-// removed. Without that, evidence gathered against a branch dies with the worktree.
+// and `end` moves what landed there into a device-wide keep before the directory goes.
 import { cpSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, extname, join, resolve } from 'node:path';
@@ -57,8 +56,7 @@ function shotsIn(path) {
 }
 
 /**
- * The device-wide keep. Expanded from the home directory at runtime rather than written
- * down, so nothing device-specific reaches the repository.
+ * The device-wide keep, expanded from the home directory at runtime.
  * `MY_COMMAND_SHOTS_DIR` overrides it, which is how the tests keep out of a real home.
  * @returns {string}
  */
@@ -67,9 +65,8 @@ function keepRoot() {
 }
 
 /**
- * One path component, safe to join. Git already refuses a ref component that is `.`, `..`,
- * or starts with a dot, but the keep path is built from a branch name and is not the place
- * to trust that.
+ * One path component, safe to join. Git already refuses a ref component of `.` or `..`;
+ * a keep path built from a branch name does not lean on that.
  * @param {string} part @returns {string}
  */
 function segment(part) {
@@ -87,17 +84,14 @@ function segment(part) {
 function repoName(cwd) {
   const common = exec('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd });
   if (!common.ok || !common.stdout) return basename(cwd);
-  // `/path/to/repo/.git` names the repo one level up; a bare `/path/to/repo.git` names it
-  // outright.
+  // A `.git` directory names the repo one level up; a bare repo names it outright.
   const name = basename(common.stdout);
   return name === '.git' ? basename(dirname(common.stdout)) : name.replace(/\.git$/, '');
 }
 
 /**
- * `name` inside `dir`, suffixed until it is free. A second run against the same branch
- * would otherwise land on the first run's filenames — screenshot tools name by route and
- * step, so collisions are the norm rather than the exception, and overwriting silently
- * destroys the evidence this keep exists to hold.
+ * `name` inside `dir`, suffixed until it is free. Screenshot tools name by route and step,
+ * so a second run against the same branch lands on the first run's filenames.
  * @param {string} dir @param {string} name @returns {string}
  */
 function freeName(dir, name) {
@@ -117,9 +111,8 @@ function moveInto(from, dir, name) {
   try {
     renameSync(from, target);
   } catch {
-    // A rename across filesystems fails outright (EXDEV), and the keep sitting in the home
-    // directory while the worktree sits on another volume is an ordinary setup rather than
-    // an exotic one. Copy-then-delete is the same move by a slower route.
+    // A rename across filesystems fails outright with EXDEV, and the keep and the worktree
+    // can sit on different volumes. Copy-then-delete is the same move by a slower route.
     cpSync(from, target, { recursive: true });
     rmSync(from, { recursive: true, force: true });
   }
@@ -130,11 +123,10 @@ function moveInto(from, dir, name) {
  * `<keep>/<repo>/<branch>/`, or delete them when the caller asked for that.
  *
  * A slashed branch becomes **nested** directories, one per segment, rather than one
- * flattened name. Git's ref namespace already forbids a branch existing both as a ref and
- * as another branch's directory prefix, so nesting cannot collide — whereas flattening
- * would put `feat/a-b` and `feat-a/b` in the same place.
+ * flattened name: git's ref namespace forbids a branch being both a ref and another
+ * branch's directory prefix, so nesting cannot collide where flattening can.
  *
- * An absent or empty directory is not a failure: most branches capture nothing.
+ * An absent or empty directory is not a failure — most branches capture nothing.
  * @param {string} worktreePath @param {string} cwd @param {string} branch @param {boolean} drop
  * @returns {{shotsKept: string|null, shotsDropped: boolean}}
  */
@@ -369,8 +361,7 @@ function report(ctx, made) {
   const { path } = made;
 
   // Both the created and the `--existing` path land here, so both get the directory.
-  // Recursive mkdir is idempotent, which is what makes re-begetting a branch's worktree
-  // free of a pre-flight check.
+  // Recursive, so re-creating it is not an error.
   const shotsDir = shotsIn(path);
   mkdirSync(shotsDir, { recursive: true });
 
@@ -394,7 +385,7 @@ function report(ctx, made) {
     // the answer where the mistake was made.
     workingRoot: path,
     // Where anything capturing the running app should write. `worktree end` moves whatever
-    // is here into the device-wide keep, so a screenshot outlives the checkout.
+    // is here into the device-wide keep.
     shotsDir,
     enterWorktree:
       'not needed — resolve every read, edit, commit and --cwd as an absolute path under ' +
@@ -431,9 +422,9 @@ function end(ctx, cwd) {
   // Before the removal, not after — a survivor outlives the directory silently.
   const reaped = bool(ctx.flags['no-reap']) ? [] : reapProcesses(tree.path);
 
-  // After the reap and before the removal: a process still writing screenshots would
-  // otherwise race the move, and once the directory is gone there is nothing left to keep.
-  // Past the refusals too, so a worktree that survives keeps its screenshots with it.
+  // After the reap and before the removal: a survivor would race the move, and a removed
+  // directory has nothing left to keep. Past the refusals too, so a worktree that survives
+  // keeps its screenshots.
   const shots = keepShots(tree.path, cwd, branch, bool(ctx.flags['drop-shots']));
 
   const args = ['worktree', 'remove', tree.path];
