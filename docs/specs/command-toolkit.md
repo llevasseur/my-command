@@ -97,6 +97,47 @@ checks one out (`/fb --target`, `/review`, `/revive`, `/merge-deps`). It refuses
 an existing branch without that flag and refuses `--base` with it, preventing a
 fresh branch from abandoning existing commits.
 
+`begin` and `end` also bracket the branch's **screenshots**. `begin` reports
+`shotsDir` — `.my-command/shots/` inside the new checkout, as an absolute path —
+and creates it on both the created-branch and the `--existing` path. Creation is a
+recursive `mkdir`, so re-begetting a branch's worktree needs no pre-flight check.
+Nothing in the repository ignores that path: `.my-command/` is excluded
+device-wide through the user's global git excludes, which is why the directory can
+sit inside the checkout without appearing in any branch's diff.
+
+`end` empties it **before** the worktree is removed, reporting the destination as
+`shotsKept` — `~/.my-command/shots/<repo>/<branch>/`, the home directory expanded
+at runtime rather than written down. `<repo>` is read from the *common* git dir,
+not from the caller's cwd, because `end` is routinely called from inside a worktree
+whose basename is the worktree's rather than the repo's. **A slashed branch becomes
+nested directories, one per segment** — `feat/a/b` keeps as `…/feat/a/b/` — not one
+flattened name. Git's ref namespace already forbids a branch existing both as a ref
+and as another branch's directory prefix, so nesting cannot collide, whereas
+flattening would put `feat/a-b` and `feat-a/b` in the same place. Every segment is
+still sanitized to `[A-Za-z0-9._-]` before it is joined, since a keep path built
+from a branch name is not the place to trust git's own ref rules.
+
+Three failures the move survives, each of them ordinary rather than exotic: the
+destination not existing (created recursively), a filename already there from a
+previous run against the same branch (suffixed `-2`, `-3`, … before the extension,
+never overwritten — screenshot tools name by route and step, so collisions are the
+norm and a silent overwrite destroys the evidence the keep exists to hold), and a
+rename across filesystems, which fails outright with `EXDEV` when the home
+directory and the worktree sit on different volumes (copy-then-delete, the same
+move by a slower route). An absent or empty directory is not a failure: most
+branches capture nothing, and that reports `shotsKept: null`.
+
+`--drop-shots` deletes the directory instead, reporting `shotsDropped: true` and
+`shotsKept: null` — the flag's effect, not a count. `MY_COMMAND_SHOTS_DIR`
+overrides the keep root, which is how the tests exercise the move for real without
+writing into a developer's home directory.
+
+The keep sits **after the reap and before the removal**. After, because a process
+still writing screenshots would otherwise race the move; before, because once the
+directory is gone there is nothing left to keep. It is also past `end`'s refusals,
+so a worktree that survives an unpushed-HEAD refusal keeps its screenshots with it
+rather than having them relocated out from under live work.
+
 `worktree list` reports each worktree as `root`, `path`, `branch`, `head`, and
 `reclaimable` — the last being `true` when that branch is already an ancestor of
 `origin/<default-branch>`, so removing the worktree loses nothing. Nothing previously
@@ -402,6 +443,18 @@ with `allowJs` + `checkJs` + `noEmit`, run as `pnpm run check:toolkit`.
 - [ ] `worktree begin --existing` checks a branch out at its own tip; without the flag an
       existing branch is refused.
 - [ ] `worktree end` refuses a worktree with unpushed commits absent `--force`.
+- [ ] `worktree begin` reports `shotsDir` and creates it, on the created-branch path and
+      the `--existing` path alike, and creating it a second time is not an error.
+- [ ] `worktree end` moves the shots to `~/.my-command/shots/<repo>/<branch>/` before the
+      checkout is removed, reports that absolute path as `shotsKept`, nests a slashed
+      branch one directory per segment, creates a destination that is not there, suffixes
+      rather than overwrites a filename a previous run already kept, and falls back to
+      copy-then-delete when the rename crosses filesystems.
+- [ ] `worktree end` reports `shotsKept: null` rather than failing when the shots
+      directory is empty or absent, and leaves the shots in place when it refuses to
+      remove the worktree.
+- [ ] `worktree end --drop-shots` deletes the shots and reports `shotsDropped: true` with
+      `shotsKept: null`, writing nothing to the keep.
 - [ ] `worktree list` marks a branch already merged into `origin/<default>` as
       `reclaimable: true`, live work as `false`, and the default branch as `false`;
       with no `origin/<default>` on disk it reports `comparedWith: null` and
