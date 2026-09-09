@@ -201,7 +201,9 @@ Repo-wide smoke scenarios are optional and off by default — this step exercise
 Persisted browser spec files are out of scope; the specs and logs the verifier writes are
 scratch under `$CLAUDE_JOB_DIR/tmp`. Its **screenshots** are not scratch: they land in the
 `shotsDir`, and Step 3's `worktree end` preserves them to `~/.my-command/shots/<repo>/<branch>/`
-before it removes the workspace. Nothing attaches them to the PR.
+before it removes the workspace. **Step 3's `/my-command:pr` embeds them in the PR** when the diff touches
+frontend code, so a pair captured as `<view>-before.png` and `<view>-after.png` becomes a
+before/after row rather than two loose files.
 
 ## Step 3 — Clean, then PR (inline by default; one fresh subagent with `--sub`)
 

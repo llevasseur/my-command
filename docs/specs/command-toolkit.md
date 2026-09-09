@@ -4,7 +4,7 @@ title: Command toolkit
 description: The device-wide `my-command-tools` CLI that commands call for the deterministic git/gh plumbing of a workflow run, and how it ships with every install mode.
 tags: [process, toolkit, install, cli]
 timestamp: 2026-07-25
-updated: 2026-09-08
+updated: 2026-09-09
 ---
 
 # Command toolkit
@@ -131,6 +131,29 @@ branches capture nothing, and that reports `shotsKept: null`.
 `shotsKept: null` — the flag's effect, not a count. `MY_COMMAND_SHOTS_DIR`
 overrides the keep root, which is how the tests exercise the move for real without
 writing into a developer's home directory.
+
+`pr` closes that loop at the other end. A branch whose diff touches frontend code gets
+its screenshots — read from the live `.my-command/shots/` and from the keep, the live
+copy winning a collision — appended to the PR body under a `## Screenshots` heading:
+before/after pairs as a table with one row per view, everything unpaired as a two-column
+grid. The gate is the diff, so a repository of CLI verbs and markdown never trips it, and
+both silent paths stay silent — no frontend change, and no screenshots, each attach
+nothing and report nothing. `--no-shots` switches it off; `shotsWarning` is reserved for
+having something to attach and failing to.
+
+The image bytes go on a **`my-command-shots` branch of the same repository**, linked from
+`raw.githubusercontent.com`. GitHub's own `user-attachments` URLs have no public API, so a
+body written by a tool cannot use them, and of the routes left this one needs no
+credential beyond the push that just happened, creates no release and no gist, and keeps
+the bytes where the PR's own access already reaches. The publish is plumbing —
+`hash-object`, a throwaway index, `commit-tree`, a push straight to the ref — so nothing
+is checked out and the branch under review is never left dirty. Paths are
+content-addressed (`shots/<branch>/<blob>-<name>`), which is what makes a re-run
+idempotent: the same screenshot keeps the same URL, so `pr`'s own asset preservation
+recognises the link already in the body instead of appending it a second time, and a tree
+matching the branch tip pushes nothing. A **private** repository is declined with a
+warning rather than attached, because that URL would need a credential the reviewer's
+browser and GitHub's image proxy both lack.
 
 The keep sits **after the reap and before the removal**. After, because a process
 still writing screenshots would otherwise race the move; before, because once the

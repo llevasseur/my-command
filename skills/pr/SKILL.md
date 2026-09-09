@@ -29,6 +29,15 @@ Parse `--draft` / `-d`; treat remaining text as optional title or context.
 3. Use `my-command-tools pr` when available to push and create or update the PR
    without embedding credentials. Preserve existing body assets. Convert to
    draft only when requested; never silently mark a draft ready.
+   - A branch whose diff changes frontend code — markup, stylesheets, or a
+     script file under a directory that serves a UI — gets the screenshots the
+     verification loop captured for it embedded under a `## Screenshots`
+     heading: before/after pairs as a table with one row per view, anything
+     unpaired as a grid. The helper publishes the image bytes itself and reports
+     the count. Report nothing about screenshots when it reports nothing: a diff
+     with no frontend change, and a frontend change with no screenshots, both
+     attach nothing on purpose. A warning means there was something to attach
+     and it could not be, so name it.
    - **Hand the body over as a file, never on stdin.** Write the description to a
      path and pass `--body-file <absolute path>`. A description is multi-line by
      nature, so `--body -` means composing a heredoc, and a heredoc is refused

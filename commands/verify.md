@@ -129,8 +129,9 @@ The report:
 - contract or detection,
 - the evidence path,
 - **the saved screenshots, each by path.** They outlive this run — `worktree end` moves them to
-  `~/.my-command/shots/<repo>/<branch>/` — so the report is where someone learns they exist. A
-  screenshot nobody was told the path of is evidence nobody reads.
+  `~/.my-command/shots/<repo>/<branch>/`, and `/my-command:pr` embeds them in the PR when the diff touches
+  frontend code — so the report is where someone learns they exist. A screenshot nobody was told
+  the path of is evidence nobody reads.
 
 **The verdict is advisory and this run changes nothing about the branch's fate.** It opens no
 PR, blocks no merge, and fails no build. A `red` here is information for whoever reads it.
@@ -174,6 +175,8 @@ Lead with the verdict, the round count, and the tier.
   means the credentials are withheld and the round reports `unverified`.
 - Persisted Playwright specs are out of scope: the specs and logs the verifier writes are
   scratch under `$CLAUDE_JOB_DIR/tmp` and ship with nothing. **Screenshots are the exception** —
-  they go to the `shotsDir` inside the worktree, and `worktree end` preserves them to
-  `~/.my-command/shots/<repo>/<branch>/` rather than discarding them with the workspace.
+  they go to the `shotsDir` inside the worktree, `worktree end` preserves them to
+  `~/.my-command/shots/<repo>/<branch>/` rather than discarding them with the workspace, and
+  `/my-command:pr` publishes them into the PR body for a frontend change. A pair named
+  `<view>-before.png` / `<view>-after.png` becomes one before/after row there.
 - <!-- include: shared/approval-own-call.md -->**A command that may need approval goes in its own Bash call** — `git fetch`, `git config`, and, as a narrow exception to the general rule to chain dependent mutations, branch-lifecycle operations such as checkout/switch, pull, remote-branch inspection, and local branch deletion. Folding one into an `&&` chain escalates approval to the whole compound command and costs a turn plus a retry. Put status output, pipes, and follow-up verification in separate read-only calls.<!-- /include -->

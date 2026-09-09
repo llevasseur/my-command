@@ -78,7 +78,10 @@ Each round:
 2. Exercise the route at your tier.
 3. Write the full evidence — logs, HTML, console, trace — to `$CLAUDE_JOB_DIR/tmp`. **Every
    screenshot goes into `shotsDir` instead**, named for the route and the round so the files
-   read as evidence after the run is over.
+   read as evidence after the run is over. **Name a comparison `<view>-before.png` and
+   `<view>-after.png`** — one stem, the two sides — when you captured a view both as it was
+   and as the change left it. `/pr` reads that pair into one row of the PR's before/after
+   table, and every screenshot with no such marker goes into a grid below it.
 4. Reply.
 
 ## Replies
