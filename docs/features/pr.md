@@ -197,16 +197,28 @@ path string is byte-for-byte identical to the string passed to `--attach`. An ab
 in both places works and keeps the markdown table intact. When the two differ, `gh` does not
 fail: it appends every attached image to the end of the comment and leaves the body's
 reference as a broken link — which is what a hand test produced when the body said
-`./dashboard-after.png` and `--attach` was given an absolute path. So the verb renders the
-section against each screenshot's own absolute path and hands `--attach` that same string.
-The paths are passed **bare**: `--attach 'file#alt text'` does set alt text from the suffix,
-but its interaction with reference matching is unverified, so the alt text is written
-body-side in the markdown instead. Mechanics confirmed by hand against `gh` 2.100.0.
+`./dashboard-after.png` and `--attach` was given an absolute path. So the verb copies each
+screenshot into a temp directory under a markdown-safe name, renders the section against
+those copies, and hands `--attach` the same strings. Staging rather than attaching in place
+keeps a space or `)` in the repository's own path out of the reference, and keeps the
+user's home path out of the comment. The paths are passed **bare**: `--attach 'file#alt
+text'` does set alt text from the suffix, but its interaction with reference matching is
+unverified, so the alt text is written body-side in the markdown instead. Mechanics
+confirmed by hand against `gh` 2.100.0.
+
+**One comment per PR, not per run.** The body route is idempotent through content-addressed
+paths; the comment route gets the same property from a hidden marker, `<!-- my-command-shots
+<digest> -->`, carrying a hash of the attached names and bytes. Before posting, the verb lists
+the PR's comments for that marker: a match with the same digest is reused as it stands and
+its URL reported, and one with a different digest is deleted once the replacement is up. A
+PR that `/fb` or `/review` updates three times carries one screenshot comment, not three.
 
 The result is reported as `screenshots` either way, with `via` naming the route — `ref` and
 `commit` for the body, `comment` for the comment's URL — so `shotsWarning` is left for what
 genuinely could not be published: images beside no recorded verdict, a comment `gh` refused,
-or the overflow past 50 files.
+or the overflow past 50 files. On a freshly created PR the number comes from the `gh pr view`
+lookup, or from the `/pull/<n>` URL `gh pr create` printed when that lookup misses, so the
+comment is posted either way.
 
 ### Worktree teardown is ownership-scoped
 
