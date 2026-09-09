@@ -11,11 +11,13 @@ import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { flagsFrom } from '../lib/flags.mjs';
 import { porcelain } from '../lib/repo.mjs';
+import { SHOTS_REF } from '../lib/shots.mjs';
 import { run as cleanup } from './cleanup.mjs';
 import { run as commit, usage as commitUsage } from './commit.mjs';
 import { run as concepts, line as conceptsLine } from './concepts.mjs';
 import { bodyWarnings, run as pr, usage as prUsage } from './pr.mjs';
 import { run as scope } from './scope.mjs';
+import { usage as shotsUsage, run as shotsVerb } from './shots.mjs';
 import { run as state } from './state.mjs';
 import { run as verify } from './verify.mjs';
 import { run as worktree } from './worktree.mjs';
@@ -684,6 +686,33 @@ test('pr treats a bare attachment link as an asset and keeps one heading across 
   }
 });
 
+test('pr does not preserve a media tag that carries no source', () => {
+  // Prose about `<img>` tags, which is what this repo's own description carried.
+  const { dir, calls, restore } = repoWithFakeGh(
+    openPr({ body: 'The section embeds `<img>` elements, and a `<video>` is prose too.' }),
+  );
+  try {
+    const r = pr(ctx(dir, [], { title: 'T', body: '- new prose' }));
+    assert.equal(r.assetsPreserved, 0);
+    assert.doesNotMatch(calls(), /## Assets/);
+  } finally {
+    restore();
+  }
+});
+
+test('pr preserves a media element by src, srcset, or poster', () => {
+  const { dir, calls, restore } = repoWithFakeGh(
+    openPr({ body: `<video poster="${SHOT}"></video>\n\n<img srcset="${CLIP}">` }),
+  );
+  try {
+    const r = pr(ctx(dir, [], { title: 'T', body: '- new prose' }));
+    assert.equal(r.assetsPreserved, 2);
+    assert.match(calls(), /## Assets/);
+  } finally {
+    restore();
+  }
+});
+
 test('pr adds nothing when the previous description had no assets', () => {
   const { dir, calls, restore } = repoWithFakeGh(
     openPr({ body: 'Just prose, and a [plain link](https://example.test/docs).' }),
@@ -695,6 +724,173 @@ test('pr adds nothing when the previous description had no assets', () => {
   } finally {
     restore();
   }
+});
+
+/**
+ * A branch with screenshots and a recorded verdict, which is what `pr` gates on.
+ * @param {string} dir @param {string} tier @param {string[]} names
+ */
+function captured(dir, tier, names) {
+  const shots = join(dir, '.my-command', 'shots');
+  mkdirSync(shots, { recursive: true });
+  names.map((name) => writeFileSync(join(shots, name), `pixels for ${name}`));
+  shotsVerb(ctx(dir, ['record'], { tier, verdict: 'red', rounds: '2' }));
+}
+
+test('pr embeds the screenshots a browser tier took, whatever the diff changed', () => {
+  const { dir, git, calls, restore } = repoWithFakeGh(openPr({ body: '' }));
+  try {
+    // A backend-only change: no markup, no stylesheet, no UI directory anywhere in it.
+    writeFileSync(join(dir, 'orders.sql'), 'alter table orders add column total int;\n');
+    git(['add', 'orders.sql']);
+    git(['commit', '-qm', 'feat: widen orders']);
+    captured(dir, 'playwright', ['panel-before.png', 'panel-after.png', 'nav.png']);
+
+    const r = pr(ctx(dir, [], { title: 'T', body: '- widened the table' }));
+    const published = /** @type {{screenshots?: {count: number, ref: string, tier: string, verdict: string}}} */ (r)
+      .screenshots;
+    assert.equal(published?.count, 3);
+    assert.equal(published?.ref, SHOTS_REF);
+    assert.equal(published?.tier, 'playwright');
+    // A red verdict still publishes: the tier gates, the verdict does not.
+    assert.equal(published?.verdict, 'red');
+
+    const log = calls();
+    assert.match(log, /## Screenshots/);
+    assert.match(log, /\| View \| Before \| After \|/);
+    assert.match(log, /\| panel \| <img src="https:\/\/raw\.githubusercontent\.com\/[^"]+-panel-before\.png"/);
+    assert.match(log, /alt="nav\.png"/);
+    const listed = execFileSync('git', ['ls-tree', '-r', '--name-only', `origin/${SHOTS_REF}`], {
+      cwd: dir,
+      encoding: 'utf8',
+    });
+    assert.match(listed, /^shots\/feat\/x\/[0-9a-f]{12}-panel-after\.png$/m);
+    assert.equal(
+      execFileSync('git', ['status', '--porcelain'], { cwd: dir, encoding: 'utf8' }).includes('.sql'),
+      false,
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('pr re-publishing the same screenshots reuses the URL rather than duplicating the image', () => {
+  const { dir, git, calls, restore } = repoWithFakeGh(openPr({ body: '' }));
+  try {
+    mkdirSync(join(dir, 'styles'), { recursive: true });
+    writeFileSync(join(dir, 'styles', 'app.css'), 'body { color: red }\n');
+    git(['add', 'styles/app.css']);
+    git(['commit', '-qm', 'feat: restyle']);
+    captured(dir, 'playwright', ['home.png']);
+
+    const first = pr(ctx(dir, [], { title: 'T', body: '- restyled' }));
+    const second = pr(ctx(dir, [], { title: 'T', body: '- restyled' }));
+    const url = /https:\/\/raw\.githubusercontent\.com\/\S+home\.png/;
+    const urls = calls().match(new RegExp(url, 'g')) ?? [];
+    assert.equal(urls.length, 2);
+    assert.equal(urls[0], urls[1]);
+    // Same bytes, same tree: the second run has nothing to push and says so by reporting
+    // the commit the first one made.
+    const shotsOf = (/** @type {unknown} */ r) => /** @type {{screenshots?: {commit: string}}} */ (r).screenshots;
+    assert.equal(shotsOf(second)?.commit, shotsOf(first)?.commit);
+  } finally {
+    restore();
+  }
+});
+
+test('pr attaches nothing when no browser tier took the screenshots', () => {
+  const { dir, git, calls, restore } = repoWithFakeGh(openPr({ body: '' }));
+  try {
+    mkdirSync(join(dir, 'pages'), { recursive: true });
+    writeFileSync(join(dir, 'pages', 'index.html'), '<p>hi</p>\n');
+    git(['add', 'pages/index.html']);
+    git(['commit', '-qm', 'feat: page']);
+    // A frontend diff nobody drove a browser at, which the old path gate would have
+    // attached anyway.
+    captured(dir, 'http', ['home.png']);
+
+    const r = pr(ctx(dir, [], { title: 'T', body: '- added the page' }));
+    assert.equal(/** @type {{screenshots?: unknown}} */ (r).screenshots, undefined);
+    assert.equal(/** @type {{shotsWarning?: unknown}} */ (r).shotsWarning, undefined);
+    assert.doesNotMatch(calls(), /## Screenshots/);
+  } finally {
+    restore();
+  }
+});
+
+test('pr warns about screenshots that carry no recorded verdict', () => {
+  const { dir, git, calls, restore } = repoWithFakeGh(openPr({ body: '' }));
+  try {
+    writeFileSync(join(dir, 'notes.md'), '# notes\n');
+    git(['add', 'notes.md']);
+    git(['commit', '-qm', 'docs: notes']);
+    mkdirSync(join(dir, '.my-command', 'shots'), { recursive: true });
+    writeFileSync(join(dir, '.my-command', 'shots', 'home.png'), 'pixels');
+
+    const r = pr(ctx(dir, [], { title: 'T', body: '- wrote notes' }));
+    assert.match(/** @type {{shotsWarning: string}} */ (r).shotsWarning, /no recorded verdict/);
+    assert.doesNotMatch(calls(), /## Screenshots/);
+  } finally {
+    restore();
+  }
+});
+
+test('pr says nothing about screenshots for a branch that captured none', () => {
+  const { dir, git, calls, restore } = repoWithFakeGh(openPr({ body: '' }));
+  try {
+    writeFileSync(join(dir, 'notes.md'), '# notes\n');
+    git(['add', 'notes.md']);
+    git(['commit', '-qm', 'docs: notes']);
+
+    const r = pr(ctx(dir, [], { title: 'T', body: '- wrote notes' }));
+    assert.equal(/** @type {{screenshots?: unknown}} */ (r).screenshots, undefined);
+    assert.equal(/** @type {{shotsWarning?: unknown}} */ (r).shotsWarning, undefined);
+    assert.doesNotMatch(calls(), /## Screenshots/);
+  } finally {
+    restore();
+  }
+});
+
+test("pr --no-shots leaves a verified branch's screenshots off the body", () => {
+  const { dir, git, calls, restore } = repoWithFakeGh(openPr({ body: '' }));
+  try {
+    writeFileSync(join(dir, 'notes.md'), '# notes\n');
+    git(['add', 'notes.md']);
+    git(['commit', '-qm', 'docs: notes']);
+    captured(dir, 'playwright', ['home.png']);
+
+    const r = pr(ctx(dir, [], { title: 'T', body: '- wrote notes', 'no-shots': true }));
+    assert.equal(/** @type {{screenshots?: unknown}} */ (r).screenshots, undefined);
+    assert.doesNotMatch(calls(), /## Screenshots/);
+  } finally {
+    restore();
+  }
+});
+
+test('shots record refuses a tier or verdict outside the vocabulary', () => {
+  const { dir } = repoWithOrigin();
+  assert.throws(() => shotsVerb(ctx(dir, ['record'], { tier: 'browser', verdict: 'green' })), /--tier must be one of/);
+  assert.throws(
+    () => shotsVerb(ctx(dir, ['record'], { tier: 'playwright', verdict: 'passed' })),
+    /--verdict must be one of/,
+  );
+  assert.throws(() => shotsVerb(ctx(dir, ['record'], { verdict: 'green' })), /--tier is required/);
+  assert.throws(() => shotsVerb(ctx(dir, ['nope'], {})), /unknown action/);
+  assert.match(shotsUsage, /shots record --tier/);
+});
+
+test('shots read reports the record and the images beside it', () => {
+  const { dir, git } = repoWithOrigin();
+  git(['checkout', '-qb', 'feat/read']);
+  captured(dir, 'playwright', ['home.png', 'settings.png']);
+
+  const r = /** @type {{branch: string, verdict: {tier: string, rounds: number}, shots: string[]}} */ (
+    shotsVerb(ctx(dir, ['read'], {}))
+  );
+  assert.equal(r.branch, 'feat/read');
+  assert.equal(r.verdict.tier, 'playwright');
+  assert.equal(r.verdict.rounds, 2);
+  assert.deepEqual(r.shots, ['home.png', 'settings.png']);
 });
 
 test('pr reports no bodyWarnings for a short bulleted description', () => {

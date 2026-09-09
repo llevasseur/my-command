@@ -6,10 +6,21 @@
 // caller sees a PR and how the identity resolved rather than the condition.
 import { run as exec } from './proc.mjs';
 
-// GitHub's answer when the authenticated account cannot write to the repo. GraphQL-only:
-// the REST endpoints for the same operations accept the token that this rejects, which is
-// why REST is the last fallback below.
-const WRONG_IDENTITY = /must be a collaborator|HTTP 403|Resource not accessible/i;
+// GitHub's answer when the authenticated account cannot write to the repo, in each of the
+// wordings it uses: `does not have the correct permissions` comes back for
+// `updatePullRequest` where `must be a collaborator` comes back for `createPullRequest`,
+// and missing it cost the retry on every `pr edit`. GraphQL-only: the REST endpoints for
+// the same operations accept the token that this rejects, which is why REST is the last
+// fallback below.
+const WRONG_IDENTITY = /must be a collaborator|HTTP 403|Resource not accessible|does not have the correct permissions/i;
+
+/**
+ * Whether a `gh` failure is the wrong account rather than a real refusal.
+ * @param {string} stderr @returns {boolean}
+ */
+export function isWrongIdentity(stderr) {
+  return WRONG_IDENTITY.test(stderr);
+}
 
 /**
  * The `owner/repo` the checkout pushes to. Parsed from the remote URL rather than asked of
@@ -124,7 +135,7 @@ export function ghWrite(cwd, args, opts = {}) {
   const owner = slug?.owner ?? null;
 
   const direct = exec('gh', args, { cwd });
-  if (direct.ok || !WRONG_IDENTITY.test(direct.stderr)) {
+  if (direct.ok || !isWrongIdentity(direct.stderr)) {
     return { result: direct, identity: 'active account', owner };
   }
 

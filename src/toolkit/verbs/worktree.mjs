@@ -11,11 +11,11 @@
 // `.my-command/shots/` inside the checkout for anything that captures the running app,
 // and `end` moves what landed there into a device-wide keep before the directory goes.
 import { cpSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { basename, dirname, extname, join, resolve } from 'node:path';
+import { extname, join, resolve } from 'node:path';
 import { bool, str } from '../lib/flags.mjs';
 import { run as exec, lines, must, ToolkitError, UsageError } from '../lib/proc.mjs';
 import { defaultBranch, repoRoot, resolveBase } from '../lib/repo.mjs';
+import { keepDirFor, shotsIn } from '../lib/shots.mjs';
 
 export const usage = `worktree begin --branch <name> [--base <ref>] [--existing] [--bootstrap]
 worktree end --branch <name> [--force] [--no-reap] [--drop-shots]
@@ -42,51 +42,9 @@ worktree list
 
 const BOOTSTRAP = join('scripts', 'bootstrap-worktree.sh');
 
-/** Where a worktree's screenshots accumulate, relative to its root. */
-const SHOTS = ['.my-command', 'shots'];
-
 /** Branch names contain slashes; worktree directories should not. @param {string} branch */
 function dirFor(branch) {
   return branch.replace(/[/\\]/g, '-');
-}
-
-/** The screenshots directory inside a worktree. @param {string} path @returns {string} */
-function shotsIn(path) {
-  return join(path, ...SHOTS);
-}
-
-/**
- * The device-wide keep, expanded from the home directory at runtime.
- * `MY_COMMAND_SHOTS_DIR` overrides it, which is how the tests keep out of a real home.
- * @returns {string}
- */
-function keepRoot() {
-  return process.env.MY_COMMAND_SHOTS_DIR || join(homedir(), '.my-command', 'shots');
-}
-
-/**
- * One path component, safe to join. Git already refuses a ref component of `.` or `..`;
- * a keep path built from a branch name does not lean on that.
- * @param {string} part @returns {string}
- */
-function segment(part) {
-  const clean = part.replace(/[^A-Za-z0-9._-]/g, '-');
-  return /^\.+$/.test(clean) ? clean.replace(/\./g, '-') : clean || '-';
-}
-
-/**
- * The repository's own name, for the keep's first level.
- *
- * Read from the *common* git dir, not from `cwd`: `end` is routinely called from inside a
- * worktree, whose basename is the worktree's, not the repo's.
- * @param {string} cwd @returns {string}
- */
-function repoName(cwd) {
-  const common = exec('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd });
-  if (!common.ok || !common.stdout) return basename(cwd);
-  // A `.git` directory names the repo one level up; a bare repo names it outright.
-  const name = basename(common.stdout);
-  return name === '.git' ? basename(dirname(common.stdout)) : name.replace(/\.git$/, '');
 }
 
 /**
@@ -140,7 +98,7 @@ function keepShots(worktreePath, cwd, branch, drop) {
   }
   if (entries.length === 0) return { shotsKept: null, shotsDropped: false };
 
-  const to = join(keepRoot(), segment(repoName(cwd)), ...branch.split('/').map(segment));
+  const to = keepDirFor(cwd, branch);
   mkdirSync(to, { recursive: true });
   for (const name of entries) moveInto(join(from, name), to, name);
   rmSync(from, { recursive: true, force: true });

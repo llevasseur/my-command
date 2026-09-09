@@ -29,6 +29,18 @@ Parse `--draft` / `-d`; treat remaining text as optional title or context.
 3. Use `my-command-tools pr` when available to push and create or update the PR
    without embedding credentials. Preserve existing body assets. Convert to
    draft only when requested; never silently mark a draft ready.
+   - A branch whose screenshots were taken by a browser gets them embedded
+     under a `## Screenshots` heading: before/after pairs as a table with one
+     row per view, anything unpaired as a grid. What decides it is the record
+     the verification loop wrote beside the images, naming the driver tier it
+     ran, and not the shape of the diff. So a backend change proven through a
+     frontend that needed no edit still shows its screenshots, and a failing
+     verdict shows them too, since those are the ones a reviewer most needs.
+     The helper publishes the image bytes itself and reports the count, tier,
+     and verdict. Report nothing about screenshots when it reports nothing: a
+     branch with none, and one verified without a browser, both attach nothing
+     on purpose. A warning means there was something to attach and it could not
+     be, usually images with no record beside them, so name it.
    - **Hand the body over as a file, never on stdin.** Write the description to a
      path and pass `--body-file <absolute path>`. A description is multi-line by
      nature, so `--body -` means composing a heredoc, and a heredoc is refused

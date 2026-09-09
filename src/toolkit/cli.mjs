@@ -18,6 +18,7 @@ import * as identity from './verbs/identity.mjs';
 import * as pr from './verbs/pr.mjs';
 import * as prs from './verbs/prs.mjs';
 import * as scope from './verbs/scope.mjs';
+import * as shots from './verbs/shots.mjs';
 import * as stash from './verbs/stash.mjs';
 import * as state from './verbs/state.mjs';
 import * as verify from './verbs/verify.mjs';
@@ -46,6 +47,7 @@ const VERBS = {
   pr,
   prs,
   worktree,
+  shots,
   cleanup,
   identity,
   concepts,
@@ -70,6 +72,7 @@ const SWITCHES = new Set([
   'select',
   'json',
   'no-clipboard',
+  'no-shots',
   'consume',
   'background',
   'all',

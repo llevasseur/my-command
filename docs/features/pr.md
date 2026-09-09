@@ -4,7 +4,7 @@ title: pr
 description: Create or update the PR for the current branch with a concise bulleted description, written straight to GitHub.
 tags: [command, git, github]
 timestamp: 2026-07-15
-updated: 2026-08-02
+updated: 2026-09-09
 ---
 
 # pr
@@ -73,6 +73,13 @@ current body and carries its assets forward: markdown images, `<img>`/`<video>`/
 a repo's own `/assets/` path, `(private-)user-images.githubusercontent.com`), including a
 bare attachment URL, which GitHub embeds on its own.
 
+A media element carrying no source is **not** an asset. `<img>` written inside a sentence
+about `<img>` tags is prose, and the first version preserved it: this repo's own PR
+description grew an `## Assets` heading with a bare `<img>` under it, taken from a bullet
+that explained how the screenshot section is built. The URL is now read from `src`,
+`srcset`, or `poster`, and a match with none of them is skipped rather than carried over as
+its own matched text.
+
 Each is reinserted verbatim, so alt text and sizing attributes survive the round trip.
 Assets are de-duplicated by URL, so the same image appearing twice is carried once.
 Anything the rewritten body already references — matched by URL — is left where the new
@@ -80,6 +87,92 @@ body put it; the rest is appended under an `## Assets` heading, reusing that hea
 the body already has one so repeated updates collect into one section instead of stacking.
 Where markup nests, the outermost match wins, so a `<picture>` is kept whole rather than
 shredded into its `<img>`. Updates report the carry-over count as `assetsPreserved`.
+
+### A browser-verified branch carries its screenshots
+
+`/verify` and `/task` Step 2.6 capture screenshots of the running app into
+`.my-command/shots/` inside the worktree, and `worktree end` preserves them to
+`~/.my-command/shots/<repo>/<branch>/`. Until now nothing put them in front of a reviewer:
+the person who most needed to see what the change looked like had to be told a path on the
+author's machine.
+
+`my-command-tools pr` embeds them, gated on the **verdict `/verify` Step 6 records beside
+them**. That record — `verdict.json`, written by `my-command-tools shots record` — names
+the driver tier the loop ran and the verdict it reached, and `pr` publishes the
+screenshots when the tier is a browser (`playwright`). Three cases follow from that. A
+branch with no screenshots attaches nothing and says nothing. A branch verified at
+`http` or `static` photographed nothing worth showing, so it attaches nothing and says
+nothing too. Screenshots sitting beside no record at all produce a `shotsWarning`, since
+something is there to attach and nothing says whether it may be — in practice that means
+Step 6 was skipped.
+
+**The verdict itself never gates it.** A `red` loop's screenshots are the ones a reviewer
+most needs, and withholding them would hide the failure the loop found, so the verdict is
+reported alongside the count and tier and does nothing else.
+
+### Why the tier, and not the diff
+
+The first version of this gated on the diff: markup and stylesheet extensions counted
+anywhere, script files counted under a directory that serves a UI. It was wrong in both
+directions, and the interesting direction is the first one.
+
+A backend change verified **through** the frontend attached nothing. Widen a datastructure,
+prove in a browser that a dynamic frontend picked it up without needing an edit, and the
+screenshots proving exactly that were withheld, because no frontend file appeared in the
+diff. That is the case where the evidence is least reproducible from the diff alone and so
+most worth attaching. The other direction was quieter but real: a frontend diff nobody ever
+exercised would attach whatever stale images were lying around in the keep.
+
+The tier answers the question the glob was guessing at. `/verify` only reaches the browser
+tier when it actually drove one, and it is the one component that knows which tier it ran.
+So the loop records that fact and `pr` reads it, instead of inferring visual relevance from
+file extensions. The cost is a dependency between two commands that were independent: a
+branch verified before this record existed, or by hand, attaches nothing until
+`shots record` runs.
+
+Screenshots are read from both places they can be: the live `.my-command/shots/` in the
+workspace, which is where they still are when `/task` runs `/pr` before its teardown, and
+the device-wide keep, which is where a `--here` run or a second `/pr` after teardown finds
+them. The workspace wins a name collision, being the newer of the two.
+
+Filenames decide the layout. A stem carrying a `before` or `after` marker at either end —
+`home-before.png`, `after_home.png`, `settings.after.png` — pairs into a **before/after
+table**, one row per view, before column then after; a view with only one side still gets
+its row, with the missing cell saying so, because that is more use to a reviewer than
+losing the pairing. Everything with no marker renders as a **grid**, two columns wide.
+Images are `<img>` elements rather than markdown so a table cell can carry a width, which
+also means the existing asset preservation recognises them and carries them forward by
+`src` on the next update. `worktree end`'s collision suffix is accounted for:
+`home-before-2.png` is the same view as `home-before.png`, not a view called `home-2`.
+`--no-shots` switches the whole thing off.
+
+### Why the bytes live on a side branch
+
+GitHub mints the `user-attachments` URLs behind its own web editor through no public API,
+so a PR body written by a tool cannot use them. That leaves three routes, and this is the
+one the verb takes: **commit the images to a `my-command-shots` branch of the same
+repository and link `raw.githubusercontent.com`.**
+
+It needs no credential beyond the push that has just happened, creates no release and no
+gist, and keeps the images in the one place whose access already matches the PR's. A
+release asset would put screenshots in the repository's release list, which is a
+user-facing surface with a different meaning; a gist would put them under an account
+rather than the repository, outliving any access change to the repo itself.
+
+The publish is git plumbing and never touches the working tree: `hash-object` writes the
+blobs, a throwaway index builds a tree on top of whatever the branch already carries, and
+`commit-tree` makes the commit, which is pushed straight to `refs/heads/my-command-shots`.
+Nothing is checked out and the branch under review is never left dirty. **Every path is
+content-addressed** — `shots/<branch>/<blob>-<name>` — so the same screenshot published
+twice is one blob at one URL: re-running `/pr` neither duplicates an image nor invalidates
+a link already in the body, and a run whose tree matches the branch's tip pushes nothing at
+all. The cost is a branch that only grows, which is the price of links that keep working.
+
+The one case it declines is a **private repository**, where `raw.githubusercontent.com`
+needs a credential neither the reviewer's browser nor GitHub's image proxy has. That is
+reported as a warning rather than attached as a broken image. An unanswerable probe is not
+a private repository: the publish proceeds, since a broken image is recoverable and a
+silently skipped one is not.
 
 ### Worktree teardown is ownership-scoped
 

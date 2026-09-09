@@ -114,9 +114,24 @@ workspace is removed. `.my-command/` is ignored device-wide through the user's
 global git excludes, so the directory can sit inside the checkout without turning
 up in any branch's diff.
 
-`/verify` Step 6 lists the saved files by path. That listing is how anyone learns
-they exist: nothing attaches them to the PR, and a screenshot whose path was
-never reported is evidence nobody reads.
+`/verify` Step 6 lists the saved files by path. A screenshot whose path was never
+reported is evidence nobody reads.
+
+Step 6 also **records what the loop did**, beside the images:
+`my-command-tools shots record --tier <tier> --verdict <verdict> --rounds <n>`
+writes `verdict.json` into the same directory, so `worktree end` carries it into
+the keep along with the screenshots it describes. That record is what makes them
+publishable — `/pr` embeds a branch's screenshots when it says a **browser** tier
+took them, and attaches nothing when no record exists.
+
+Two things about it are deliberate. **Every ending records, not just a green
+one**: a `red` loop's screenshots are the ones a reviewer most needs, so the
+verdict is reported and never used to withhold them. And **the tier is the gate**,
+which puts the weight on naming the tier truthfully. Recording `playwright` for a
+round that only probed over HTTP would put unexercised images in front of a
+reviewer as though a browser had loaded them, so `shots record` refuses a tier or
+verdict outside the vocabulary rather than storing a typo that fails silently
+months later.
 
 ## The advisory tradeoff
 
@@ -163,9 +178,6 @@ apply.
   and deciding to own one is its own decision. Screenshots are the deliberate
   exception — see [Where the screenshots go](#where-the-screenshots-go) — and
   they are preserved outside the repository, not committed to it.
-- **Attaching screenshots to the PR.** The report names their paths and stops
-  there. `gh` 2.97.0 has no `--attach`, so there is no first-class way to do it
-  and a hand-rolled upload is its own decision.
 - **Repo-wide smoke scenarios by default.** Available behind `--smoke`, off
   otherwise. The diff is the subject.
 - **Renaming `my-command-tools verify` to `gates`.** The toolkit verb and this

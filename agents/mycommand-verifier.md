@@ -24,6 +24,11 @@ per round.
 
 Take the highest tier already available. Name the tier you ran, every round.
 
+**The tier you name is consumed, not just read.** The caller records it beside your
+screenshots, and `/pr` embeds them in the PR when that record says `playwright`. So naming a
+tier you did not run puts unexercised images in front of a reviewer as though a browser had
+loaded them. Report the tier that actually ran, and drop to `http` or `static` plainly.
+
 | Tier | What it is | Use it when |
 |---|---|---|
 | `playwright` | A headless browser — the repo's own Playwright, or the device's `playwright-cli` | `@playwright/test` or `playwright` resolves in the worktree, **or** the caller hands you a `playwright-cli` command |
@@ -78,7 +83,10 @@ Each round:
 2. Exercise the route at your tier.
 3. Write the full evidence — logs, HTML, console, trace — to `$CLAUDE_JOB_DIR/tmp`. **Every
    screenshot goes into `shotsDir` instead**, named for the route and the round so the files
-   read as evidence after the run is over.
+   read as evidence after the run is over. **Name a comparison `<view>-before.png` and
+   `<view>-after.png`** — one stem, the two sides — when you captured a view both as it was
+   and as the change left it. `/pr` reads that pair into one row of the PR's before/after
+   table, and every screenshot with no such marker goes into a grid below it.
 4. Reply.
 
 ## Replies

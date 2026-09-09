@@ -5,6 +5,7 @@ import { bool, str } from '../lib/flags.mjs';
 import { ghWrite, originSlug } from '../lib/gh.mjs';
 import { run as exec, ToolkitError, UsageError } from '../lib/proc.mjs';
 import { commitsSince, currentBranch, defaultBranch, repoRoot, resolveBase } from '../lib/repo.mjs';
+import { attachShots } from '../lib/shots.mjs';
 import { textArg } from '../lib/text-arg.mjs';
 
 // Reported, never enforced: no count of the caller's prose is worth refusing a PR over.
@@ -12,7 +13,7 @@ import { textArg } from '../lib/text-arg.mjs';
 const WORD_BUDGET = 400;
 const WORD_LIMIT = 600;
 
-export const usage = `pr [--title <text>] --body-file <path> [--draft] [--base <branch>] [--retitle]
+export const usage = `pr [--title <text>] --body-file <path> [--draft] [--base <branch>] [--retitle] [--no-shots]
 
 Push the current branch and create or update its PR.
 
@@ -28,6 +29,7 @@ Push the current branch and create or update its PR.
                       An existing draft is never taken out of draft, flag or not.
   --base <branch>     Target branch (default: the repo's default branch).
   --retitle           Also update the title of an existing PR.
+  --no-shots          Do not embed the branch's screenshots, whatever the diff touched.
 
 \`--body -\` reads the description from stdin, and the \`PreToolUse\` gate refuses that
 form on sight — the only way to put multi-line prose on stdin is a heredoc, and a
@@ -35,6 +37,18 @@ heredoc is refused wholesale inside an isolated worktree. Use \`--body-file\`.
 
 Assets already in an existing PR's description — images, videos, GitHub attachment
 links — are always carried over into the new body. They are never dropped.
+
+A branch whose screenshots were taken by a **browser** tier gets them embedded under a
+\`## Screenshots\` heading: before/after pairs as a table, one row per view, and
+everything else as a grid. The gate is the tier \`shots record\` wrote beside the images,
+not the shape of the diff — so a backend change proven through a frontend that needed no
+edit still shows its screenshots, and the verdict itself never withholds them. The images
+are published to the \`my-command-shots\` branch of the same repository and linked from
+\`raw.githubusercontent.com\`, at a content-addressed path so the same screenshot keeps
+the same URL across runs. A branch with no screenshots, and one whose screenshots came
+from a non-browser tier, both attach nothing and say nothing. Reported as
+\`screenshots\`, or as \`shotsWarning\` when there was something to attach and it could
+not be.
 
 The description's shape is measured, never enforced: a body over ${WORD_BUDGET} words, or one
 carrying no bullet at all, comes back as \`bodyWarnings\` alongside the PR that was still
@@ -115,6 +129,17 @@ function restCall(cwd, method, path, body) {
  * @property {string} [base]
  * @property {number} [assetsPreserved]
  * @property {string[]} [bodyWarnings]
+ * @property {Screenshots} [screenshots]
+ * @property {string} [shotsWarning]
+ */
+
+/**
+ * @typedef {object} Screenshots
+ * @property {number} count
+ * @property {string} ref
+ * @property {string} commit
+ * @property {string} tier      The driver tier that took them.
+ * @property {string} verdict   The verdict the verification loop ended on.
  */
 
 /** @param {import('../cli.mjs').Ctx} ctx */
@@ -125,16 +150,19 @@ export function run(ctx) {
 
   if (branch === def) throw new ToolkitError(`refusing to open a PR from the default branch (${def})`, { branch });
 
-  const body = textArg(ctx.flags, 'body', 'body-file', { usage });
+  const authored = textArg(ctx.flags, 'body', 'body-file', { usage });
   const draft = bool(ctx.flags.draft);
   const base = str(ctx.flags.base) ?? def;
   const title = str(ctx.flags.title)?.trim() || firstCommitSubject(cwd, str(ctx.flags.base));
-  const warnings = bodyWarnings(body);
+  // Measured on the prose the caller wrote, before the screenshot table is appended.
+  const warnings = bodyWarnings(authored);
 
   const push = exec('git', ['push', '-u', 'origin', 'HEAD'], { cwd });
   if (!push.ok) throw new ToolkitError('git push failed', { code: push.code, stderr: push.stderr });
 
   const slug = originSlug(cwd);
+  const shots = screenshots(ctx, cwd, branch, slug);
+  const body = shots.markdown ? `${authored.replace(/\s+$/, '')}\n\n${shots.markdown}` : authored;
   const existing = findExisting(cwd);
 
   if (existing) {
@@ -174,7 +202,7 @@ export function run(ctx) {
       identity: attempt.identity,
     };
     if (warnings.length) result.bodyWarnings = warnings;
-    return result;
+    return { ...result, ...shotsReport(shots) };
   }
 
   const args = ['pr', 'create', '--base', base, '--title', title, '--body', body];
@@ -211,7 +239,37 @@ export function run(ctx) {
     identity: attempt.identity,
   };
   if (warnings.length) result.bodyWarnings = warnings;
-  return result;
+  return { ...result, ...shotsReport(shots) };
+}
+
+/**
+ * The branch's screenshot section, unless the caller switched it off.
+ * @param {import('../cli.mjs').Ctx} ctx @param {string} cwd @param {string} branch
+ * @param {{owner: string, repo: string} | null} slug
+ * @returns {import('../lib/shots.mjs').Attached}
+ */
+function screenshots(ctx, cwd, branch, slug) {
+  if (bool(ctx.flags['no-shots'])) return { markdown: '', count: 0 };
+  return attachShots(cwd, branch, slug);
+}
+
+/**
+ * What a screenshot attempt adds to the result — nothing at all on the silent paths.
+ * @param {import('../lib/shots.mjs').Attached} shots
+ * @returns {{screenshots?: Screenshots, shotsWarning?: string}}
+ */
+function shotsReport(shots) {
+  if (shots.warning) return { shotsWarning: shots.warning };
+  if (!shots.count || !shots.ref || !shots.commit) return {};
+  return {
+    screenshots: {
+      count: shots.count,
+      ref: shots.ref,
+      commit: shots.commit,
+      tier: shots.tier ?? '',
+      verdict: shots.verdict ?? '',
+    },
+  };
 }
 
 /**
@@ -239,14 +297,16 @@ const ATTACHMENT_URL =
   String.raw`|github\.com/[^\s/)>"']+/[^\s/)>"']+/assets/[^\s)>"']+` +
   String.raw`|(?:private-)?user-images\.githubusercontent\.com/[^\s)>"']+)`;
 
-/** Each asset shape, and where its URL lives. */
+/** Each asset shape, and where its URL lives. No URL means it is not an asset. */
 const ASSET_PATTERNS = [
   // A markdown image, whatever it points at.
   { re: /!\[[^\]]*\]\(\s*<?([^\s)>]+)>?[^)]*\)/g, url: (/** @type {RegExpExecArray} */ m) => m[1] },
-  // A media element, with its closing tag when it has one.
+  // A media element, with its closing tag when it has one. An element carrying no source
+  // is not media: `<img>` inside a sentence about `<img>` tags is prose, and preserving it
+  // put a bare `<img>` under this repo's own `## Assets` heading.
   {
     re: /<(img|video|audio|picture)\b[^>]*?(?:\/>|>(?:[\s\S]*?<\/\1>)?)/gi,
-    url: (/** @type {RegExpExecArray} */ m) => m[0].match(/\bsrc\s*=\s*["']?([^"'\s>]+)/i)?.[1] ?? m[0],
+    url: (/** @type {RegExpExecArray} */ m) => m[0].match(/\b(?:src|srcset|poster)\s*=\s*["']?([^"'\s>]+)/i)?.[1],
   },
   // A markdown link to an attachment host, which GitHub renders as media.
   {
@@ -269,7 +329,9 @@ function extractAssets(body) {
   const found = [];
   for (const { re, url } of ASSET_PATTERNS) {
     for (const m of body.matchAll(re)) {
-      found.push({ start: m.index, end: m.index + m[0].length, snippet: m[0], url: url(m) });
+      const href = url(m);
+      if (!href) continue;
+      found.push({ start: m.index, end: m.index + m[0].length, snippet: m[0], url: href });
     }
   }
   // Outermost match wins, so nested markup is claimed once: sorting longest-first at

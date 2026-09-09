@@ -4,7 +4,7 @@ title: Command toolkit
 description: The device-wide `my-command-tools` CLI that commands call for the deterministic git/gh plumbing of a workflow run, and how it ships with every install mode.
 tags: [process, toolkit, install, cli]
 timestamp: 2026-07-25
-updated: 2026-09-08
+updated: 2026-09-09
 ---
 
 # Command toolkit
@@ -31,6 +31,7 @@ noise, what a PR description should say, or whether a failure is worth fixing.
 | `pr` | push, then create or update the branch's PR |
 | `prs view\|list\|checks` | read-only pull-request lookups; never writes |
 | `worktree begin\|end\|reap\|list` | the isolated-workspace lifecycle, and which worktrees have outlived their branch |
+| `shots record\|read` | what a verification loop did — driver tier, verdict, rounds — written beside the screenshots it took, and read back |
 | `cleanup` | retire a merged branch's local and remote refs, judged against its PR |
 | `identity` | which GitHub account this checkout's remote wants, and `--select` to switch to it |
 | `stash write\|restore\|list` | `/cp`'s five-deep clipboard ring under `~/.claude`, and the clipboard sink |
@@ -131,6 +132,44 @@ branches capture nothing, and that reports `shotsKept: null`.
 `shotsKept: null` — the flag's effect, not a count. `MY_COMMAND_SHOTS_DIR`
 overrides the keep root, which is how the tests exercise the move for real without
 writing into a developer's home directory.
+
+`shots record` writes the third thing that lives in that directory: `verdict.json`, naming
+the driver tier a verification loop ran, the verdict it reached, and the round count. It
+refuses a tier or verdict outside `mycommand-verifier`'s own vocabulary rather than storing
+a typo, since a misspelled tier would record fine and silently withhold the screenshots
+later. `/verify` Step 6 and `/task` Step 2.6 call it on every ending, green or not.
+`shots read` reports the record and the images together, from both locations.
+
+`pr` closes that loop at the other end. A branch whose recorded tier is a **browser** gets
+its screenshots — read from the live `.my-command/shots/` and from the keep, the live copy
+winning a collision — appended to the PR body under a `## Screenshots` heading:
+before/after pairs as a table with one row per view, everything unpaired as a two-column
+grid.
+
+**The gate is that recorded tier and not the shape of the diff**, which is a correction of
+the first version. Gating on changed paths withheld exactly the evidence that mattered
+most: a backend change proven in a browser through a dynamic frontend that needed no edit
+had no frontend file in its diff, so its screenshots were dropped, while a frontend diff
+nobody exercised would have attached whatever stale images the keep still held. The tier is
+the fact the glob was guessing at, and `/verify` is the one component that knows it. The
+verdict is reported and never gates: a `red` loop's screenshots are the ones a reviewer
+most needs. Both silent paths stay silent — no screenshots, and a non-browser tier, each
+attach nothing and report nothing. `--no-shots` switches it off, and `shotsWarning` is
+reserved for images sitting beside no record at all.
+
+The image bytes go on a **`my-command-shots` branch of the same repository**, linked from
+`raw.githubusercontent.com`. GitHub's own `user-attachments` URLs have no public API, so a
+body written by a tool cannot use them, and of the routes left this one needs no
+credential beyond the push that just happened, creates no release and no gist, and keeps
+the bytes where the PR's own access already reaches. The publish is plumbing —
+`hash-object`, a throwaway index, `commit-tree`, a push straight to the ref — so nothing
+is checked out and the branch under review is never left dirty. Paths are
+content-addressed (`shots/<branch>/<blob>-<name>`), which is what makes a re-run
+idempotent: the same screenshot keeps the same URL, so `pr`'s own asset preservation
+recognises the link already in the body instead of appending it a second time, and a tree
+matching the branch tip pushes nothing. A **private** repository is declined with a
+warning rather than attached, because that URL would need a credential the reviewer's
+browser and GitHub's image proxy both lack.
 
 The keep sits **after the reap and before the removal**. After, because a process
 still writing screenshots would otherwise race the move; before, because once the

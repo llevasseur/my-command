@@ -115,11 +115,29 @@ Stop at the ceiling. Record the round count.
 "the build passes", not "no errors in the log". A verifier that cannot name the route, the
 interaction, and the observed result reports `unverified` instead.
 
-## Step 6 — Stop the app and report
+## Step 6 — Stop the app, record the verdict, and report
 
 **`my-command-tools app stop`, always.** Green, red, skipped, refused, or stopped early — a
 booted server outlives this run otherwise, and `worktree reap` misses one whose argv does not
 carry the worktree path.
+
+**Then record what this loop did, in the same turn:**
+
+```
+my-command-tools shots record --tier <tier> --verdict <verdict> --rounds <n>
+```
+
+That writes `verdict.json` beside the screenshots, and it is the **only** thing that makes them
+publishable: `/my-command:pr` embeds a branch's screenshots when this record says a **browser** tier took
+them, and attaches nothing at all when no record exists. Record every ending, not just a green
+one — a `red` loop's screenshots are the ones a reviewer most needs, and the verdict never
+withholds them. A run that took no screenshots still records, because the record costs nothing
+and its absence is what `/my-command:pr` reports as a warning.
+
+**The tier is what decides it, so name the tier you actually ran.** Writing `playwright` for an
+`http` round puts unexercised images in front of a reviewer as though a browser had loaded them,
+which is the one failure this record exists to prevent. The verb refuses a tier or verdict
+outside the four-and-three vocabulary rather than recording a typo.
 
 The report:
 
@@ -129,8 +147,9 @@ The report:
 - contract or detection,
 - the evidence path,
 - **the saved screenshots, each by path.** They outlive this run — `worktree end` moves them to
-  `~/.my-command/shots/<repo>/<branch>/` — so the report is where someone learns they exist. A
-  screenshot nobody was told the path of is evidence nobody reads.
+  `~/.my-command/shots/<repo>/<branch>/`, and `/my-command:pr` embeds them in the PR when the recorded tier
+  is a browser — so the report is where someone learns they exist. A screenshot nobody was told
+  the path of is evidence nobody reads.
 
 **The verdict is advisory and this run changes nothing about the branch's fate.** It opens no
 PR, blocks no merge, and fails no build. A `red` here is information for whoever reads it.
@@ -174,6 +193,8 @@ Lead with the verdict, the round count, and the tier.
   means the credentials are withheld and the round reports `unverified`.
 - Persisted Playwright specs are out of scope: the specs and logs the verifier writes are
   scratch under `$CLAUDE_JOB_DIR/tmp` and ship with nothing. **Screenshots are the exception** —
-  they go to the `shotsDir` inside the worktree, and `worktree end` preserves them to
-  `~/.my-command/shots/<repo>/<branch>/` rather than discarding them with the workspace.
+  they go to the `shotsDir` inside the worktree, `worktree end` preserves them to
+  `~/.my-command/shots/<repo>/<branch>/` rather than discarding them with the workspace, and
+  `/my-command:pr` publishes them into the PR body when Step 6's record says a browser took them. A pair
+  named `<view>-before.png` / `<view>-after.png` becomes one before/after row there.
 - <!-- include: shared/approval-own-call.md -->**A command that may need approval goes in its own Bash call** — `git fetch`, `git config`, and, as a narrow exception to the general rule to chain dependent mutations, branch-lifecycle operations such as checkout/switch, pull, remote-branch inspection, and local branch deletion. Folding one into an `&&` chain escalates approval to the whole compound command and costs a turn plus a retry. Put status output, pipes, and follow-up verification in separate read-only calls.<!-- /include -->
