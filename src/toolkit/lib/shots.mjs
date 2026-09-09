@@ -11,9 +11,8 @@
 //
 // There is one way in, whatever the repository's visibility: an attachment comment.
 // `gh pr comment --body-file <path> --attach <file>` uploads each file to GitHub's own
-// `user-attachments` CDN, which serves under the reader's own credential, so it renders on a
-// private repository as readily as on a public one. `docs/features/pr.md` carries the rest of
-// the reasoning, including why the side branch this used to push to is gone.
+// `user-attachments` CDN, which serves under the reader's own credential, so a private
+// repository renders it too. `docs/features/pr.md` carries the reasoning.
 import { createHash } from 'node:crypto';
 import {
   copyFileSync,
@@ -254,8 +253,8 @@ export function groupShots(names) {
 }
 
 /**
- * A markdown image, which is the one shape that works here: `gh pr comment --attach`
- * rewrites `![alt](<path>)` in place, and only that shape.
+ * A markdown image: `gh pr comment --attach` rewrites `![alt](<path>)` in place, and only
+ * that shape.
  * @param {string} name @param {string} href @returns {string}
  */
 const cell = (name, href) => `![${name}](${href})`;
