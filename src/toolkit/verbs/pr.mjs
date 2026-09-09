@@ -289,9 +289,6 @@ function shotsReport(cwd, shots, number) {
 
 /**
  * Post the private-repository attachment comment and report what came of it.
- *
- * A cap warning and a posting warning can both apply, so they are reported together rather
- * than one shadowing the other.
  * @param {string} cwd @param {import('../lib/shots.mjs').Attached} shots
  * @param {import('../lib/shots.mjs').ShotsComment} plan @param {number | null} number
  * @returns {{screenshots?: Screenshots, shotsWarning?: string}}

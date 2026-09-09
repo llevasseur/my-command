@@ -271,8 +271,7 @@ const attachCell = (name, href) => `![${name}](${href})`;
 
 /**
  * The `## Screenshots` section for a body, or an empty string when there is nothing to
- * show. `cell` decides how one image is written; the layout is the same either way, so a
- * before/after pair is one table row wherever the section lands.
+ * show. `cell` decides how one image is written; the layout is the same either way.
  * @param {ShotGroups} groups @param {(name: string) => string} url
  * @param {(name: string, href: string) => string} [cell]
  * @returns {string}
@@ -407,10 +406,9 @@ function publish(cwd, branch, shots) {
  * **Both sides carry the same absolute path.** `gh` rewrites a body reference to its
  * uploaded `user-attachments` URL only where the reference string is byte-for-byte what
  * `--attach` was given; where they differ it appends every image to the end of the comment
- * and leaves the reference broken, which is a silent success rather than an error. So the
- * body is rendered against `shot.path` and `--attach` is handed that same string, bare —
- * `--attach 'file#alt text'` would set the alt text from a suffix, but its interaction with
- * that matching is unverified, so the alt text is written body-side instead.
+ * and leaves the reference broken, which is a silent success rather than an error. The
+ * paths go over bare, with the alt text written body-side: `--attach 'file#alt text'` sets
+ * it from a suffix, but that suffix's effect on the matching is unverified.
  * @param {{name: string, path: string}[]} shots @param {Verdict} record
  * @returns {ShotsComment}
  */
@@ -422,7 +420,6 @@ function commentPlan(shots, record) {
     (name) => paths.get(name) ?? name,
     attachCell,
   );
-  // The comment is detached from the body, so it says what it is showing.
   const caption = `Captured by the \`${record.tier}\` tier; verification ended \`${record.verdict}\`.`;
   /** @type {ShotsComment} */
   const plan = { files, body: `${section}\n${caption}\n`, count: files.length };

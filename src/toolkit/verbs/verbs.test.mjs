@@ -916,7 +916,6 @@ test('pr publishes a private repository’s screenshots as an attachment comment
     assert.equal(published.tier, 'playwright');
     assert.equal(published.verdict, 'red');
     assert.equal(published.comment, COMMENT_URL);
-    // The dead end this replaced: screenshots that existed and reached nobody.
     assert.equal(/** @type {{shotsWarning?: unknown}} */ (r).shotsWarning, undefined);
 
     const log = calls();
