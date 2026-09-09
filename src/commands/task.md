@@ -169,11 +169,13 @@ Step 2.5.
 1. **Boot:** `my-command-tools app start`. Ephemeral port, health-waited, pid recorded. Never
    background a dev server by hand.
 2. **Spawn once:** `Agent` with `subagent_type: "mycommand-verifier"`, handed the **task
-   criteria**, the changed-file list, and the run contract (or the detected boot). Once — every
-   later round is a `SendMessage` to that same live agent, against that same booted server.
+   criteria**, the changed-file list, the run contract (or the detected boot), the
+   `playwright-cli` command when `my-command-tools doctor` reports `playwright.installed`, and
+   the `shotsDir` Step 1's `worktree begin` reported. Once — every later round is a
+   `SendMessage` to that same live agent, against that same booted server.
 3. **Read the verdict**, not the logs. It replies with `green`, `red`, `unverified`, or
-   `skipped`, a driver tier, an `exercised` line, and an evidence path. Open the path only if
-   you need it.
+   `skipped`, a driver tier, an `exercised` line, an evidence path, and the screenshots it
+   saved. Open the path only if you need it.
 4. **Repair here.** This context holds the criteria; the verifier does not and never edits code.
    Fix, commit on this branch, then `SendMessage` the same verifier to re-check.
 5. **Loop to at most 12 rounds.** `green`, `unverified`, and `skipped` all end it — only `red`
@@ -196,8 +198,10 @@ people switch off, and an advisory loop that is always on catches more than a bl
 is not.
 
 Repo-wide smoke scenarios are optional and off by default — this step exercises the diff.
-Persisted browser spec files are out of scope; the verifier's evidence is scratch under
-`$CLAUDE_JOB_DIR/tmp`.
+Persisted browser spec files are out of scope; the specs and logs the verifier writes are
+scratch under `$CLAUDE_JOB_DIR/tmp`. Its **screenshots** are not scratch: they land in the
+`shotsDir`, and Step 3's `worktree end` preserves them to `~/.my-command/shots/<repo>/<branch>/`
+before it removes the workspace. Nothing attaches them to the PR.
 
 ## Step 3 — Clean, then PR (inline by default; one fresh subagent with `--sub`)
 

@@ -5,6 +5,7 @@
 // rather than assumed.
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deviceHooksStatus } from '../lib/hooks-status.mjs';
@@ -31,7 +32,19 @@ check wants — a device-level fact, not a repository one. \`source\` names whic
 answered: \`playwright-cli\` for a global CLI on PATH, \`npx\` for one \`npx --no-install\`
 already resolves. Both probes are non-installing and time-bounded, and neither absent
 binary is an error: no Playwright anywhere reads \`{installed: false, version: null,
-source: null}\`, which is a report rather than a failure.`;
+source: null}\`, which is a report rather than a failure.
+
+\`gitExcludes\` reports whether the artifact directories the workflow commands produce are
+ignored **once for this device** rather than once per repository. It names the resolved
+\`path\` of the file \`core.excludesFile\` points at, and a \`patterns\` map saying which of
+\`.playwright-cli/\` and \`.my-command/\` that file actually holds — so a half-written
+state reads as one pattern present and one \`missing\`, not as a bare false. \`path\` is the
+file git *effectively* reads, falling back to git's own XDG default where the config is
+unset, because git honors that file either way; \`configured\` is whether the config is
+set at all, and \`exists\` whether the file is there;
+\`complete\` is the single answer, and \`hint\` is the append command that fixes a partial
+state. Nothing here writes: \`scripts/install-marketplace-personal.sh\` is what puts the
+lines in place, and no repository's own \`.gitignore\` is ever involved.`;
 
 const HERE = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -117,6 +130,119 @@ export function playwright(runner = boundedProbe) {
 }
 
 /**
+ * The artifact directories the workflow commands drop inside whatever repository they run
+ * in. They belong to the tooling, so they are ignored once per **device**; no repository's
+ * own `.gitignore` is ever touched.
+ *
+ * Spelled with the trailing slash git uses for a directory-only match.
+ * `scripts/install-marketplace-personal.sh` names these verbatim; `doctor.test.mjs` pins
+ * the two together.
+ * @type {string[]}
+ */
+export const DEVICE_IGNORE_PATTERNS = ['.playwright-cli/', '.my-command/'];
+
+/**
+ * Where the installer puts the device excludes file when `core.excludesFile` is unset:
+ * git's own XDG location, which git reads whether or not the config names it.
+ * @param {NodeJS.ProcessEnv} [env]
+ * @param {string} [home]
+ * @returns {string}
+ */
+export function defaultExcludesFile(env = process.env, home = homedir()) {
+  const xdg = env.XDG_CONFIG_HOME;
+  return join(xdg !== undefined && xdg.length > 0 ? xdg : join(home, '.config'), 'git', 'ignore');
+}
+
+/**
+ * `~` resolved at read time: git stores `core.excludesFile` exactly as it was typed, so an
+ * unexpanded path would have `doctor` call a correct install broken.
+ * @param {string} p
+ * @param {string} [home]
+ * @returns {string}
+ */
+export function expandTilde(p, home = homedir()) {
+  if (p === '~') return home;
+  if (p.startsWith('~/')) return join(home, p.slice(2));
+  return p;
+}
+
+/**
+ * The excludes lines a file actually declares: blank lines and comments dropped, nothing
+ * trimmed — git treats a trailing space in an ignore line as significant.
+ * @param {string} contents
+ * @returns {Set<string>}
+ */
+function excludeLines(contents) {
+  return new Set(contents.split('\n').filter((l) => l.length > 0 && !l.startsWith('#')));
+}
+
+/**
+ * Whether a file already ignores `pattern`. The slashless spelling counts, so a
+ * hand-written entry gets no near-duplicate appended beside it.
+ * @param {Set<string>} declared
+ * @param {string} pattern
+ * @returns {boolean}
+ */
+function declares(declared, pattern) {
+  return declared.has(pattern) || declared.has(pattern.replace(/\/$/, ''));
+}
+
+/**
+ * The one command that closes a partial state, for a human to run.
+ * @param {string} path
+ * @param {string[]} missing
+ * @returns {string}
+ */
+function excludesHint(path, missing) {
+  const args = missing.map((p) => `'${p}'`).join(' ');
+  return `printf '%s\\n' ${args} >> ${path} (or re-run the MyCommand installer)`;
+}
+
+/**
+ * Whether this **device** ignores the tooling's artifact directories, and how completely.
+ * Read-only: it never sets the config and never creates the file.
+ *
+ * `path` is the file git *effectively* reads, not the configured one: with
+ * `core.excludesFile` unset git still honors its XDG default. `configured` keeps them apart.
+ * @param {{config?: () => string | null, readFile?: (path: string) => string | null}} [io]
+ * @returns {{configured: boolean, path: string, exists: boolean, patterns: Record<string, boolean>, missing: string[], complete: boolean, hint: string | null}}
+ */
+export function gitExcludes(io = {}) {
+  const config =
+    io.config ??
+    (() => {
+      const r = exec('git', ['config', '--global', 'core.excludesFile']);
+      return r.ok && r.stdout.length > 0 ? r.stdout : null;
+    });
+  const readFile =
+    io.readFile ??
+    ((/** @type {string} */ p) => {
+      try {
+        return readFileSync(p, 'utf8');
+      } catch {
+        // Absent, unreadable, or a directory — all one answer: no patterns declared here.
+        return null;
+      }
+    });
+
+  const configured = config();
+  const path = configured === null ? defaultExcludesFile() : expandTilde(configured);
+  const contents = readFile(path);
+  const declared = excludeLines(contents ?? '');
+  const patterns = Object.fromEntries(DEVICE_IGNORE_PATTERNS.map((p) => [p, declares(declared, p)]));
+  const missing = DEVICE_IGNORE_PATTERNS.filter((p) => !patterns[p]);
+  return {
+    configured: configured !== null,
+    path,
+    exists: contents !== null,
+    patterns,
+    missing,
+    complete: missing.length === 0,
+    hint: missing.length === 0 ? null : excludesHint(path, missing),
+  };
+}
+
+/**
  * Resolve through symlinks so a dev-symlinked root still matches where we loaded from.
  * @param {string} p @returns {string}
  */
@@ -199,5 +325,7 @@ export function run() {
     gh: probe('gh', ['--version']),
     // Needed by no verb; reported because a closed-loop check picks its driver tier from it.
     playwright: playwright(),
+    // Also device-level: whether the tooling's own artifacts are ignored once here.
+    gitExcludes: gitExcludes(),
   };
 }

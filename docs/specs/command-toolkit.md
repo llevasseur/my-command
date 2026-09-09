@@ -97,6 +97,47 @@ checks one out (`/fb --target`, `/review`, `/revive`, `/merge-deps`). It refuses
 an existing branch without that flag and refuses `--base` with it, preventing a
 fresh branch from abandoning existing commits.
 
+`begin` and `end` also bracket the branch's **screenshots**. `begin` reports
+`shotsDir` — `.my-command/shots/` inside the new checkout, as an absolute path —
+and creates it on both the created-branch and the `--existing` path. Creation is a
+recursive `mkdir`, so re-begetting a branch's worktree needs no pre-flight check.
+Nothing in the repository ignores that path: `.my-command/` is excluded
+device-wide through the user's global git excludes, which is why the directory can
+sit inside the checkout without appearing in any branch's diff.
+
+`end` empties it **before** the worktree is removed, reporting the destination as
+`shotsKept` — `~/.my-command/shots/<repo>/<branch>/`, the home directory expanded
+at runtime rather than written down. `<repo>` is read from the *common* git dir,
+not from the caller's cwd, because `end` is routinely called from inside a worktree
+whose basename is the worktree's rather than the repo's. **A slashed branch becomes
+nested directories, one per segment** — `feat/a/b` keeps as `…/feat/a/b/` — not one
+flattened name. Git's ref namespace already forbids a branch existing both as a ref
+and as another branch's directory prefix, so nesting cannot collide, whereas
+flattening would put `feat/a-b` and `feat-a/b` in the same place. Every segment is
+still sanitized to `[A-Za-z0-9._-]` before it is joined, since a keep path built
+from a branch name is not the place to trust git's own ref rules.
+
+Three failures the move survives, each of them ordinary rather than exotic: the
+destination not existing (created recursively), a filename already there from a
+previous run against the same branch (suffixed `-2`, `-3`, … before the extension,
+never overwritten — screenshot tools name by route and step, so collisions are the
+norm and a silent overwrite destroys the evidence the keep exists to hold), and a
+rename across filesystems, which fails outright with `EXDEV` when the home
+directory and the worktree sit on different volumes (copy-then-delete, the same
+move by a slower route). An absent or empty directory is not a failure: most
+branches capture nothing, and that reports `shotsKept: null`.
+
+`--drop-shots` deletes the directory instead, reporting `shotsDropped: true` and
+`shotsKept: null` — the flag's effect, not a count. `MY_COMMAND_SHOTS_DIR`
+overrides the keep root, which is how the tests exercise the move for real without
+writing into a developer's home directory.
+
+The keep sits **after the reap and before the removal**. After, because a process
+still writing screenshots would otherwise race the move; before, because once the
+directory is gone there is nothing left to keep. It is also past `end`'s refusals,
+so a worktree that survives an unpushed-HEAD refusal keeps its screenshots with it
+rather than having them relocated out from under live work.
+
 `worktree list` reports each worktree as `root`, `path`, `branch`, `head`, and
 `reclaimable` — the last being `true` when that branch is already an ancestor of
 `origin/<default-branch>`, so removing the worktree loses nothing. Nothing previously
@@ -300,6 +341,54 @@ Whether a *repository* has Playwright of its own is a separate question, asked b
 [`/verify`](../features/verify.md) when it picks a tier. This field is about the device,
 which is why it sits beside `node`, `git`, and `gh`.
 
+### `gitExcludes`
+
+The workflow commands drop artifact directories — `.playwright-cli/` for a browser driver,
+`.my-command/` for a run's scratch — inside whichever repository they happen to run in.
+Those directories belong to the tooling, not to the project, so they are ignored **once
+per device** in the user's global git excludes file. No repository's own `.gitignore` is
+ever edited: a per-repo edit would surface as a stray diff in every repository a workflow
+command had ever touched, in a file that repository's own contributors own.
+
+`gitExcludes` is that arrangement reported rather than assumed:
+
+| Field | What it answers |
+|---|---|
+| `configured` | whether `core.excludesFile` is set in the global git config at all |
+| `path` | the file git effectively reads, `~` expanded |
+| `exists` | whether that file is readable |
+| `patterns` | a map from each pattern to whether the file declares it |
+| `missing` | the patterns it does not |
+| `complete` | `missing` being empty, as one answer |
+| `hint` | the append command that closes a partial state, or `null` |
+
+`patterns` and `missing` are why this is not a boolean. Half-written is the state that
+actually happens — one pattern added by an older installer, the other not — and a bare
+`false` would send a human to re-read a file that is most of the way there. The slashless
+spelling counts as present, so someone who already wrote `.my-command` by hand is not
+handed a near-duplicate; a commented-out line does not.
+
+`configured` and `path` are separate because git reads that file whether or not the config
+names it: with `core.excludesFile` unset, git still honors `$XDG_CONFIG_HOME/git/ignore`.
+So `path` resolves to that default rather than to nothing, and a device whose default file
+already holds both patterns reads `complete: true` with `configured: false` — which is the
+truth, where a `null` path would have reported a file git is actively reading as absent.
+
+`scripts/install-marketplace-personal.sh` is the only thing that writes. Where
+`core.excludesFile` is unset it picks git's own XDG location —
+`${XDG_CONFIG_HOME:-$HOME/.config}/git/ignore`, derived at run time, never a baked-in home
+— sets the config to it, and creates the file. Where the file already exists it **appends
+only the missing lines**, so the user's existing entries are neither rewritten nor
+reordered, and a file with no trailing newline gets one before the append rather than
+having its last entry joined to ours. Running it twice changes nothing the second time.
+Every failure around this is swallowed: an unwritable git config or an uncreatable
+excludes path prints one line to stderr and the install completes, because nothing here is
+needed for a command to run.
+
+The step runs first and is reachable on its own — `install-marketplace-personal.sh
+--excludes-only` does the ignore and stops — so repairing a partial device ignore does not
+mean reinstalling every command file.
+
 ## Shipping constraint
 
 **The toolkit ships as raw `.mjs` under `src/toolkit/`, never as build output.**
@@ -354,6 +443,18 @@ with `allowJs` + `checkJs` + `noEmit`, run as `pnpm run check:toolkit`.
 - [ ] `worktree begin --existing` checks a branch out at its own tip; without the flag an
       existing branch is refused.
 - [ ] `worktree end` refuses a worktree with unpushed commits absent `--force`.
+- [ ] `worktree begin` reports `shotsDir` and creates it, on the created-branch path and
+      the `--existing` path alike, and creating it a second time is not an error.
+- [ ] `worktree end` moves the shots to `~/.my-command/shots/<repo>/<branch>/` before the
+      checkout is removed, reports that absolute path as `shotsKept`, nests a slashed
+      branch one directory per segment, creates a destination that is not there, suffixes
+      rather than overwrites a filename a previous run already kept, and falls back to
+      copy-then-delete when the rename crosses filesystems.
+- [ ] `worktree end` reports `shotsKept: null` rather than failing when the shots
+      directory is empty or absent, and leaves the shots in place when it refuses to
+      remove the worktree.
+- [ ] `worktree end --drop-shots` deletes the shots and reports `shotsDropped: true` with
+      `shotsKept: null`, writing nothing to the keep.
 - [ ] `worktree list` marks a branch already merged into `origin/<default>` as
       `reclaimable: true`, live work as `false`, and the default branch as `false`;
       with no `origin/<default>` on disk it reports `comparedWith: null` and
@@ -371,6 +472,16 @@ with `allowJs` + `checkJs` + `noEmit`, run as `pnpm run check:toolkit`.
       installs the CLI, downloads a browser, or outruns its 5s bound.
 - [ ] `scripts/install-marketplace-personal.sh` prints `npm i -g playwright` when that
       field is absent, runs nothing, and exits 0 either way.
+- [ ] `doctor` reports `gitExcludes` with the resolved `path` of `core.excludesFile` and a
+      `patterns` map naming which of `.playwright-cli/` and `.my-command/` that file
+      declares, so a half-written state reads as one present and one `missing` rather than
+      as a bare false; an unset `core.excludesFile` resolves `path` to git's own XDG
+      default rather than to nothing, and `doctor` still exits 0.
+- [ ] `scripts/install-marketplace-personal.sh` appends only the missing patterns to that
+      file — setting `core.excludesFile` to `${XDG_CONFIG_HOME:-$HOME/.config}/git/ignore`
+      and creating the file when it is unset — leaves existing entries in their original
+      order, is byte-identical on a second run, never edits any repository's own
+      `.gitignore`, and exits 0 when the config or the path is unwritable.
 - [ ] `pnpm run check:toolkit` and `pnpm test` pass in CI.
 - [ ] A fresh `npx` install lands a runnable shim on the device root **and** leaves a
       bare `my-command-tools` call working in a new shell.
