@@ -36,8 +36,8 @@ than clamping it. `--no-verify` reports `skipped` and changes nothing.
    beside the screenshots through the same helper, and report the verdict, tier, round count,
    the `exercised` line or what stood in the way, whether the intent was given or inferred,
    whether the contract or detection was used, and the evidence path.
-   - That record is what makes the screenshots publishable: the pull-request workflow embeds
-     them when it says a browser tier took them, and attaches nothing without it. Record every
+   - That record is what makes the screenshots publishable: the pull-request workflow publishes
+     them when it says a browser tier took them, and publishes nothing without it. Record every
      ending rather than only a green one, and name the tier actually run. Claiming a browser
      for a round that only probed over HTTP puts unexercised images in front of a reviewer as
      though a browser had loaded them, which is the one failure the record exists to prevent.

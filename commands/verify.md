@@ -128,8 +128,8 @@ my-command-tools shots record --tier <tier> --verdict <verdict> --rounds <n>
 ```
 
 That writes `verdict.json` beside the screenshots, and it is the **only** thing that makes them
-publishable: `/my-command:pr` embeds a branch's screenshots when this record says a **browser** tier took
-them, and attaches nothing at all when no record exists. Record every ending, not just a green
+publishable: `/my-command:pr` publishes a branch's screenshots when this record says a **browser** tier
+took them, and publishes nothing at all when no record exists. Record every ending, not just a green
 one — a `red` loop's screenshots are the ones a reviewer most needs, and the verdict never
 withholds them. A run that took no screenshots still records, because the record costs nothing
 and its absence is what `/my-command:pr` reports as a warning.
