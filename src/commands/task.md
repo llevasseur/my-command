@@ -203,8 +203,8 @@ scratch under `$CLAUDE_JOB_DIR/tmp`. Its **screenshots** are not scratch: they l
 `shotsDir`, and Step 3's `worktree end` preserves them to `~/.my-command/shots/<repo>/<branch>/`
 before it removes the workspace. **Record the loop's outcome when it ends** —
 `my-command-tools shots record --tier <tier> --verdict <verdict> --rounds <n>`, whatever the
-verdict — because that record is what lets Step 3's `/pr` embed the screenshots: it publishes
-them when the recorded tier is a browser, and attaches nothing without it. A pair captured as
+verdict — because that record is what lets Step 3's `/pr` publish the screenshots: it does so
+when the recorded tier is a browser, and publishes nothing without it. A pair captured as
 `<view>-before.png` and `<view>-after.png` becomes a before/after row rather than two loose
 files.
 

@@ -523,22 +523,52 @@ test('worktree list says it could not compare rather than claiming nothing is re
   assert.equal(r.worktrees.find((w) => w.branch === 'main')?.reclaimable, false);
 });
 
+/** The comment URL the stub `gh` prints when it accepts `pr comment`. */
+const COMMENT_URL = 'https://github.test/o/r/pull/9#issuecomment-77';
+
 /**
  * A repo with a real `origin` to push to, plus a stub `gh` on PATH that answers
  * `pr view` with `json` and records every invocation. Returns the log reader, so a
  * test can assert on what the verb did *not* call as well as what it did.
+ *
+ * `isPrivate` decides what `gh repo view` answers, which is what routes the screenshots
+ * between the in-body embed and the attachment comment. `commentFails` makes `gh pr
+ * comment` refuse. The comment's `--body-file` is captured, since the body is the only
+ * place the attachment references can be checked against what `--attach` was handed.
  * @param {Record<string, unknown>} json  What `gh pr view --json ...` should report.
+ * @param {{isPrivate?: boolean, commentFails?: boolean}} [options]
  */
-function repoWithFakeGh(json) {
+function repoWithFakeGh(json, options = {}) {
   const { dir, git } = repoWithOrigin();
   git(['checkout', '-qb', 'feat/x']);
 
   const bin = join(dir, '.fakebin');
   mkdirSync(bin);
   const log = join(dir, 'gh.log');
+  const view = join(dir, 'pr-view.json');
+  const posted = join(dir, 'comment-body.md');
+  writeFileSync(view, `${JSON.stringify(json)}\n`);
+  const comment = options.commentFails
+    ? '    echo "gh: HTTP 422 (attachment rejected)" >&2\n    exit 1'
+    : `    prev=''
+    for a in "$@"; do
+      [ "$prev" = '--body-file' ] && cat "$a" >> ${JSON.stringify(posted)}
+      prev="$a"
+    done
+    echo ${JSON.stringify(COMMENT_URL)}`;
   writeFileSync(
     join(bin, 'gh'),
-    `#!/bin/sh\necho "$@" >> ${JSON.stringify(log)}\n[ "$1 $2" = "pr view" ] && cat <<'JSON'\n${JSON.stringify(json)}\nJSON\nexit 0\n`,
+    `#!/bin/sh
+echo "$@" >> ${JSON.stringify(log)}
+case "$1 $2" in
+  'pr view') cat ${JSON.stringify(view)} ;;
+  'repo view') echo ${options.isPrivate ? 'true' : 'false'} ;;
+  'pr comment')
+${comment}
+    ;;
+esac
+exit 0
+`,
   );
   chmodSync(join(bin, 'gh'), 0o755);
 
@@ -548,7 +578,8 @@ function repoWithFakeGh(json) {
     process.env.PATH = previous;
   };
   const calls = () => readFileSync(log, 'utf8');
-  return { dir, git, calls, restore };
+  const commentBody = () => (existsSync(posted) ? readFileSync(posted, 'utf8') : '');
+  return { dir, git, calls, commentBody, restore };
 }
 
 test('pr leaves an existing draft as a draft', () => {
@@ -862,6 +893,86 @@ test("pr --no-shots leaves a verified branch's screenshots off the body", () => 
     const r = pr(ctx(dir, [], { title: 'T', body: '- wrote notes', 'no-shots': true }));
     assert.equal(/** @type {{screenshots?: unknown}} */ (r).screenshots, undefined);
     assert.doesNotMatch(calls(), /## Screenshots/);
+  } finally {
+    restore();
+  }
+});
+
+/** @param {unknown} r @returns {{count: number, via: string, tier: string, verdict: string, comment: string}} */
+const asComment = (r) => /** @type {never} */ (/** @type {{screenshots?: unknown}} */ (r).screenshots);
+
+test('pr publishes a private repository’s screenshots as an attachment comment', () => {
+  const { dir, git, calls, commentBody, restore } = repoWithFakeGh(openPr({ body: '' }), { isPrivate: true });
+  try {
+    writeFileSync(join(dir, 'orders.sql'), 'alter table orders add column total int;\n');
+    git(['add', 'orders.sql']);
+    git(['commit', '-qm', 'feat: widen orders']);
+    captured(dir, 'playwright', ['panel-before.png', 'panel-after.png', 'nav.png']);
+
+    const r = pr(ctx(dir, [], { title: 'T', body: '- widened the table' }));
+    const published = asComment(r);
+    assert.equal(published.via, 'comment');
+    assert.equal(published.count, 3);
+    assert.equal(published.tier, 'playwright');
+    assert.equal(published.verdict, 'red');
+    assert.equal(published.comment, COMMENT_URL);
+    // The dead end this replaced: screenshots that existed and reached nobody.
+    assert.equal(/** @type {{shotsWarning?: unknown}} */ (r).shotsWarning, undefined);
+
+    const log = calls();
+    // One comment per run, whatever the image count.
+    assert.equal(log.match(/^pr comment 9 /gm)?.length, 1);
+    // Nothing went into the body, and no bytes went to the side branch.
+    assert.doesNotMatch(log, /## Screenshots/);
+    assert.equal(execFileSync('git', ['ls-remote', 'origin', SHOTS_REF], { cwd: dir, encoding: 'utf8' }).trim(), '');
+
+    // The same before/after pairing and grid the in-body publisher uses.
+    const body = commentBody();
+    assert.match(body, /^## Screenshots$/m);
+    assert.match(body, /\| View \| Before \| After \|/);
+    assert.match(body, /^\| panel \| !\[panel-before\.png\]\(\S+\) \| !\[panel-after\.png\]\(\S+\) \|$/m);
+    assert.match(body, /!\[nav\.png\]\(\S+\)/);
+    assert.match(body, /`playwright` tier/);
+
+    // The mechanic the whole fallback rests on: gh rewrites a body reference in place only
+    // where it is byte-for-byte the string `--attach` was given.
+    const attached = [...log.matchAll(/--attach (\S+)/g)].map((m) => m[1]);
+    assert.equal(attached.length, 3);
+    for (const path of attached) assert.ok(body.includes(`](${path})`), `body does not reference ${path}`);
+  } finally {
+    restore();
+  }
+});
+
+test('pr reports a screenshot comment gh refused rather than claiming it published', () => {
+  const { dir, git, restore } = repoWithFakeGh(openPr({ body: '' }), { isPrivate: true, commentFails: true });
+  try {
+    writeFileSync(join(dir, 'notes.md'), '# notes\n');
+    git(['add', 'notes.md']);
+    git(['commit', '-qm', 'docs: notes']);
+    captured(dir, 'playwright', ['home.png']);
+
+    const r = pr(ctx(dir, [], { title: 'T', body: '- wrote notes' }));
+    assert.equal(/** @type {{screenshots?: unknown}} */ (r).screenshots, undefined);
+    assert.match(/** @type {{shotsWarning: string}} */ (r).shotsWarning, /could not post the screenshot comment/);
+  } finally {
+    restore();
+  }
+});
+
+test('pr attaches what one comment holds and warns about the rest', () => {
+  const { dir, git, calls, restore } = repoWithFakeGh(openPr({ body: '' }), { isPrivate: true });
+  try {
+    writeFileSync(join(dir, 'notes.md'), '# notes\n');
+    git(['add', 'notes.md']);
+    git(['commit', '-qm', 'docs: notes']);
+    const many = Array.from({ length: 51 }, (_, i) => `view-${String(i).padStart(2, '0')}.png`);
+    captured(dir, 'playwright', many);
+
+    const r = pr(ctx(dir, [], { title: 'T', body: '- wrote notes' }));
+    assert.equal(asComment(r).count, 50);
+    assert.match(/** @type {{shotsWarning: string}} */ (r).shotsWarning, /1 screenshot\(s\) past the 50-file limit/);
+    assert.equal(calls().match(/--attach /g)?.length, 50);
   } finally {
     restore();
   }

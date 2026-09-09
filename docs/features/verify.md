@@ -121,8 +121,8 @@ Step 6 also **records what the loop did**, beside the images:
 `my-command-tools shots record --tier <tier> --verdict <verdict> --rounds <n>`
 writes `verdict.json` into the same directory, so `worktree end` carries it into
 the keep along with the screenshots it describes. That record is what makes them
-publishable — `/pr` embeds a branch's screenshots when it says a **browser** tier
-took them, and attaches nothing when no record exists.
+publishable — `/pr` publishes a branch's screenshots when it says a **browser**
+tier took them, and publishes nothing when no record exists.
 
 Two things about it are deliberate. **Every ending records, not just a green
 one**: a `red` loop's screenshots are the ones a reviewer most needs, so the

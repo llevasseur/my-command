@@ -142,9 +142,9 @@ later. `/verify` Step 6 and `/task` Step 2.6 call it on every ending, green or n
 
 `pr` closes that loop at the other end. A branch whose recorded tier is a **browser** gets
 its screenshots — read from the live `.my-command/shots/` and from the keep, the live copy
-winning a collision — appended to the PR body under a `## Screenshots` heading:
-before/after pairs as a table with one row per view, everything unpaired as a two-column
-grid.
+winning a collision — published under a `## Screenshots` heading: before/after pairs as a
+table with one row per view, everything unpaired as a two-column grid. That section reaches
+the PR through one of two routes below, and the layout is identical on both.
 
 **The gate is that recorded tier and not the shape of the diff**, which is a correction of
 the first version. Gating on changed paths withheld exactly the evidence that mattered
@@ -155,21 +155,30 @@ the fact the glob was guessing at, and `/verify` is the one component that knows
 verdict is reported and never gates: a `red` loop's screenshots are the ones a reviewer
 most needs. Both silent paths stay silent — no screenshots, and a non-browser tier, each
 attach nothing and report nothing. `--no-shots` switches it off, and `shotsWarning` is
-reserved for images sitting beside no record at all.
+reserved for what genuinely could not be published: images sitting beside no record at all,
+a comment `gh` refused, or the overflow past one comment's file limit.
 
-The image bytes go on a **`my-command-shots` branch of the same repository**, linked from
-`raw.githubusercontent.com`. GitHub's own `user-attachments` URLs have no public API, so a
-body written by a tool cannot use them, and of the routes left this one needs no
-credential beyond the push that just happened, creates no release and no gist, and keeps
-the bytes where the PR's own access already reaches. The publish is plumbing —
-`hash-object`, a throwaway index, `commit-tree`, a push straight to the ref — so nothing
-is checked out and the branch under review is never left dirty. Paths are
-content-addressed (`shots/<branch>/<blob>-<name>`), which is what makes a re-run
-idempotent: the same screenshot keeps the same URL, so `pr`'s own asset preservation
-recognises the link already in the body instead of appending it a second time, and a tree
-matching the branch tip pushes nothing. A **private** repository is declined with a
-warning rather than attached, because that URL would need a credential the reviewer's
-browser and GitHub's image proxy both lack.
+On a **public** repository the image bytes go on a **`my-command-shots` branch of the same
+repository**, linked from `raw.githubusercontent.com`. No `user-attachments` URL can be
+minted for a body written by a tool, and of the routes left this one needs no credential
+beyond the push that just happened, creates no release and no gist, and keeps the bytes
+where the PR's own access already reaches. The publish is plumbing — `hash-object`, a
+throwaway index, `commit-tree`, a push straight to the ref — so nothing is checked out and
+the branch under review is never left dirty. Paths are content-addressed
+(`shots/<branch>/<blob>-<name>`), which is what makes a re-run idempotent: the same
+screenshot keeps the same URL, so `pr`'s own asset preservation recognises the link already
+in the body instead of appending it a second time, and a tree matching the branch tip
+pushes nothing.
+
+A **private** repository takes an attachment comment instead, since that raw URL would need
+a credential the reviewer's browser and GitHub's image proxy both lack. One `gh pr comment
+--body-file <path> --attach <file>` per run — up to `gh`'s 50 files, posted once the create
+or edit above has yielded a PR number — uploads each file to GitHub's `user-attachments`
+CDN, which serves under the reader's own credential. The body and `--attach` carry the same
+absolute path deliberately: `gh` rewrites an `![alt](<path>)` reference in place only where
+the string matches byte for byte, and otherwise appends the images to the end of the comment
+and leaves the reference broken. `screenshots.via` names which route ran — `ref`/`commit`
+for the body, `comment` for the comment's URL.
 
 The keep sits **after the reap and before the removal**. After, because a process
 still writing screenshots would otherwise race the move; before, because once the
