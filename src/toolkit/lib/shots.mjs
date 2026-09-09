@@ -60,10 +60,7 @@ const IMAGE_WIDTH = 420;
 /** How many files one `gh pr comment` call accepts. */
 const ATTACH_LIMIT = 50;
 
-/**
- * What stamps an attachment comment as this tool's, with a digest of what it carries, so
- * a re-run can find the comment it already posted and tell whether the images changed.
- */
+/** Marks an attachment comment as this tool's, with a digest of what it carries. */
 const COMMENT_MARKER = 'my-command-shots';
 const MARKER_RE = /<!-- my-command-shots ([0-9a-f]+) -->/;
 
@@ -440,14 +437,10 @@ export const commentMarker = (digest) => `<!-- ${COMMENT_MARKER} ${digest} -->`;
  * One comment per run, whatever the image count: `gh` takes every file in a single call and
  * prints the comment's URL.
  *
- * **Both sides carry the same path, and it is a temp path.** `gh` rewrites a body reference
- * to its uploaded URL only where the reference string is byte-for-byte what `--attach` was
- * given; where they differ it appends every image to the end of the comment and leaves the
- * reference broken, which is a silent success rather than an error. Each file is copied into
- * a temp directory under a name safe for markdown, so a space or `)` in the repository's own
- * path cannot break the reference, and the user's home path never reaches the comment. The
- * paths go over bare, with the alt text written body-side: `--attach 'file#alt text'` sets
- * it from a suffix, but that suffix's effect on the matching is unverified.
+ * Both sides carry the same path, and it is a staged temp copy under a markdown-safe name.
+ * `gh` rewrites a body reference only where it is byte-for-byte the `--attach` string;
+ * otherwise it silently appends the images and leaves the reference broken. Paths go over
+ * bare: the `#alt` suffix's effect on that matching is unverified.
  * @param {string} cwd @param {number} number @param {ShotsComment} plan
  * @returns {{url?: string, warning?: string}}
  */

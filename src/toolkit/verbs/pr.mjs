@@ -237,8 +237,7 @@ export function run(ctx) {
     });
   }
 
-  // `gh pr create` prints the new PR's URL last; the number in it is the fallback when
-  // the lookup below misses, so the screenshot comment still has something to attach to.
+  // `gh pr create` prints the new PR's URL last: the number fallback when the lookup misses.
   const printed = created.stdout.split('\n').filter(Boolean).pop() ?? null;
   const now = findExisting(cwd);
   /** @type {PrResult} */
@@ -300,9 +299,8 @@ function shotsReport(cwd, slug, shots, number) {
 /**
  * Post the private-repository attachment comment and report what came of it.
  *
- * One comment per PR, not per run: a comment this tool already posted with the same
- * images is reused as it stands, and one carrying different images is replaced once the
- * new one is up. The body route gets the same property from content-addressed paths.
+ * One comment per PR, not per run: the same images reuse the comment already posted,
+ * different images replace it once the new one is up.
  * @param {string} cwd @param {{owner: string, repo: string} | null} slug
  * @param {import('../lib/shots.mjs').Attached} shots
  * @param {import('../lib/shots.mjs').ShotsComment} plan @param {number | null} number
