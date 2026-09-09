@@ -1,10 +1,10 @@
 // `shots record|read` — what a verification loop did, written beside the screenshots it took.
 //
 // `/verify` ends holding two facts nothing else can derive: the driver tier that ran and
-// the verdict it reached. `pr` needs the first of them to decide whether a branch's
-// screenshots belong in its description, and by then the loop is over and the agent that
-// ran it is gone. So the loop records it here, in the shots directory, where
-// `worktree end` already moves the images and the record travels with them.
+// the verdict it reached. `pr` needs the tier to decide whether a branch's screenshots
+// belong in its description, and by then the loop is over. So the loop records it in the
+// shots directory, which `worktree end` already moves, and the record travels with the
+// images it describes.
 import { existsSync } from 'node:fs';
 import { basename } from 'node:path';
 import { str } from '../lib/flags.mjs';
@@ -38,7 +38,7 @@ most needs. A branch with screenshots and no record attaches none and says so.`;
 
 /**
  * One of `allowed`, or a usage error naming the whole vocabulary. A tier spelled wrong
- * would otherwise record fine and silently withhold the screenshots months later.
+ * records cleanly and then withholds the screenshots silently.
  * @param {string | undefined} value @param {string} flag @param {string[]} allowed
  * @returns {string}
  */

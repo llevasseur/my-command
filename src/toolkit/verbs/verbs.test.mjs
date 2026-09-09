@@ -725,8 +725,7 @@ test('pr embeds the screenshots a browser tier took, whatever the diff changed',
     assert.equal(published?.count, 3);
     assert.equal(published?.ref, SHOTS_REF);
     assert.equal(published?.tier, 'playwright');
-    // A red loop's screenshots are exactly the ones worth showing, so the verdict does
-    // not withhold them.
+    // A red verdict still publishes: the tier gates, the verdict does not.
     assert.equal(published?.verdict, 'red');
 
     const log = calls();
@@ -779,8 +778,8 @@ test('pr attaches nothing when no browser tier took the screenshots', () => {
     writeFileSync(join(dir, 'pages', 'index.html'), '<p>hi</p>\n');
     git(['add', 'pages/index.html']);
     git(['commit', '-qm', 'feat: page']);
-    // A frontend diff nobody drove a browser at: the old path gate would have attached
-    // these, and there is nothing behind them.
+    // A frontend diff nobody drove a browser at, which the old path gate would have
+    // attached anyway.
     captured(dir, 'http', ['home.png']);
 
     const r = pr(ctx(dir, [], { title: 'T', body: '- added the page' }));

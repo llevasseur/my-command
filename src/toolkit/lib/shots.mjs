@@ -6,10 +6,8 @@
 // disagree about it.
 //
 // What makes a branch's screenshots publishable is the verdict `/verify` records beside
-// them, not the shape of the diff. A browser tier ran, or it did not; a path glob over
-// the changed files could only ever guess at that, and guessed wrong in both directions
-// — a backend change proven through a dynamic frontend attached nothing, and a frontend
-// diff nobody exercised attached whatever stale images were lying around.
+// them: a browser tier ran, or it did not. `docs/features/pr.md` covers why the shape of
+// the diff cannot answer that.
 //
 // Publishing commits the images to a side branch of the same repository and links
 // `raw.githubusercontent.com`. GitHub mints the `user-attachments` URLs behind its web
@@ -39,7 +37,7 @@ export const SHOTS_REF = 'my-command-shots';
 /** Where `/verify` records what it did, inside the shots directory. */
 export const VERDICT_FILE = 'verdict.json';
 
-/** The driver tiers `mycommand-verifier` reports, and the ones that can hold a camera. */
+/** The driver tiers `mycommand-verifier` reports, and the one that takes screenshots. */
 export const TIERS = ['playwright', 'http', 'static'];
 const BROWSER_TIERS = new Set(['playwright']);
 
@@ -168,9 +166,9 @@ export function writeVerdict(cwd, record) {
 /**
  * The verdict recorded for this branch, or null when nothing recorded one.
  *
- * Read from the same two places the screenshots are. `worktree end` suffixes a colliding
- * name on its way into the keep, so a branch verified twice leaves `verdict-2.json`
- * beside `verdict.json`; the newest wins, and the live workspace beats the keep.
+ * Read from the same two places the screenshots are, newest first, the live workspace
+ * beating the keep. A branch verified twice leaves `verdict-2.json` beside
+ * `verdict.json`, since `worktree end` suffixes a colliding name into the keep.
  * @param {string} cwd @param {string} branch
  * @returns {Verdict | null}
  */
@@ -185,8 +183,7 @@ export function readVerdict(cwd, branch) {
     for (const { path } of found) {
       try {
         const parsed = JSON.parse(readFileSync(path, 'utf8'));
-        // A record whose tier is not one this repo knows about names no driver, so it
-        // cannot answer the only question the record exists to answer.
+        // A tier this repo does not know names no driver, so it answers nothing.
         if (parsed && TIERS.includes(parsed.tier)) return parsed;
       } catch {
         // A half-written or hand-mangled record is not a verdict; try the next one.
@@ -378,10 +375,9 @@ function publish(cwd, branch, shots) {
  * The screenshot section for this branch's PR body.
  *
  * The gate is the recorded tier, never the verdict: a `red` loop's screenshots are the
- * ones a reviewer most needs, and withholding them would hide the failure the loop found.
- * A non-browser tier photographed nothing, and a branch nobody verified has nothing to
- * show — both silent. Screenshots with no record beside them are the one case that warns,
- * since something is there to attach and nothing says whether it may be.
+ * ones a reviewer most needs. A non-browser tier photographed nothing and a branch nobody
+ * verified has nothing to show, so both are silent. Screenshots with no record beside them
+ * are the one case that warns.
  * @param {string} cwd @param {string} branch
  * @param {{owner: string, repo: string} | null} slug
  * @returns {Attached}
