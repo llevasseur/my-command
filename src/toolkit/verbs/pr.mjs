@@ -5,7 +5,7 @@ import { bool, str } from '../lib/flags.mjs';
 import { ghWrite, originSlug } from '../lib/gh.mjs';
 import { run as exec, ToolkitError, UsageError } from '../lib/proc.mjs';
 import { commitsSince, currentBranch, defaultBranch, repoRoot, resolveBase } from '../lib/repo.mjs';
-import { attachShots, postShotsComment } from '../lib/shots.mjs';
+import { attachShots, deleteShotsComment, findShotsComment, postShotsComment } from '../lib/shots.mjs';
 import { textArg } from '../lib/text-arg.mjs';
 
 // Reported, never enforced: no count of the caller's prose is worth refusing a PR over.
@@ -47,11 +47,12 @@ edit still shows its screenshots, and the verdict itself never withholds them.
 Where they land depends on the repository. A **public** one embeds them in the body, with
 the bytes on the \`my-command-shots\` branch of the same repository and linked from
 \`raw.githubusercontent.com\`, at a content-addressed path so the same screenshot keeps
-the same URL across runs. A **private** one gets one \`gh pr comment --attach\` per run
-instead, which uploads each file to GitHub's own \`user-attachments\` CDN — that renders
-under the reader's credential, where a raw link would not. Either way \`screenshots\`
-reports the count, tier, and verdict, plus \`via\` naming which route it took: \`ref\` and
-\`commit\` for the body, \`comment\` for the comment's URL.
+the same URL across runs. A **private** one gets one \`gh pr comment --attach\` instead,
+which uploads each file to GitHub's own \`user-attachments\` CDN — that renders under the
+reader's credential, where a raw link would not. That comment is one per PR, not per run:
+a re-run with the same images reuses it, and one with different images replaces it.
+Either way \`screenshots\` reports the count, tier, and verdict, plus \`via\` naming which
+route it took: \`ref\` and \`commit\` for the body, \`comment\` for the comment's URL.
 
 A branch with no screenshots, and one whose screenshots came from a non-browser tier, both
 publish nothing and say nothing. \`shotsWarning\` is left for what genuinely could not be
@@ -211,7 +212,7 @@ export function run(ctx) {
       identity: attempt.identity,
     };
     if (warnings.length) result.bodyWarnings = warnings;
-    return { ...result, ...shotsReport(cwd, shots, existing.number) };
+    return { ...result, ...shotsReport(cwd, slug, shots, existing.number) };
   }
 
   const args = ['pr', 'create', '--base', base, '--title', title, '--body', body];
@@ -236,19 +237,28 @@ export function run(ctx) {
     });
   }
 
+  // `gh pr create` prints the new PR's URL last; the number in it is the fallback when
+  // the lookup below misses, so the screenshot comment still has something to attach to.
+  const printed = created.stdout.split('\n').filter(Boolean).pop() ?? null;
   const now = findExisting(cwd);
   /** @type {PrResult} */
   const result = {
     action: 'created',
-    number: now?.number ?? null,
-    url: now?.url ?? created.stdout.split('\n').pop() ?? null,
+    number: now?.number ?? numberIn(printed),
+    url: now?.url ?? printed,
     branch,
     base,
     draft,
     identity: attempt.identity,
   };
   if (warnings.length) result.bodyWarnings = warnings;
-  return { ...result, ...shotsReport(cwd, shots, result.number) };
+  return { ...result, ...shotsReport(cwd, slug, shots, result.number) };
+}
+
+/** The PR number a `/pull/<n>` URL names, or null. @param {string | null} url */
+function numberIn(url) {
+  const m = url?.match(/\/pull\/(\d+)(?:[/?#]|$)/);
+  return m ? Number(m[1]) : null;
 }
 
 /**
@@ -267,13 +277,13 @@ function screenshots(ctx, cwd, branch, slug) {
  *
  * The attachment comment is posted from here rather than from `attachShots`, because it
  * needs the PR number, which does not exist until the create or edit above has run.
- * @param {string} cwd @param {import('../lib/shots.mjs').Attached} shots
- * @param {number | null} number
+ * @param {string} cwd @param {{owner: string, repo: string} | null} slug
+ * @param {import('../lib/shots.mjs').Attached} shots @param {number | null} number
  * @returns {{screenshots?: Screenshots, shotsWarning?: string}}
  */
-function shotsReport(cwd, shots, number) {
+function shotsReport(cwd, slug, shots, number) {
   if (shots.warning) return { shotsWarning: shots.warning };
-  if (shots.comment) return commentReport(cwd, shots, shots.comment, number);
+  if (shots.comment) return commentReport(cwd, slug, shots, shots.comment, number);
   if (!shots.count || !shots.ref || !shots.commit) return {};
   return {
     screenshots: {
@@ -289,14 +299,22 @@ function shotsReport(cwd, shots, number) {
 
 /**
  * Post the private-repository attachment comment and report what came of it.
- * @param {string} cwd @param {import('../lib/shots.mjs').Attached} shots
+ *
+ * One comment per PR, not per run: a comment this tool already posted with the same
+ * images is reused as it stands, and one carrying different images is replaced once the
+ * new one is up. The body route gets the same property from content-addressed paths.
+ * @param {string} cwd @param {{owner: string, repo: string} | null} slug
+ * @param {import('../lib/shots.mjs').Attached} shots
  * @param {import('../lib/shots.mjs').ShotsComment} plan @param {number | null} number
  * @returns {{screenshots?: Screenshots, shotsWarning?: string}}
  */
-function commentReport(cwd, shots, plan, number) {
+function commentReport(cwd, slug, shots, plan, number) {
   if (number === null) return { shotsWarning: 'no PR number to attach the screenshot comment to' };
 
-  const posted = postShotsComment(cwd, number, plan);
+  const previous = slug ? findShotsComment(cwd, slug, number) : null;
+  const posted = previous?.digest === plan.digest ? { url: previous.url } : postShotsComment(cwd, number, plan);
+  if (posted.url && previous && previous.url !== posted.url && slug) deleteShotsComment(cwd, slug, previous.id);
+
   /** @type {{screenshots?: Screenshots, shotsWarning?: string}} */
   const report = {};
   if (posted.url) {

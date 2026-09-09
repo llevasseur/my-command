@@ -535,8 +535,10 @@ const COMMENT_URL = 'https://github.test/o/r/pull/9#issuecomment-77';
  * between the in-body embed and the attachment comment. `commentFails` makes `gh pr
  * comment` refuse. The comment's `--body-file` is captured, since the body is the only
  * place the attachment references can be checked against what `--attach` was handed.
+ * `createUrl` is what `gh pr create` prints. `gh api` on the comments list answers with
+ * the `comments` file, already in the `--jq` shape the verb asks for, one JSON array per line.
  * @param {Record<string, unknown>} json  What `gh pr view --json ...` should report.
- * @param {{isPrivate?: boolean, commentFails?: boolean}} [options]
+ * @param {{isPrivate?: boolean, commentFails?: boolean, createUrl?: string}} [options]
  */
 function repoWithFakeGh(json, options = {}) {
   const { dir, git } = repoWithOrigin();
@@ -547,6 +549,7 @@ function repoWithFakeGh(json, options = {}) {
   const log = join(dir, 'gh.log');
   const view = join(dir, 'pr-view.json');
   const posted = join(dir, 'comment-body.md');
+  const comments = join(dir, 'comments.jsonl');
   writeFileSync(view, `${JSON.stringify(json)}\n`);
   const comment = options.commentFails
     ? '    echo "gh: HTTP 422 (attachment rejected)" >&2\n    exit 1'
@@ -562,10 +565,12 @@ function repoWithFakeGh(json, options = {}) {
 echo "$@" >> ${JSON.stringify(log)}
 case "$1 $2" in
   'pr view') cat ${JSON.stringify(view)} ;;
+  'pr create') echo ${JSON.stringify(options.createUrl ?? '')} ;;
   'repo view') echo ${options.isPrivate ? 'true' : 'false'} ;;
   'pr comment')
 ${comment}
     ;;
+  'api --paginate') cat ${JSON.stringify(comments)} 2>/dev/null ;;
 esac
 exit 0
 `,
@@ -579,7 +584,10 @@ exit 0
   };
   const calls = () => readFileSync(log, 'utf8');
   const commentBody = () => (existsSync(posted) ? readFileSync(posted, 'utf8') : '');
-  return { dir, git, calls, commentBody, restore };
+  /** @param {{id: number, url: string, body: string}[]} list */
+  const setComments = (list) =>
+    writeFileSync(comments, list.map((c) => `${JSON.stringify([c.id, c.url, c.body])}\n`).join(''));
+  return { dir, git, calls, commentBody, setComments, restore };
 }
 
 test('pr leaves an existing draft as a draft', () => {
@@ -938,6 +946,78 @@ test('pr publishes a private repository’s screenshots as an attachment comment
     const attached = [...log.matchAll(/--attach (\S+)/g)].map((m) => m[1]);
     assert.equal(attached.length, 3);
     for (const path of attached) assert.ok(body.includes(`](${path})`), `body does not reference ${path}`);
+    // Staged copies, not the repo's own paths: nothing under the checkout reaches the comment.
+    for (const path of attached) assert.ok(!path.startsWith(dir), `${path} is a checkout path`);
+    assert.doesNotMatch(body, new RegExp(dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.match(body, /<!-- my-command-shots [0-9a-f]{64} -->/);
+  } finally {
+    restore();
+  }
+});
+
+test('pr posts the screenshot comment on a PR it just created, even when the lookup misses', () => {
+  const { dir, git, calls, restore } = repoWithFakeGh(openPr({ state: 'MERGED' }), {
+    isPrivate: true,
+    createUrl: 'https://github.test/o/r/pull/13',
+  });
+  try {
+    writeFileSync(join(dir, 'notes.md'), '# notes\n');
+    git(['add', 'notes.md']);
+    git(['commit', '-qm', 'docs: notes']);
+    captured(dir, 'playwright', ['home.png']);
+
+    const r = pr(ctx(dir, [], { title: 'T', body: '- wrote notes' }));
+    assert.equal(r.action, 'created');
+    assert.equal(r.number, 13);
+    assert.equal(asComment(r).comment, COMMENT_URL);
+    assert.match(calls(), /^pr comment 13 /m);
+  } finally {
+    restore();
+  }
+});
+
+test('pr reuses the screenshot comment it already posted when the images are unchanged', () => {
+  const { dir, git, calls, commentBody, setComments, restore } = repoWithFakeGh(openPr({ body: '' }), {
+    isPrivate: true,
+  });
+  try {
+    writeFileSync(join(dir, 'notes.md'), '# notes\n');
+    git(['add', 'notes.md']);
+    git(['commit', '-qm', 'docs: notes']);
+    captured(dir, 'playwright', ['home.png']);
+
+    pr(ctx(dir, [], { title: 'T', body: '- wrote notes' }));
+    const earlier = 'https://github.test/o/r/pull/9#issuecomment-1';
+    setComments([{ id: 1, url: earlier, body: commentBody() }]);
+
+    const again = pr(ctx(dir, [], { title: 'T', body: '- wrote notes' }));
+    assert.equal(asComment(again).comment, earlier);
+    assert.equal(calls().match(/^pr comment 9 /gm)?.length, 1);
+    assert.doesNotMatch(calls(), /--method DELETE/);
+  } finally {
+    restore();
+  }
+});
+
+test('pr replaces its earlier screenshot comment when the images changed', () => {
+  const { dir, git, calls, setComments, restore } = repoWithFakeGh(openPr({ body: '' }), { isPrivate: true });
+  try {
+    writeFileSync(join(dir, 'notes.md'), '# notes\n');
+    git(['add', 'notes.md']);
+    git(['commit', '-qm', 'docs: notes']);
+    captured(dir, 'playwright', ['home.png']);
+    setComments([
+      {
+        id: 4,
+        url: 'https://github.test/o/r/pull/9#issuecomment-4',
+        body: `stale\n\n<!-- my-command-shots ${'0'.repeat(64)} -->\n`,
+      },
+    ]);
+
+    const r = pr(ctx(dir, [], { title: 'T', body: '- wrote notes' }));
+    assert.equal(asComment(r).comment, COMMENT_URL);
+    assert.match(calls(), /^pr comment 9 /m);
+    assert.match(calls(), /^api --method DELETE repos\/\S+\/issues\/comments\/4$/m);
   } finally {
     restore();
   }

@@ -16,7 +16,9 @@
 // **private** one gets an attachment comment instead: `gh pr comment --attach` uploads each
 // file to GitHub's own `user-attachments` CDN, which renders under the reader's own
 // credential. `docs/features/pr.md` carries the rest of the reasoning.
+import { createHash } from 'node:crypto';
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -57,6 +59,13 @@ const IMAGE_WIDTH = 420;
 
 /** How many files one `gh pr comment` call accepts. */
 const ATTACH_LIMIT = 50;
+
+/**
+ * What stamps an attachment comment as this tool's, with a digest of what it carries, so
+ * a re-run can find the comment it already posted and tell whether the images changed.
+ */
+const COMMENT_MARKER = 'my-command-shots';
+const MARKER_RE = /<!-- my-command-shots ([0-9a-f]+) -->/;
 
 /** A before/after marker inside a filename's stem. */
 const SIDE = /(^|[-_. ])(before|after)([-_. ]|$)/i;
@@ -383,8 +392,9 @@ function publish(cwd, branch, shots) {
 /**
  * @typedef {object} ShotsComment
  * @property {{name: string, path: string}[]} files  What `--attach` uploads, in body order.
- * @property {string} body                           The comment, referencing those same paths.
  * @property {number} count                          How many images it publishes.
+ * @property {string} caption                        The line under the table.
+ * @property {string} digest                         Names and bytes of `files`, hashed.
  * @property {string} [warning]                      Images the per-comment cap left behind.
  */
 
@@ -402,47 +412,71 @@ function publish(cwd, branch, shots) {
 
 /**
  * The attachment comment a private repository takes in place of the in-body embed.
- *
- * **Both sides carry the same absolute path.** `gh` rewrites a body reference to its
- * uploaded `user-attachments` URL only where the reference string is byte-for-byte what
- * `--attach` was given; where they differ it appends every image to the end of the comment
- * and leaves the reference broken, which is a silent success rather than an error. The
- * paths go over bare, with the alt text written body-side: `--attach 'file#alt text'` sets
- * it from a suffix, but that suffix's effect on the matching is unverified.
  * @param {{name: string, path: string}[]} shots @param {Verdict} record
  * @returns {ShotsComment}
  */
 function commentPlan(shots, record) {
   const files = shots.slice(0, ATTACH_LIMIT);
-  const paths = new Map(files.map((shot) => [shot.name, shot.path]));
-  const section = renderShots(
-    groupShots(files.map((shot) => shot.name)),
-    (name) => paths.get(name) ?? name,
-    attachCell,
-  );
-  const caption = `Captured by the \`${record.tier}\` tier; verification ended \`${record.verdict}\`.`;
+  const hash = createHash('sha256');
+  for (const shot of files) hash.update(`${shot.name}\0`).update(readFileSync(shot.path)).update('\0');
   /** @type {ShotsComment} */
-  const plan = { files, body: `${section}\n${caption}\n`, count: files.length };
+  const plan = {
+    files,
+    count: files.length,
+    caption: `Captured by the \`${record.tier}\` tier; verification ended \`${record.verdict}\`.`,
+    digest: hash.digest('hex'),
+  };
   const over = shots.length - files.length;
   if (over > 0) plan.warning = `${over} screenshot(s) past the ${ATTACH_LIMIT}-file limit of one comment`;
   return plan;
 }
+
+/** The hidden line that marks a comment as this tool's. @param {string} digest */
+export const commentMarker = (digest) => `<!-- ${COMMENT_MARKER} ${digest} -->`;
 
 /**
  * Post the attachment comment, once the PR it belongs to has a number.
  *
  * One comment per run, whatever the image count: `gh` takes every file in a single call and
  * prints the comment's URL.
+ *
+ * **Both sides carry the same path, and it is a temp path.** `gh` rewrites a body reference
+ * to its uploaded URL only where the reference string is byte-for-byte what `--attach` was
+ * given; where they differ it appends every image to the end of the comment and leaves the
+ * reference broken, which is a silent success rather than an error. Each file is copied into
+ * a temp directory under a name safe for markdown, so a space or `)` in the repository's own
+ * path cannot break the reference, and the user's home path never reaches the comment. The
+ * paths go over bare, with the alt text written body-side: `--attach 'file#alt text'` sets
+ * it from a suffix, but that suffix's effect on the matching is unverified.
  * @param {string} cwd @param {number} number @param {ShotsComment} plan
  * @returns {{url?: string, warning?: string}}
  */
 export function postShotsComment(cwd, number, plan) {
   const dir = mkdtempSync(join(tmpdir(), 'mct-shots-comment-'));
   try {
+    /** @type {Map<string, string>} */
+    const staged = new Map();
+    const taken = new Set();
+    for (const shot of plan.files) {
+      const ext = extname(shot.name);
+      const stem = segment(basename(shot.name, ext));
+      let safe = `${stem}${ext}`;
+      for (let n = 2; taken.has(safe); n += 1) safe = `${stem}-${n}${ext}`;
+      taken.add(safe);
+      const copy = join(dir, safe);
+      copyFileSync(shot.path, copy);
+      staged.set(shot.name, copy);
+    }
+
+    const section = renderShots(
+      groupShots(plan.files.map((shot) => shot.name)),
+      (name) => staged.get(name) ?? name,
+      attachCell,
+    );
     const file = join(dir, 'comment.md');
-    writeFileSync(file, plan.body);
+    writeFileSync(file, `${section}\n${plan.caption}\n\n${commentMarker(plan.digest)}\n`);
     const args = ['pr', 'comment', String(number), '--body-file', file];
-    for (const shot of plan.files) args.push('--attach', shot.path);
+    for (const path of staged.values()) args.push('--attach', path);
 
     const posted = exec('gh', args, { cwd });
     if (!posted.ok) {
@@ -455,6 +489,49 @@ export function postShotsComment(cwd, number, plan) {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+/**
+ * The attachment comment this tool already posted on the PR, if any — the newest one
+ * carrying the marker. An unanswerable lookup reads as none.
+ * @param {string} cwd @param {{owner: string, repo: string}} slug @param {number} number
+ * @returns {{id: number, url: string, digest: string} | null}
+ */
+export function findShotsComment(cwd, slug, number) {
+  const r = exec(
+    'gh',
+    [
+      'api',
+      '--paginate',
+      `repos/${slug.owner}/${slug.repo}/issues/${number}/comments`,
+      '--jq',
+      `.[] | select(.body | test("<!-- ${COMMENT_MARKER} ")) | [.id, .html_url, .body] | @json`,
+    ],
+    { cwd },
+  );
+  if (!r.ok) return null;
+  /** @type {{id: number, url: string, digest: string} | null} */
+  let found = null;
+  for (const line of r.stdout.split('\n').filter(Boolean)) {
+    try {
+      const [id, url, body] = JSON.parse(line);
+      const digest = String(body).match(MARKER_RE)?.[1];
+      if (Number.isInteger(id) && url && digest) found = { id, url: String(url), digest };
+    } catch {
+      // Not one of ours.
+    }
+  }
+  return found;
+}
+
+/**
+ * Remove an attachment comment this tool posted and has since replaced.
+ * @param {string} cwd @param {{owner: string, repo: string}} slug @param {number} id
+ * @returns {boolean}
+ */
+export function deleteShotsComment(cwd, slug, id) {
+  return exec('gh', ['api', '--method', 'DELETE', `repos/${slug.owner}/${slug.repo}/issues/comments/${id}`], { cwd })
+    .ok;
 }
 
 /**
