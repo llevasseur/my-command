@@ -24,6 +24,11 @@ per round.
 
 Take the highest tier already available. Name the tier you ran, every round.
 
+**The tier you name is consumed, not just read.** The caller records it beside your
+screenshots, and `/pr` embeds them in the PR when that record says `playwright`. So naming a
+tier you did not run puts unexercised images in front of a reviewer as though a browser had
+loaded them. Report the tier that actually ran, and drop to `http` or `static` plainly.
+
 | Tier | What it is | Use it when |
 |---|---|---|
 | `playwright` | A headless browser — the repo's own Playwright, or the device's `playwright-cli` | `@playwright/test` or `playwright` resolves in the worktree, **or** the caller hands you a `playwright-cli` command |

@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
-import { collectShots, groupShots, isFrontendPath, renderShots, sideOf, touchesFrontend } from './shots.mjs';
+import { collectShots, groupShots, isBrowserTier, readVerdict, renderShots, sideOf, writeVerdict } from './shots.mjs';
 
 /** @type {string[]} */
 const made = [];
@@ -21,24 +21,6 @@ function scratch() {
   made.push(dir);
   return dir;
 }
-
-test('markup and stylesheets are frontend wherever they sit', () => {
-  for (const path of ['src/App.tsx', 'lib/Card.vue', 'a/b/theme.scss', 'index.html', 'x/y/z.svelte']) {
-    assert.equal(isFrontendPath(path), true, path);
-  }
-});
-
-test('a script file is frontend only under a directory that serves a UI', () => {
-  assert.equal(isFrontendPath('src/components/Button.ts'), true);
-  assert.equal(isFrontendPath('app/routes/home/loader.ts'), true);
-  assert.equal(isFrontendPath('src/toolkit/verbs/pr.mjs'), false);
-  assert.equal(isFrontendPath('scripts/build.js'), false);
-});
-
-test('a diff of markdown and CLI verbs touches no frontend', () => {
-  assert.equal(touchesFrontend(['src/commands/pr.md', 'src/toolkit/lib/shots.mjs', 'CHANGELOG.md']), false);
-  assert.equal(touchesFrontend(['README.md', 'web/pages/index.tsx']), true);
-});
 
 test('a before/after marker resolves to a view whichever end of the stem it is on', () => {
   assert.deepEqual(sideOf('home-before.png'), { view: 'home', side: 'before' });
@@ -105,4 +87,41 @@ test('collecting a shots directory finds nested images and ignores everything el
   writeFileSync(join(dir, 'round-2', 'settings.PNG'), 'pixels');
   assert.deepEqual(collectShots(dir), ['home.png', 'round-2/settings.PNG']);
   assert.deepEqual(collectShots(join(dir, 'absent')), []);
+});
+
+test('only the browser tier counts as having taken a screenshot', () => {
+  assert.equal(isBrowserTier('playwright'), true);
+  assert.equal(isBrowserTier('http'), false);
+  assert.equal(isBrowserTier('static'), false);
+  assert.equal(isBrowserTier('anything else'), false);
+});
+
+test('a recorded verdict round-trips out of the shots directory', () => {
+  const dir = scratch();
+  const written = writeVerdict(dir, { tier: 'playwright', verdict: 'red', rounds: 3 });
+  assert.equal(written, join(dir, '.my-command', 'shots', 'verdict.json'));
+  const read = readVerdict(dir, 'feat/x');
+  assert.equal(read?.tier, 'playwright');
+  assert.equal(read?.verdict, 'red');
+  assert.equal(read?.rounds, 3);
+});
+
+test('a branch with no record reads as none rather than throwing', () => {
+  assert.equal(readVerdict(scratch(), 'feat/never-verified'), null);
+});
+
+test('a mangled record is skipped rather than read as a verdict', () => {
+  const dir = scratch();
+  const shots = join(dir, '.my-command', 'shots');
+  mkdirSync(shots, { recursive: true });
+  writeFileSync(join(shots, 'verdict.json'), '{ not json');
+  assert.equal(readVerdict(dir, 'feat/x'), null);
+});
+
+test('a record naming a tier this repo does not know is not a verdict', () => {
+  const dir = scratch();
+  const shots = join(dir, '.my-command', 'shots');
+  mkdirSync(shots, { recursive: true });
+  writeFileSync(join(shots, 'verdict.json'), JSON.stringify({ tier: 'browser', verdict: 'green' }));
+  assert.equal(readVerdict(dir, 'feat/x'), null);
 });

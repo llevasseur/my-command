@@ -2,15 +2,30 @@
 //
 // Three verbs share these paths. `worktree begin` opens `.my-command/shots/` inside a
 // checkout, `worktree end` moves what landed there into a device-wide keep, and `pr`
-// publishes what it finds for a branch whose diff touches the frontend. The keep's
-// layout is stated once, here, so the three cannot disagree about it.
+// publishes what it finds. The keep's layout is stated once, here, so the three cannot
+// disagree about it.
+//
+// What makes a branch's screenshots publishable is the verdict `/verify` records beside
+// them, not the shape of the diff. A browser tier ran, or it did not; a path glob over
+// the changed files could only ever guess at that, and guessed wrong in both directions
+// — a backend change proven through a dynamic frontend attached nothing, and a frontend
+// diff nobody exercised attached whatever stale images were lying around.
 //
 // Publishing commits the images to a side branch of the same repository and links
 // `raw.githubusercontent.com`. GitHub mints the `user-attachments` URLs behind its web
 // editor through no public API, so a body written by a tool cannot use them at all. Every
 // path is content-addressed, so the same screenshot published twice is one blob at one
 // URL. `docs/features/pr.md` carries the rest of the reasoning.
-import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, extname, join } from 'node:path';
 import { run as exec } from './proc.mjs';
@@ -21,30 +36,18 @@ const SHOTS = ['.my-command', 'shots'];
 /** The side branch the published bytes live on. One per repository, never checked out. */
 export const SHOTS_REF = 'my-command-shots';
 
+/** Where `/verify` records what it did, inside the shots directory. */
+export const VERDICT_FILE = 'verdict.json';
+
+/** The driver tiers `mycommand-verifier` reports, and the ones that can hold a camera. */
+export const TIERS = ['playwright', 'http', 'static'];
+const BROWSER_TIERS = new Set(['playwright']);
+
+/** The four flat verdicts a round can end on. */
+export const VERDICTS = ['green', 'red', 'unverified', 'skipped'];
+
 /** What counts as an image worth embedding. */
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif']);
-
-/** Extensions that are frontend on their own, whatever directory they sit in. */
-const MARKUP_EXT = new Set([
-  '.tsx',
-  '.jsx',
-  '.vue',
-  '.svelte',
-  '.astro',
-  '.css',
-  '.scss',
-  '.sass',
-  '.less',
-  '.styl',
-  '.html',
-  '.htm',
-]);
-
-/** Extensions that are frontend only under a directory that serves a UI. */
-const SCRIPT_EXT = new Set(['.ts', '.js', '.mjs', '.cjs', '.mts', '.cts']);
-
-/** A directory that puts a script file on a served surface. */
-const UI_DIR = /(^|\/)(components?|pages|views|screens|routes|layouts|styles?|ui|frontend|client|webapp)(\/|$)/i;
 
 /** How many images a grid row carries before it wraps. */
 const GRID_COLUMNS = 2;
@@ -104,24 +107,6 @@ export function keepDirFor(cwd, branch) {
 }
 
 /**
- * Whether one changed path is frontend code.
- *
- * Markup and stylesheets count wherever they sit; a script file counts only under a
- * directory that serves a UI.
- * @param {string} path @returns {boolean}
- */
-export function isFrontendPath(path) {
-  const ext = extname(path).toLowerCase();
-  if (MARKUP_EXT.has(ext)) return true;
-  return SCRIPT_EXT.has(ext) && UI_DIR.test(dirname(path));
-}
-
-/** @param {string[]} paths @returns {boolean} */
-export function touchesFrontend(paths) {
-  return paths.some(isFrontendPath);
-}
-
-/**
  * Every image under `dir`, nested, as paths relative to it.
  * @param {string} dir @returns {string[]}
  */
@@ -157,6 +142,63 @@ export function findShots(cwd, branch) {
     for (const name of collectShots(dir)) byName.set(name, join(dir, name));
   }
   return [...byName.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, path]) => ({ name, path }));
+}
+
+/**
+ * @typedef {object} Verdict
+ * @property {string} tier      The driver tier that ran: playwright, http, or static.
+ * @property {string} verdict   green, red, unverified, or skipped.
+ * @property {number} [rounds]  How many rounds the loop took.
+ * @property {string} [branch]
+ * @property {string} [recordedAt]
+ */
+
+/**
+ * Record what a verification loop did, beside the screenshots it took.
+ * @param {string} cwd @param {Verdict} record @returns {string} the file written
+ */
+export function writeVerdict(cwd, record) {
+  const dir = shotsIn(cwd);
+  mkdirSync(dir, { recursive: true });
+  const file = join(dir, VERDICT_FILE);
+  writeFileSync(file, `${JSON.stringify(record, null, 2)}\n`);
+  return file;
+}
+
+/**
+ * The verdict recorded for this branch, or null when nothing recorded one.
+ *
+ * Read from the same two places the screenshots are. `worktree end` suffixes a colliding
+ * name on its way into the keep, so a branch verified twice leaves `verdict-2.json`
+ * beside `verdict.json`; the newest wins, and the live workspace beats the keep.
+ * @param {string} cwd @param {string} branch
+ * @returns {Verdict | null}
+ */
+export function readVerdict(cwd, branch) {
+  const named = /^verdict(-\d+)?\.json$/;
+  for (const dir of [shotsIn(cwd), keepDirFor(cwd, branch)]) {
+    if (!existsSync(dir)) continue;
+    const found = readdirSync(dir)
+      .filter((name) => named.test(name))
+      .map((name) => ({ path: join(dir, name), at: statSync(join(dir, name)).mtimeMs }))
+      .sort((a, b) => b.at - a.at);
+    for (const { path } of found) {
+      try {
+        const parsed = JSON.parse(readFileSync(path, 'utf8'));
+        // A record whose tier is not one this repo knows about names no driver, so it
+        // cannot answer the only question the record exists to answer.
+        if (parsed && TIERS.includes(parsed.tier)) return parsed;
+      } catch {
+        // A half-written or hand-mangled record is not a verdict; try the next one.
+      }
+    }
+  }
+  return null;
+}
+
+/** Whether a recorded tier means a browser took the screenshots. @param {string} tier */
+export function isBrowserTier(tier) {
+  return BROWSER_TIERS.has(tier);
 }
 
 /**
@@ -327,25 +369,35 @@ function publish(cwd, branch, shots) {
  * @property {number} count             How many images it embeds.
  * @property {string} [ref]             The branch the bytes were published to.
  * @property {string} [commit]          The commit that carries them.
- * @property {string} [warning]         Why a frontend change with screenshots got none.
+ * @property {string} [tier]            The driver tier that took them.
+ * @property {string} [verdict]         The verdict the loop ended on.
+ * @property {string} [warning]         Why screenshots that exist got attached to nothing.
  */
 
 /**
  * The screenshot section for this branch's PR body.
  *
- * Silent on the two ordinary paths: a diff that changes no frontend code, and a frontend
- * change with no screenshots, both return an empty section and no warning. A warning
- * means there was something to attach and it could not be.
- * @param {string} cwd @param {string} branch @param {string[]} changed
+ * The gate is the recorded tier, never the verdict: a `red` loop's screenshots are the
+ * ones a reviewer most needs, and withholding them would hide the failure the loop found.
+ * A non-browser tier photographed nothing, and a branch nobody verified has nothing to
+ * show — both silent. Screenshots with no record beside them are the one case that warns,
+ * since something is there to attach and nothing says whether it may be.
+ * @param {string} cwd @param {string} branch
  * @param {{owner: string, repo: string} | null} slug
  * @returns {Attached}
  */
-export function attachShots(cwd, branch, changed, slug) {
+export function attachShots(cwd, branch, slug) {
   const none = { markdown: '', count: 0 };
-  if (!touchesFrontend(changed)) return none;
 
   const shots = findShots(cwd, branch);
   if (!shots.length) return none;
+
+  const record = readVerdict(cwd, branch);
+  if (!record) {
+    return { ...none, warning: `${shots.length} screenshot(s) with no recorded verdict — run \`shots record\`` };
+  }
+  if (!isBrowserTier(record.tier)) return none;
+
   if (!slug) return { ...none, warning: 'no GitHub remote to publish screenshots to' };
   if (isPrivate(cwd)) {
     return { ...none, warning: 'repository is private — a raw.githubusercontent.com link would not render' };
@@ -357,5 +409,12 @@ export function attachShots(cwd, branch, changed, slug) {
   const base = `https://raw.githubusercontent.com/${slug.owner}/${slug.repo}/${SHOTS_REF}`;
   const url = (/** @type {string} */ name) => `${base}/${published.paths.get(name)}`;
   const markdown = renderShots(groupShots(shots.map((s) => s.name)), url);
-  return { markdown, count: shots.length, ref: SHOTS_REF, commit: published.commit };
+  return {
+    markdown,
+    count: shots.length,
+    ref: SHOTS_REF,
+    commit: published.commit,
+    tier: record.tier,
+    verdict: record.verdict,
+  };
 }

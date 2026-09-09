@@ -81,7 +81,7 @@ the body already has one so repeated updates collect into one section instead of
 Where markup nests, the outermost match wins, so a `<picture>` is kept whole rather than
 shredded into its `<img>`. Updates report the carry-over count as `assetsPreserved`.
 
-### A frontend change carries its screenshots
+### A browser-verified branch carries its screenshots
 
 `/verify` and `/task` Step 2.6 capture screenshots of the running app into
 `.my-command/shots/` inside the worktree, and `worktree end` preserves them to
@@ -89,16 +89,39 @@ shredded into its `<img>`. Updates report the carry-over count as `assetsPreserv
 the person who most needed to see what the change looked like had to be told a path on the
 author's machine.
 
-`my-command-tools pr` now embeds them, gated on the diff. A changed path is frontend when
-its extension is markup or a stylesheet — `.tsx`, `.jsx`, `.vue`, `.svelte`, `.astro`,
-`.css`, `.scss`, `.sass`, `.less`, `.styl`, `.html`, `.htm` — or when it is a script file
-under a directory that serves a UI (`components/`, `pages/`, `views/`, `screens/`,
-`routes/`, `layouts/`, `styles/`, `ui/`, `frontend/`, `client/`, `webapp/`). The
-directory qualifier is what keeps a repository of CLI verbs and markdown — which most of
-them are, this one included — from tripping the check on a `.ts` file. Two paths attach
-nothing and say nothing: a diff with no frontend change, and a frontend change with no
-screenshots. A `shotsWarning` appears only when there was something to attach and the run
-could not.
+`my-command-tools pr` embeds them, gated on the **verdict `/verify` Step 6 records beside
+them**. That record — `verdict.json`, written by `my-command-tools shots record` — names
+the driver tier the loop ran and the verdict it reached, and `pr` publishes the
+screenshots when the tier is a browser (`playwright`). Three cases follow from that. A
+branch with no screenshots attaches nothing and says nothing. A branch verified at
+`http` or `static` photographed nothing worth showing, so it attaches nothing and says
+nothing too. Screenshots sitting beside no record at all produce a `shotsWarning`, since
+something is there to attach and nothing says whether it may be — in practice that means
+Step 6 was skipped.
+
+**The verdict itself never gates it.** A `red` loop's screenshots are the ones a reviewer
+most needs, and withholding them would hide the failure the loop found, so the verdict is
+reported alongside the count and tier and does nothing else.
+
+### Why the tier, and not the diff
+
+The first version of this gated on the diff: markup and stylesheet extensions counted
+anywhere, script files counted under a directory that serves a UI. It was wrong in both
+directions, and the interesting direction is the first one.
+
+A backend change verified **through** the frontend attached nothing. Widen a datastructure,
+prove in a browser that a dynamic frontend picked it up without needing an edit, and the
+screenshots proving exactly that were withheld, because no frontend file appeared in the
+diff. That is the case where the evidence is least reproducible from the diff alone and so
+most worth attaching. The other direction was quieter but real: a frontend diff nobody ever
+exercised would attach whatever stale images were lying around in the keep.
+
+The tier answers the question the glob was guessing at. `/verify` only reaches the browser
+tier when it actually drove one, and it is the one component that knows which tier it ran.
+So the loop records that fact and `pr` reads it, instead of inferring visual relevance from
+file extensions. The cost is a dependency between two commands that were independent: a
+branch verified before this record existed, or by hand, attaches nothing until
+`shots record` runs.
 
 Screenshots are read from both places they can be: the live `.my-command/shots/` in the
 workspace, which is where they still are when `/task` runs `/pr` before its teardown, and
