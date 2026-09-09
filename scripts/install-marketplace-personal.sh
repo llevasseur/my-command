@@ -59,3 +59,35 @@ if [ -d "$AGENTS_SRC" ]; then
   done
   echo "Linked $agents_linked subagent definition(s) into $AGENTS_DEST (skipped $agents_skipped)."
 fi
+
+# Report the device's Playwright and print the install command when it is absent. Never
+# installs the CLI or a browser, and absence is not a failure — this block exits 0 either way.
+# The probe order and this command live in src/toolkit/verbs/doctor.mjs
+# (PLAYWRIGHT_PROBES, PLAYWRIGHT_INSTALL_HINT); doctor.test.mjs pins the two together.
+PLAYWRIGHT_HINT="npm i -g playwright"
+
+playwright_state() {
+  command -v node >/dev/null 2>&1 || { echo unknown; return 0; }
+  [ -f "$REPO_ROOT/src/toolkit/cli.mjs" ] || { echo unknown; return 0; }
+  # `--compact` puts the result on one line, so the nested field is greppable without jq.
+  if node "$REPO_ROOT/src/toolkit/cli.mjs" doctor --compact 2>/dev/null |
+    grep -q '"playwright":{"installed":true'; then
+    echo present
+  else
+    echo absent
+  fi
+}
+
+case "$(playwright_state)" in
+present)
+  echo "Playwright: present on this device."
+  ;;
+absent)
+  echo "Playwright: not on this device, so a closed-loop check will use its HTTP tier."
+  echo "To add it, run this yourself (this installer will not):"
+  echo "  $PLAYWRIGHT_HINT"
+  ;;
+*)
+  echo "Playwright: not checked (no node on PATH, or no toolkit source beside this script)."
+  ;;
+esac

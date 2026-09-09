@@ -4,7 +4,7 @@ title: Command toolkit
 description: The device-wide `my-command-tools` CLI that commands call for the deterministic git/gh plumbing of a workflow run, and how it ships with every install mode.
 tags: [process, toolkit, install, cli]
 timestamp: 2026-07-25
-updated: 2026-08-02
+updated: 2026-09-08
 ---
 
 # Command toolkit
@@ -34,7 +34,7 @@ noise, what a PR description should say, or whether a failure is worth fixing.
 | `cleanup` | retire a merged branch's local and remote refs, judged against its PR |
 | `identity` | which GitHub account this checkout's remote wants, and `--select` to switch to it |
 | `stash write\|restore\|list` | `/cp`'s five-deep clipboard ring under `~/.claude`, and the clipboard sink |
-| `doctor` | where the toolkit resolved from, what's on PATH, and which clone it tracks |
+| `doctor` | where the toolkit resolved from, what's on PATH, which clone it tracks, and which external tools this device has |
 
 `app` is the one verb that starts something and leaves it running. `verify` runs the
 repo's gates and returns; a closed-loop check needs the repo's *app*, answering on a
@@ -259,6 +259,47 @@ Without the link, commands silently fell back to unguarded hand-written
 `git`/`gh`. `doctor.onPath` reports whether the bare call resolves to this
 install's shim and gives the exact link command when it does not.
 
+## Reported device facts
+
+Alongside where it resolved from, `doctor` reports the external tools the verbs and the
+workflow commands depend on. `node` is the running version; `git` and `gh` each report
+`{available, version}`, `git` because every verb shells out to it and `gh` because only
+`pr` and `prs` do — a device without `gh` still works for the rest.
+
+`playwright` reports `{installed, version, source}`, and it is the one entry no verb uses.
+It is there because a closed-loop check picks its driver tier from it, and that decision
+needs a fact rather than a guess. Two probes run in order and the first to answer wins:
+
+| `source` | Probe |
+|---|---|
+| `playwright-cli` | `playwright-cli --version` |
+| `npx` | `npx --no-install playwright --version` |
+
+Three properties are load-bearing, and each of them is a failure this field would
+otherwise cause:
+
+- **Non-installing.** `--no-install` is what keeps the second probe a probe: plain
+  `npx playwright` fetches the package on a device that lacks it, so a read-only report
+  would silently change the machine it was reporting on. Nothing here installs the CLI or
+  downloads a browser.
+- **Time-bounded.** Each probe is abandoned after 5s. `npx` reaches for a registry on a
+  cold cache, and `doctor` is the verb a stuck device runs to find out what is wrong — it
+  is the last thing that may hang.
+- **Absence is a report, not a failure.** Neither probe resolving reads
+  `{installed: false, version: null, source: null}` and `doctor` still exits 0. A missing
+  binary, a non-zero exit, and a timeout are one answer: this did not resolve.
+
+`scripts/install-marketplace-personal.sh` reads this field off `doctor --compact` rather
+than re-probing, and when it is absent it **prints** the single global install command —
+`npm i -g playwright` — for a human to run. It never runs it, never installs a browser,
+and never fails on a device without Playwright. The probe order and that command live in
+`src/toolkit/verbs/doctor.mjs` alone; `doctor.test.mjs` pins the installer's printed
+command to the export so the two cannot drift.
+
+Whether a *repository* has Playwright of its own is a separate question, asked by
+[`/verify`](../features/verify.md) when it picks a tier. This field is about the device,
+which is why it sits beside `node`, `git`, and `gh`.
+
 ## Shipping constraint
 
 **The toolkit ships as raw `.mjs` under `src/toolkit/`, never as build output.**
@@ -324,6 +365,12 @@ with `allowJs` + `checkJs` + `noEmit`, run as `pnpm run check:toolkit`.
       `pass: true`; and refuses a branch a worktree holds, naming the path.
 - [ ] `verify --background` returns a `wait.input` that is one `run_in_background` Bash
       call, plus the `result` path to read once its notice arrives.
+- [ ] `doctor` reports `playwright` as `{installed, version, source}` with `source` naming
+      which probe answered; on a device with neither it reports
+      `{installed: false, version: null, source: null}` and still exits 0, and no probe
+      installs the CLI, downloads a browser, or outruns its 5s bound.
+- [ ] `scripts/install-marketplace-personal.sh` prints `npm i -g playwright` when that
+      field is absent, runs nothing, and exits 0 either way.
 - [ ] `pnpm run check:toolkit` and `pnpm test` pass in CI.
 - [ ] A fresh `npx` install lands a runnable shim on the device root **and** leaves a
       bare `my-command-tools` call working in a new shell.

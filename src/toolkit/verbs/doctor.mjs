@@ -3,6 +3,7 @@
 // The whole point of installing to a fixed device path is that a command can rely on
 // it without knowing how it was installed. This verb is how that claim gets checked
 // rather than assumed.
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,7 +24,14 @@ branch is from origin — the answer /sync needs, so nothing has to derive it by
 \`hooks\` reports whether the workflow gates are actually armed: every entry the settings
 fragment declares checked against the settings file the harness reads, plus whether the
 installed hooks directory points at this checkout. \`hooks.armed: false\` means the gates
-are files nobody executes, and \`hooks.hint\` is the command that fixes it.`;
+are files nobody executes, and \`hooks.hint\` is the command that fixes it.
+
+\`playwright\` reports \`{installed, version, source}\` for the browser driver a closed-loop
+check wants — a device-level fact, not a repository one. \`source\` names which probe
+answered: \`playwright-cli\` for a global CLI on PATH, \`npx\` for one \`npx --no-install\`
+already resolves. Both probes are non-installing and time-bounded, and neither absent
+binary is an error: no Playwright anywhere reads \`{installed: false, version: null,
+source: null}\`, which is a report rather than a failure.`;
 
 const HERE = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -31,6 +39,81 @@ const HERE = dirname(dirname(fileURLToPath(import.meta.url)));
 function probe(bin, args) {
   const r = exec(bin, args);
   return { available: !r.missing && r.ok, version: r.ok ? r.stdout.split('\n')[0] : null };
+}
+
+/** How long any one Playwright probe may run before it is abandoned. `npx` can block on a cold cache. */
+export const PROBE_TIMEOUT_MS = 5000;
+
+/**
+ * Tried in order, first one that answers wins. `--no-install` is what keeps the second a
+ * probe: plain `npx playwright` fetches the package on a device that lacks it.
+ *
+ * `scripts/install-marketplace-personal.sh` reads the verb rather than re-probing, so the
+ * order lives here only.
+ * @type {{source: string, cmd: string, args: string[]}[]}
+ */
+export const PLAYWRIGHT_PROBES = [
+  { source: 'playwright-cli', cmd: 'playwright-cli', args: ['--version'] },
+  { source: 'npx', cmd: 'npx', args: ['--no-install', 'playwright', '--version'] },
+];
+
+/** The one global install that makes the `npx` probe resolve. Printed, never run. */
+export const PLAYWRIGHT_INSTALL_HINT = 'npm i -g playwright';
+
+/**
+ * A bounded, throw-free single probe. Reaches `spawnSync` directly because `proc.mjs`'s
+ * `run` has no timeout. A missing binary, a non-zero exit, and a timeout are one answer:
+ * this did not resolve.
+ * @param {string} cmd
+ * @param {string[]} args
+ * @param {number} [timeoutMs]
+ * @returns {{ok: boolean, stdout: string}}
+ */
+export function boundedProbe(cmd, args, timeoutMs = PROBE_TIMEOUT_MS) {
+  try {
+    const r = spawnSync(cmd, args, {
+      encoding: 'utf8',
+      timeout: timeoutMs,
+      maxBuffer: 1024 * 1024,
+      // stdin closed: a probe must never sit waiting on a prompt it cannot answer.
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    return { ok: !r.error && r.status === 0, stdout: r.stdout ?? '' };
+  } catch {
+    // ENOENT and a timeout arrive through `error`; this covers anything spawnSync throws.
+    return { ok: false, stdout: '' };
+  }
+}
+
+/**
+ * The version number out of a `--version` line, whose wording differs between the two
+ * CLIs. Falls back to the whole first line, so an unrecognized wording still names
+ * what answered.
+ * @param {string} out
+ * @returns {string | null}
+ */
+function versionFrom(out) {
+  const first = (out.split('\n')[0] ?? '').trim();
+  if (first.length === 0) return null;
+  return /\d+\.\d+\.\d+[\w.+-]*/.exec(first)?.[0] ?? first;
+}
+
+/**
+ * Whether this **device** has Playwright, and by which route. Whether a *repository* has
+ * Playwright of its own is a separate question, asked elsewhere.
+ * @param {(cmd: string, args: string[]) => {ok: boolean, stdout: string}} [runner]
+ * @returns {{installed: boolean, version: string | null, source: string | null}}
+ */
+export function playwright(runner = boundedProbe) {
+  for (const { source, cmd, args } of PLAYWRIGHT_PROBES) {
+    const r = runner(cmd, args);
+    if (!r.ok) continue;
+    const version = versionFrom(r.stdout);
+    // A zero exit that printed nothing is not a resolved version; keep looking.
+    if (version === null) continue;
+    return { installed: true, version, source };
+  }
+  return { installed: false, version: null, source: null };
 }
 
 /**
@@ -114,5 +197,7 @@ export function run() {
     git: probe('git', ['--version']),
     // gh is only needed by the `pr` verb; the rest of the toolkit works without it.
     gh: probe('gh', ['--version']),
+    // Needed by no verb; reported because a closed-loop check picks its driver tier from it.
+    playwright: playwright(),
   };
 }
