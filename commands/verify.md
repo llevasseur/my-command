@@ -76,19 +76,25 @@ the pid.
 
 ## Step 4 — Spawn the verifier, once
 
-`Agent` with `subagent_type: "mycommand-verifier"`. Hand it, and nothing else:
+Read `my-command-tools doctor` first, for the one fact the spawn needs: `playwright.installed`,
+and the `source` that answered. `Agent` with `subagent_type: "mycommand-verifier"`. Hand it, and
+nothing else:
 
 - the intent, stated as given or inferred,
 - the changed-file list,
 - the run contract, or the detected boot and port,
+- **the `playwright-cli` command, when `doctor` reports `playwright.installed`** — that is what
+  makes the browser tier reachable in a repo with no Playwright of its own,
+- **the `shotsDir`** — `.my-command/shots/` under this workspace's root, the absolute path
+  `worktree begin` reported for it,
 - the round ceiling.
 
 **Spawn it once.** Every later round is a `SendMessage` to the same agent, so the boot, the
 driver, and its repo context are paid for once.
 
 It replies with a verdict — `green`, `red`, `unverified`, `skipped` — a tier, an `exercised`
-line, and a path to its evidence. **Read the evidence path only when you need it.** Do not ask
-for logs in the reply.
+line, a path to its evidence, and the screenshots it saved. **Read the evidence path only when
+you need it.** Do not ask for logs in the reply.
 
 ## Step 5 — Repair, then re-check
 
@@ -121,7 +127,10 @@ The report:
 - the `exercised` line for a `green`, or what stood in the way for anything else,
 - the intent, and whether it was given or inferred,
 - contract or detection,
-- the evidence path.
+- the evidence path,
+- **the saved screenshots, each by path.** They outlive this run — `worktree end` moves them to
+  `~/.my-command/shots/<repo>/<branch>/` — so the report is where someone learns they exist. A
+  screenshot nobody was told the path of is evidence nobody reads.
 
 **The verdict is advisory and this run changes nothing about the branch's fate.** It opens no
 PR, blocks no merge, and fails no build. A `red` here is information for whoever reads it.
@@ -156,10 +165,15 @@ Lead with the verdict, the round count, and the tier.
 
 ## Notes
 
-- **Never install a browser.** No `npx playwright install`. A repo without Playwright has not
-  opted into that tier, and the verifier drops to HTTP probes.
+- **Never install a browser.** No `npx playwright install`, no browser download, no package add
+  — the same rule whether the browser would have come from the repo or the device. A device with
+  no `playwright-cli` and a repo with no Playwright of its own means the tier is unavailable, and
+  the verifier drops to HTTP probes exactly as it always has. The installer prints the global
+  install command for a human; nothing here runs it.
 - **The seeded login is for a localhost URL this run booted, and nothing else.** Any other host
   means the credentials are withheld and the round reports `unverified`.
-- Persisted Playwright specs are out of scope. Whatever the verifier writes is scratch under
-  `$CLAUDE_JOB_DIR/tmp` and ships with nothing.
+- Persisted Playwright specs are out of scope: the specs and logs the verifier writes are
+  scratch under `$CLAUDE_JOB_DIR/tmp` and ship with nothing. **Screenshots are the exception** —
+  they go to the `shotsDir` inside the worktree, and `worktree end` preserves them to
+  `~/.my-command/shots/<repo>/<branch>/` rather than discarding them with the workspace.
 - <!-- include: shared/approval-own-call.md -->**A command that may need approval goes in its own Bash call** — `git fetch`, `git config`, and, as a narrow exception to the general rule to chain dependent mutations, branch-lifecycle operations such as checkout/switch, pull, remote-branch inspection, and local branch deletion. Folding one into an `&&` chain escalates approval to the whole compound command and costs a turn plus a retry. Put status output, pipes, and follow-up verification in separate read-only calls.<!-- /include -->

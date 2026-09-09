@@ -81,16 +81,42 @@ because it is trusted.
 
 ## Driver tiers
 
-Taken in order, highest the repo already supports, and **always reported**:
+Taken in order, highest available, and **always reported**:
 
-1. `playwright` — the repo's own installed Playwright, headless.
+1. `playwright` — a headless browser: the repo's own installed Playwright, or a
+   device-wide `playwright-cli` that `my-command-tools doctor` reports as
+   installed.
 2. `http` — boot plus HTTP probes.
 3. `static` — source, config, and build output only. Can never reach `green`.
 
+Tier 1 is **device-wide rather than repo-local**. The browser is a property of
+the machine, not of the project, and one global install serves every repository
+on it — where a repo-local gate meant the same laptop verified one project in a
+browser and its neighbour over `curl`, for no reason a reader of either PR could
+name. `/verify` reads `playwright.installed` off `doctor` and hands the verifier
+the command; the verifier never probes for it.
+
 **Nothing is installed to raise a tier.** No `npx playwright install`, no browser
-download, no package add. A repo without Playwright has not opted into tier 1,
-and quietly opting it in would make a verification run mutate the repo it was
-sent to observe.
+download, no package add — unchanged by the widening, and it applies to the
+device install as much as to the repo one. A device with no `playwright-cli` and
+a repo with no Playwright of its own falls back to HTTP probes exactly as before;
+`scripts/install-marketplace-personal.sh` prints `npm i -g playwright` for a
+human and never runs it. Quietly opting a repo in would make a verification run
+mutate the repo it was sent to observe.
+
+## Where the screenshots go
+
+Screenshots are the one thing a verification run leaves behind. The verifier
+writes them into the `shotsDir` the caller hands it — `.my-command/shots/` inside
+the worktree, created and reported by `my-command-tools worktree begin` — and
+`worktree end` moves them to `~/.my-command/shots/<repo>/<branch>/` before the
+workspace is removed. `.my-command/` is ignored device-wide through the user's
+global git excludes, so the directory can sit inside the checkout without turning
+up in any branch's diff.
+
+`/verify` Step 6 lists the saved files by path. That listing is how anyone learns
+they exist: nothing attaches them to the PR, and a screenshot whose path was
+never reported is evidence nobody reads.
 
 ## The advisory tradeoff
 
@@ -131,10 +157,15 @@ apply.
 
 ## Out of scope
 
-- **Persisted Playwright spec files as a shippable regression suite.** Whatever
-  the verifier writes is scratch under `$CLAUDE_JOB_DIR/tmp`; nothing lands in
-  the repo. A generated suite is a maintenance surface, and deciding to own one
-  is its own decision.
+- **Persisted Playwright spec files as a shippable regression suite.** The specs
+  and logs the verifier writes are scratch under `$CLAUDE_JOB_DIR/tmp` and
+  nothing of them lands in the repo. A generated suite is a maintenance surface,
+  and deciding to own one is its own decision. Screenshots are the deliberate
+  exception — see [Where the screenshots go](#where-the-screenshots-go) — and
+  they are preserved outside the repository, not committed to it.
+- **Attaching screenshots to the PR.** The report names their paths and stops
+  there. `gh` 2.97.0 has no `--attach`, so there is no first-class way to do it
+  and a hand-rolled upload is its own decision.
 - **Repo-wide smoke scenarios by default.** Available behind `--smoke`, off
   otherwise. The diff is the subject.
 - **Renaming `my-command-tools verify` to `gates`.** The toolkit verb and this

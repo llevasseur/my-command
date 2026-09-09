@@ -76,6 +76,12 @@ four facts. Ask for them in one round; skip whatever Step 2 already settled.
 Nothing to boot — a library, a CLI, a docs repo — is a real answer. Record it, emit no contract,
 and `/my-command:verify` skips. Never invent a boot command to fill the field.
 
+**The browser driver is not a fifth fact, so never ask for one.** A verification run reads it
+off `my-command-tools doctor` as a device fact and reaches its browser tier through a global
+`playwright-cli` when the repo has no Playwright of its own — so the contract stays these four
+facts, and the generated bootstrap never installs Playwright or downloads a browser to raise a
+tier.
+
 ## Step 4 — Recommendations (rules the generated bootstrap MUST follow)
 
 Design the bootstrap around these, and explain each as you apply it:
