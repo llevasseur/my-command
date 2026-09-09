@@ -4,7 +4,8 @@
 import { bool, str } from '../lib/flags.mjs';
 import { ghWrite, originSlug } from '../lib/gh.mjs';
 import { run as exec, ToolkitError, UsageError } from '../lib/proc.mjs';
-import { commitsSince, currentBranch, defaultBranch, repoRoot, resolveBase } from '../lib/repo.mjs';
+import { commitsSince, currentBranch, defaultBranch, diffStat, repoRoot, resolveBase } from '../lib/repo.mjs';
+import { attachShots } from '../lib/shots.mjs';
 import { textArg } from '../lib/text-arg.mjs';
 
 // Reported, never enforced: no count of the caller's prose is worth refusing a PR over.
@@ -12,7 +13,7 @@ import { textArg } from '../lib/text-arg.mjs';
 const WORD_BUDGET = 400;
 const WORD_LIMIT = 600;
 
-export const usage = `pr [--title <text>] --body-file <path> [--draft] [--base <branch>] [--retitle]
+export const usage = `pr [--title <text>] --body-file <path> [--draft] [--base <branch>] [--retitle] [--no-shots]
 
 Push the current branch and create or update its PR.
 
@@ -28,6 +29,7 @@ Push the current branch and create or update its PR.
                       An existing draft is never taken out of draft, flag or not.
   --base <branch>     Target branch (default: the repo's default branch).
   --retitle           Also update the title of an existing PR.
+  --no-shots          Do not embed the branch's screenshots, whatever the diff touched.
 
 \`--body -\` reads the description from stdin, and the \`PreToolUse\` gate refuses that
 form on sight — the only way to put multi-line prose on stdin is a heredoc, and a
@@ -35,6 +37,15 @@ heredoc is refused wholesale inside an isolated worktree. Use \`--body-file\`.
 
 Assets already in an existing PR's description — images, videos, GitHub attachment
 links — are always carried over into the new body. They are never dropped.
+
+A branch whose diff changes frontend code gets its screenshots embedded under a
+\`## Screenshots\` heading: before/after pairs as a table, one row per view, and
+everything else as a grid. The images are published to the \`my-command-shots\` branch of
+the same repository and linked from \`raw.githubusercontent.com\`, at a content-addressed
+path so the same screenshot keeps the same URL across runs. A diff that changes no
+frontend code, and a frontend change with no screenshots, both attach nothing and say
+nothing. Reported as \`screenshots\`, or as \`shotsWarning\` when there was something to
+attach and it could not be.
 
 The description's shape is measured, never enforced: a body over ${WORD_BUDGET} words, or one
 carrying no bullet at all, comes back as \`bodyWarnings\` alongside the PR that was still
@@ -115,6 +126,8 @@ function restCall(cwd, method, path, body) {
  * @property {string} [base]
  * @property {number} [assetsPreserved]
  * @property {string[]} [bodyWarnings]
+ * @property {{count: number, ref: string, commit: string}} [screenshots]
+ * @property {string} [shotsWarning]
  */
 
 /** @param {import('../cli.mjs').Ctx} ctx */
@@ -125,16 +138,20 @@ export function run(ctx) {
 
   if (branch === def) throw new ToolkitError(`refusing to open a PR from the default branch (${def})`, { branch });
 
-  const body = textArg(ctx.flags, 'body', 'body-file', { usage });
+  const authored = textArg(ctx.flags, 'body', 'body-file', { usage });
   const draft = bool(ctx.flags.draft);
   const base = str(ctx.flags.base) ?? def;
   const title = str(ctx.flags.title)?.trim() || firstCommitSubject(cwd, str(ctx.flags.base));
-  const warnings = bodyWarnings(body);
+  // Measured on the prose the caller wrote, before the screenshot table is appended: the
+  // budget is a statement about the description, and a generated table is not prose.
+  const warnings = bodyWarnings(authored);
 
   const push = exec('git', ['push', '-u', 'origin', 'HEAD'], { cwd });
   if (!push.ok) throw new ToolkitError('git push failed', { code: push.code, stderr: push.stderr });
 
   const slug = originSlug(cwd);
+  const shots = screenshots(ctx, cwd, branch, str(ctx.flags.base), slug);
+  const body = shots.markdown ? `${authored.replace(/\s+$/, '')}\n\n${shots.markdown}` : authored;
   const existing = findExisting(cwd);
 
   if (existing) {
@@ -174,7 +191,7 @@ export function run(ctx) {
       identity: attempt.identity,
     };
     if (warnings.length) result.bodyWarnings = warnings;
-    return result;
+    return { ...result, ...shotsReport(shots) };
   }
 
   const args = ['pr', 'create', '--base', base, '--title', title, '--body', body];
@@ -211,7 +228,31 @@ export function run(ctx) {
     identity: attempt.identity,
   };
   if (warnings.length) result.bodyWarnings = warnings;
-  return result;
+  return { ...result, ...shotsReport(shots) };
+}
+
+/**
+ * The branch's screenshot section, unless the caller switched it off.
+ * @param {import('../cli.mjs').Ctx} ctx @param {string} cwd @param {string} branch
+ * @param {string | undefined} base @param {{owner: string, repo: string} | null} slug
+ * @returns {import('../lib/shots.mjs').Attached}
+ */
+function screenshots(ctx, cwd, branch, base, slug) {
+  if (bool(ctx.flags['no-shots'])) return { markdown: '', count: 0 };
+  const changed = diffStat(cwd, resolveBase(cwd, base).sha).map((f) => f.path);
+  return attachShots(cwd, branch, changed, slug);
+}
+
+/**
+ * What a screenshot attempt adds to the result. Nothing at all on the silent paths: a
+ * diff that touched no frontend code has nothing to report about screenshots.
+ * @param {import('../lib/shots.mjs').Attached} shots
+ * @returns {{screenshots?: {count: number, ref: string, commit: string}, shotsWarning?: string}}
+ */
+function shotsReport(shots) {
+  if (shots.warning) return { shotsWarning: shots.warning };
+  if (!shots.count || !shots.ref || !shots.commit) return {};
+  return { screenshots: { count: shots.count, ref: shots.ref, commit: shots.commit } };
 }
 
 /**

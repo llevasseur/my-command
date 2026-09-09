@@ -11,6 +11,7 @@ import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { flagsFrom } from '../lib/flags.mjs';
 import { porcelain } from '../lib/repo.mjs';
+import { SHOTS_REF } from '../lib/shots.mjs';
 import { run as cleanup } from './cleanup.mjs';
 import { run as commit, usage as commitUsage } from './commit.mjs';
 import { run as concepts, line as conceptsLine } from './concepts.mjs';
@@ -692,6 +693,107 @@ test('pr adds nothing when the previous description had no assets', () => {
     const r = pr(ctx(dir, [], { title: 'T', body: '- new prose' }));
     assert.equal(r.assetsPreserved, 0);
     assert.doesNotMatch(calls(), /## Assets/);
+  } finally {
+    restore();
+  }
+});
+
+test("pr embeds a frontend branch's screenshots and publishes them to the shots branch", () => {
+  const { dir, git, calls, restore } = repoWithFakeGh(openPr({ body: '' }));
+  try {
+    mkdirSync(join(dir, 'src', 'components'), { recursive: true });
+    writeFileSync(join(dir, 'src', 'components', 'Panel.tsx'), 'export const Panel = () => null;\n');
+    git(['add', 'src/components/Panel.tsx']);
+    git(['commit', '-qm', 'feat: panel']);
+
+    const shots = join(dir, '.my-command', 'shots');
+    mkdirSync(shots, { recursive: true });
+    writeFileSync(join(shots, 'panel-before.png'), 'before pixels');
+    writeFileSync(join(shots, 'panel-after.png'), 'after pixels');
+    writeFileSync(join(shots, 'nav.png'), 'nav pixels');
+
+    const r = pr(ctx(dir, [], { title: 'T', body: '- added the panel' }));
+    const published = /** @type {{screenshots?: {count: number, ref: string}}} */ (r).screenshots;
+    assert.equal(published?.count, 3);
+    assert.equal(published?.ref, SHOTS_REF);
+
+    const log = calls();
+    assert.match(log, /## Screenshots/);
+    assert.match(log, /\| View \| Before \| After \|/);
+    assert.match(log, /\| panel \| <img src="https:\/\/raw\.githubusercontent\.com\/[^"]+-panel-before\.png"/);
+    assert.match(log, /alt="nav\.png"/);
+    // The bytes reached the side branch, at a content-addressed path, without the branch
+    // under review being touched.
+    const listed = execFileSync('git', ['ls-tree', '-r', '--name-only', `origin/${SHOTS_REF}`], {
+      cwd: dir,
+      encoding: 'utf8',
+    });
+    assert.match(listed, /^shots\/feat\/x\/[0-9a-f]{12}-panel-after\.png$/m);
+    assert.equal(
+      execFileSync('git', ['status', '--porcelain'], { cwd: dir, encoding: 'utf8' }).includes('.tsx'),
+      false,
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('pr re-publishing the same screenshots reuses the URL rather than duplicating the image', () => {
+  const { dir, git, calls, restore } = repoWithFakeGh(openPr({ body: '' }));
+  try {
+    mkdirSync(join(dir, 'styles'), { recursive: true });
+    writeFileSync(join(dir, 'styles', 'app.css'), 'body { color: red }\n');
+    git(['add', 'styles/app.css']);
+    git(['commit', '-qm', 'feat: restyle']);
+    mkdirSync(join(dir, '.my-command', 'shots'), { recursive: true });
+    writeFileSync(join(dir, '.my-command', 'shots', 'home.png'), 'pixels');
+
+    const first = pr(ctx(dir, [], { title: 'T', body: '- restyled' }));
+    const second = pr(ctx(dir, [], { title: 'T', body: '- restyled' }));
+    const url = /https:\/\/raw\.githubusercontent\.com\/\S+home\.png/;
+    const urls = calls().match(new RegExp(url, 'g')) ?? [];
+    assert.equal(urls.length, 2);
+    assert.equal(urls[0], urls[1]);
+    // Same bytes, same tree: the second run has nothing to push and says so by reporting
+    // the commit the first one made.
+    const shotsOf = (/** @type {unknown} */ r) => /** @type {{screenshots?: {commit: string}}} */ (r).screenshots;
+    assert.equal(shotsOf(second)?.commit, shotsOf(first)?.commit);
+  } finally {
+    restore();
+  }
+});
+
+test('pr attaches nothing for a diff that changes no frontend code', () => {
+  const { dir, git, calls, restore } = repoWithFakeGh(openPr({ body: '' }));
+  try {
+    writeFileSync(join(dir, 'notes.md'), '# notes\n');
+    git(['add', 'notes.md']);
+    git(['commit', '-qm', 'docs: notes']);
+    mkdirSync(join(dir, '.my-command', 'shots'), { recursive: true });
+    writeFileSync(join(dir, '.my-command', 'shots', 'home.png'), 'pixels');
+
+    const r = pr(ctx(dir, [], { title: 'T', body: '- wrote notes' }));
+    assert.equal(/** @type {{screenshots?: unknown, shotsWarning?: unknown}} */ (r).screenshots, undefined);
+    assert.equal(/** @type {{shotsWarning?: unknown}} */ (r).shotsWarning, undefined);
+    assert.doesNotMatch(calls(), /## Screenshots/);
+  } finally {
+    restore();
+  }
+});
+
+test("pr --no-shots leaves a frontend branch's screenshots off the body", () => {
+  const { dir, git, calls, restore } = repoWithFakeGh(openPr({ body: '' }));
+  try {
+    mkdirSync(join(dir, 'pages'), { recursive: true });
+    writeFileSync(join(dir, 'pages', 'index.html'), '<p>hi</p>\n');
+    git(['add', 'pages/index.html']);
+    git(['commit', '-qm', 'feat: page']);
+    mkdirSync(join(dir, '.my-command', 'shots'), { recursive: true });
+    writeFileSync(join(dir, '.my-command', 'shots', 'home.png'), 'pixels');
+
+    const r = pr(ctx(dir, [], { title: 'T', body: '- added the page', 'no-shots': true }));
+    assert.equal(/** @type {{screenshots?: unknown}} */ (r).screenshots, undefined);
+    assert.doesNotMatch(calls(), /## Screenshots/);
   } finally {
     restore();
   }

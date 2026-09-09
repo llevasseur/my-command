@@ -70,6 +70,7 @@ const SWITCHES = new Set([
   'select',
   'json',
   'no-clipboard',
+  'no-shots',
   'consume',
   'background',
   'all',
