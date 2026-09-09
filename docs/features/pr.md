@@ -73,6 +73,13 @@ current body and carries its assets forward: markdown images, `<img>`/`<video>`/
 a repo's own `/assets/` path, `(private-)user-images.githubusercontent.com`), including a
 bare attachment URL, which GitHub embeds on its own.
 
+A media element carrying no source is **not** an asset. `<img>` written inside a sentence
+about `<img>` tags is prose, and the first version preserved it: this repo's own PR
+description grew an `## Assets` heading with a bare `<img>` under it, taken from a bullet
+that explained how the screenshot section is built. The URL is now read from `src`,
+`srcset`, or `poster`, and a match with none of them is skipped rather than carried over as
+its own matched text.
+
 Each is reinserted verbatim, so alt text and sizing attributes survive the round trip.
 Assets are de-duplicated by URL, so the same image appearing twice is carried once.
 Anything the rewritten body already references — matched by URL — is left where the new

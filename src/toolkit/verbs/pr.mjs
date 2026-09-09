@@ -297,14 +297,16 @@ const ATTACHMENT_URL =
   String.raw`|github\.com/[^\s/)>"']+/[^\s/)>"']+/assets/[^\s)>"']+` +
   String.raw`|(?:private-)?user-images\.githubusercontent\.com/[^\s)>"']+)`;
 
-/** Each asset shape, and where its URL lives. */
+/** Each asset shape, and where its URL lives. No URL means it is not an asset. */
 const ASSET_PATTERNS = [
   // A markdown image, whatever it points at.
   { re: /!\[[^\]]*\]\(\s*<?([^\s)>]+)>?[^)]*\)/g, url: (/** @type {RegExpExecArray} */ m) => m[1] },
-  // A media element, with its closing tag when it has one.
+  // A media element, with its closing tag when it has one. An element carrying no source
+  // is not media: `<img>` inside a sentence about `<img>` tags is prose, and preserving it
+  // put a bare `<img>` under this repo's own `## Assets` heading.
   {
     re: /<(img|video|audio|picture)\b[^>]*?(?:\/>|>(?:[\s\S]*?<\/\1>)?)/gi,
-    url: (/** @type {RegExpExecArray} */ m) => m[0].match(/\bsrc\s*=\s*["']?([^"'\s>]+)/i)?.[1] ?? m[0],
+    url: (/** @type {RegExpExecArray} */ m) => m[0].match(/\b(?:src|srcset|poster)\s*=\s*["']?([^"'\s>]+)/i)?.[1],
   },
   // A markdown link to an attachment host, which GitHub renders as media.
   {
@@ -327,7 +329,9 @@ function extractAssets(body) {
   const found = [];
   for (const { re, url } of ASSET_PATTERNS) {
     for (const m of body.matchAll(re)) {
-      found.push({ start: m.index, end: m.index + m[0].length, snippet: m[0], url: url(m) });
+      const href = url(m);
+      if (!href) continue;
+      found.push({ start: m.index, end: m.index + m[0].length, snippet: m[0], url: href });
     }
   }
   // Outermost match wins, so nested markup is claimed once: sorting longest-first at

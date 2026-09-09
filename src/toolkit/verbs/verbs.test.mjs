@@ -686,6 +686,33 @@ test('pr treats a bare attachment link as an asset and keeps one heading across 
   }
 });
 
+test('pr does not preserve a media tag that carries no source', () => {
+  // Prose about `<img>` tags, which is what this repo's own description carried.
+  const { dir, calls, restore } = repoWithFakeGh(
+    openPr({ body: 'The section embeds `<img>` elements, and a `<video>` is prose too.' }),
+  );
+  try {
+    const r = pr(ctx(dir, [], { title: 'T', body: '- new prose' }));
+    assert.equal(r.assetsPreserved, 0);
+    assert.doesNotMatch(calls(), /## Assets/);
+  } finally {
+    restore();
+  }
+});
+
+test('pr preserves a media element by src, srcset, or poster', () => {
+  const { dir, calls, restore } = repoWithFakeGh(
+    openPr({ body: `<video poster="${SHOT}"></video>\n\n<img srcset="${CLIP}">` }),
+  );
+  try {
+    const r = pr(ctx(dir, [], { title: 'T', body: '- new prose' }));
+    assert.equal(r.assetsPreserved, 2);
+    assert.match(calls(), /## Assets/);
+  } finally {
+    restore();
+  }
+});
+
 test('pr adds nothing when the previous description had no assets', () => {
   const { dir, calls, restore } = repoWithFakeGh(
     openPr({ body: 'Just prose, and a [plain link](https://example.test/docs).' }),
