@@ -11,7 +11,6 @@ import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { flagsFrom } from '../lib/flags.mjs';
 import { porcelain } from '../lib/repo.mjs';
-import { SHOTS_REF } from '../lib/shots.mjs';
 import { run as cleanup } from './cleanup.mjs';
 import { run as commit, usage as commitUsage } from './commit.mjs';
 import { run as concepts, line as conceptsLine } from './concepts.mjs';
@@ -531,14 +530,13 @@ const COMMENT_URL = 'https://github.test/o/r/pull/9#issuecomment-77';
  * `pr view` with `json` and records every invocation. Returns the log reader, so a
  * test can assert on what the verb did *not* call as well as what it did.
  *
- * `isPrivate` decides what `gh repo view` answers, which is what routes the screenshots
- * between the in-body embed and the attachment comment. `commentFails` makes `gh pr
- * comment` refuse. The comment's `--body-file` is captured, since the body is the only
- * place the attachment references can be checked against what `--attach` was handed.
- * `createUrl` is what `gh pr create` prints. `gh api` on the comments list answers with
- * the `comments` file, already in the `--jq` shape the verb asks for, one JSON array per line.
+ * `commentFails` makes `gh pr comment` refuse. The comment's `--body-file` is captured,
+ * since the body is the only place the attachment references can be checked against what
+ * `--attach` was handed. `createUrl` is what `gh pr create` prints. `gh api` on the comments
+ * list answers with the `comments` file, already in the `--jq` shape the verb asks for, one
+ * JSON array per line.
  * @param {Record<string, unknown>} json  What `gh pr view --json ...` should report.
- * @param {{isPrivate?: boolean, commentFails?: boolean, createUrl?: string}} [options]
+ * @param {{commentFails?: boolean, createUrl?: string}} [options]
  */
 function repoWithFakeGh(json, options = {}) {
   const { dir, git } = repoWithOrigin();
@@ -566,7 +564,6 @@ echo "$@" >> ${JSON.stringify(log)}
 case "$1 $2" in
   'pr view') cat ${JSON.stringify(view)} ;;
   'pr create') echo ${JSON.stringify(options.createUrl ?? '')} ;;
-  'repo view') echo ${options.isPrivate ? 'true' : 'false'} ;;
   'pr comment')
 ${comment}
     ;;
@@ -776,67 +773,6 @@ function captured(dir, tier, names) {
   shotsVerb(ctx(dir, ['record'], { tier, verdict: 'red', rounds: '2' }));
 }
 
-test('pr embeds the screenshots a browser tier took, whatever the diff changed', () => {
-  const { dir, git, calls, restore } = repoWithFakeGh(openPr({ body: '' }));
-  try {
-    // A backend-only change: no markup, no stylesheet, no UI directory anywhere in it.
-    writeFileSync(join(dir, 'orders.sql'), 'alter table orders add column total int;\n');
-    git(['add', 'orders.sql']);
-    git(['commit', '-qm', 'feat: widen orders']);
-    captured(dir, 'playwright', ['panel-before.png', 'panel-after.png', 'nav.png']);
-
-    const r = pr(ctx(dir, [], { title: 'T', body: '- widened the table' }));
-    const published = /** @type {{screenshots?: {count: number, ref: string, tier: string, verdict: string}}} */ (r)
-      .screenshots;
-    assert.equal(published?.count, 3);
-    assert.equal(published?.ref, SHOTS_REF);
-    assert.equal(published?.tier, 'playwright');
-    // A red verdict still publishes: the tier gates, the verdict does not.
-    assert.equal(published?.verdict, 'red');
-
-    const log = calls();
-    assert.match(log, /## Screenshots/);
-    assert.match(log, /\| View \| Before \| After \|/);
-    assert.match(log, /\| panel \| <img src="https:\/\/raw\.githubusercontent\.com\/[^"]+-panel-before\.png"/);
-    assert.match(log, /alt="nav\.png"/);
-    const listed = execFileSync('git', ['ls-tree', '-r', '--name-only', `origin/${SHOTS_REF}`], {
-      cwd: dir,
-      encoding: 'utf8',
-    });
-    assert.match(listed, /^shots\/feat\/x\/[0-9a-f]{12}-panel-after\.png$/m);
-    assert.equal(
-      execFileSync('git', ['status', '--porcelain'], { cwd: dir, encoding: 'utf8' }).includes('.sql'),
-      false,
-    );
-  } finally {
-    restore();
-  }
-});
-
-test('pr re-publishing the same screenshots reuses the URL rather than duplicating the image', () => {
-  const { dir, git, calls, restore } = repoWithFakeGh(openPr({ body: '' }));
-  try {
-    mkdirSync(join(dir, 'styles'), { recursive: true });
-    writeFileSync(join(dir, 'styles', 'app.css'), 'body { color: red }\n');
-    git(['add', 'styles/app.css']);
-    git(['commit', '-qm', 'feat: restyle']);
-    captured(dir, 'playwright', ['home.png']);
-
-    const first = pr(ctx(dir, [], { title: 'T', body: '- restyled' }));
-    const second = pr(ctx(dir, [], { title: 'T', body: '- restyled' }));
-    const url = /https:\/\/raw\.githubusercontent\.com\/\S+home\.png/;
-    const urls = calls().match(new RegExp(url, 'g')) ?? [];
-    assert.equal(urls.length, 2);
-    assert.equal(urls[0], urls[1]);
-    // Same bytes, same tree: the second run has nothing to push and says so by reporting
-    // the commit the first one made.
-    const shotsOf = (/** @type {unknown} */ r) => /** @type {{screenshots?: {commit: string}}} */ (r).screenshots;
-    assert.equal(shotsOf(second)?.commit, shotsOf(first)?.commit);
-  } finally {
-    restore();
-  }
-});
-
 test('pr attaches nothing when no browser tier took the screenshots', () => {
   const { dir, git, calls, restore } = repoWithFakeGh(openPr({ body: '' }));
   try {
@@ -909,9 +845,10 @@ test("pr --no-shots leaves a verified branch's screenshots off the body", () => 
 /** @param {unknown} r @returns {{count: number, via: string, tier: string, verdict: string, comment: string}} */
 const asComment = (r) => /** @type {never} */ (/** @type {{screenshots?: unknown}} */ (r).screenshots);
 
-test('pr publishes a private repository’s screenshots as an attachment comment', () => {
-  const { dir, git, calls, commentBody, restore } = repoWithFakeGh(openPr({ body: '' }), { isPrivate: true });
+test('pr publishes the screenshots a browser tier took, whatever the diff changed', () => {
+  const { dir, git, calls, commentBody, restore } = repoWithFakeGh(openPr({ body: '' }));
   try {
+    // A backend-only change: no markup, no stylesheet, no UI directory anywhere in it.
     writeFileSync(join(dir, 'orders.sql'), 'alter table orders add column total int;\n');
     git(['add', 'orders.sql']);
     git(['commit', '-qm', 'feat: widen orders']);
@@ -922,6 +859,7 @@ test('pr publishes a private repository’s screenshots as an attachment comment
     assert.equal(published.via, 'comment');
     assert.equal(published.count, 3);
     assert.equal(published.tier, 'playwright');
+    // A red verdict still publishes: the tier gates, the verdict does not.
     assert.equal(published.verdict, 'red');
     assert.equal(published.comment, COMMENT_URL);
     assert.equal(/** @type {{shotsWarning?: unknown}} */ (r).shotsWarning, undefined);
@@ -929,11 +867,13 @@ test('pr publishes a private repository’s screenshots as an attachment comment
     const log = calls();
     // One comment per run, whatever the image count.
     assert.equal(log.match(/^pr comment 9 /gm)?.length, 1);
-    // Nothing went into the body, and no bytes went to the side branch.
+    // Nothing went into the body, and the checkout is untouched.
     assert.doesNotMatch(log, /## Screenshots/);
-    assert.equal(execFileSync('git', ['ls-remote', 'origin', SHOTS_REF], { cwd: dir, encoding: 'utf8' }).trim(), '');
+    assert.equal(
+      execFileSync('git', ['status', '--porcelain'], { cwd: dir, encoding: 'utf8' }).includes('.sql'),
+      false,
+    );
 
-    // The same before/after pairing and grid the in-body publisher uses.
     const body = commentBody();
     assert.match(body, /^## Screenshots$/m);
     assert.match(body, /\| View \| Before \| After \|/);
@@ -957,7 +897,6 @@ test('pr publishes a private repository’s screenshots as an attachment comment
 
 test('pr posts the screenshot comment on a PR it just created, even when the lookup misses', () => {
   const { dir, git, calls, restore } = repoWithFakeGh(openPr({ state: 'MERGED' }), {
-    isPrivate: true,
     createUrl: 'https://github.test/o/r/pull/13',
   });
   try {
@@ -977,9 +916,7 @@ test('pr posts the screenshot comment on a PR it just created, even when the loo
 });
 
 test('pr reuses the screenshot comment it already posted when the images are unchanged', () => {
-  const { dir, git, calls, commentBody, setComments, restore } = repoWithFakeGh(openPr({ body: '' }), {
-    isPrivate: true,
-  });
+  const { dir, git, calls, commentBody, setComments, restore } = repoWithFakeGh(openPr({ body: '' }));
   try {
     writeFileSync(join(dir, 'notes.md'), '# notes\n');
     git(['add', 'notes.md']);
@@ -1000,7 +937,7 @@ test('pr reuses the screenshot comment it already posted when the images are unc
 });
 
 test('pr replaces its earlier screenshot comment when the images changed', () => {
-  const { dir, git, calls, setComments, restore } = repoWithFakeGh(openPr({ body: '' }), { isPrivate: true });
+  const { dir, git, calls, setComments, restore } = repoWithFakeGh(openPr({ body: '' }));
   try {
     writeFileSync(join(dir, 'notes.md'), '# notes\n');
     git(['add', 'notes.md']);
@@ -1024,7 +961,7 @@ test('pr replaces its earlier screenshot comment when the images changed', () =>
 });
 
 test('pr reports a screenshot comment gh refused rather than claiming it published', () => {
-  const { dir, git, restore } = repoWithFakeGh(openPr({ body: '' }), { isPrivate: true, commentFails: true });
+  const { dir, git, restore } = repoWithFakeGh(openPr({ body: '' }), { commentFails: true });
   try {
     writeFileSync(join(dir, 'notes.md'), '# notes\n');
     git(['add', 'notes.md']);
@@ -1040,7 +977,7 @@ test('pr reports a screenshot comment gh refused rather than claiming it publish
 });
 
 test('pr attaches what one comment holds and warns about the rest', () => {
-  const { dir, git, calls, restore } = repoWithFakeGh(openPr({ body: '' }), { isPrivate: true });
+  const { dir, git, calls, restore } = repoWithFakeGh(openPr({ body: '' }));
   try {
     writeFileSync(join(dir, 'notes.md'), '# notes\n');
     git(['add', 'notes.md']);

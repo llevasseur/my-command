@@ -48,13 +48,13 @@ test('a comparison renders as one table row per view, before column then after',
   const rows = section.split('\n');
   assert.equal(rows[0], '## Screenshots');
   assert.equal(rows[2], '| View | Before | After |');
-  assert.match(rows[4], /^\| home \| <img src="https:\/\/host\/home-before\.png"/);
-  assert.match(rows[4], /<img src="https:\/\/host\/home-after\.png" width="\d+" alt="home-after\.png"> \|$/);
+  assert.match(rows[4], /^\| home \| !\[home-before\.png\]\(https:\/\/host\/home-before\.png\)/);
+  assert.match(rows[4], /!\[home-after\.png\]\(https:\/\/host\/home-after\.png\) \|$/);
 });
 
 test('a missing side says so rather than rendering an empty cell', () => {
   const section = renderShots(groupShots(['home-before.png']), (n) => `https://host/${n}`);
-  assert.match(section, /\| home \| <img [^|]+\| not captured \|/);
+  assert.match(section, /\| home \| !\[[^|]+\| not captured \|/);
 });
 
 test('unpaired shots render as a grid, padded to the column count', () => {
@@ -62,8 +62,8 @@ test('unpaired shots render as a grid, padded to the column count', () => {
   const rows = section.split('\n').filter((l) => l.startsWith('|'));
   assert.equal(rows[0], '| | |');
   assert.equal(rows[1], '| --- | --- |');
-  assert.match(rows[2], /a\.png".+b\.png"/);
-  assert.match(rows[3], /c\.png".+\|\s+\|$/);
+  assert.match(rows[2], /a\.png\).+b\.png\)/);
+  assert.match(rows[3], /c\.png\).+\|\s+\|$/);
 });
 
 test('a comparison and a grid appear in that order in one section', () => {
