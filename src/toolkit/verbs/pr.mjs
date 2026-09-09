@@ -142,8 +142,7 @@ export function run(ctx) {
   const draft = bool(ctx.flags.draft);
   const base = str(ctx.flags.base) ?? def;
   const title = str(ctx.flags.title)?.trim() || firstCommitSubject(cwd, str(ctx.flags.base));
-  // Measured on the prose the caller wrote, before the screenshot table is appended: the
-  // budget is a statement about the description, and a generated table is not prose.
+  // Measured on the prose the caller wrote, before the screenshot table is appended.
   const warnings = bodyWarnings(authored);
 
   const push = exec('git', ['push', '-u', 'origin', 'HEAD'], { cwd });
@@ -244,8 +243,7 @@ function screenshots(ctx, cwd, branch, base, slug) {
 }
 
 /**
- * What a screenshot attempt adds to the result. Nothing at all on the silent paths: a
- * diff that touched no frontend code has nothing to report about screenshots.
+ * What a screenshot attempt adds to the result — nothing at all on the silent paths.
  * @param {import('../lib/shots.mjs').Attached} shots
  * @returns {{screenshots?: {count: number, ref: string, commit: string}, shotsWarning?: string}}
  */

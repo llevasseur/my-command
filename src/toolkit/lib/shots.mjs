@@ -5,15 +5,11 @@
 // publishes what it finds for a branch whose diff touches the frontend. The keep's
 // layout is stated once, here, so the three cannot disagree about it.
 //
-// Publishing means hosting the bytes somewhere GitHub will render them from. GitHub has
-// no public API for the `user-attachments` URLs its own web editor mints, so a PR body
-// written by a tool cannot use them. Of the routes that are left, this one commits the
-// images to a side branch of the same repository and links `raw.githubusercontent.com`:
-// it needs no credential beyond the push that just happened, creates no release and no
-// gist, and keeps the bytes in the one place whose access already matches the PR's. The
-// cost is a branch that only grows, which is why every path is content-addressed — the
-// same screenshot published twice is one blob at one URL, so re-running `/pr` neither
-// duplicates an image nor invalidates a link already in the body.
+// Publishing commits the images to a side branch of the same repository and links
+// `raw.githubusercontent.com`. GitHub mints the `user-attachments` URLs behind its web
+// editor through no public API, so a body written by a tool cannot use them at all. Every
+// path is content-addressed, so the same screenshot published twice is one blob at one
+// URL. `docs/features/pr.md` carries the rest of the reasoning.
 import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, extname, join } from 'node:path';
@@ -110,9 +106,8 @@ export function keepDirFor(cwd, branch) {
 /**
  * Whether one changed path is frontend code.
  *
- * Markup and stylesheets count wherever they sit. A script file counts only under a
- * directory that serves a UI, so a repository of CLI verbs and markdown — which is what
- * most of them are — never trips the check by having a `.ts` file in it.
+ * Markup and stylesheets count wherever they sit; a script file counts only under a
+ * directory that serves a UI.
  * @param {string} path @returns {boolean}
  */
 export function isFrontendPath(path) {
@@ -127,8 +122,7 @@ export function touchesFrontend(paths) {
 }
 
 /**
- * Every image under `dir`, as paths relative to it. Nested, because a verifier names by
- * round and may well use a directory per round.
+ * Every image under `dir`, nested, as paths relative to it.
  * @param {string} dir @returns {string[]}
  */
 export function collectShots(dir) {
@@ -151,10 +145,8 @@ export function collectShots(dir) {
 /**
  * The branch's screenshots, wherever this run can still see them.
  *
- * Both places are real and only one of them is populated at a time. `/pr` runs before
- * `worktree end`, so the live workspace usually still holds them; a `--here` run, or a
- * second `/pr` after teardown, finds them in the keep instead. The workspace wins on a
- * name collision, being the newer of the two.
+ * Two places, one populated at a time: the live workspace before `worktree end` has run,
+ * the keep afterwards. The workspace wins a name collision, being the newer of the two.
  * @param {string} cwd @param {string} branch
  * @returns {{name: string, path: string}[]}
  */
@@ -197,8 +189,7 @@ export function sideOf(name) {
  * Split a branch's screenshots into the two things a reviewer reads differently: a
  * before/after comparison, one row per view, and everything else as a flat group.
  *
- * A view with only one side still gets a row — the missing cell says so, which is more
- * use to a reviewer than dropping the shot into the grid and losing the pairing.
+ * A view with only one side still gets a row, with the missing cell saying so.
  * @param {string[]} names @returns {ShotGroups}
  */
 export function groupShots(names) {
@@ -222,9 +213,8 @@ export function groupShots(names) {
 
 /**
  * The `## Screenshots` section for a body, or an empty string when there is nothing to
- * show. Images are `<img>` elements rather than markdown, for two reasons: a table cell
- * needs the width attribute to stay readable, and `pr`'s own asset preservation already
- * recognises an `<img>` and carries it forward by `src`.
+ * show. Images are `<img>` elements rather than markdown: a table cell needs the width
+ * attribute, and `pr`'s asset preservation carries an `<img>` forward by `src`.
  * @param {ShotGroups} groups @param {(name: string) => string} url
  * @returns {string}
  */
@@ -257,9 +247,8 @@ export function renderShots(groups, url) {
 }
 
 /**
- * The path a screenshot takes on the side branch. Content-addressed, so publishing the
- * same bytes twice lands on one path at one URL and the link already in a PR body stays
- * the link this run would write.
+ * The path a screenshot takes on the side branch. Content-addressed, so the same bytes
+ * land on one path at one URL however often they are published.
  * @param {string} branch @param {string} name @param {string} blob
  * @returns {string}
  */
@@ -271,8 +260,7 @@ function shotPath(branch, name, blob) {
 /**
  * True when the repository is private, so `raw.githubusercontent.com` would need a
  * credential the reviewer's browser — and GitHub's own image proxy — does not have.
- * An unanswerable probe is not a private repository: it returns false and lets the
- * publish proceed, since a broken image is recoverable and a silently skipped one is not.
+ * An unanswerable probe is not a private repository: it returns false and publishes.
  * @param {string} cwd @returns {boolean}
  */
 function isPrivate(cwd) {
@@ -283,10 +271,9 @@ function isPrivate(cwd) {
 /**
  * Commit the images onto the side branch and push it, without touching the working tree.
  *
- * Every step is git plumbing on purpose: `hash-object` writes the blobs, a throwaway
- * index builds the tree on top of whatever the branch already carries, and `commit-tree`
- * makes the commit. Nothing is checked out, nothing is staged in the caller's index, and
- * the branch under review is never left dirty by a `/pr` run.
+ * Git plumbing throughout: `hash-object` writes the blobs, a throwaway index builds the
+ * tree on top of whatever the branch already carries, and `commit-tree` makes the commit.
+ * Nothing is checked out and nothing is staged in the caller's index.
  * @param {string} cwd @param {string} branch @param {{name: string, path: string}[]} shots
  * @returns {{paths: Map<string, string>, commit: string, pushed: boolean} | null}
  */
@@ -346,9 +333,9 @@ function publish(cwd, branch, shots) {
 /**
  * The screenshot section for this branch's PR body.
  *
- * Silent by design on the two ordinary paths: a diff that changes no frontend code, and
- * a frontend change with no screenshots to show, both return an empty section and no
- * warning. A warning means the run had something to attach and could not.
+ * Silent on the two ordinary paths: a diff that changes no frontend code, and a frontend
+ * change with no screenshots, both return an empty section and no warning. A warning
+ * means there was something to attach and it could not be.
  * @param {string} cwd @param {string} branch @param {string[]} changed
  * @param {{owner: string, repo: string} | null} slug
  * @returns {Attached}
