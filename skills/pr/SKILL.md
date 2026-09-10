@@ -33,10 +33,10 @@ Parse `--draft` / `-d`; treat remaining text as optional title or context.
      under a `## Screenshots` heading: before/after pairs as a table with one
      row per view, anything unpaired as a grid. The gate is the tier the
      verification loop recorded beside the images, not the diff or the verdict.
-     The helper moves the image bytes itself and reports the count, tier,
-     verdict, and the route it took: a public repository gets them in the body,
-     a private one gets one attachment comment per PR, reused when the images
-     are unchanged, with its URL reported beside the rest. Never post
+     The helper moves the image bytes itself and reports the count, tier, and
+     verdict. There is one route and every repository takes it whatever its
+     visibility: one attachment comment per PR, reused when the images are
+     unchanged, with its URL reported beside the rest. Never post
      screenshots by hand with an attachment comment; the helper handles the
      path matching. Report nothing about screenshots when the helper reports
      nothing. A warning means something could not be published, so name it.
