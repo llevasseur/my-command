@@ -536,7 +536,7 @@ const COMMENT_URL = 'https://github.test/o/r/pull/9#issuecomment-77';
  * list answers with the `comments` file, already in the `--jq` shape the verb asks for, one
  * JSON array per line.
  * @param {Record<string, unknown>} json  What `gh pr view --json ...` should report.
- * @param {{commentFails?: boolean, createUrl?: string}} [options]
+ * @param {{commentFails?: boolean, createUrl?: string, attachMismatch?: boolean}} [options]
  */
 function repoWithFakeGh(json, options = {}) {
   const { dir, git } = repoWithOrigin();
@@ -549,13 +549,36 @@ function repoWithFakeGh(json, options = {}) {
   const posted = join(dir, 'comment-body.md');
   const comments = join(dir, 'comments.jsonl');
   writeFileSync(view, `${JSON.stringify(json)}\n`);
+  // What `gh` does with `--attach`: upload each file, then rewrite the body reference that
+  // matches its path byte for byte. `rendered` is what GitHub then holds.
+  const rendered = join(dir, 'comment-rendered.md');
   const comment = options.commentFails
     ? '    echo "gh: HTTP 422 (attachment rejected)" >&2\n    exit 1'
     : `    prev=''
     for a in "$@"; do
-      [ "$prev" = '--body-file' ] && cat "$a" >> ${JSON.stringify(posted)}
+      if [ "$prev" = '--body-file' ]; then
+        cat "$a" >> ${JSON.stringify(posted)}
+        cp "$a" ${JSON.stringify(rendered)}
+      fi
       prev="$a"
     done
+${
+  options.attachMismatch
+    ? // What a path mismatch leaves behind: the images are appended and the body's own
+      // reference stays pointing at the author's machine.
+      `    echo '' >> ${JSON.stringify(rendered)}
+    echo '![image](https://github.com/user-attachments/assets/1)' >> ${JSON.stringify(rendered)}`
+    : `    n=0
+    prev=''
+    for a in "$@"; do
+      if [ "$prev" = '--attach' ]; then
+        n=$((n + 1))
+        sed "s|](\${a})|](https://github.com/user-attachments/assets/\${n})|" ${JSON.stringify(rendered)} > ${JSON.stringify(`${rendered}.tmp`)}
+        mv ${JSON.stringify(`${rendered}.tmp`)} ${JSON.stringify(rendered)}
+      fi
+      prev="$a"
+    done`
+}
     echo ${JSON.stringify(COMMENT_URL)}`;
   writeFileSync(
     join(bin, 'gh'),
@@ -568,6 +591,7 @@ case "$1 $2" in
 ${comment}
     ;;
   'api --paginate') cat ${JSON.stringify(comments)} 2>/dev/null ;;
+  'api repos/'*) cat ${JSON.stringify(rendered)} 2>/dev/null ;;
 esac
 exit 0
 `,
@@ -576,8 +600,14 @@ exit 0
 
   const previous = process.env.PATH;
   process.env.PATH = `${bin}:${previous}`;
+  // The reference half of the render check runs against the fake's own output; the request
+  // half would reach GitHub's CDN, and a unit suite makes no network calls.
+  const probing = process.env.MY_COMMAND_SHOTS_PROBE;
+  process.env.MY_COMMAND_SHOTS_PROBE = '0';
   const restore = () => {
     process.env.PATH = previous;
+    if (probing === undefined) delete process.env.MY_COMMAND_SHOTS_PROBE;
+    else process.env.MY_COMMAND_SHOTS_PROBE = probing;
   };
   const calls = () => readFileSync(log, 'utf8');
   const commentBody = () => (existsSync(posted) ? readFileSync(posted, 'utf8') : '');
@@ -842,7 +872,11 @@ test("pr --no-shots leaves a verified branch's screenshots off the body", () => 
   }
 });
 
-/** @param {unknown} r @returns {{count: number, via: string, tier: string, verdict: string, comment: string}} */
+/**
+ * @param {unknown} r
+ * @returns {{count: number, via: string, tier: string, verdict: string, comment: string,
+ *            rendered: number, failed: number}}
+ */
 const asComment = (r) => /** @type {never} */ (/** @type {{screenshots?: unknown}} */ (r).screenshots);
 
 test('pr publishes the screenshots a browser tier took, whatever the diff changed', () => {
@@ -862,7 +896,10 @@ test('pr publishes the screenshots a browser tier took, whatever the diff change
     // A red verdict still publishes: the tier gates, the verdict does not.
     assert.equal(published.verdict, 'red');
     assert.equal(published.comment, COMMENT_URL);
+    assert.equal(published.rendered, 3);
+    assert.equal(published.failed, 0);
     assert.equal(/** @type {{shotsWarning?: unknown}} */ (r).shotsWarning, undefined);
+    assert.match(calls(), /^api repos\/\S+\/issues\/comments\/77 --jq \.body$/m);
 
     const log = calls();
     // One comment per run, whatever the image count.
@@ -890,6 +927,26 @@ test('pr publishes the screenshots a browser tier took, whatever the diff change
     for (const path of attached) assert.ok(!path.startsWith(dir), `${path} is a checkout path`);
     assert.doesNotMatch(body, new RegExp(dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     assert.match(body, /<!-- my-command-shots [0-9a-f]{64} -->/);
+  } finally {
+    restore();
+  }
+});
+
+test('pr reports a comment whose images gh left as dead links, and still opens the PR', () => {
+  const { dir, git, restore } = repoWithFakeGh(openPr({ body: '' }), { attachMismatch: true });
+  try {
+    writeFileSync(join(dir, 'notes.md'), '# notes\n');
+    git(['add', 'notes.md']);
+    git(['commit', '-qm', 'docs: notes']);
+    captured(dir, 'playwright', ['home.png']);
+
+    const r = pr(ctx(dir, [], { title: 'T', body: '- wrote notes' }));
+    // The PR is untouched by the check: it was already updated before the comment went up.
+    assert.equal(r.action, 'updated');
+    assert.equal(asComment(r).rendered, 0);
+    assert.equal(asComment(r).failed, 1);
+    assert.match(/** @type {{shotsWarning: string}} */ (r).shotsWarning, /1 of 1 screenshot\(s\) do not render/);
+    assert.match(/** @type {{shotsWarning: string}} */ (r).shotsWarning, /matched no --attach path/);
   } finally {
     restore();
   }

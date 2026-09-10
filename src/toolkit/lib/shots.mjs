@@ -13,6 +13,11 @@
 // `gh pr comment --body-file <path> --attach <file>` uploads each file to GitHub's own
 // `user-attachments` CDN, which serves under the reader's own credential, so a private
 // repository renders it too. `docs/features/pr.md` carries the reasoning.
+//
+// `gh`'s exit code proves the comment was created, not that it shows anything: the
+// body-to-attachment rewrite matches on the reference string, and a mismatch appends the
+// images silently and leaves a dead link. So a posted comment is read back and its images
+// requested — `verifyShotsComment` below.
 import { createHash } from 'node:crypto';
 import {
   copyFileSync,
@@ -27,6 +32,7 @@ import {
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, extname, join } from 'node:path';
+import { ownerToken } from './gh.mjs';
 import { run as exec } from './proc.mjs';
 
 /** Where a worktree's screenshots accumulate, relative to its root. */
@@ -382,6 +388,190 @@ export function postShotsComment(cwd, number, plan) {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+/**
+ * Where `gh --attach` re-hosts an uploaded image. A reference `gh` rewrote points here; one
+ * it left alone still points at the staged copy on this machine.
+ */
+const ATTACHMENT_HOST =
+  /^https:\/\/(?:github\.com\/user-attachments\/|(?:private-)?user-images\.githubusercontent\.com\/)/;
+
+/**
+ * Every markdown image in a body, alt text to href. The alt text is the screenshot's own
+ * name, so a reference traces back to the file it was written for.
+ * @param {string} body @returns {Map<string, string>}
+ */
+function imageRefs(body) {
+  /** @type {Map<string, string>} */
+  const found = new Map();
+  for (const m of body.matchAll(/!\[([^\]]*)\]\(\s*<?([^\s)>]+)>?[^)]*\)/g)) found.set(m[1], m[2]);
+  return found;
+}
+
+/** The comment id a `#issuecomment-<id>` URL names, or null. @param {string} url */
+export function commentId(url) {
+  const m = url.match(/#issuecomment-(\d+)/);
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * @typedef {object} ImageCheck
+ * @property {string} name           The screenshot the reference was written for.
+ * @property {string | null} url     Where the posted body points, or null for no reference.
+ * @property {boolean} rendered      Whether a reviewer sees an image here.
+ * @property {number} [status]       The status the attachment URL answered with.
+ * @property {number} [bytes]        How many bytes it served.
+ * @property {string} [why]          Why it does not render.
+ */
+
+/**
+ * @typedef {object} RenderReport
+ * @property {number} count
+ * @property {number} rendered
+ * @property {number} failed
+ * @property {ImageCheck[]} images
+ * @property {string} [warning]
+ */
+
+/**
+ * @typedef {object} ProbeResult
+ * @property {boolean} ok
+ * @property {number} [status]
+ * @property {number} [bytes]
+ * @property {string} [why]
+ */
+
+/**
+ * Whether a posted comment actually shows the images it uploaded.
+ *
+ * Two failures to tell apart. `gh` rewrites `![alt](<path>)` into the uploaded URL only
+ * where the path is byte-for-byte the `--attach` string; where it is not, it appends the
+ * images and leaves the reference pointing at a path on this machine, which a reviewer
+ * reads as a dead link. And a reference it did rewrite still says nothing about whether the
+ * CDN serves bytes back. So the reference is checked first, then the URL is requested.
+ *
+ * A null `probe` runs the reference half alone, for a machine that cannot reach the CDN at
+ * all — see `verifyShotsComment`.
+ * @param {string} body @param {string[]} names
+ * @param {((url: string) => ProbeResult) | null} probe
+ * @returns {RenderReport}
+ */
+export function verifyRendered(body, names, probe) {
+  const refs = imageRefs(body);
+  /** @type {ImageCheck[]} */
+  const images = names.map((name) => {
+    const url = refs.get(name) ?? null;
+    if (!url) return { name, url: null, rendered: false, why: 'no image reference in the posted comment' };
+    if (!ATTACHMENT_HOST.test(url)) {
+      return {
+        name,
+        url,
+        rendered: false,
+        why: `reference still points at \`${url}\`, so gh matched no --attach path`,
+      };
+    }
+    if (!probe) return { name, url, rendered: true };
+    const got = probe(url);
+    if (!got.ok) {
+      return { name, url, rendered: false, status: got.status, why: got.why ?? `answered HTTP ${got.status}` };
+    }
+    if (!got.bytes) return { name, url, rendered: false, status: got.status, bytes: 0, why: 'served no image bytes' };
+    return { name, url, rendered: true, status: got.status, bytes: got.bytes };
+  });
+
+  const rendered = images.filter((image) => image.rendered).length;
+  const failed = images.length - rendered;
+  /** @type {RenderReport} */
+  const report = { count: images.length, rendered, failed, images };
+
+  const notes = images.filter((image) => !image.rendered).map((image) => `${image.name}: ${image.why}`);
+  // A local path under a name nobody attached is the same broken link, counted once.
+  const claimed = new Set(images.map((image) => image.url));
+  const orphaned = [...refs.values()].filter((href) => !ATTACHMENT_HOST.test(href) && !claimed.has(href)).length;
+  if (orphaned) notes.push(`${orphaned} local path(s) still in the comment body`);
+
+  if (notes.length) {
+    const lead = failed
+      ? `${failed} of ${images.length} screenshot(s) do not render`
+      : 'the screenshot comment carries a broken reference';
+    report.warning = `${lead} — ${notes.join('; ')}`;
+  }
+  return report;
+}
+
+/** The status and content length a `curl -I` header dump reports. @param {string} out */
+function readHeaders(out) {
+  const lines = out.split('\n');
+  // `-w '\n%{http_code}\n'` puts the final status last, past every header block a redirect
+  // chain printed; the last `content-length` belongs to the same final response.
+  const status = Number(lines.filter((line) => line.trim()).pop()) || 0;
+  let bytes = 0;
+  for (const line of lines) {
+    const m = line.match(/^content-length:\s*(\d+)/i);
+    if (m) bytes = Number(m[1]);
+  }
+  return { status, bytes };
+}
+
+/**
+ * Request an attachment URL, and answer whether it serves an image.
+ *
+ * HEAD first, since it needs no body; a host that answers it without a length falls back to
+ * GET, which counts the bytes it actually received. The credential goes over `curl`'s stdin
+ * config rather than argv, where a token is readable by every process on the machine.
+ * @param {string} url @param {string | null} token @returns {ProbeResult}
+ */
+export function probeAttachment(url, token) {
+  const config = token ? `header = "Authorization: Bearer ${token}"\n` : '';
+  const common = ['-sS', '-L', '--max-time', '20', '-o', '/dev/null', '-K', '-'];
+
+  const head = exec('curl', [...common, '-I', '-D', '-', '-w', '\n%{http_code}\n', url], { input: config, raw: true });
+  if (head.missing) return { ok: false, why: 'curl is not on PATH, so nothing could request the attachment' };
+  const seen = readHeaders(head.stdout);
+  if (seen.status >= 200 && seen.status < 300 && seen.bytes > 0) {
+    return { ok: true, status: seen.status, bytes: seen.bytes };
+  }
+
+  const get = exec('curl', [...common, '-w', '%{http_code} %{size_download}', url], { input: config });
+  const [code, size] = get.stdout.split(/\s+/);
+  const status = Number(code) || seen.status;
+  if (status < 200 || status >= 300) return { ok: false, status, why: `answered HTTP ${status || 'nothing'}` };
+  const bytes = Number(size) || 0;
+  return { ok: bytes > 0, status, bytes };
+}
+
+/**
+ * Read the comment back off GitHub and check that it renders.
+ *
+ * Runs on both publish paths, the fresh post and the digest reuse: a comment carried over
+ * from a previous run is as capable of having a dead link in it as one just written.
+ *
+ * `MY_COMMAND_SHOTS_PROBE=0` keeps the reference half and drops the request half, for a
+ * machine that cannot reach the CDN — where every URL would read as dead and the warning
+ * would say something about the network rather than about the comment.
+ * @param {string} cwd @param {{owner: string, repo: string}} slug @param {number} id
+ * @param {string[]} names @returns {RenderReport}
+ */
+export function verifyShotsComment(cwd, slug, id, names) {
+  const read = exec('gh', ['api', `repos/${slug.owner}/${slug.repo}/issues/comments/${id}`, '--jq', '.body'], {
+    cwd,
+    raw: true,
+  });
+  if (!read.ok) {
+    const why = read.stderr.split('\n').find(Boolean) ?? `exit ${read.code}`;
+    // Nothing was checked, so neither count claims anything; the warning says why.
+    return {
+      count: names.length,
+      rendered: 0,
+      failed: 0,
+      images: [],
+      warning: `could not re-read the screenshot comment to check it rendered — ${why}`,
+    };
+  }
+  if (process.env.MY_COMMAND_SHOTS_PROBE === '0') return verifyRendered(read.stdout, names, null);
+  const token = ownerToken(slug.owner);
+  return verifyRendered(read.stdout, names, (url) => probeAttachment(url, token));
 }
 
 /**

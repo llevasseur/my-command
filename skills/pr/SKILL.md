@@ -33,13 +33,22 @@ Parse `--draft` / `-d`; treat remaining text as optional title or context.
      under a `## Screenshots` heading: before/after pairs as a table with one
      row per view, anything unpaired as a grid. The gate is the tier the
      verification loop recorded beside the images, not the diff or the verdict.
-     The helper moves the image bytes itself and reports the count, tier,
-     verdict, and the route it took: a public repository gets them in the body,
-     a private one gets one attachment comment per PR, reused when the images
-     are unchanged, with its URL reported beside the rest. Never post
+     The helper moves the image bytes itself and reports the count, tier, and
+     verdict. There is one route and every repository takes it whatever its
+     visibility: one attachment comment per PR, reused when the images are
+     unchanged, with its URL reported beside the rest. Never post
      screenshots by hand with an attachment comment; the helper handles the
      path matching. Report nothing about screenshots when the helper reports
      nothing. A warning means something could not be published, so name it.
+   - The helper checks the comment after posting it, and reports the result as a
+     rendered count and a failed count. A successful upload is not a visible
+     image: the body-to-attachment rewrite matches on the reference string, and a
+     mismatch leaves the reference pointing at a path on the author's machine. So
+     the comment is read back, every attached file must have an attachment-host
+     image URL with no local path left behind, and each of those URLs must answer
+     2xx with image bytes. A comment reused from a previous run is checked the
+     same way. A failed count above zero means the images are up but dead — name
+     it in the report and do not re-post the comment by hand.
    - **Hand the body over as a file, never on stdin.** Write the description to a
      path and pass `--body-file <absolute path>`. A description is multi-line by
      nature, so `--body -` means composing a heredoc, and a heredoc is refused
