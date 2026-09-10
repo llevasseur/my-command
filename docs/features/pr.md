@@ -196,9 +196,50 @@ reported, and one with a different digest is deleted once the replacement is up.
 
 The result is reported as `screenshots`, with `via: comment` and the comment's URL, so
 `shotsWarning` is left for what genuinely could not be published: images beside no recorded
-verdict, a comment `gh` refused, or the overflow past 50 files. On a freshly created PR the
-number comes from the `gh pr view` lookup, or from the `/pull/<n>` URL `gh pr create` printed
-when that lookup misses, so the comment is posted either way.
+verdict, a comment `gh` refused, the overflow past 50 files, or a comment whose images do not
+render. On a freshly created PR the number comes from the `gh pr view` lookup, or from the
+`/pull/<n>` URL `gh pr create` printed when that lookup misses, so the comment is posted
+either way.
+
+### The comment is proven to render, not assumed to
+
+`gh` exiting zero proves a comment was created. It does not prove a reviewer can see
+anything in it, and the reference-matching mechanic above is exactly why: where the body's
+`![alt](<path>)` is not byte-for-byte the `--attach` string, `gh` appends the images, leaves
+the reference pointing at a temp path on the author's machine, and still exits zero. The
+failure is silent on the author's side and total on the reviewer's — a `## Screenshots`
+table of broken image icons. Staging the files under matching names is what avoids it; it is
+not what proves it was avoided.
+
+So the comment is read back and checked, in two stages, because they fail for different
+reasons and only one of them is about the network.
+
+- **The references.** `gh api repos/<owner>/<repo>/issues/comments/<id>` returns the body as
+  GitHub holds it. Every attached file must appear as a markdown image whose alt text is the
+  screenshot's name and whose href is on the attachment host, and no image reference may
+  point anywhere on a filesystem. A local path under a name nobody attached is the same
+  broken link seen from the other end, so it is counted too, once.
+- **The bytes.** Each attachment URL is requested — HEAD first, since it needs no body,
+  falling back to GET where the response carries no length — and must answer 2xx with a
+  non-zero length. A rewritten reference to an asset the CDN will not serve renders no
+  better than a path. The credential goes over `curl`'s stdin config rather than argv, where
+  a token is readable by every process on the machine. `MY_COMMAND_SHOTS_PROBE=0` drops this
+  half and keeps the first, for a machine that cannot reach the CDN at all — where every URL
+  would read as dead and the warning would be about the network rather than the comment. It
+  is also what keeps the unit suite offline.
+
+The outcome lands on the result as `rendered` and `failed` counts beside the image count, and
+anything that did not render goes into `shotsWarning` with the reason per file. **It never
+fails the run.** The PR is open and pushed by the time this check runs, and a comment with a
+dead image link is a defect in the comment, not a reason to withhold the pull request — so
+the verb reports it and returns. Nothing about the existing gates moves: the browser tier
+still decides whether images are published at all, the verdict still never withholds them,
+and `--no-shots` still switches the whole thing off.
+
+**The digest-reuse path is checked identically.** A comment carried over from a previous run
+was verified when it was posted, but an asset can stop resolving afterwards, and reuse is the
+path where nothing would otherwise look at it again. So the check runs on the reused comment's
+own URL rather than being skipped as already-proven work.
 
 ### Worktree teardown is ownership-scoped
 

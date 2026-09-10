@@ -5,7 +5,14 @@ import { bool, str } from '../lib/flags.mjs';
 import { ghWrite, originSlug } from '../lib/gh.mjs';
 import { run as exec, ToolkitError, UsageError } from '../lib/proc.mjs';
 import { commitsSince, currentBranch, defaultBranch, repoRoot, resolveBase } from '../lib/repo.mjs';
-import { attachShots, deleteShotsComment, findShotsComment, postShotsComment } from '../lib/shots.mjs';
+import {
+  attachShots,
+  commentId,
+  deleteShotsComment,
+  findShotsComment,
+  postShotsComment,
+  verifyShotsComment,
+} from '../lib/shots.mjs';
 import { textArg } from '../lib/text-arg.mjs';
 
 // Reported, never enforced: no count of the caller's prose is worth refusing a PR over.
@@ -49,6 +56,13 @@ uploads each file to GitHub's own \`user-attachments\` CDN and renders under the
 own credential. That comment is one per PR, not per run: a re-run with the same images
 reuses it, and one with different images replaces it. \`screenshots\` reports the count,
 tier, and verdict, plus \`via: comment\` and the comment's URL.
+
+Once it is up, the comment is read back and checked: every attached file must have a
+\`user-attachments\` image URL in the body, no local path may be left behind, and each of
+those URLs must answer 2xx with image bytes. \`screenshots\` reports it as \`rendered\` and
+\`failed\` counts, and anything that does not render lands in \`shotsWarning\` — the PR is
+already open, so a dead image link is reported rather than raised. The same check runs on a
+comment reused from a previous run.
 
 A branch with no screenshots, and one whose screenshots came from a non-browser tier, both
 publish nothing and say nothing. \`shotsWarning\` is left for what genuinely could not be
@@ -144,6 +158,8 @@ function restCall(cwd, method, path, body) {
  * @property {string} tier     The driver tier that took them.
  * @property {string} verdict  The verdict the verification loop ended on.
  * @property {string} comment  The attachment comment's URL.
+ * @property {number} rendered How many of them a reviewer actually sees.
+ * @property {number} failed   How many resolved to nothing, or to a path on this machine.
  */
 
 /** @param {import('../cli.mjs').Ctx} ctx */
@@ -295,6 +311,8 @@ function commentReport(cwd, slug, shots, plan, number) {
   const posted = previous?.digest === plan.digest ? { url: previous.url } : postShotsComment(cwd, number, plan);
   if (posted.url && previous && previous.url !== posted.url && slug) deleteShotsComment(cwd, slug, previous.id);
 
+  const check = posted.url ? renderCheck(cwd, slug, posted.url, plan) : null;
+
   /** @type {{screenshots?: Screenshots, shotsWarning?: string}} */
   const report = {};
   if (posted.url) {
@@ -304,11 +322,40 @@ function commentReport(cwd, slug, shots, plan, number) {
       tier: shots.tier ?? '',
       verdict: shots.verdict ?? '',
       comment: posted.url,
+      rendered: check?.rendered ?? 0,
+      failed: check?.failed ?? 0,
     };
   }
-  const warnings = [posted.warning, plan.warning].filter(Boolean);
+  const warnings = [posted.warning, check?.warning, plan.warning].filter(Boolean);
   if (warnings.length) report.shotsWarning = warnings.join('; ');
   return report;
+}
+
+/**
+ * Whether the comment now on the PR actually shows its images.
+ *
+ * Reported, never fatal: the PR is already open by the time this runs, and a comment with a
+ * dead image link is a warning about the comment rather than a reason to fail the run that
+ * opened it. Both publish paths come through here — a fresh post and a comment reused from
+ * a previous run, which can have rotted since.
+ * @param {string} cwd @param {{owner: string, repo: string} | null} slug @param {string} url
+ * @param {import('../lib/shots.mjs').ShotsComment} plan
+ * @returns {import('../lib/shots.mjs').RenderReport | null}
+ */
+function renderCheck(cwd, slug, url, plan) {
+  if (!slug) return null;
+  const id = commentId(url);
+  const names = plan.files.map((shot) => shot.name);
+  if (id === null) {
+    return {
+      count: names.length,
+      rendered: 0,
+      failed: 0,
+      images: [],
+      warning: 'no comment id in the screenshot comment URL, so nothing checked that it rendered',
+    };
+  }
+  return verifyShotsComment(cwd, slug, id, names);
 }
 
 /**
