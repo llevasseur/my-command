@@ -334,10 +334,10 @@ function commentReport(cwd, slug, shots, plan, number) {
 /**
  * Whether the comment now on the PR actually shows its images.
  *
- * Reported, never fatal: the PR is already open by the time this runs, and a comment with a
- * dead image link is a warning about the comment rather than a reason to fail the run that
- * opened it. Both publish paths come through here — a fresh post and a comment reused from
- * a previous run, which can have rotted since.
+ * Reported, never fatal: the PR is already open by the time this runs, so a dead image link
+ * is a warning about the comment rather than a reason to fail the run that opened it. Both
+ * publish paths come through here, the fresh post and the comment reused from a previous
+ * run, which can have rotted since.
  * @param {string} cwd @param {{owner: string, repo: string} | null} slug @param {string} url
  * @param {import('../lib/shots.mjs').ShotsComment} plan
  * @returns {import('../lib/shots.mjs').RenderReport | null}

@@ -399,7 +399,7 @@ const ATTACHMENT_HOST =
 
 /**
  * Every markdown image in a body, alt text to href. The alt text is the screenshot's own
- * name, which is what makes a reference traceable back to the file it was meant to show.
+ * name, so a reference traces back to the file it was written for.
  * @param {string} body @returns {Map<string, string>}
  */
 function imageRefs(body) {
@@ -486,8 +486,7 @@ export function verifyRendered(body, names, probe) {
   const report = { count: images.length, rendered, failed, images };
 
   const notes = images.filter((image) => !image.rendered).map((image) => `${image.name}: ${image.why}`);
-  // A local path under a name nobody attached is the same broken link, reported once
-  // rather than per file: `gh` appended the images and left the section pointing at disk.
+  // A local path under a name nobody attached is the same broken link, counted once.
   const claimed = new Set(images.map((image) => image.url));
   const orphaned = [...refs.values()].filter((href) => !ATTACHMENT_HOST.test(href) && !claimed.has(href)).length;
   if (orphaned) notes.push(`${orphaned} local path(s) still in the comment body`);
@@ -561,8 +560,7 @@ export function verifyShotsComment(cwd, slug, id, names) {
   });
   if (!read.ok) {
     const why = read.stderr.split('\n').find(Boolean) ?? `exit ${read.code}`;
-    // Nothing was checked, so nothing is claimed either way — the count says how many
-    // images went unchecked and the warning says why.
+    // Nothing was checked, so neither count claims anything; the warning says why.
     return {
       count: names.length,
       rendered: 0,

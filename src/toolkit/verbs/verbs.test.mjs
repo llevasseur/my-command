@@ -549,9 +549,8 @@ function repoWithFakeGh(json, options = {}) {
   const posted = join(dir, 'comment-body.md');
   const comments = join(dir, 'comments.jsonl');
   writeFileSync(view, `${JSON.stringify(json)}\n`);
-  // What `gh` actually does with `--attach`: upload each file, then rewrite the body
-  // reference that matches its path byte for byte. `rendered` is what GitHub then holds,
-  // which is what the verb reads back to check the comment shows anything.
+  // What `gh` does with `--attach`: upload each file, then rewrite the body reference that
+  // matches its path byte for byte. `rendered` is what GitHub then holds.
   const rendered = join(dir, 'comment-rendered.md');
   const comment = options.commentFails
     ? '    echo "gh: HTTP 422 (attachment rejected)" >&2\n    exit 1'
@@ -897,7 +896,6 @@ test('pr publishes the screenshots a browser tier took, whatever the diff change
     // A red verdict still publishes: the tier gates, the verdict does not.
     assert.equal(published.verdict, 'red');
     assert.equal(published.comment, COMMENT_URL);
-    // Read back off the comment: every attached file became an attachment URL in the body.
     assert.equal(published.rendered, 3);
     assert.equal(published.failed, 0);
     assert.equal(/** @type {{shotsWarning?: unknown}} */ (r).shotsWarning, undefined);
