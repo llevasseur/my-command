@@ -9,13 +9,10 @@
 // them: a browser tier ran, or it did not. `docs/features/pr.md` covers why the shape of
 // the diff cannot answer that.
 //
-// There are two ways in, and which one a repository takes is decided by whether
-// `raw.githubusercontent.com` would render for a reviewer. A **public** repository gets the
-// images committed to a side branch of itself and linked from that host, at a
-// content-addressed path, so the same screenshot published twice is one blob at one URL. A
-// **private** one gets an attachment comment instead: `gh pr comment --attach` uploads each
-// file to GitHub's own `user-attachments` CDN, which renders under the reader's own
-// credential. `docs/features/pr.md` carries the rest of the reasoning.
+// There is one way in, whatever the repository's visibility: an attachment comment.
+// `gh pr comment --body-file <path> --attach <file>` uploads each file to GitHub's own
+// `user-attachments` CDN, which serves under the reader's own credential, so a private
+// repository renders it too. `docs/features/pr.md` carries the reasoning.
 import { createHash } from 'node:crypto';
 import {
   copyFileSync,
@@ -35,9 +32,6 @@ import { run as exec } from './proc.mjs';
 /** Where a worktree's screenshots accumulate, relative to its root. */
 const SHOTS = ['.my-command', 'shots'];
 
-/** The side branch the published bytes live on. One per repository, never checked out. */
-export const SHOTS_REF = 'my-command-shots';
-
 /** Where `/verify` records what it did, inside the shots directory. */
 export const VERDICT_FILE = 'verdict.json';
 
@@ -53,9 +47,6 @@ const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif']);
 
 /** How many images a grid row carries before it wraps. */
 const GRID_COLUMNS = 2;
-
-/** How wide an embedded screenshot renders inside a table cell. */
-const IMAGE_WIDTH = 420;
 
 /** How many files one `gh pr comment` call accepts. */
 const ATTACH_LIMIT = 50;
@@ -262,27 +253,19 @@ export function groupShots(names) {
 }
 
 /**
- * An `<img>` element, which is what a body embed wants: a table cell needs the width
- * attribute, and `pr`'s asset preservation carries an `<img>` forward by `src`.
+ * A markdown image: `gh pr comment --attach` rewrites `![alt](<path>)` in place, and only
+ * that shape.
  * @param {string} name @param {string} href @returns {string}
  */
-const htmlCell = (name, href) => `<img src="${href}" width="${IMAGE_WIDTH}" alt="${name}">`;
+const cell = (name, href) => `![${name}](${href})`;
 
 /**
- * A markdown image, which is what the attachment comment wants: `gh pr comment --attach`
- * rewrites `![alt](<path>)` in place, and only that shape.
- * @param {string} name @param {string} href @returns {string}
- */
-const attachCell = (name, href) => `![${name}](${href})`;
-
-/**
- * The `## Screenshots` section for a body, or an empty string when there is nothing to
- * show. `cell` decides how one image is written; the layout is the same either way.
+ * The `## Screenshots` section for a comment, or an empty string when there is nothing to
+ * show.
  * @param {ShotGroups} groups @param {(name: string) => string} url
- * @param {(name: string, href: string) => string} [cell]
  * @returns {string}
  */
-export function renderShots(groups, url, cell = htmlCell) {
+export function renderShots(groups, url) {
   /** @type {string[]} */
   const lines = [];
   const img = (/** @type {string} */ name) => cell(name, url(name));
@@ -311,82 +294,6 @@ export function renderShots(groups, url, cell = htmlCell) {
 }
 
 /**
- * The path a screenshot takes on the side branch. Content-addressed, so the same bytes
- * land on one path at one URL however often they are published.
- * @param {string} branch @param {string} name @param {string} blob
- * @returns {string}
- */
-function shotPath(branch, name, blob) {
-  const flat = segment(name.replace(/\//g, '-'));
-  return `${['shots', ...branch.split('/').map(segment)].join('/')}/${blob.slice(0, 12)}-${flat}`;
-}
-
-/**
- * True when the repository is private, so `raw.githubusercontent.com` would need a
- * credential the reviewer's browser — and GitHub's own image proxy — does not have, and
- * the attachment comment is the way in instead.
- * An unanswerable probe is not a private repository: it returns false and publishes.
- * @param {string} cwd @returns {boolean}
- */
-function isPrivate(cwd) {
-  const r = exec('gh', ['repo', 'view', '--json', 'isPrivate', '--jq', '.isPrivate'], { cwd });
-  return r.ok && r.stdout.trim() === 'true';
-}
-
-/**
- * Commit the images onto the side branch and push it, without touching the working tree.
- *
- * Git plumbing throughout: `hash-object` writes the blobs, a throwaway index builds the
- * tree on top of whatever the branch already carries, and `commit-tree` makes the commit.
- * Nothing is checked out and nothing is staged in the caller's index.
- * @param {string} cwd @param {string} branch @param {{name: string, path: string}[]} shots
- * @returns {{paths: Map<string, string>, commit: string, pushed: boolean} | null}
- */
-function publish(cwd, branch, shots) {
-  /** @type {Map<string, string>} */
-  const paths = new Map();
-  /** @type {{path: string, blob: string}[]} */
-  const entries = [];
-  for (const shot of shots) {
-    const hashed = exec('git', ['hash-object', '-w', '--', shot.path], { cwd });
-    if (!hashed.ok) return null;
-    const path = shotPath(branch, shot.name, hashed.stdout);
-    paths.set(shot.name, path);
-    entries.push({ path, blob: hashed.stdout });
-  }
-
-  exec('git', ['fetch', '--quiet', 'origin', `+refs/heads/${SHOTS_REF}:refs/remotes/origin/${SHOTS_REF}`], { cwd });
-  const tip = exec('git', ['rev-parse', '--verify', `refs/remotes/origin/${SHOTS_REF}`], { cwd });
-
-  const dir = mkdtempSync(join(tmpdir(), 'mct-shots-'));
-  try {
-    const env = { GIT_INDEX_FILE: join(dir, 'index') };
-    if (tip.ok && !exec('git', ['read-tree', tip.stdout], { cwd, env }).ok) return null;
-    for (const { path, blob } of entries) {
-      if (!exec('git', ['update-index', '--add', '--cacheinfo', `100644,${blob},${path}`], { cwd, env }).ok)
-        return null;
-    }
-    const tree = exec('git', ['write-tree'], { cwd, env });
-    if (!tree.ok) return null;
-
-    // The branch already holds these exact bytes at these exact paths: the URLs are live
-    // and there is nothing to push.
-    const tipTree = tip.ok ? exec('git', ['rev-parse', `${tip.stdout}^{tree}`], { cwd }) : null;
-    if (tipTree?.ok && tipTree.stdout === tree.stdout) return { paths, commit: tip.stdout, pushed: false };
-
-    const args = ['commit-tree', tree.stdout, '-m', `shots: ${branch}`];
-    if (tip.ok) args.push('-p', tip.stdout);
-    const commit = exec('git', args, { cwd });
-    if (!commit.ok) return null;
-    const pushed = exec('git', ['push', 'origin', `${commit.stdout}:refs/heads/${SHOTS_REF}`], { cwd });
-    if (!pushed.ok) return null;
-    return { paths, commit: commit.stdout, pushed: true };
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-/**
  * @typedef {object} ShotsComment
  * @property {{name: string, path: string}[]} files  What `--attach` uploads, in body order.
  * @property {number} count                          How many images it publishes.
@@ -397,10 +304,7 @@ function publish(cwd, branch, shots) {
 
 /**
  * @typedef {object} Attached
- * @property {string} markdown          The section to append, or '' when there is none.
- * @property {number} count             How many images it embeds.
- * @property {string} [ref]             The branch the bytes were published to.
- * @property {string} [commit]          The commit that carries them.
+ * @property {number} count             How many images it publishes.
  * @property {string} [tier]            The driver tier that took them.
  * @property {string} [verdict]         The verdict the loop ended on.
  * @property {ShotsComment} [comment]   The comment to post once the PR number is known.
@@ -408,7 +312,7 @@ function publish(cwd, branch, shots) {
  */
 
 /**
- * The attachment comment a private repository takes in place of the in-body embed.
+ * The attachment comment a branch's screenshots reach the reviewer through.
  * @param {{name: string, path: string}[]} shots @param {Verdict} record
  * @returns {ShotsComment}
  */
@@ -461,11 +365,7 @@ export function postShotsComment(cwd, number, plan) {
       staged.set(shot.name, copy);
     }
 
-    const section = renderShots(
-      groupShots(plan.files.map((shot) => shot.name)),
-      (name) => staged.get(name) ?? name,
-      attachCell,
-    );
+    const section = renderShots(groupShots(plan.files.map((shot) => shot.name)), (name) => staged.get(name) ?? name);
     const file = join(dir, 'comment.md');
     writeFileSync(file, `${section}\n${plan.caption}\n\n${commentMarker(plan.digest)}\n`);
     const args = ['pr', 'comment', String(number), '--body-file', file];
@@ -535,14 +435,12 @@ export function deleteShotsComment(cwd, slug, id) {
  * verified has nothing to show, so both are silent. Screenshots with no record beside them
  * are the one case that warns.
  *
- * A public repository gets `markdown` to append to the body. A private one gets a
- * `comment` plan instead, which the caller posts once the PR has a number.
+ * What comes back is a `comment` plan, which the caller posts once the PR has a number.
  * @param {string} cwd @param {string} branch
- * @param {{owner: string, repo: string} | null} slug
  * @returns {Attached}
  */
-export function attachShots(cwd, branch, slug) {
-  const none = { markdown: '', count: 0 };
+export function attachShots(cwd, branch) {
+  const none = { count: 0 };
 
   const shots = findShots(cwd, branch);
   if (!shots.length) return none;
@@ -553,23 +451,5 @@ export function attachShots(cwd, branch, slug) {
   }
   if (!isBrowserTier(record.tier)) return none;
 
-  if (!slug) return { ...none, warning: 'no GitHub remote to publish screenshots to' };
-  if (isPrivate(cwd)) {
-    return { ...none, tier: record.tier, verdict: record.verdict, comment: commentPlan(shots, record) };
-  }
-
-  const published = publish(cwd, branch, shots);
-  if (!published) return { ...none, warning: `could not publish screenshots to ${SHOTS_REF}` };
-
-  const base = `https://raw.githubusercontent.com/${slug.owner}/${slug.repo}/${SHOTS_REF}`;
-  const url = (/** @type {string} */ name) => `${base}/${published.paths.get(name)}`;
-  const markdown = renderShots(groupShots(shots.map((s) => s.name)), url);
-  return {
-    markdown,
-    count: shots.length,
-    ref: SHOTS_REF,
-    commit: published.commit,
-    tier: record.tier,
-    verdict: record.verdict,
-  };
+  return { ...none, tier: record.tier, verdict: record.verdict, comment: commentPlan(shots, record) };
 }

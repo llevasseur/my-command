@@ -44,15 +44,11 @@ everything else as a grid. The gate is the tier \`shots record\` wrote beside th
 not the shape of the diff — so a backend change proven through a frontend that needed no
 edit still shows its screenshots, and the verdict itself never withholds them.
 
-Where they land depends on the repository. A **public** one embeds them in the body, with
-the bytes on the \`my-command-shots\` branch of the same repository and linked from
-\`raw.githubusercontent.com\`, at a content-addressed path so the same screenshot keeps
-the same URL across runs. A **private** one gets one \`gh pr comment --attach\` instead,
-which uploads each file to GitHub's own \`user-attachments\` CDN — that renders under the
-reader's credential, where a raw link would not. That comment is one per PR, not per run:
-a re-run with the same images reuses it, and one with different images replaces it.
-Either way \`screenshots\` reports the count, tier, and verdict, plus \`via\` naming which
-route it took: \`ref\` and \`commit\` for the body, \`comment\` for the comment's URL.
+They land in one \`gh pr comment --attach\`, whatever the repository's visibility, which
+uploads each file to GitHub's own \`user-attachments\` CDN and renders under the reader's
+own credential. That comment is one per PR, not per run: a re-run with the same images
+reuses it, and one with different images replaces it. \`screenshots\` reports the count,
+tier, and verdict, plus \`via: comment\` and the comment's URL.
 
 A branch with no screenshots, and one whose screenshots came from a non-browser tier, both
 publish nothing and say nothing. \`shotsWarning\` is left for what genuinely could not be
@@ -144,12 +140,10 @@ function restCall(cwd, method, path, body) {
 /**
  * @typedef {object} Screenshots
  * @property {number} count
- * @property {'body' | 'comment'} via  Where they were published: the PR body, or a comment.
- * @property {string} tier             The driver tier that took them.
- * @property {string} verdict          The verdict the verification loop ended on.
- * @property {string} [ref]            Body route: the branch the bytes were pushed to.
- * @property {string} [commit]         Body route: the commit that carries them.
- * @property {string} [comment]        Comment route: the attachment comment's URL.
+ * @property {'comment'} via   Where they were published. Only ever the attachment comment.
+ * @property {string} tier     The driver tier that took them.
+ * @property {string} verdict  The verdict the verification loop ended on.
+ * @property {string} comment  The attachment comment's URL.
  */
 
 /** @param {import('../cli.mjs').Ctx} ctx */
@@ -171,12 +165,11 @@ export function run(ctx) {
   if (!push.ok) throw new ToolkitError('git push failed', { code: push.code, stderr: push.stderr });
 
   const slug = originSlug(cwd);
-  const shots = screenshots(ctx, cwd, branch, slug);
-  const body = shots.markdown ? `${authored.replace(/\s+$/, '')}\n\n${shots.markdown}` : authored;
+  const shots = screenshots(ctx, cwd, branch);
   const existing = findExisting(cwd);
 
   if (existing) {
-    const merged = preserveAssets(body, existing.body ?? '');
+    const merged = preserveAssets(authored, existing.body ?? '');
     const retitle = bool(ctx.flags.retitle);
     const args = ['pr', 'edit', String(existing.number), '--body', merged.body];
     if (retitle) args.push('--title', title);
@@ -215,13 +208,13 @@ export function run(ctx) {
     return { ...result, ...shotsReport(cwd, slug, shots, existing.number) };
   }
 
-  const args = ['pr', 'create', '--base', base, '--title', title, '--body', body];
+  const args = ['pr', 'create', '--base', base, '--title', title, '--body', authored];
   if (draft) args.push('--draft');
   const attempt = ghWrite(cwd, args, {
     restFallback: slug
       ? restCall(cwd, 'POST', `repos/${slug.owner}/${slug.repo}/pulls`, {
           title,
-          body,
+          body: authored,
           head: branch,
           base,
           draft,
@@ -261,14 +254,13 @@ function numberIn(url) {
 }
 
 /**
- * The branch's screenshot section, unless the caller switched it off.
+ * The branch's screenshot plan, unless the caller switched it off.
  * @param {import('../cli.mjs').Ctx} ctx @param {string} cwd @param {string} branch
- * @param {{owner: string, repo: string} | null} slug
  * @returns {import('../lib/shots.mjs').Attached}
  */
-function screenshots(ctx, cwd, branch, slug) {
-  if (bool(ctx.flags['no-shots'])) return { markdown: '', count: 0 };
-  return attachShots(cwd, branch, slug);
+function screenshots(ctx, cwd, branch) {
+  if (bool(ctx.flags['no-shots'])) return { count: 0 };
+  return attachShots(cwd, branch);
 }
 
 /**
@@ -283,21 +275,11 @@ function screenshots(ctx, cwd, branch, slug) {
 function shotsReport(cwd, slug, shots, number) {
   if (shots.warning) return { shotsWarning: shots.warning };
   if (shots.comment) return commentReport(cwd, slug, shots, shots.comment, number);
-  if (!shots.count || !shots.ref || !shots.commit) return {};
-  return {
-    screenshots: {
-      count: shots.count,
-      via: 'body',
-      ref: shots.ref,
-      commit: shots.commit,
-      tier: shots.tier ?? '',
-      verdict: shots.verdict ?? '',
-    },
-  };
+  return {};
 }
 
 /**
- * Post the private-repository attachment comment and report what came of it.
+ * Post the attachment comment and report what came of it.
  *
  * One comment per PR, not per run: the same images reuse the comment already posted,
  * different images replace it once the new one is up.

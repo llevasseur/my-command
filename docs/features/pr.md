@@ -139,57 +139,39 @@ Filenames decide the layout. A stem carrying a `before` or `after` marker at eit
 `home-before.png`, `after_home.png`, `settings.after.png` — pairs into a **before/after
 table**, one row per view, before column then after; a view with only one side still gets
 its row, with the missing cell saying so, because that is more use to a reviewer than
-losing the pairing. Everything with no marker renders as a **grid**, two columns wide. The
-layout is the same on both routes below, so a pair is one row wherever the section lands.
-In the body, images are `<img>` elements rather than markdown so a table cell can carry a
-width, which also means the existing asset preservation recognises them and carries them
-forward by `src` on the next update; in an attachment comment they are markdown, because
-that is the only shape `gh` rewrites. `worktree end`'s collision suffix is accounted for:
+losing the pairing. Everything with no marker renders as a **grid**, two columns wide.
+Images are markdown rather than `<img>` elements, because `![alt](<path>)` is the only shape
+`gh` rewrites into an uploaded URL. `worktree end`'s collision suffix is accounted for:
 `home-before-2.png` is the same view as `home-before.png`, not a view called `home-2`.
 `--no-shots` switches the whole thing off.
 
-### Why a public repository's bytes live on a side branch
+### Why every repository gets an attachment comment
 
-A PR **body** written by a tool cannot use a `user-attachments` URL, because GitHub mints
-those behind its own web editor and behind `gh`'s `--attach`, neither of which will hand one
-back for a body composed elsewhere. That leaves three routes, and this is the one the verb
-takes on a public repository: **commit the images to a `my-command-shots` branch of the same
-repository and link `raw.githubusercontent.com`.**
-
-It needs no credential beyond the push that has just happened, creates no release and no
-gist, and keeps the images in the one place whose access already matches the PR's. A
-release asset would put screenshots in the repository's release list, which is a
-user-facing surface with a different meaning; a gist would put them under an account
-rather than the repository, outliving any access change to the repo itself.
-
-The publish is git plumbing and never touches the working tree: `hash-object` writes the
-blobs, a throwaway index builds a tree on top of whatever the branch already carries, and
-`commit-tree` makes the commit, which is pushed straight to `refs/heads/my-command-shots`.
-Nothing is checked out and the branch under review is never left dirty. **Every path is
-content-addressed** — `shots/<branch>/<blob>-<name>` — so the same screenshot published
-twice is one blob at one URL: re-running `/pr` neither duplicates an image nor invalidates
-a link already in the body, and a run whose tree matches the branch's tip pushes nothing at
-all. The cost is a branch that only grows, which is the price of links that keep working.
-
-An unanswerable privacy probe is not a private repository: the publish proceeds, since a
-broken image is recoverable and a silently skipped one is not.
-
-### Why a private repository gets a comment instead
-
-`raw.githubusercontent.com` needs a credential neither the reviewer's browser nor GitHub's
-image proxy has, so on a **private repository** the side-branch route produces a broken
-image and the verb used to decline outright, reporting a warning. The screenshots were still
-captured, still recorded in `verdict.json`, and still preserved to
-`~/.my-command/shots/<repo>/<branch>/` — the reviewer just never saw them, which is the one
-person the whole loop exists to inform.
-
-The warning was right about the raw link and wrong to stop there. `gh pr comment <number>
---body-file <path> --attach <file>` uploads each attached file to GitHub's own
-`user-attachments` CDN and prints the comment's URL, and that CDN serves under the reader's
-own credential, so it renders on a private repo where a raw link cannot. It is a **comment**
-rather than the body because that is the only surface `gh` will mint those URLs for. One
+`gh pr comment <number> --body-file <path> --attach <file>` uploads each attached file to
+GitHub's own `user-attachments` CDN and prints the comment's URL. That CDN serves under the
+**reader's** own credential, which is what makes one route work for every repository: a
+private repo renders it as readily as a public one, where a `raw.githubusercontent.com` link
+would need a credential neither the reviewer's browser nor GitHub's image proxy has. One
 comment per `pr` run carries every image, up to `gh`'s limit of 50 files per command; past
 that the overflow is reported as a warning rather than silently dropped.
+
+**This used to be two routes, and the second one rested on a claim that is no longer true.**
+A public repository's bytes were committed to a `my-command-shots` side branch of the
+repository under review and linked from `raw.githubusercontent.com`, because a PR body
+written by a tool was held to be unable to carry a `user-attachments` URL at all. Measured
+against `gh` 2.100.0, that is false: `--attach` is on `gh pr create`, `gh pr edit`,
+`gh pr comment` and `gh issue comment`, and `gh pr create --help` states outright that the
+attachment is appended to the body and that a matching body reference "is rewritten to point
+at the uploaded asset". So the capability gap the side branch was the price of does not
+exist, and the branch — orphan, append-only, growing forever, on the repository being
+reviewed — bought nothing. It is gone, along with the `gh repo view` privacy probe that
+chose between the two.
+
+**The body is still not where the screenshots go, for a different reason.** Each `--attach`
+uploads afresh and mints a new URL, so a re-run would append the same image again under a
+new link, and `pr`'s own preserve-assets-by-`src` rule would faithfully keep every stale
+copy. The comment route has an idempotency mechanism already, described below, and one
+route with that property beats two without it.
 
 **The body-to-attachment rewrite matches on the reference string, and that is the whole
 mechanic.** `gh` rewrites an `![alt](<path>)` in the body to its uploaded URL only where that
@@ -206,19 +188,17 @@ text'` does set alt text from the suffix, but its interaction with reference mat
 unverified, so the alt text is written body-side in the markdown instead. Mechanics
 confirmed by hand against `gh` 2.100.0.
 
-**One comment per PR, not per run.** The body route is idempotent through content-addressed
-paths; the comment route gets the same property from a hidden marker, `<!-- my-command-shots
-<digest> -->`, carrying a hash of the attached names and bytes. Before posting, the verb lists
-the PR's comments for that marker: a match with the same digest is reused as it stands and
-its URL reported, and one with a different digest is deleted once the replacement is up. A
-PR that `/fb` or `/review` updates three times carries one screenshot comment, not three.
+**One comment per PR, not per run.** A hidden marker carries it — `<!-- my-command-shots
+<digest> -->`, hashing the attached names and bytes. Before posting, the verb lists the PR's
+comments for that marker: a match with the same digest is reused as it stands and its URL
+reported, and one with a different digest is deleted once the replacement is up. A PR that
+`/fb` or `/review` updates three times carries one screenshot comment, not three.
 
-The result is reported as `screenshots` either way, with `via` naming the route — `ref` and
-`commit` for the body, `comment` for the comment's URL — so `shotsWarning` is left for what
-genuinely could not be published: images beside no recorded verdict, a comment `gh` refused,
-or the overflow past 50 files. On a freshly created PR the number comes from the `gh pr view`
-lookup, or from the `/pull/<n>` URL `gh pr create` printed when that lookup misses, so the
-comment is posted either way.
+The result is reported as `screenshots`, with `via: comment` and the comment's URL, so
+`shotsWarning` is left for what genuinely could not be published: images beside no recorded
+verdict, a comment `gh` refused, or the overflow past 50 files. On a freshly created PR the
+number comes from the `gh pr view` lookup, or from the `/pull/<n>` URL `gh pr create` printed
+when that lookup misses, so the comment is posted either way.
 
 ### Worktree teardown is ownership-scoped
 
