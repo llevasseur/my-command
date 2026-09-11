@@ -48,6 +48,7 @@ Read the repo so you ask only about what you can't infer:
 - **Derived/generated code + its generator:** `schema.prisma`→`prisma generate`; `codegen.ts`/`codegen.yml`→`graphql-codegen`; TanStack route trees; `*.proto`; etc. Map each generator to the `package.json` script that runs it **and the package dir it runs in**.
 - **Repo conventions:** existing `scripts/` shebang style + `set -euo pipefail`; whether a `CHANGELOG.md` or changelog command exists; `shellcheck` availability.
 - **Boot + routes:** a `dev`, `start`, or `preview` script in `package.json`; a health or readiness endpoint; the route directories a framework implies (`app/`, `pages/`, `routes/`, `src/routes/`).
+- **Jira signal — and only signal.** Three things count: the **Atlassian MCP server connected** in this session, a **Jira URL in the README** (`*.atlassian.net/browse/…`, or a project or board link), and **issue keys in branch names** (`git branch -a` carrying `<PROJECT>-<number>`). None of the three present means this repo has no Jira, which is a complete answer — record it and ask nothing.
 
 ## Step 3 — Interview to confirm + fill gaps
 
@@ -82,6 +83,50 @@ off `my-command-tools doctor` as a device fact and reaches its browser tier thro
 facts, and the generated bootstrap never installs Playwright or downloads a browser to raise a
 tier.
 
+## Step 3.6 — Third round: the Jira contract
+
+`/ticket` creates and moves this repo's Jira work items, and it hardcodes none of this repo's
+values — it reads them from a contract this step writes.
+
+**Ask only when Step 2 saw signal.** No connected Atlassian MCP server, no Jira URL in the README,
+and no issue keys in branch names means the repo has no Jira: record that, emit no Jira contract,
+and move on. `/ticket` handles a repo with no contract by skipping, so nothing downstream breaks.
+**Never ask a repo whether it uses Jira when nothing in it says so.**
+
+With signal, **query Jira for the facts rather than asking me to recite them.** The ids are what
+this contract exists to pin, and an id typed from memory is the one field nobody notices is wrong
+until a transition fires into the wrong status.
+
+1. **Resolve the site and project.** `getAccessibleAtlassianResources` for the sites this account
+   can reach; the project key from the signal Step 2 found, confirmed with
+   `getVisibleJiraProjects`.
+2. **Read the project's issue types** — `getJiraProjectIssueTypesMetadata` — and record each one's
+   **name and id**.
+3. **Read the transition ids from a real item.** `getTransitionsForJiraIssue` against one existing
+   issue in the project returns the live transition ids and names. Ask which transition means
+   *work has started* and which means *ready for review*, and record for each: the transition id,
+   the transition name, **and the target status's id and name**. All four, because `/ticket`
+   checks the declared name and id against the live workflow before it fires anything, and
+   confirms the resulting status afterwards.
+4. **Ask which transitions are forbidden**, and why. Closing an item, skipping QA, reopening —
+   whatever this team does not let a tool do. Each entry carries its reason, because that reason
+   is what `/ticket` reports when one is asked for.
+5. **Ask the remaining four:** the board id, whether tickets go into a sprint (`null`, a specific
+   sprint id, or `"active"` for whatever sprint is open), the default issue type, and the link
+   type used for a blocking relationship.
+6. Map each issue type to the template it usually wants — `story`, `bug`, `chore`, `spike`, or
+   `technical`. It is a default: `/ticket` picks by whether the change is user-visible and may
+   override it.
+
+**Never write `cloudId` into the contract.** `/ticket` resolves it at run time from `site`, so a
+site migration does not leave a pinned id pointing at the wrong tenant.
+
+**This leg is additive and re-runnable.** A repo that already has `scripts/bootstrap-worktree.sh`
+gains **only** the Jira contract: the existing flags, guards, symlinks, install, and codegen are
+left exactly as they are, and a repo that already has a Jira contract has it updated in place
+rather than re-scaffolded. Re-running this command to add Jira to a repo that was bootstrapped
+before this leg existed is the normal path, not a special case.
+
 ## Step 4 — Recommendations (rules the generated bootstrap MUST follow)
 
 Design the bootstrap around these, and explain each as you apply it:
@@ -94,6 +139,7 @@ Design the bootstrap around these, and explain each as you apply it:
 - **Refuse to run from the main checkout** (guard: detected main == worktree root → exit non-zero).
 - **Commit it, don't gitignore it.** Only *tracked* files land in fresh worktrees (where `/task` looks for it), and teammates who share the `/task` command should get the bootstrap too. Keeping it free of machine-specific paths (via auto-detection) is what makes committing safe.
 - **Print the run contract behind `--print-verify-contract`.** It prints `{boot, health, login, routes}` as JSON on stdout, exits 0, and does nothing else — no install, no symlink, no codegen. Handle it **first**, ahead of the main-checkout guard: a caller asking what the contract is has no worktree yet, and the guard would refuse it.
+- **Print the Jira contract behind `--print-jira-contract`**, on the same terms: JSON on stdout, exit 0, nothing else, handled first alongside `--print-verify-contract` and ahead of the main-checkout guard, since `/ticket` asks for it from wherever it is standing. It prints `{site, projectKey, board, sprint, defaultIssueType, issueTypes, lifecycle, never, linkType}` and **never a `cloudId`**. Emit the flag only where Step 3.6 found signal; a repo with no Jira omits it and `/ticket` skips.
 - **Omitting the contract is allowed.** A bootstrap without the flag makes `/verify` fall through to detection — the `dev`/`start`/`preview` script, and the real bound port read out of the startup log. Emit the flag when the answers are worth pinning; leave it out for a repo with no app.
 - Match repo conventions: shebang + `set -euo pipefail`, `chmod +x`.
 
@@ -118,6 +164,26 @@ if [ "${1:-}" = "--print-verify-contract" ]; then
 JSON
   exit 0
 fi
+# The Jira contract, on the same terms. Emit this branch only where Step 3.6 found signal.
+if [ "${1:-}" = "--print-jira-contract" ]; then
+  cat <<'JSON'
+{
+  "site": "example.atlassian.net",
+  "projectKey": "ENG",
+  "board": 12,
+  "sprint": "active",
+  "defaultIssueType": "Task",
+  "issueTypes": {"Task": {"id": "10002", "template": "technical"}},
+  "lifecycle": {
+    "start":  {"transitionId": "21", "transitionName": "Start work", "statusId": "3", "statusName": "In Progress"},
+    "review": {"transitionId": "31", "transitionName": "Ready for review", "statusId": "10004", "statusName": "In Review"}
+  },
+  "never": [{"transitionId": "41", "transitionName": "Done", "reason": "only QA closes an item"}],
+  "linkType": "Blocks"
+}
+JSON
+  exit 0
+fi
 WORKTREE_ROOT="$(git rev-parse --show-toplevel)"
 # --git-common-dir points at the MAIN checkout's .git even from a linked worktree
 GIT_COMMON_DIR="$(cd "$WORKTREE_ROOT" && cd "$(git rev-parse --git-common-dir)" && pwd)"
@@ -132,7 +198,7 @@ cd "$WORKTREE_ROOT"
 ## Step 6 — Verify
 
 - `bash -n scripts/bootstrap-worktree.sh`; run `shellcheck` if it's available.
-- If the script emits a contract, prove it parses: `bash scripts/bootstrap-worktree.sh --print-verify-contract | node -e "JSON.parse(require('fs').readFileSync(0,'utf8'))"`. Run it from the main checkout too — the flag must answer before the guard, not be refused by it.
+- If the script emits a contract, prove it parses: `bash scripts/bootstrap-worktree.sh --print-verify-contract | node -e "JSON.parse(require('fs').readFileSync(0,'utf8'))"`. Run it from the main checkout too — the flag must answer before the guard, not be refused by it. Prove `--print-jira-contract` the same way where Step 3.6 emitted one, and confirm its JSON carries no `cloudId`.
 - **Dry-run the logic without a slow real install:** shim the package manager onto `PATH` (a stub that just echoes its args), run the script, and confirm — env symlinks point at the main checkout, missing files are skipped, a re-run keeps existing files, target selection works, and it refuses to run from the main checkout.
 - Optionally offer a real run to confirm install + codegen actually succeed.
 

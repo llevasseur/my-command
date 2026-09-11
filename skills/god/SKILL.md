@@ -19,7 +19,13 @@ non-default cut point and a non-default landing branch states each one.
    `--into <branch>` when given, the default branch otherwise. Invoke `$task`
    with `--sub` so its cleanup and PR stage runs as one delegated subagent,
    weaving in `$review --here` there unless disabled, and require the resulting
-   PR to belong to this run's branch.
+   PR to belong to this run's branch. Added workflows are forwarded untouched
+   with one exception: a `ticket` entry is rewritten to invoke `$ticket --yes`,
+   because that workflow waits for an explicit go before creating a work item and
+   this one never asks a question — an unattended run that blocks on that prompt
+   is a run nobody is there to unblock. The flag skips the approval and the
+   template question together and does **not** reach the forbidden-transition
+   list, which refuses whatever flags it is handed.
 2. Re-resolve the PR from GitHub. When its base is not the merge target, retarget
    it — `gh pr edit <number> --base <merge target>` — before anything else, since
    the PR wrapper opens every PR against the default branch by design and stays
