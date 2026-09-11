@@ -7,10 +7,11 @@
 //
 // These assert the invariant over the committed commands/, so a regression fails `pnpm test`
 // rather than waiting to be noticed on an installed device.
-import { readFileSync, readdirSync } from 'node:fs';
+
+import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
-import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
