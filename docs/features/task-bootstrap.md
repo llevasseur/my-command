@@ -4,7 +4,8 @@ title: task-bootstrap
 description: One-time per repo — interview the stack and generate that repo's own scripts/bootstrap-worktree.sh and/or "Worktree Setup" doc section, which task's Step 1.5 discovers.
 tags: [command, workflow, setup]
 timestamp: 2026-07-15
-updated: 2026-08-08
+updated: 2026-09-11
+dirty: true
 ---
 
 # task-bootstrap
@@ -44,6 +45,33 @@ never gitignored — only tracked files reach fresh worktrees. It is verified wi
 `bash -n`, `shellcheck` where available, and a package-manager-shim dry run before
 shipping. An existing bootstrap is updated, not re-scaffolded.
 
+## The Jira contract
+
+A third interview round writes the contract [ticket](ticket.md) reads, behind
+`--print-jira-contract` on the same terms as the run contract: JSON on stdout, exit 0,
+handled ahead of the main-checkout guard.
+
+**It asks only when it sees signal** — the Atlassian MCP server connected in this
+session, a Jira URL in the README, or issue keys in branch names. None of the three
+means the repo has no Jira, which is a complete answer: the flag is omitted and
+`/ticket` skips. A repo is never asked whether it uses Jira when nothing in it says so.
+
+With signal, the facts are **queried from Jira rather than recited**: the accessible
+sites and the project, the project's issue types with their ids, and the live
+transitions read off one real issue. The `start` and `review` entries each record four
+facts — transition id, transition name, and the target status's id and name — because
+`/ticket` checks the declared id and name against the live workflow before firing and
+confirms the resulting status afterwards. The remaining answers are the forbidden
+transitions with their reasons, the board, the sprint (`null`, a sprint id, or
+`"active"`), the default issue type, the blocking link type, and a default template per
+issue type. **No `cloudId` is ever written**: `/ticket` resolves it at run time from
+`site`, so a site migration cannot leave a pinned id aimed at the wrong tenant.
+
+**The leg is additive and re-runnable.** A repo that already has
+`scripts/bootstrap-worktree.sh` gains only the Jira contract — existing flags, guards,
+symlinks, install, and codegen are left as they are — and an existing Jira contract is
+updated in place rather than re-scaffolded.
+
 Step 7 adds a changelog entry, commits only the files this command authored, runs
 `/clean` and commits whatever that leaves, then `/pr`. Its own workspace comes
 from `worktree begin` *without* `--bootstrap`, since the script it is about to write
@@ -56,4 +84,5 @@ chore/worktree-bootstrap`.
 
 - Command source: `src/commands/task-bootstrap.md`
 - Consumed by: [task](task.md) during worktree bootstrap
+- Consumed by: [ticket](ticket.md) — reads the Jira contract this command writes
 - Spec: [Adding a command](../specs/adding-a-command.md)

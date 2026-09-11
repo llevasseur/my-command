@@ -4,7 +4,7 @@ title: manage
 description: Orchestrate one multi-part goal across existing commands — decompose it into units, assign a branch to each, delegate every unit to its own subagent in waves that cannot collide, and synthesize one report.
 tags: [command, workflow, agents]
 timestamp: 2026-08-11
-updated: 2026-08-16
+updated: 2026-09-11
 dirty: true
 ---
 
@@ -268,6 +268,12 @@ summarized, that list is the only surviving record of what was dispatched and wh
 is still owed. Same reasoning as the closing-turn anchor, reusing the same store:
 `manage` builds **no second task store, no progress file, and no status
 dashboard**.
+
+Where [ticket](ticket.md) is among the forwarded `--add` entries and the repo has a
+Jira contract, that graph is handed over as well. Its edges are the one place a
+dependency between two units is **stated** rather than inferred, so a stacked unit
+becomes a `Blocks` link — one `/ticket link` call per edge, once both units' items
+exist. No edge is invented for it, and a failed link never stops a wave.
 
 ### Error isolation, and a bounded replan
 

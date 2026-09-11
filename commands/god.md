@@ -26,6 +26,8 @@ Input is the text in the `<command-args>` block above. Parse leading flags off t
 
 Forwarded to `/my-command:task` untouched: `--here` / `-h`, `--base <branch>` (the **cut point** — where the branch is cut from, and nothing else), `--add` / `-a <list>` (this command appends its own `review` entry after any entries you pass).
 
+**One exception to untouched: a `ticket` entry is rewritten to invoke `/my-command:ticket --yes`.** `/my-command:ticket` waits for an explicit go before it creates a work item, and this command never asks a question — an unattended run that blocks on that prompt is a run nobody is there to unblock. `--yes` skips the approval and the template question together, inferring the template from the diff. It does **not** reach `/my-command:ticket`'s `never` list, which refuses a forbidden transition whatever flags it is handed.
+
 Always added to the `/my-command:task` invocation, whether or not you pass it: **`--sub`** — `/my-command:task` runs `/my-command:clean` + `/my-command:pr` inline by default, and this command needs that stage to be one subagent, because that is where the woven-in `review` entry lands and where an unattended run should keep the reviewer's context off this conversation. Passing `--sub` / `-s` yourself is accepted and redundant.
 
 Owned here:
