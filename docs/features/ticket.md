@@ -32,7 +32,7 @@ installed copy serves every repo on the device.
 
 | Form | What it does |
 | :--- | :----------- |
-| `create [story\|bug\|task\|chore\|spike] <summary>` | Create a work item. The optional word is the Jira **issue type**; omitted, the contract's `defaultIssueType` is used. Waits for an explicit go unless `--yes`. |
+| `create [<issue type>] <summary>` | Create a work item. The optional word is a Jira **issue type name the contract declares** — whatever this repo's `issueTypes` map holds, since no fixed list in the command can know it. Omitted, the contract's `defaultIssueType` is used. Waits for an explicit go unless `--yes`. |
 | `move <KEY> start\|review` | Fire the contract's `start` or `review` transition. Fires without asking. |
 | `link <KEY> blocks\|blocked-by\|relates <KEY>` | Link two existing items. Always explicit. |
 | `show <KEY>` | Read one item and report it. Reads only. |
@@ -52,9 +52,12 @@ The contract holds `site`, `projectKey`, `board`, `sprint` (`null`, a sprint id,
 `start` and `review` entries each carry a transition id, a transition name, and the target
 status's id and name, a `never` list of forbidden transitions each with a reason, and `linkType`.
 
-**`cloudId` is deliberately absent.** It is resolved at run time from `site`, because a pinned
-cloud id rots silently when a site is migrated and the failure surfaces as a permission error
-against the wrong tenant.
+**Two values are deliberately absent from it.** `cloudId` is resolved at run time from `site`,
+because a pinned cloud id rots silently when a site is migrated and the failure surfaces as a
+permission error against the wrong tenant. The **Atlassian account email** the screenshot upload
+needs is resolved from the authenticated user for a different reason: the contract is committed
+and shared, while that email belongs to whoever is running the command, so a field for it would
+commit one teammate's address and then send everyone else's upload under it.
 
 ## Transition safety
 
@@ -127,7 +130,8 @@ item through `POST /rest/api/3/issue/{key}/attachments`, with the `X-Atlassian-T
 header Jira requires on every attachment upload and a multipart field named `file` — any other
 field name uploads nothing and still returns a response.
 
-The API token is read from the **macOS Keychain** and piped into the HTTP client's stdin config
+The API token is read from the **macOS Keychain**, under service `my-command-jira` with the
+resolved Atlassian account email as the account, and piped into the HTTP client's stdin config
 rather than passed on the command line, where every process on the machine could read it. **When
 the token is absent, the screenshots' location is attached as a remote link instead**, and the
 report says they were linked rather than uploaded and why. The command never prompts for the token
@@ -159,8 +163,14 @@ inferred status written back to Jira is worse than no status at all.
 ## Dependency links from `/manage`
 
 [manage](manage.md) already builds a dependency graph to order its waves. That graph is the one
-place a dependency is **stated** rather than guessed at, so it is passed here and a stacked unit
-becomes a `Blocks` link — one `link` call per edge, and no edge this command invented.
+place a dependency is **stated** rather than guessed at, so once a wave has landed `manage` calls
+`link` itself, once per edge, and a stacked unit becomes a `Blocks` link. No edge is invented.
+
+It is called **after dispatch and not through the units' `--add` lists**, where `/ticket` runs
+adopt-only and cannot see a sibling unit. And it reaches **only an edge whose two units both carry
+an issue key**, which means the goal named those keys: `manage` mints branch names from unit
+summaries and never mints a key, so an edge between two keyless units has nothing to link and is
+skipped in silence.
 
 ## Related
 

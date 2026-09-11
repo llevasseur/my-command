@@ -64,8 +64,11 @@ facts — transition id, transition name, and the target status's id and name �
 confirms the resulting status afterwards. The remaining answers are the forbidden
 transitions with their reasons, the board, the sprint (`null`, a sprint id, or
 `"active"`), the default issue type, the blocking link type, and a default template per
-issue type. **No `cloudId` is ever written**: `/ticket` resolves it at run time from
-`site`, so a site migration cannot leave a pinned id aimed at the wrong tenant.
+issue type. **Neither a `cloudId` nor an Atlassian account email is ever written**:
+`/ticket` resolves the cloud id at run time from `site`, so a site migration cannot
+leave a pinned id aimed at the wrong tenant, and it resolves the account email from
+whoever is authenticated, because the contract is committed and shared while that email
+belongs to the person running the command.
 
 **The leg is additive and re-runnable.** A repo that already has
 `scripts/bootstrap-worktree.sh` gains only the Jira contract — existing flags, guards,

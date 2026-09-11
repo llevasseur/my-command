@@ -28,11 +28,13 @@ Forwarded to `/task` untouched:
 - `--add` / `-a <list>` — extra commands to weave into the `/task` run. `god`
   appends its own `review` entry after any entries passed in. Entries are
   forwarded untouched with one exception: a `ticket` entry is rewritten to invoke
-  `/ticket --yes`, because [ticket](ticket.md) waits for an explicit go before
-  creating a work item and this command never asks a question. The flag skips
-  that approval and the template question together; it does **not** reach
-  `/ticket`'s `never` list, which refuses a forbidden transition whatever flags
-  it is handed.
+  `/ticket --yes`. That is a guarantee, not a fix for a live prompt — an `--add`
+  entry reaches [ticket](ticket.md) through `/task`, where it runs adopt-only and
+  never creates, so the creation approval `--yes` skips is not on that path today.
+  The flag is appended anyway because `god` never asks a question and the cost is
+  asymmetric: a forgotten flag hangs an unattended run, a redundant one costs
+  nothing. It does **not** reach `/ticket`'s `never` list, which refuses a
+  forbidden transition whatever flags it is handed.
 
 Set unconditionally on the `/task` invocation:
 

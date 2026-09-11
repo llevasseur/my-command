@@ -20,9 +20,10 @@ Arguments are leading flags followed by a verb and its arguments.
 
 ## Verbs
 
-- `create [story|bug|task|chore|spike] <summary>` — create a work item. The optional word is the
-  Jira issue type; omitted, the contract's default issue type is used. **Waits for an explicit
-  go** unless `--yes`.
+- `create [<issue type>] <summary>` — create a work item. The optional word is an issue type name
+  **the contract declares**, whatever this repository's map holds, since no fixed list here can
+  know it; omitted, the contract's default issue type is used. **Waits for an explicit go** unless
+  `--yes`.
 - `move <KEY> start|review` — fire the contract's start or review transition. Fires without asking.
 - `link <KEY> blocks|blocked-by|relates <KEY>` — link two existing items. Always explicit.
 - `show <KEY>` — read one item and report it. Reads only.
@@ -102,19 +103,26 @@ meaning may have been edited.
 report the reason the contract records. No flag overrides it, and `--yes` does not touch it —
 `--yes` skips a confirmation, and a refusal is not a confirmation.
 
-The bare-key default infers one move. A pre-work status with a branch means start. Start's target
-status with an open, non-draft pull request carrying the key means review. An item already in the
-target status is a no-op, which is a correct answer. A branch and a pull request that disagree,
-or neither implying a move, is a stop that says what was read — the default saves a word, not a
-guess. A draft pull request is not review-ready.
+The bare-key default **picks the target from the branch and the pull request first, then compares
+it against the item's current status**, in that order. Doing it the other way round makes the
+no-op unreachable, because an item already sitting in a target status matches no "current status
+is X" rule and falls through to the stop. An open, non-draft pull request carrying the key targets
+review; otherwise a branch carrying the key targets start, and a draft pull request still targets
+start because a draft is not review-ready. Neither a branch nor a pull request carrying the key is
+a stop that says what was read, since the default saves a word rather than guessing. Then compare:
+an item already in the target's declared status is a no-op, which is a correct answer, and
+anything else fires that transition after the workflow check.
 
 ## Linking
 
 `blocks` and `blocked-by` use the contract's link type; the direction is the argument's. `relates`
 uses the plain relates link. **The verb is explicit and nothing else here creates a link**, since
-an inferred dependency is a claim about work someone else owns. `$manage` passes the dependency
-graph it already builds for its waves, so a stacked unit becomes a Blocks link — one call per
-edge, and no edge this skill invented.
+an inferred dependency is a claim about work someone else owns. `$manage` calls this verb itself
+once a wave has landed, for the edges in the dependency graph it already built, so a stacked unit
+becomes a Blocks link — one call per edge, and no edge this skill invented. It reaches only the
+edges whose two units both carry an issue key, which means the goal named those keys: that
+workflow mints branch names from unit summaries and never mints a key, so an edge between two
+keyless units has nothing to link and is skipped.
 
 ## Attaching verification screenshots
 
@@ -125,9 +133,16 @@ which Jira requires and without which the request is rejected as cross-site forg
 multipart field named **`file`** — any other field name uploads nothing and still returns a
 response.
 
-The API token comes from the macOS Keychain. Pipe it into the HTTP client's stdin config rather
-than passing it on the command line, where every process on the machine could read it. Probe for
-its presence first and treat a miss as the absent case rather than an error. **When the token is
+**Resolve the Atlassian account email first from the authenticated user**, since that is the
+account whose token the upload must use. **It is deliberately not a contract field**, for the same
+reason the cloud id is not one: the contract is committed and shared, while an account email
+belongs to the person running the command, so pinning one would commit a teammate's address and
+send everyone else's upload under it.
+
+The API token comes from the macOS Keychain, under service `my-command-jira` with that resolved
+email as the account. Pipe it into the HTTP client's stdin config rather than passing it on the
+command line, where every process on the machine could read it. Probe for its presence first and
+treat a miss as the absent case rather than an error. **When the token is
 absent, attach the screenshots' location as a remote link instead** and say in the report that
 they were linked rather than uploaded, and why. Never prompt for the token and never write it
 anywhere.

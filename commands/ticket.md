@@ -1,6 +1,6 @@
 ---
 description: Create and move Jira work items from the repo's own Jira contract — create, move, link, show, and a thin default that infers the move from branch and PR state
-argument-hint: "[--yes|-y] [--template <name>] create [story|bug|task|chore|spike] <summary> | move <KEY> start|review | link <KEY> blocks|blocked-by|relates <KEY> | show <KEY> | <KEY>"
+argument-hint: "[--yes|-y] [--template <name>] create [<issue type>] <summary> | move <KEY> start|review | link <KEY> blocks|blocked-by|relates <KEY> | show <KEY> | <KEY>"
 ---
 
 Create and move Jira work items for the repo you are standing in. The Jira facts — site, project,
@@ -37,7 +37,7 @@ the flags off the front; the first remaining token is the verb.
 
 | Form | What it does |
 | :--- | :----------- |
-| `create [story\|bug\|task\|chore\|spike] <summary>` | Create a work item. The optional word is the **Jira issue type**; omitted, the contract's `defaultIssueType` is used. **Waits for an explicit go** unless `--yes`. |
+| `create [<issue type>] <summary>` | Create a work item. The optional word is a **Jira issue type name the contract declares** — whatever this repo's `issueTypes` map holds, which no fixed list here can know. Omitted, the contract's `defaultIssueType` is used. **Waits for an explicit go** unless `--yes`. |
 | `move <KEY> start\|review` | Fire the contract's `start` or `review` transition on `<KEY>`. Fires without asking. |
 | `link <KEY> blocks\|blocked-by\|relates <KEY>` | Link two existing items. Always explicit — nothing else in this command infers a link. |
 | `show <KEY>` | Read one item: summary, type, status, assignee, sprint, links, and the description. Reads only. |
@@ -140,7 +140,9 @@ that waits.
 
 1. **Pick the Jira issue type.** The word after `create`, matched against the contract's
    `issueTypes`; absent, `defaultIssueType`. A word that is not in the map is a stop — list the
-   types the contract actually declares rather than inventing one.
+   types the contract actually declares rather than inventing one. **There is no fixed vocabulary
+   here**: `Story` and `Bug` are common, and a project that calls them something else is the
+   normal case rather than a misconfiguration.
 2. **Pick the template — by whether the change is user-visible, not by the Jira issue type.**
    The two are different questions and conflating them is how a backend `Story` ends up with
    Given/When/Then about a screen nobody built. Read the branch diff in one call
@@ -231,16 +233,22 @@ status is the contract's declared `statusId`/`statusName` for that entry, and re
 
 ### The bare `/my-command:ticket <KEY>` default
 
-Thin by design: infer the one move that is due from the branch and the PR, then fire it.
+Thin by design. **Pick the target from the branch and the PR first, then compare it against the
+item's current status** — in that order, because doing it the other way round makes the no-op
+case unreachable: an item already sitting in a target status matches no "current status is X"
+rule and falls through to the stop.
 
-- Item is in a pre-work status and a branch for it exists → **`start`**.
-- Item is in `start`'s target status and an **open, non-draft** PR carries its key → **`review`**.
-- Item is already in the status the inferred move targets → **do nothing** and say so. A no-op is
-  a correct answer here, not a failure.
-- The branch and the PR disagree, or neither implies a move → **stop and say what you read**,
-  rather than picking one. The default exists to save a word, not to guess.
+1. **Pick the target.** An **open, non-draft** PR carrying the key targets `review`. Otherwise a
+   branch carrying the key targets `start`. A **draft** PR is not review-ready, so a branch with
+   one still targets `start`.
+2. **Neither a branch nor a PR carries the key → stop** and say what you read. The default exists
+   to save a word, not to guess.
+3. **Compare.** The item is already in the target's declared status → **do nothing** and say so.
+   A no-op is a correct answer here, not a failure.
+4. **Otherwise fire that transition**, after the workflow check above.
 
-A **draft** PR is not review-ready. Leave it at `start` and say why.
+The item's current status never picks the target, only settles whether the move is still needed.
+That is what keeps step 3 reachable for an item in either lifecycle status.
 
 ## Step 5 — `link`
 
@@ -252,19 +260,29 @@ A **draft** PR is not review-ready. Leave it at `start` and say why.
 - **The verb is explicit and nothing else in this command creates a link.** An inferred
   dependency is a claim about work someone else owns.
 
-**`/my-command:manage` passes the dependency graph it already builds for its waves.** That graph is the one
-place a dependency is already stated rather than guessed at, so a stacked unit becomes a `Blocks`
-link between the two units' items — one `link` call per edge, and no edge this command invented.
+**`/my-command:manage` calls this verb directly once a wave has landed**, for the edges in the dependency
+graph it already built. That graph is the one place a dependency is stated rather than guessed
+at, so a stacked unit becomes a `Blocks` link — one `link` call per edge, and no edge this
+command invented. **It only reaches the edges whose two units both carry an issue key**, which
+means the goal named those keys: `/my-command:manage` mints branch names from unit summaries and never mints
+a key, so an edge between two keyless units has nothing to link and is skipped silently.
 
 ## Step 6 — Attach `/my-command:verify` screenshots
 
 When a `/my-command:verify` loop (or `/my-command:task` Step 2.6) recorded a **browser** tier, its screenshots are
 evidence a reviewer of the ticket wants. Read them with `my-command-tools shots read`.
 
+**Resolve the Atlassian account email first, from `atlassianUserInfo`.** It names whoever this
+session is authenticated as, which is the account whose token the upload must use. **It is
+deliberately not a contract field**, for the same reason `cloudId` is not one: the contract is
+committed and shared, and an account email is a property of the person running the command
+rather than of the repo. Pinning one would commit a teammate's address and then send everyone
+else's upload under it.
+
 **The attachment route is the REST API**, because the MCP surface has none:
 
 ```bash
-security find-generic-password -s my-command-jira -a <atlassian account email> -w | sed 's/^/user = "<atlassian account email>:/; s/$/"/' | curl --silent --show-error --fail --config - --header "X-Atlassian-Token: no-check" --form "file=@<absolute path to screenshot>" --url "https://<site>/rest/api/3/issue/<KEY>/attachments"
+security find-generic-password -s my-command-jira -a <resolved account email> -w | sed 's/^/user = "<resolved account email>:/; s/$/"/' | curl --silent --show-error --fail --config - --header "X-Atlassian-Token: no-check" --form "file=@<absolute path to screenshot>" --url "https://<site>/rest/api/3/issue/<KEY>/attachments"
 ```
 
 Three parts of that are not optional: the endpoint `POST /rest/api/3/issue/{key}/attachments`,
@@ -272,11 +290,11 @@ the **`X-Atlassian-Token: no-check`** header, which Jira requires on every attac
 without which the request is rejected as a cross-site forgery, and the multipart field named
 **`file`** — any other field name uploads nothing and still returns a response.
 
-**The API token comes from the macOS Keychain**, under service `my-command-jira` with the
-Atlassian account email as the account. Piping it into `curl --config -` keeps the token off
-argv, where every process on the machine could read it, and out of this conversation. Probe for
-it first — `security find-generic-password -s my-command-jira -a <email> -w >/my-command:dev/null 2>&1` —
-and treat a non-zero exit as the absent case rather than an error.
+**The API token comes from the macOS Keychain**, under service `my-command-jira` with that
+resolved account email as the account. Piping it into `curl --config -` keeps the token off argv,
+where every process on the machine could read it, and out of this conversation. Probe for it
+first — `security find-generic-password -s my-command-jira -a <resolved account email> -w
+>/dev/null 2>&1` — and treat a non-zero exit as the absent case rather than an error.
 
 **When the token is absent, fall back to a remote link.** Attach the screenshots' location to the
 item as a remote link (`addTeamworkGraphContext` with

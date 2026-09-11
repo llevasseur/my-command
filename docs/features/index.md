@@ -36,8 +36,10 @@ Add one with `okq new feature "<title>"`.
 | task-bootstrap | [task-bootstrap.md](task-bootstrap.md) |
 | task | [task.md](task.md) |
 | teach | [teach.md](teach.md) |
+| ticket | [ticket.md](ticket.md) |
 | trim | [trim.md](trim.md) |
 | truncate | [truncate.md](truncate.md) |
+| verify | [verify.md](verify.md) |
 | wayfinder | [wayfinder.md](wayfinder.md) |
 | work | [work.md](work.md) |
 <!-- okq:index:end -->

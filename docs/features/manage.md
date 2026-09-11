@@ -269,11 +269,18 @@ is still owed. Same reasoning as the closing-turn anchor, reusing the same store
 `manage` builds **no second task store, no progress file, and no status
 dashboard**.
 
-Where [ticket](ticket.md) is among the forwarded `--add` entries and the repo has a
-Jira contract, that graph is handed over as well. Its edges are the one place a
-dependency between two units is **stated** rather than inferred, so a stacked unit
-becomes a `Blocks` link — one `/ticket link` call per edge, once both units' items
-exist. No edge is invented for it, and a failed link never stops a wave.
+### Dependencies as Jira links
+
+Once a wave has landed, `manage` records that wave's edges as `Blocks` links by calling
+[ticket](ticket.md)'s `link` verb itself — **after dispatch, not in the plan**, and **not**
+through the units' `--add` lists, where `/ticket` runs adopt-only and cannot see a
+sibling unit at all.
+
+The condition is narrow and deliberately so: **only an edge whose two units both carry
+an issue key can be linked**, which means the goal named those keys. `manage` mints
+branch names from unit summaries and never mints a key, so an edge between two keyless
+units has nothing to link and is skipped in silence rather than reported as a failure.
+No edge is invented, and a failed link never stops a wave.
 
 ### Error isolation, and a bounded replan
 

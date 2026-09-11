@@ -30,13 +30,16 @@ for f in "$SRC_DIR"/*.md; do
   name="$(basename "$f")"
   cp "$f" "$OUT_DIR/$name"
   for cmd in $CMDS; do
-    # Rewrite /<cmd> to /<ns>:<cmd> only when not followed by a word char or hyphen,
-    # so /task never eats /task-bootstrap and prefixes like /prisma are left alone.
-    # The lookbehind keeps it from touching /cmd inside a file path (e.g.
-    # ~/.claude/commands/sync.md) — only bare slash-command invocations are rewritten.
+    # Rewrite /<cmd> to /<ns>:<cmd> only when not followed by a word char, hyphen, or
+    # slash, so /task never eats /task-bootstrap, prefixes like /prisma are left alone,
+    # and an absolute path whose first segment is a command name stays a path — /dev/null
+    # in a redirect is the one that shipped broken, since a `dev` command exists and the
+    # rewritten /my-command:dev/null fails on every machine. The lookbehind keeps it from
+    # touching /cmd inside a file path (e.g. ~/.claude/commands/sync.md) — only bare
+    # slash-command invocations are rewritten.
     NS="$NS" CMD="$cmd" perl -0777 -pi -e '
       my $ns = $ENV{NS}; my $c = quotemeta $ENV{CMD};
-      s{(?<![\w./~-])/$c(?![\w-])}{/$ns:$ENV{CMD}}g;
+      s{(?<![\w./~-])/$c(?![\w/-])}{/$ns:$ENV{CMD}}g;
     ' "$OUT_DIR/$name"
   done
 done

@@ -118,8 +118,11 @@ until a transition fires into the wrong status.
    `technical`. It is a default: `/ticket` picks by whether the change is user-visible and may
    override it.
 
-**Never write `cloudId` into the contract.** `/ticket` resolves it at run time from `site`, so a
-site migration does not leave a pinned id pointing at the wrong tenant.
+**Never write `cloudId` or an Atlassian account email into the contract.** `/ticket` resolves the
+cloud id at run time from `site`, so a site migration does not leave a pinned id pointing at the
+wrong tenant, and it resolves the account email from whoever is authenticated, because the
+contract is committed and shared while that email belongs to the person running the command.
+Asking for either is the one thing this round must not do.
 
 **This leg is additive and re-runnable.** A repo that already has `scripts/bootstrap-worktree.sh`
 gains **only** the Jira contract: the existing flags, guards, symlinks, install, and codegen are
