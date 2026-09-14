@@ -4,7 +4,7 @@ title: fb
 description: Implement a feedback request — a thin wrapper around task, current branch by default or a worktree of an existing branch.
 tags: [command, workflow, git]
 timestamp: 2026-07-15
-updated: 2026-08-08
+updated: 2026-09-14
 ---
 
 # fb
@@ -21,6 +21,11 @@ existing branch in a fresh worktree.
   fresh worktree, instead of the current branch.
 - `--worktree <path>` — the workspace was already made by the dispatcher; make none,
   work through absolute paths beneath it, forward it to `/task`, and leave it standing.
+- `--no-implement` — implement nothing; passed straight through to `/task --here`, which
+  skips its Step 2 and runs lint, the verify loop, `/clean` and `/pr` over the work the
+  branch already carries. Composes with both modes. The feedback text becomes what the
+  verifier should prove and is optional — with none, the verifier infers intent from the
+  diff and the PR body. With `--no-verify` as well, the run is `/clean` and `/pr` alone.
 - Everything after the flags is the **feedback text**.
 
 ## Behavior
@@ -42,6 +47,13 @@ with `worktree end --branch <branch>`. Cross-repo runs never enter it — a new 
 the target repo is preferred, and otherwise all work goes through absolute paths under
 the reported `path` and teardown runs from outside. Either way `worktree end` re-verifies
 the branch reached origin first.
+
+`--no-implement` lives on `fb` rather than `task` because `task` can only cut a new branch
+or stay on the current one, and verifying existing work means checking an existing branch
+out into a worktree — which `--target` already does, teardown included. `task`'s `hasWork`
+check is the only guard: a branch with commits is cleaned and its PR updated, which is what
+publishes the screenshots the verify loop recorded, and a branch with none stops without an
+empty PR. The flag changes what `task` does inside the worktree, not who removes it.
 
 ## Related
 

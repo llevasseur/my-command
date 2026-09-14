@@ -4,7 +4,7 @@ title: task
 description: Carry a plain-language task from criteria to an open PR — isolated worktree, bootstrap, implement, verify, then clean + PR.
 tags: [command, workflow, git]
 timestamp: 2026-07-15
-updated: 2026-08-22
+updated: 2026-09-14
 dirty: true
 ---
 
@@ -32,6 +32,16 @@ The end goal is always an open PR.
   not preserve the worktree; teardown still runs.
 - `--sub` / `-s` — run the `/clean` + `/pr` stage in one fresh subagent. Off by
   default: `task` spawns no subagent of its own unless asked.
+- `--no-verify` — skip Step 2.6's check against the running app.
+- `--no-implement` — the mirror of `--no-verify`: skip Step 2 and implement nothing.
+  Steps 1, 1.5, 2.5, 2.6, 3 and 4 run unchanged over what the branch already carries.
+  The criteria become what the verifier should prove and are optional — Step 2.6 hands
+  them to the verifier as the intent to demonstrate, or lets it infer intent from the
+  diff and PR body when none were given. Step 3's `hasWork` check stays the only guard
+  against an empty PR. Normally reached through [fb](fb.md) `--no-implement`, since only
+  `fb --target` checks an existing branch out into a worktree; `task` can only cut a new
+  branch or stay on the current one. With `--no-verify` as well, the run is `/clean` and
+  `/pr` alone. Teardown ownership does not change.
 - `--add` / `-a <list>` — comma-separated `command + prompt` entries to weave extra
   commands into the run; the leading token names the command, the rest is its prompt.
 - Everything after the flags is the **task criteria**.

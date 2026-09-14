@@ -9,6 +9,7 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 ### Added
 
+- **`/fb --no-implement` verifies, cleans and PRs an existing branch without implementing anything.** It passes the flag through to `/task --here`, which skips Step 2 and runs Steps 2.5, 2.6, 3 and 4 over the work already on the branch. The feedback text becomes what the verifier should prove and is optional; `/task`'s `hasWork` check remains the only guard against an empty PR. The flag lives on `/fb` because only `/fb --target` checks an existing branch out into a worktree.
 - **Changelog entries have a measured shape and a gate.** `src/shared/changelog-entry-shape.md` gives `/changelog` and `/task` numbers instead of "concise": one bullet per user-visible change, a bold lead of 12 words or fewer, 2 to 3 sentences under 60 words, no nested lists. `scripts/check-changelog.mjs` fails any bullet over 80 words in the newest two dated sections, under `pnpm test` and `check-commands.sh`. See `docs/features/changelog.md`.
 
 ### Changed
