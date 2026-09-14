@@ -149,11 +149,46 @@ Filenames decide the layout. A stem carrying a `before` or `after` marker at eit
 `home-before.png`, `after_home.png`, `settings.after.png` — pairs into a **before/after
 table**, one row per view, before column then after; a view with only one side still gets
 its row, with the missing cell saying so, because that is more use to a reviewer than
-losing the pairing. Everything with no marker renders as a **grid**, two columns wide.
-Images are markdown rather than `<img>` elements, because `![alt](<path>)` is the only shape
-`gh` rewrites into an uploaded URL. `worktree end`'s collision suffix is accounted for:
-`home-before-2.png` is the same view as `home-before.png`, not a view called `home-2`.
-`--no-shots` switches the whole thing off.
+losing the pairing. Everything with no marker renders as a **grid**, two columns wide, or
+one column when there is one shot: a lone image still sits in a table, never loose in the
+body. Images are markdown rather than `<img>` elements, because `![alt](<path>)` is the
+only shape `gh` rewrites into an uploaded URL. `worktree end`'s collision suffix is
+accounted for: `home-before-2.png` is the same view as `home-before.png`, not a view called
+`home-2`. `--no-shots` switches the whole thing off.
+
+### Every cell says what its shot is and what it proves
+
+The first table put raw filenames next to images: a reviewer saw a grid of screenshots and
+one caption for all of them, with nothing saying which claim each image supported.
+`settings-round-3.png` names a route and a round, not a claim.
+
+Every screenshot cell now has one fixed shape, in one fixed order: a **bold label** naming
+what the shot is, the **image**, and **one sentence** on what the shot proves. `<br>` breaks
+the three apart, since it is the only line break a markdown table cell renders. The comment
+then closes with a `### What these shots do not prove` section listing the gaps the
+verification round could not close, so a reader learns the boundary of the evidence in the
+same place they read it.
+
+**The words come from the verifier, not from `pr`.** `mycommand-verifier` already reads
+every screenshot back on the `playwright` tier and writes one `saw:` line per shot. That
+line now carries three parts, `<file> | <label> | <sentence>`, plus one `gap:` line per
+thing the round could not prove, and the caller passes each of them to `shots record` as
+`--shot` and `--gap`, so the record beside the images holds the read-back and `pr` only
+renders it. Generating a description at publish time would mean describing an image nobody
+in that process had looked at, which is the failure the read-back rule exists to prevent.
+The same rule covers a shot with nothing to say: an empty landing page or a framing crop is
+described as exactly that, in its own sentence, rather than padded with a significance it
+does not have.
+
+A shot the record never described is not dropped and not invented for. It is published
+under the label `Unlabelled screenshot` with a sentence saying the verifier left no read-back
+for it, and `pr` names the count in `shotsWarning`, because the fix is to go back for the
+verifier's line rather than to write one here. A round that named no gaps gets a bullet
+saying none were written down, not that none exist. Pipes in the verifier's prose are
+escaped so they cannot split a cell, and em dashes are replaced with commas to keep the
+generated markdown in house style whatever the agent typed. The `<!-- my-command-shots
+<digest> -->` marker and the `--attach` upload path are unchanged, so comment reuse and
+the rendered-image check work as they did.
 
 ### Why every repository gets an attachment comment
 

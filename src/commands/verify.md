@@ -94,13 +94,15 @@ driver, and its repo context are paid for once.
 
 It replies with a verdict — `green`, `red`, `unverified`, `skipped` — a tier, an `exercised`
 line, a path to its evidence, and the screenshots it saved. **On `playwright` it also reads each
-of those screenshots back and states what the image showed, one `saw:` line per shot above the
-verdict.** A `green` on `playwright` is not reachable without it, and a screenshot contradicting
-the intent makes the verdict `red` however the DOM assertions read. A reply with shots, a
-`playwright` tier, and no `saw:` lines has not
-looked at its own evidence — message it back for them rather than accepting the verdict. Lower
-tiers and rounds that saved no screenshots carry no `saw:` lines and are unchanged. **Read the
-evidence path only when you need it.** Do not ask for logs in the reply.
+of those screenshots back, one `saw:` line per shot above the verdict, in three parts split by
+` | `: the filename, a label naming what the shot is, and one sentence on what it proves.** A
+`green` on `playwright` is not reachable without it, and a screenshot contradicting the intent
+makes the verdict `red` however the DOM assertions read. A reply with shots, a `playwright`
+tier, and no `saw:` lines has not looked at its own evidence — message it back for them rather
+than accepting the verdict; so has one whose `saw:` lines carry a filename and nothing else. It
+also lists what the round could not prove, one `gap:` line each. Lower tiers and rounds that
+saved no screenshots carry neither and are unchanged. **Read the evidence path only when you
+need it.** Do not ask for logs in the reply.
 
 ## Step 5 — Repair, then re-check
 
@@ -130,7 +132,8 @@ carry the worktree path.
 **Then record what this loop did, in the same turn:**
 
 ```
-my-command-tools shots record --tier <tier> --verdict <verdict> --rounds <n>
+my-command-tools shots record --tier <tier> --verdict <verdict> --rounds <n> \
+  --shot "<file> | <label> | <sentence>" --shot "..." --gap "<what was not proven>"
 ```
 
 That writes `verdict.json` beside the screenshots, and it is the **only** thing that makes them
@@ -139,6 +142,14 @@ took them, and publishes nothing at all when no record exists. Record every endi
 one — a `red` loop's screenshots are the ones a reviewer most needs, and the verdict never
 withholds them. A run that took no screenshots still records, because the record costs nothing
 and its absence is what `/pr` reports as a warning.
+
+**One `--shot` per screenshot, carrying the verifier's last `saw:` payload for that file
+verbatim, and one `--gap` per `gap:` line.** `/pr` renders each label above its image and each
+sentence below it in the PR's screenshot table, and closes the comment with the gaps under
+"What these shots do not prove". Those words are the verifier's read-back, never written at
+publish time: a shot recorded without one is published as unlabelled, and the verb names it
+under `undescribed` so you can go back for the line. A shot the verifier described in more than
+one round takes the latest description.
 
 **The tier is what decides it, so name the tier you actually ran.** Writing `playwright` for an
 `http` round puts unexercised images in front of a reviewer as though a browser had loaded them,
@@ -155,8 +166,9 @@ The report:
 - **the saved screenshots, each by path.** They outlive this run — `worktree end` moves them to
   `~/.my-command/shots/<repo>/<branch>/`, and `/pr` embeds them in the PR when the recorded tier
   is a browser — so the report is where someone learns they exist. A screenshot nobody was told
-  the path of is evidence nobody reads. Carry the verifier's `saw:` line for each one into the
-  report beside its path: it is what makes the image a looked-at observation rather than a file.
+  the path of is evidence nobody reads. Carry the verifier's `saw:` label and sentence for each
+  one into the report beside its path: they are what make the image a looked-at observation
+  rather than a file, and they are what the PR's screenshot cells will say.
 
 **The verdict is advisory and this run changes nothing about the branch's fate.** It opens no
 PR, blocks no merge, and fails no build. A `red` here is information for whoever reads it.

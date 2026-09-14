@@ -134,7 +134,12 @@ overrides the keep root, which is how the tests exercise the move for real witho
 writing into a developer's home directory.
 
 `shots record` writes the third thing that lives in that directory: `verdict.json`, naming
-the driver tier a verification loop ran, the verdict it reached, and the round count. It
+the driver tier a verification loop ran, the verdict it reached, the round count, and the
+verifier's read-back of each screenshot: one `--shot "<file> | <label> | <sentence>"` per
+image and one `--gap <text>` per thing the round could not prove. `pr` renders those into
+the screenshot cells and the closing "What these shots do not prove" section rather than
+writing anything of its own; a shot recorded without one is reported under `undescribed`
+and published as unlabelled. It
 refuses a tier or verdict outside `mycommand-verifier`'s own vocabulary rather than storing
 a typo, since a misspelled tier would record fine and silently withhold the screenshots
 later. `/verify` Step 6 and `/task` Step 2.6 call it on every ending, green or not.
@@ -143,7 +148,9 @@ later. `/verify` Step 6 and `/task` Step 2.6 call it on every ending, green or n
 `pr` closes that loop at the other end. A branch whose recorded tier is a **browser** gets
 its screenshots — read from the live `.my-command/shots/` and from the keep, the live copy
 winning a collision — published under a `## Screenshots` heading: before/after pairs as a
-table with one row per view, everything unpaired as a two-column grid.
+table with one row per view, everything unpaired as a two-column grid, and a lone shot as
+a one-column table. Every cell is a bold label, the image, then one sentence, in that order,
+and the comment closes with the recorded gaps.
 
 **The gate is that recorded tier and not the shape of the diff**, which is a correction of
 the first version. Gating on changed paths withheld exactly the evidence that mattered

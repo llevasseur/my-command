@@ -30,12 +30,16 @@ Parse `--draft` / `-d`; treat remaining text as optional title or context.
    without embedding credentials. Preserve existing body assets. Convert to
    draft only when requested; never silently mark a draft ready.
    - A branch whose screenshots were taken by a browser gets them published
-     under a `## Screenshots` heading: before/after pairs as a table with one
-     row per view, anything unpaired as a grid. The gate is the tier the
-     verification loop recorded beside the images, not the diff or the verdict.
-     The caption under them says the images were captured and inspected, which
-     is what that tier means: it reads each screenshot back and states what the
-     image showed before reaching a verdict.
+     under a `## Screenshots` heading. Every image sits in a table cell, even a
+     lone one: a bold label naming the shot, the image, then one sentence on
+     what it proves. Before/after pairs share a row per view, the rest fill a
+     two-column grid, and the comment closes with "What these shots do not
+     prove". The gate is the tier the verification loop recorded beside the
+     images, not the diff or the verdict. The labels, sentences, and gaps are
+     the verifier's own read-back as the verification loop recorded them, never
+     written at publish time; a shot recorded without one is published as
+     unlabelled and named in the warning. The caption says the images were
+     captured and inspected, which is what that tier means.
      The helper moves the image bytes itself and reports the count, tier, and
      verdict. There is one route and every repository takes it whatever its
      visibility: one attachment comment per PR, reused when the images are

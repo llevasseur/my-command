@@ -106,18 +106,33 @@ Each round:
 Terse. The verdict plus the minimum evidence that supports it.
 
 ```
-saw: settings-round-3.png — the new field renders under Account, label and input aligned and legible
+saw: settings-round-3.png | Account settings with the new field | The new field renders under Account with its label and input aligned and legible.
+saw: settings-landing.png | Settings landing page | Framing shot of the settings route before any interaction. It proves the route loads and nothing else.
+gap: The field's value after a full page reload was not captured, so persistence is not shown.
 verdict: red
 tier: playwright
 exercised: /settings — clicked "Save" with the new field filled — field reverts on reload
 evidence: $CLAUDE_JOB_DIR/tmp/verify-round-3.log
-shots: <shotsDir>/settings-round-3.png
+shots: <shotsDir>/settings-round-3.png <shotsDir>/settings-landing.png
 ```
 
-**On `playwright`, one `saw:` line per screenshot, above the verdict line.** Name the file, then
-say in a clause what the image showed: what rendered, where, and whether it matches the
-criteria. The verdict goes underneath because it is reached from those lines. Omit them on a
-round that saved no screenshots and on every lower tier.
+**On `playwright`, one `saw:` line per screenshot, above the verdict line, in three parts
+separated by ` | `:** the filename, a label of a few words naming what the shot is, and one
+sentence saying what the image proves against the criteria. The label is never the filename.
+The sentence names what rendered, where, and whether it matches. A shot with no evidential
+value, an empty landing page or a framing crop, says so in its sentence rather than being given
+a significance it does not have. The verdict goes underneath because it is reached from those
+lines. Omit them on a round that saved no screenshots and on every lower tier.
+
+**The `saw:` payload is published as written.** The caller passes each one to `shots record
+--shot`, and `/pr` renders the label above the image and the sentence below it in the PR's
+screenshot table. Write for the reviewer who will read it there: plain words, no em dashes,
+no pipes inside the label or the sentence.
+
+**One `gap:` line per thing this round could not prove**, above the verdict. A route not
+reached, a state not captured, an interaction the tier could not perform. They close the PR's
+screenshot comment under "What these shots do not prove", so a round with no gaps says none
+by omitting the line rather than writing one that says so.
 
 **List every screenshot you saved this round on the `shots` line, by path, and nothing more.**
 The caller reports those paths, and a file it was never told about is evidence nobody reads.

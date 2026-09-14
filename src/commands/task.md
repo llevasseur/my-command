@@ -196,10 +196,11 @@ Step 2.5.
 3. **Read the verdict**, not the logs. It replies with `green`, `red`, `unverified`, or
    `skipped`, a driver tier, an `exercised` line, an evidence path, and the screenshots it
    saved. Open the path only if you need it. On `playwright` it also reads each of those
-   screenshots back and states what the image showed, one `saw:` line per shot above the
-   verdict — a `green` on that tier is not reachable without it, and a shot that contradicts
-   the criteria makes the verdict `red`. Shots plus a `playwright` tier plus no `saw:` lines
-   means it has not looked at its own evidence; message it back for them.
+   screenshots back, one `saw:` line per shot above the verdict, as `<file> | <label> | <one
+   sentence on what it proves>` — a `green` on that tier is not reachable without it, and a
+   shot that contradicts the criteria makes the verdict `red`. It lists what the round could
+   not prove as `gap:` lines. Shots plus a `playwright` tier plus no `saw:` lines means it has
+   not looked at its own evidence; message it back for them.
 4. **Repair here.** This context holds the criteria; the verifier does not and never edits code.
    Fix, commit on this branch, then `SendMessage` the same verifier to re-check.
 5. **Loop to at most 12 rounds.** `green`, `unverified`, and `skipped` all end it — only `red`
@@ -228,11 +229,15 @@ Persisted browser spec files are out of scope; the specs and logs the verifier w
 scratch under `$CLAUDE_JOB_DIR/tmp`. Its **screenshots** are not scratch: they land in the
 `shotsDir`, and Step 3's `worktree end` preserves them to `~/.my-command/shots/<repo>/<branch>/`
 before it removes the workspace. **Record the loop's outcome when it ends** —
-`my-command-tools shots record --tier <tier> --verdict <verdict> --rounds <n>`, whatever the
-verdict — because that record is what lets Step 3's `/pr` publish the screenshots: it does so
-when the recorded tier is a browser, and publishes nothing without it. A pair captured as
+`my-command-tools shots record --tier <tier> --verdict <verdict> --rounds <n>`, with one
+`--shot "<file> | <label> | <sentence>"` per screenshot carrying the verifier's latest `saw:`
+payload for it and one `--gap "<text>"` per `gap:` line, whatever the verdict — because that
+record is what lets Step 3's `/pr` publish the screenshots: it does so when the recorded tier is
+a browser, and publishes nothing without it. Each image lands in a table cell under its label
+and above its sentence, and the gaps close the comment under "What these shots do not prove";
+a shot recorded with no `--shot` is published as unlabelled. A pair captured as
 `<view>-before.png` and `<view>-after.png` becomes a before/after row rather than two loose
-files.
+cells.
 
 ## Step 3 — Clean, then PR (inline by default; one fresh subagent with `--sub`)
 

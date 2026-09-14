@@ -27,25 +27,32 @@ than clamping it. `--no-verify` reports `skipped` and changes nothing.
    one of four flat verdicts — green, red, unverified, skipped — the driver tier it ran, an
    `exercised` line, and a path to its evidence. Read that path only on demand; never ask for
    logs in the reply.
-   - On the browser tier the agent reads back every screenshot it saved that round and states
-     what each image showed, one short line per file, above its verdict. Green on that tier is
-     not reachable without it, and an image contradicting the intent makes the verdict red
-     whatever the assertions against the page said. A reply that carries screenshots and a
-     browser tier but no such lines has not looked at its own evidence; ask for them rather
-     than accepting the verdict. Lower tiers and rounds that saved no screenshots are
-     unchanged, and the observations stay one line each — logs, markup, stack traces and image
-     bytes are still never pasted into a reply.
+   - On the browser tier the agent reads back every screenshot it saved that round, one line
+     per file above its verdict, in three parts: the filename, a label naming what the shot
+     is, and one sentence on what it proves against the intent. A shot with no evidential
+     value says so in its sentence. It also lists what the round could not prove, one line
+     each. Green on that tier is not reachable without the read-back, and an image
+     contradicting the intent makes the verdict red whatever the assertions against the page
+     said. A reply that carries screenshots and a browser tier but no such lines has not
+     looked at its own evidence; ask for them rather than accepting the verdict. Lower tiers
+     and rounds that saved no screenshots are unchanged, and the observations stay one line
+     each — logs, markup, stack traces and image bytes are still never pasted into a reply.
 5. Repair in this run's own context, which holds the intent; the agent never edits code. Green
    ends the loop. Unverified and skipped end it too — neither improves by repeating. Red is
    fixed, committed on this branch, and re-checked by messaging the same live agent against the
    same booted server. Stop at the ceiling and record the round count.
 6. Stop the application through the repository helper on every path — green, red, skipped,
    refused, or stopped early — then record the loop's driver tier, verdict, and round count
-   beside the screenshots through the same helper, and report the verdict, tier, round count,
+   beside the screenshots through the same helper, passing it each screenshot's label and
+   sentence exactly as the agent wrote them and each gap the agent named, and report the
+   verdict, tier, round count,
    the `exercised` line or what stood in the way, whether the intent was given or inferred,
    whether the contract or detection was used, and the evidence path.
    - That record is what makes the screenshots publishable: the pull-request workflow publishes
-     them when it says a browser tier took them, and publishes nothing without it. Record every
+     them when it says a browser tier took them, and publishes nothing without it. It renders
+     each label above its image and each sentence below it in the PR's screenshot table, and
+     closes the comment with the gaps under "What these shots do not prove"; a screenshot
+     recorded without its read-back is published as unlabelled. Record every
      ending rather than only a green one, and name the tier actually run. Claiming a browser
      for a round that only probed over HTTP puts unexercised images in front of a reviewer as
      though a browser had loaded them, which is the one failure the record exists to prevent.
