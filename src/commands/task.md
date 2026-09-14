@@ -195,7 +195,11 @@ Step 2.5.
    body.
 3. **Read the verdict**, not the logs. It replies with `green`, `red`, `unverified`, or
    `skipped`, a driver tier, an `exercised` line, an evidence path, and the screenshots it
-   saved. Open the path only if you need it.
+   saved. Open the path only if you need it. On `playwright` it also reads each of those
+   screenshots back and states what the image showed, one `saw:` line per shot above the
+   verdict — a `green` on that tier is not reachable without it, and a shot that contradicts
+   the criteria makes the verdict `red`. Shots plus a `playwright` tier plus no `saw:` lines
+   means it has not looked at its own evidence; message it back for them.
 4. **Repair here.** This context holds the criteria; the verifier does not and never edits code.
    Fix, commit on this branch, then `SendMessage` the same verifier to re-check.
 5. **Loop to at most 12 rounds.** `green`, `unverified`, and `skipped` all end it — only `red`
@@ -206,7 +210,9 @@ Step 2.5.
 
 **`green` means the task criteria are demonstrably true in the running app.** Not that nothing
 crashed. A verifier that cannot name the route, the interaction, and the observed result must
-report `unverified`, and a `green` without a filled `exercised` field is not one.
+report `unverified`, and a `green` without a filled `exercised` field is not one. On
+`playwright`, neither is a `green` reached without the round's screenshots having been read
+back and described.
 
 ### The verdict is advisory
 

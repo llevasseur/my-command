@@ -110,6 +110,16 @@ Step 6 was skipped.
 most needs, and withholding them would hide the failure the loop found, so the verdict is
 reported alongside the count and tier and does nothing else.
 
+**The caption says captured *and inspected*, and means it.** The browser tier is the only
+one that publishes, and it is also the tier whose agent must read each screenshot back and
+state what the image showed before it may reach `green` — see [Looking at the
+screenshots](verify.md#looking-at-the-screenshots). So an image in this comment is one that
+was looked at, not one that was merely taken, and the caption is the reviewer's only signal
+of that. The exception is a keep recorded before that rule existed: its `verdict.json` says
+`playwright` and nothing in it distinguishes an inspected round from an unexamined one, so
+those images carry the newer caption on the older promise. Re-verifying the branch replaces
+them.
+
 ### Why the tier, and not the diff
 
 The first version of this gated on the diff: markup and stylesheet extensions counted

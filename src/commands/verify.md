@@ -93,8 +93,14 @@ nothing else:
 driver, and its repo context are paid for once.
 
 It replies with a verdict — `green`, `red`, `unverified`, `skipped` — a tier, an `exercised`
-line, a path to its evidence, and the screenshots it saved. **Read the evidence path only when
-you need it.** Do not ask for logs in the reply.
+line, a path to its evidence, and the screenshots it saved. **On `playwright` it also reads each
+of those screenshots back and states what the image showed, one `saw:` line per shot above the
+verdict.** A `green` on `playwright` is not reachable without it, and a screenshot contradicting
+the intent makes the verdict `red` however the DOM assertions read. A reply with shots, a
+`playwright` tier, and no `saw:` lines has not
+looked at its own evidence — message it back for them rather than accepting the verdict. Lower
+tiers and rounds that saved no screenshots carry no `saw:` lines and are unchanged. **Read the
+evidence path only when you need it.** Do not ask for logs in the reply.
 
 ## Step 5 — Repair, then re-check
 
@@ -149,7 +155,8 @@ The report:
 - **the saved screenshots, each by path.** They outlive this run — `worktree end` moves them to
   `~/.my-command/shots/<repo>/<branch>/`, and `/pr` embeds them in the PR when the recorded tier
   is a browser — so the report is where someone learns they exist. A screenshot nobody was told
-  the path of is evidence nobody reads.
+  the path of is evidence nobody reads. Carry the verifier's `saw:` line for each one into the
+  report beside its path: it is what makes the image a looked-at observation rather than a file.
 
 **The verdict is advisory and this run changes nothing about the branch's fate.** It opens no
 PR, blocks no merge, and fails no build. A `red` here is information for whoever reads it.
@@ -196,5 +203,7 @@ Lead with the verdict, the round count, and the tier.
   they go to the `shotsDir` inside the worktree, `worktree end` preserves them to
   `~/.my-command/shots/<repo>/<branch>/` rather than discarding them with the workspace, and
   `/pr` publishes them into the PR body when Step 6's record says a browser took them. A pair
-  named `<view>-before.png` / `<view>-after.png` becomes one before/after row there.
+  named `<view>-before.png` / `<view>-after.png` becomes one before/after row there. What `/pr`
+  publishes is an inspected image rather than merely a captured one, because the browser tier is
+  both the gate on publishing and the tier that must read its screenshots back.
 - <!-- include: shared/approval-own-call.md -->**A command that may need approval goes in its own Bash call** — `git fetch`, `git config`, and, as a narrow exception to the general rule to chain dependent mutations, branch-lifecycle operations such as checkout/switch, pull, remote-branch inspection, and local branch deletion. Folding one into an `&&` chain escalates approval to the whole compound command and costs a turn plus a retry. Put status output, pipes, and follow-up verification in separate read-only calls.<!-- /include -->

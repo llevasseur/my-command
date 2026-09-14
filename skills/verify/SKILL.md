@@ -27,6 +27,14 @@ than clamping it. `--no-verify` reports `skipped` and changes nothing.
    one of four flat verdicts — green, red, unverified, skipped — the driver tier it ran, an
    `exercised` line, and a path to its evidence. Read that path only on demand; never ask for
    logs in the reply.
+   - On the browser tier the agent reads back every screenshot it saved that round and states
+     what each image showed, one short line per file, above its verdict. Green on that tier is
+     not reachable without it, and an image contradicting the intent makes the verdict red
+     whatever the assertions against the page said. A reply that carries screenshots and a
+     browser tier but no such lines has not looked at its own evidence; ask for them rather
+     than accepting the verdict. Lower tiers and rounds that saved no screenshots are
+     unchanged, and the observations stay one line each — logs, markup, stack traces and image
+     bytes are still never pasted into a reply.
 5. Repair in this run's own context, which holds the intent; the agent never edits code. Green
    ends the loop. Unverified and skipped end it too — neither improves by repeating. Red is
    fixed, committed on this branch, and re-checked by messaging the same live agent against the

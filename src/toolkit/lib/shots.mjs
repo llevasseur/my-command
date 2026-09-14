@@ -330,7 +330,7 @@ function commentPlan(shots, record) {
   const plan = {
     files,
     count: files.length,
-    caption: `Captured by the \`${record.tier}\` tier; verification ended \`${record.verdict}\`.`,
+    caption: `Captured and inspected by the \`${record.tier}\` tier; verification ended \`${record.verdict}\`.`,
     digest: hash.digest('hex'),
   };
   const over = shots.length - files.length;

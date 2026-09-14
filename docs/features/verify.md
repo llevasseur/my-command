@@ -79,6 +79,10 @@ feature: without it, "the build passed and the server started" drifts into
 `green`, and a green that means "nothing crashed" is worse than no check at all,
 because it is trusted.
 
+On the `playwright` tier `green` carries a second requirement — the screenshots
+that round saved have been looked at, and what they showed is stated. See
+[Looking at the screenshots](#looking-at-the-screenshots).
+
 ## Driver tiers
 
 Taken in order, highest available, and **always reported**:
@@ -133,6 +137,35 @@ reviewer as though a browser had loaded them, so `shots record` refuses a tier o
 verdict outside the vocabulary rather than storing a typo that fails silently
 months later.
 
+## Looking at the screenshots
+
+On the `playwright` tier the verifier **reads every screenshot it saved that round
+back** and states what each one showed, one short line per file, above its verdict.
+`green` on that tier is not reachable without it, and an image that contradicts the
+intent makes the verdict `red` whatever the DOM assertions said.
+
+Until now nothing asked for that. The verifier was told to save each shot into
+`shotsDir`, list the paths, and never paste images into the reply — and its verdicts
+came from `playwright-cli eval`, page navigation, and console and network error greps.
+Across seven recorded runs, four read no image at all; the eleven reads that happened
+were the agent's own initiative rather than anything the spec required.
+
+The gap that opens is a change that **mounts but renders wrong**. Overlapping text,
+contrast that vanishes against its background, an element pushed off-screen, the wrong
+colour. Each of those satisfies an assertion that the element exists in the tree, and
+each of them fails the criteria a person wrote. The run then hands those same
+unexamined images to `/pr`, which publishes them into the PR's before/after table as
+though a browser had confirmed them, and the reviewer reads evidence nobody looked at.
+
+Some things stay as they were. **Lower tiers are untouched**, because `http` probes and
+`static` reads photograph nothing. **A round that saved no screenshots is untouched**
+for the same reason. And **the reply stays terse**: a stated observation is one line of
+the agent's own reading rather than a paste, and logs, markup, stack traces and image
+bytes are as banned from the reply as they ever were.
+
+The cost is roughly 1.5k tokens per image, about $0.01 to $0.04 on a Sonnet verify run
+against ~$0.53 today. It was never the reason this was missing.
+
 ## The advisory tradeoff
 
 Whether the verdict is green or red, the PR still opens. The verdict and the
@@ -161,9 +194,11 @@ a credential exfiltration path wearing a test harness.
 
 ## Why replies stay terse
 
-The verifier reports a verdict, a tier, one `exercised` line, and a path. It
-never pastes logs, HTML, screenshots, or stack traces into the reply, and leaves
-the full evidence at the path for the caller to read on demand.
+The verifier reports a verdict, a tier, one `exercised` line, a path, and — on
+the browser tier — one line per screenshot saying what it showed. It never pastes
+logs, HTML, screenshots, or stack traces into the reply, and leaves the full
+evidence at the path for the caller to read on demand. A stated observation is
+not an exception to that: it is a sentence the agent wrote, not bytes it copied.
 
 Twelve rounds of pasted output exhausts the caller's context — and the caller is
 the agent holding the criteria and doing the repairs. Spending its context on
