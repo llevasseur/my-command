@@ -124,10 +124,8 @@ value, an empty landing page or a framing crop, says so in its sentence rather t
 a significance it does not have. The verdict goes underneath because it is reached from those
 lines. Omit them on a round that saved no screenshots and on every lower tier.
 
-**The `saw:` payload is published as written.** The caller passes each one to `shots record
---shot`, and `/pr` renders the label above the image and the sentence below it in the PR's
-screenshot table. Write for the reviewer who will read it there: plain words, no em dashes,
-no pipes inside the label or the sentence.
+**The `saw:` payload is published as written**, under the image in the PR. Plain words, no em
+dashes, no pipes inside the label or the sentence.
 
 **One `gap:` line per thing this round could not prove**, above the verdict. A route not
 reached, a state not captured, an interaction the tier could not perform. They close the PR's

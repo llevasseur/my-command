@@ -122,7 +122,7 @@ up in any branch's diff.
 reported is evidence nobody reads.
 
 Step 6 also **records what the loop did**, beside the images:
-`my-command-tools shots record --tier <tier> --verdict <verdict> --rounds <n> --shot "<file> | <label> | <sentence>" --gap <text>`
+`my-command-tools shots record --tier <tier> --verdict <verdict> --rounds <n> --shot "<file> | <label> | <sentence>" --gap "<text>"`
 writes `verdict.json` into the same directory, so `worktree end` carries it into
 the keep along with the screenshots it describes. That record is what makes them
 publishable — `/pr` publishes a branch's screenshots when it says a **browser**
@@ -147,13 +147,9 @@ intent makes the verdict `red` whatever the DOM assertions said.
 Each `saw:` line has three parts split by ` | `: the filename, a label of a few words
 naming what the shot is, and one sentence on what it proves against the intent. A
 shot with no evidential value says so in its sentence. One `gap:` line per thing the
-round could not prove sits beside them. The caller passes each of those to
-`shots record` as `--shot` and `--gap`, and `/pr` renders them into the PR's
-screenshot table, label above the image and sentence below, closing with "What these
-shots do not prove". That is why the shape is fixed here rather than left to the
-agent's phrasing: the words a reviewer reads under each image are the verifier's
-own, written while it was looking at the image. See [Every cell says what its shot
-is and what it proves](pr.md#every-cell-says-what-its-shot-is-and-what-it-proves).
+round could not prove sits beside them. The caller passes each to `shots record` as
+`--shot` and `--gap`, and `/pr` publishes them as written; see [Every cell says what
+its shot is and what it proves](pr.md#every-cell-says-what-its-shot-is-and-what-it-proves).
 
 Until now nothing asked for that. The verifier was told to save each shot into
 `shotsDir`, list the paths, and never paste images into the reply — and its verdicts

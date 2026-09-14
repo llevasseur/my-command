@@ -304,6 +304,8 @@ const UNLABELLED = {
  */
 export function cellText(text) {
   return text
+    .trim()
+    .replace(/^[—–]\s*|\s*[—–]$/g, '')
     .replace(/\s*[—–]\s*/g, ', ')
     .replace(/\s*\n+\s*/g, ' ')
     .replace(/\|/g, '\\|')
@@ -424,19 +426,17 @@ export function renderShots({ groups, url, notes, gaps, caption }) {
  */
 function commentPlan(shots, record) {
   const files = shots.slice(0, ATTACH_LIMIT);
+  const notes = record.shots ?? [];
+  const gaps = record.gaps ?? [];
+  const rounds = record.rounds ? ` after ${record.rounds} round${record.rounds === 1 ? '' : 's'}` : '';
+  const caption = `Captured and inspected by the \`${record.tier}\` tier; verification ended \`${record.verdict}\`${rounds}.`;
+  // The digest covers the words as well as the images, so a re-recorded read-back over the
+  // same shots replaces the comment instead of reusing it.
   const hash = createHash('sha256');
   for (const shot of files) hash.update(`${shot.name}\0`).update(readFileSync(shot.path)).update('\0');
-  const notes = record.shots ?? [];
-  const rounds = record.rounds ? ` after ${record.rounds} round${record.rounds === 1 ? '' : 's'}` : '';
+  hash.update(JSON.stringify({ caption, notes, gaps }));
   /** @type {ShotsComment} */
-  const plan = {
-    files,
-    count: files.length,
-    caption: `Captured and inspected by the \`${record.tier}\` tier; verification ended \`${record.verdict}\`${rounds}.`,
-    notes,
-    gaps: record.gaps ?? [],
-    digest: hash.digest('hex'),
-  };
+  const plan = { files, count: files.length, caption, notes, gaps, digest: hash.digest('hex') };
   /** @type {string[]} */
   const warnings = [];
   const over = shots.length - files.length;

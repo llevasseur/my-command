@@ -49,9 +49,7 @@ than clamping it. `--no-verify` reports `skipped` and changes nothing.
    the `exercised` line or what stood in the way, whether the intent was given or inferred,
    whether the contract or detection was used, and the evidence path.
    - That record is what makes the screenshots publishable: the pull-request workflow publishes
-     them when it says a browser tier took them, and publishes nothing without it. It renders
-     each label above its image and each sentence below it in the PR's screenshot table, and
-     closes the comment with the gaps under "What these shots do not prove"; a screenshot
+     them when it says a browser tier took them, and publishes nothing without it; a screenshot
      recorded without its read-back is published as unlabelled. Record every
      ending rather than only a green one, and name the tier actually run. Claiming a browser
      for a round that only probed over HTTP puts unexercised images in front of a reviewer as

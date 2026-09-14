@@ -1121,10 +1121,12 @@ test('shots record keeps each --shot and --gap, and names what they miss', () =>
         tier: 'playwright',
         verdict: 'green',
         shot: [
-          'home.png | Home page | The hero renders with the new copy.',
+          'home.png | Home page | The hero renders with the old copy.',
           // A path is accepted and reduced to its basename; a sentence may carry the separator.
           '/abs/shots/detail.png | Order detail | Totals match | tax included.',
           'ghost.png | Nothing | Describes a file that was never saved.',
+          // A later line for the same file supersedes the earlier one.
+          'home.png | Home page | The hero renders with the new copy.',
         ],
         gap: ['Checkout was not reached.', '  '],
       }),
@@ -1137,11 +1139,13 @@ test('shots record keeps each --shot and --gap, and names what they miss', () =>
   const record = /** @type {{shots: {name: string, label: string, description: string}[], gaps: string[]}} */ (
     /** @type {{verdict: unknown}} */ (shotsVerb(ctx(dir, ['read'], {}))).verdict
   );
-  assert.deepEqual(record.shots[1], {
+  assert.deepEqual(record.shots[0], {
     name: 'detail.png',
     label: 'Order detail',
     description: 'Totals match | tax included.',
   });
+  assert.equal(record.shots.length, 3);
+  assert.equal(record.shots[2].description, 'The hero renders with the new copy.');
   assert.deepEqual(record.gaps, ['Checkout was not reached.']);
 
   assert.throws(
@@ -1150,7 +1154,31 @@ test('shots record keeps each --shot and --gap, and names what they miss', () =>
   );
 });
 
+test('pr replaces its screenshot comment when only the read-back changed', () => {
+  const { dir, git, calls, commentBody, setComments, restore } = repoWithFakeGh(openPr({ body: '' }));
+  try {
+    writeFileSync(join(dir, 'notes.md'), '# notes\n');
+    git(['add', 'notes.md']);
+    git(['commit', '-qm', 'docs: notes']);
+    captured(dir, 'playwright', ['home.png'], { notes: false });
+    pr(ctx(dir, [], { title: 'T', body: '- wrote notes' }));
+    setComments([{ id: 1, url: 'https://github.test/o/r/pull/9#issuecomment-1', body: commentBody() }]);
+
+    // Same image bytes, now described: a new digest, so the unlabelled comment is replaced.
+    captured(dir, 'playwright', ['home.png'], { notes: ['home.png | Home | The hero renders.'] });
+    const again = pr(ctx(dir, [], { title: 'T', body: '- wrote notes' }));
+    assert.equal(asComment(again).comment, COMMENT_URL);
+    assert.match(calls(), /^api --method DELETE repos\/\S+\/issues\/comments\/1$/m);
+  } finally {
+    restore();
+  }
+});
+
 test('a shot cell escapes pipes and drops em dashes, and finds a note through the keep suffix', () => {
+  assert.equal(
+    shotCell('a.png', 'a', { name: 'a.png', label: '— Edge —', description: 'Trailing —' }),
+    '**Edge**<br>![a.png](a)<br>Trailing',
+  );
   const notes = [{ name: 'home.png', label: 'Home — hero', description: 'Copy | reads fine\nacross two lines.' }];
   assert.equal(
     shotCell('round-1/home-2.png', '/tmp/home-2.png', noteFor(notes, 'round-1/home-2.png')),

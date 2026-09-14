@@ -233,11 +233,9 @@ before it removes the workspace. **Record the loop's outcome when it ends** —
 `--shot "<file> | <label> | <sentence>"` per screenshot carrying the verifier's latest `saw:`
 payload for it and one `--gap "<text>"` per `gap:` line, whatever the verdict — because that
 record is what lets Step 3's `/my-command:pr` publish the screenshots: it does so when the recorded tier is
-a browser, and publishes nothing without it. Each image lands in a table cell under its label
-and above its sentence, and the gaps close the comment under "What these shots do not prove";
-a shot recorded with no `--shot` is published as unlabelled. A pair captured as
-`<view>-before.png` and `<view>-after.png` becomes a before/after row rather than two loose
-cells.
+a browser, and publishes nothing without it. A shot recorded with no `--shot` is published as
+unlabelled. A pair captured as `<view>-before.png` and `<view>-after.png` becomes a
+before/after row rather than two loose cells.
 
 ## Step 3 — Clean, then PR (inline by default; one fresh subagent with `--sub`)
 

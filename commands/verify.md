@@ -144,12 +144,9 @@ withholds them. A run that took no screenshots still records, because the record
 and its absence is what `/my-command:pr` reports as a warning.
 
 **One `--shot` per screenshot, carrying the verifier's last `saw:` payload for that file
-verbatim, and one `--gap` per `gap:` line.** `/my-command:pr` renders each label above its image and each
-sentence below it in the PR's screenshot table, and closes the comment with the gaps under
-"What these shots do not prove". Those words are the verifier's read-back, never written at
-publish time: a shot recorded without one is published as unlabelled, and the verb names it
-under `undescribed` so you can go back for the line. A shot the verifier described in more than
-one round takes the latest description.
+verbatim, and one `--gap` per `gap:` line.** `/my-command:pr` publishes those words under each image and
+never writes its own: a shot recorded without one is published as unlabelled, and the verb names
+it under `undescribed` so you can go back for the line. The last `--shot` for a file wins.
 
 **The tier is what decides it, so name the tier you actually ran.** Writing `playwright` for an
 `http` round puts unexercised images in front of a reviewer as though a browser had loaded them,
@@ -168,7 +165,7 @@ The report:
   is a browser — so the report is where someone learns they exist. A screenshot nobody was told
   the path of is evidence nobody reads. Carry the verifier's `saw:` label and sentence for each
   one into the report beside its path: they are what make the image a looked-at observation
-  rather than a file, and they are what the PR's screenshot cells will say.
+  rather than a file.
 
 **The verdict is advisory and this run changes nothing about the branch's fate.** It opens no
 PR, blocks no merge, and fails no build. A `red` here is information for whoever reads it.

@@ -186,9 +186,9 @@ for it, and `pr` names the count in `shotsWarning`, because the fix is to go bac
 verifier's line rather than to write one here. A round that named no gaps gets a bullet
 saying none were written down, not that none exist. Pipes in the verifier's prose are
 escaped so they cannot split a cell, and em dashes are replaced with commas to keep the
-generated markdown in house style whatever the agent typed. The `<!-- my-command-shots
-<digest> -->` marker and the `--attach` upload path are unchanged, so comment reuse and
-the rendered-image check work as they did.
+generated markdown in house style whatever the agent typed. The comment's digest covers
+the labels, sentences, and gaps as well as the image bytes, so re-recording the read-back
+over the same shots replaces the comment rather than reusing the stale one.
 
 ### Why every repository gets an attachment comment
 

@@ -42,10 +42,8 @@ shots read
 
 \`pr\` embeds a branch's screenshots when this record says a **browser** tier took them —
 the verdict itself never gates it, since a red loop's screenshots are the ones a reviewer
-most needs. Each image lands in a table cell under its label and above its sentence, and
-the gaps close the comment. A screenshot with no \`--shot\` is published as unlabelled and
-reported under \`undescribed\`. A branch with screenshots and no record attaches none and
-says so.`;
+most needs. A screenshot with no \`--shot\` is published as unlabelled and reported under
+\`undescribed\`. A branch with screenshots and no record attaches none and says so.`;
 
 /**
  * One of `allowed`, or a usage error naming the whole vocabulary. A tier spelled wrong
@@ -84,13 +82,19 @@ function record(ctx, cwd) {
   };
   if (rounds) record.rounds = Number(rounds);
 
-  const notes = list(ctx.flags.shot).map((value) => {
+  // One note per file, the last `--shot` for it winning: the caller passes the latest round's
+  // read-back, and an earlier line for the same shot is superseded.
+  /** @type {Map<string, import('../lib/shots.mjs').ShotNote>} */
+  const byName = new Map();
+  for (const value of list(ctx.flags.shot)) {
     const note = parseShotNote(value);
     if (!note) {
       throw new UsageError(`--shot must read "<file> | <label> | <description>" (got \`${value}\`)`, { usage });
     }
-    return note;
-  });
+    byName.delete(note.name);
+    byName.set(note.name, note);
+  }
+  const notes = [...byName.values()];
   if (notes.length) record.shots = notes;
   const gaps = list(ctx.flags.gap)
     .map((gap) => gap.trim())
