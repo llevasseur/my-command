@@ -93,7 +93,12 @@ lands every time, and the message meant to follow it never arrives.
    as a reason not to merge, because a check that can block shipping is one people
    switch off. Repository-wide smoke scenarios are optional and off by default,
    and persisted browser specification files are out of scope.
-7. Add changelog work when the repository tracks it. Commit logical scoped
+7. Add changelog work when the repository tracks it, and hold each entry to a
+   measured shape: one bullet per user-visible change, a bold lead of at most
+   12 words naming it, then 2 to 3 sentences under 60 words, with at most one
+   "because" clause and no nested lists. Leave out internal wiring unless it
+   changes what someone sees, and link the feature doc for the reasoning rather
+   than restating it. Commit logical scoped
    changes with explicit paths through `my-command-tools commit` when available;
    never sweep in unrelated work. For a multi-line message, write it to a file and
    pass `--message-file <absolute path>` rather than piping a heredoc on stdin — a

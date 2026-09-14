@@ -33,6 +33,8 @@
 #      instead of leaving the record to infer it (docs/specs/run-markers.md).
 #  18. every fenced shell snippet the docs tell an agent to run is a shape the gates accept —
 #      the repo may not prescribe a command its own harness refuses.
+# 18b. every CHANGELOG.md bullet in the newest two dated sections is under 80 words, so one
+#      bloated entry cannot become the style the next one copies.
 #  19. the closing turn distinguishes a nested inline handback from a run close, on all three
 #      surfaces, and the Stop gate reads the same distinction — a nested run that spends a
 #      text-only turn strands its parent's remaining steps (docs/specs/run-markers.md).
@@ -521,6 +523,13 @@ fi
 # goes through the same shape checker the gate uses. A block nobody is told to run declares
 # itself with `<!-- not-run: <reason> -->`.
 if ! node scripts/check-doc-snippets.mjs; then
+  fail=1
+fi
+
+# 18b. CHANGELOG.md bullets in the newest two dated sections stay under 80 words, the gate
+# behind src/shared/changelog-entry-shape.md. Without it one bloated entry sets the style for
+# every later one, because /changelog reads the existing entries first.
+if ! node scripts/check-changelog.mjs; then
   fail=1
 fi
 
