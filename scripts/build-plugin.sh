@@ -31,12 +31,9 @@ for f in "$SRC_DIR"/*.md; do
   cp "$f" "$OUT_DIR/$name"
   for cmd in $CMDS; do
     # Rewrite /<cmd> to /<ns>:<cmd> only when not followed by a word char, hyphen, or
-    # slash, so /task never eats /task-bootstrap, prefixes like /prisma are left alone,
-    # and an absolute path whose first segment is a command name stays a path — /dev/null
-    # in a redirect is the one that shipped broken, since a `dev` command exists and the
-    # rewritten /my-command:dev/null fails on every machine. The lookbehind keeps it from
-    # touching /cmd inside a file path (e.g. ~/.claude/commands/sync.md) — only bare
-    # slash-command invocations are rewritten.
+    # slash: /task must not eat /task-bootstrap, /prisma is not ours, and an absolute
+    # path whose first segment is a command name (>/dev/null) stays a path. The
+    # lookbehind keeps it off /cmd inside a file path (~/.claude/commands/sync.md).
     NS="$NS" CMD="$cmd" perl -0777 -pi -e '
       my $ns = $ENV{NS}; my $c = quotemeta $ENV{CMD};
       s{(?<![\w./~-])/$c(?![\w/-])}{/$ns:$ENV{CMD}}g;

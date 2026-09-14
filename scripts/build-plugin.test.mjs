@@ -1,12 +1,8 @@
-// The namespacing rewrite in build-plugin.sh turns a bare /<cmd> into /<ns>:<cmd>, and it has
-// to leave an absolute path alone even when that path's first segment is a command name. It
-// shipped without that: `dev` is a command, so `>/dev/null` in a shell snippet became
-// `>/my-command:dev/null`, a redirect that fails on every machine — and it fails *silently*,
-// because the caller reads the non-zero exit as the condition it was probing for. The bare
-// source was right and only the generated copy was wrong, which is the half nobody re-reads.
-//
-// These assert the invariant over the committed commands/, so a regression fails `pnpm test`
-// rather than waiting to be noticed on an installed device.
+// The namespacing rewrite in build-plugin.sh must leave an absolute path alone even when its
+// first segment is a command name. It shipped without that: `dev` is a command, so `>/dev/null`
+// became `>/my-command:dev/null` — a redirect that fails on every machine, and fails silently,
+// because the caller reads the non-zero exit as the condition it was probing for. Only the
+// generated copy was wrong, which is the half nobody re-reads.
 
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
