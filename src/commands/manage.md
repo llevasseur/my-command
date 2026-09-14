@@ -193,6 +193,10 @@ Wait for the whole wave, then read every result. **One failed unit must not canc
 
 **The replanning loop is bounded at one round.** If a unit fails and its retry fails, it is reported as failed and the run moves on. Do not decompose it again, do not route it to a different delegate, and do not re-plan the wave around it. An orchestrator that re-plans until everything succeeds does not terminate, and the second re-plan is where a run stops being able to say what it did.
 
+**Then record this wave's dependencies as Jira links.** Each edge in the Step 3 graph becomes a `Blocks` link, **only where both units carry an issue key** — this command never mints one. A keyless edge is skipped silently, not reported as a failure.
+
+Where that holds, call `/ticket link <blocker key> blocks <blocked key>` yourself, once per edge, here — **not** through the units' `--add` lists, where `/ticket` runs adopt-only and could not link a sibling it cannot see. Invent no edge, and let no failed link stop the run: `/ticket` reports a missing contract or an unavailable Atlassian MCP server and the run carries on.
+
 Then dispatch the next wave, until every wave is done or the plan is exhausted.
 
 ## Step 6 — Synthesize the run

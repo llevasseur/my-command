@@ -4,7 +4,7 @@ title: god
 description: Carry a plain-language task all the way to merged — /task with /review woven in, /mc on conflict, wait for CI, merge the PR into main, pull main. No human in the loop.
 tags: [command, workflow, git, merge]
 timestamp: 2026-07-24
-updated: 2026-08-15
+updated: 2026-09-11
 dirty: true
 ---
 
@@ -26,7 +26,15 @@ Forwarded to `/task` untouched:
 - `--base <branch>` — the **cut point**: branch off `<branch>` instead of `main`.
   It says nothing about where the PR lands; use `--into` for that.
 - `--add` / `-a <list>` — extra commands to weave into the `/task` run. `god`
-  appends its own `review` entry after any entries passed in.
+  appends its own `review` entry after any entries passed in. Entries are
+  forwarded untouched with one exception: a `ticket` entry is rewritten to invoke
+  `/ticket --yes`. That is a guarantee, not a fix for a live prompt — an `--add`
+  entry reaches [ticket](ticket.md) through `/task`, where it runs adopt-only and
+  never creates, so the creation approval `--yes` skips is not on that path today.
+  The flag is appended anyway because `god` never asks a question and the cost is
+  asymmetric: a forgotten flag hangs an unattended run, a redundant one costs
+  nothing. It does **not** reach `/ticket`'s `never` list, which refuses a
+  forbidden transition whatever flags it is handed.
 
 Set unconditionally on the `/task` invocation:
 

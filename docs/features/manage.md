@@ -4,7 +4,7 @@ title: manage
 description: Orchestrate one multi-part goal across existing commands — decompose it into units, assign a branch to each, delegate every unit to its own subagent in waves that cannot collide, and synthesize one report.
 tags: [command, workflow, agents]
 timestamp: 2026-08-11
-updated: 2026-08-16
+updated: 2026-09-11
 dirty: true
 ---
 
@@ -268,6 +268,19 @@ summarized, that list is the only surviving record of what was dispatched and wh
 is still owed. Same reasoning as the closing-turn anchor, reusing the same store:
 `manage` builds **no second task store, no progress file, and no status
 dashboard**.
+
+### Dependencies as Jira links
+
+Once a wave has landed, `manage` records that wave's edges as `Blocks` links by calling
+[ticket](ticket.md)'s `link` verb itself — **after dispatch, not in the plan**, and **not**
+through the units' `--add` lists, where `/ticket` runs adopt-only and cannot see a
+sibling unit at all.
+
+The condition is narrow and deliberately so: **only an edge whose two units both carry
+an issue key can be linked**, which means the goal named those keys. `manage` mints
+branch names from unit summaries and never mints a key, so an edge between two keyless
+units has nothing to link and is skipped in silence rather than reported as a failure.
+No edge is invented, and a failed link never stops a wave.
 
 ### Error isolation, and a bounded replan
 

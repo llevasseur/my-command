@@ -48,6 +48,8 @@ Read the repo so you ask only about what you can't infer:
 - **Derived/generated code + its generator:** `schema.prisma`→`prisma generate`; `codegen.ts`/`codegen.yml`→`graphql-codegen`; TanStack route trees; `*.proto`; etc. Map each generator to the `package.json` script that runs it **and the package dir it runs in**.
 - **Repo conventions:** existing `scripts/` shebang style + `set -euo pipefail`; whether a `CHANGELOG.md` or changelog command exists; `shellcheck` availability.
 - **Boot + routes:** a `dev`, `start`, or `preview` script in `package.json`; a health or readiness endpoint; the route directories a framework implies (`app/`, `pages/`, `routes/`, `src/routes/`).
+- **Jira signal — and only signal.** Four things count, and the first outranks the rest because it is also the *answer*: a **Jira board URL in the notes** passed to this command (`https://<site>/jira/software/projects/<KEY>/boards/<ID>`, and the variants Step 3.6 parses), the **Atlassian MCP server connected** in this session, a **Jira URL in the README** (`*.atlassian.net/browse/…`, or a project or board link), and **issue keys in branch names** (`git branch -a` carrying `<PROJECT>-<number>`). None of the four present means this repo has no Jira, which is a complete answer — record it and ask nothing. There is no `--board-url` flag: the notes are the fast path.
+- **A recorded opt-out outranks every one of those.** An existing bootstrap carrying the `jira-contract: declined` marker Step 3.6 writes means this repo was already asked and already said no. Record no-Jira and ask nothing, however loud the signal.
 
 ## Step 3 — Interview to confirm + fill gaps
 
@@ -82,6 +84,113 @@ off `my-command-tools doctor` as a device fact and reaches its browser tier thro
 facts, and the generated bootstrap never installs Playwright or downloads a browser to raise a
 tier.
 
+## Step 3.6 — Third round: the Jira contract
+
+`/my-command:ticket` creates and moves this repo's Jira work items, and it hardcodes none of this repo's
+values — it reads them from a contract this step writes.
+
+**Ask only when Step 2 saw signal and found no opt-out marker.** No signal means no Jira: record
+that, emit no contract, and move on.
+
+**Open the round with a yes/no — write a Jira contract for this repo?** Ask it once, before any of
+the lookups below.
+
+**On a no, write the opt-out marker where the contract would have gone**, then stop. In
+`scripts/bootstrap-worktree.sh` that is the spot the `--print-jira-contract` branch would have
+occupied; in a doc section it is the `## Jira` heading's spot:
+
+```bash
+# jira-contract: declined — this repo was asked and opted out.
+# Delete this line to re-open the question on the next /my-command:task-bootstrap run.
+```
+
+Emit **no** `--print-jira-contract` flag beside it.
+
+With a yes, **query Jira for the facts rather than asking me to recite them.**
+
+1. **Resolve the site and project — from a board URL when the notes carry one.** It answers site,
+   project key, and board id at once. Four shapes:
+
+   - `https://<site>/jira/software/projects/<KEY>/boards/<ID>` — team-managed.
+   - `https://<site>/jira/software/c/projects/<KEY>/boards/<ID>` — company-managed. The `/c/`
+     segment is the only difference, and it is the part that gets dropped when a URL is retyped
+     rather than copied.
+   - Either shape with a trailing `/backlog`. That is what the backlog view puts in the address
+     bar, so it is what most people actually copy.
+   - `https://<site>/secure/RapidBoard.jspa?rapidView=<ID>&projectKey=<KEY>` — the legacy form,
+     still what an old bookmark or a wiki page hands you. `rapidView` is the board id.
+
+   **Confirm what you parsed instead of trusting it.** `getAccessibleAtlassianResources` for the
+   sites this account can reach, then `getVisibleJiraProjects` for the key. A URL naming a site
+   this account cannot reach, or a key that site does not have, is a URL pasted from the wrong
+   Jira — say so and ask for the right one, because the alternative is a contract that resolves
+   to nothing the first time `/my-command:ticket` runs.
+
+   With no URL in the notes, resolve the same two facts the same way: the sites from
+   `getAccessibleAtlassianResources`, and the project key from the signal Step 2 found, confirmed
+   with `getVisibleJiraProjects`.
+2. **Read the project's issue types** — `getJiraProjectIssueTypesMetadata` — and record each one's
+   **name and id**.
+3. **Read the transition ids from a real item.** `getTransitionsForJiraIssue` against one existing
+   issue in the project returns the live transition ids and names. Ask which transition means
+   *work has started* and which means *ready for review*, and record for each: the transition id,
+   the transition name, **and the target status's id and name**. All four, because `/my-command:ticket`
+   checks the declared name and id against the live workflow before it fires anything, and
+   confirms the resulting status afterwards.
+4. **Ask which transitions are forbidden**, and why. Closing an item, skipping QA, reopening —
+   whatever this team does not let a tool do. Each entry carries its reason, because that reason
+   is what `/my-command:ticket` reports when one is asked for.
+5. **Ask the remaining four:** the board, the sprint policy, the default issue type, and the link
+   type used for a blocking relationship. The last two are plain `AskUserQuestion` choices off
+   what steps 2 and `getIssueLinkTypes` already returned. The board and the sprint are not.
+
+   **The board is three paths tried in order, and only the last of them asks.**
+
+   1. **A board URL parsed in step 1** already carries the id. Ask nothing.
+   2. **Otherwise look the boards up — when the API token is there.** The Atlassian MCP server
+      exposes no board or sprint tool, but the Agile REST API does, and the auth is the one
+      `/my-command:ticket` already uses for attachments: an API token from the macOS Keychain under service
+      `my-command-jira`, the account being the email `atlassianUserInfo` resolves, piped into
+      `curl --config -` so it never reaches argv. Probe first — `security find-generic-password
+      -s my-command-jira -a <resolved account email> -w >/dev/null 2>&1` — and treat a non-zero
+      exit as the absent case rather than an error:
+
+      ```bash
+      security find-generic-password -s my-command-jira -a <resolved account email> -w | sed 's/^/user = "<resolved account email>:/; s/$/"/' | curl --silent --show-error --fail --config - --url "https://<site>/rest/agile/1.0/board?projectKeyOrId=<KEY>"
+      ```
+
+      That returns the project's boards under `values`, each with an `id` and a `name`.
+      **Present them by name through `AskUserQuestion`** — the name is the only part of a board
+      anyone recognizes, and the id is the part this contract needs. A project with exactly one
+      board needs no question at all: take it, and say which one you took.
+   3. **No URL and no token — then ask, in prose.** Not `AskUserQuestion`: a URL is free text
+      rather than a discrete choice, and a picker with nothing to pick is a worse way to ask for
+      one. Ask for the board's **URL** — whatever the address bar shows on the board or its
+      backlog — never "the board id", which nobody knows and everybody would have to go look up.
+      Offer **skipping Jira for this repo** in the same breath, because someone who cannot
+      produce a board URL may be telling you this repo does not want a contract after all; a skip
+      here takes the decline path above, marker and all.
+
+   **The sprint policy is the one answer with no URL behind it**, so ask it outright: `null` for
+   no sprint, a specific sprint id, or `"active"` for whichever sprint is open when a ticket is
+   created. **Offer `"active"` as the default** — it is what a team working off a board almost
+   always means, and it is the only one of the three that cannot go stale. With a board id in
+   hand the answer is checkable rather than taken on trust: `GET
+   /rest/agile/1.0/board/<ID>/sprint` through the same authenticated `curl` lists that board's
+   sprints, each carrying a `state` of `future`, `active`, or `closed`. A board with an open
+   sprint confirms `"active"` means something here; a board with none is worth saying out loud
+   before recording it.
+6. Map each issue type to the template it usually wants — `story`, `bug`, `chore`, `spike`, or
+   `technical`. It is a default: `/my-command:ticket` picks by whether the change is user-visible and may
+   override it.
+
+**Never write `cloudId` or an Atlassian account email into the contract.** `/my-command:ticket` resolves
+both at run time — the cloud id from `site`, the email from whoever is authenticated.
+
+**This leg is additive and re-runnable.** A repo that already has `scripts/bootstrap-worktree.sh`
+gains **only** the Jira contract: existing flags, guards, symlinks, install, and codegen are left
+as they are, and an existing Jira contract is updated in place.
+
 ## Step 4 — Recommendations (rules the generated bootstrap MUST follow)
 
 Design the bootstrap around these, and explain each as you apply it:
@@ -94,6 +203,7 @@ Design the bootstrap around these, and explain each as you apply it:
 - **Refuse to run from the main checkout** (guard: detected main == worktree root → exit non-zero).
 - **Commit it, don't gitignore it.** Only *tracked* files land in fresh worktrees (where `/my-command:task` looks for it), and teammates who share the `/my-command:task` command should get the bootstrap too. Keeping it free of machine-specific paths (via auto-detection) is what makes committing safe.
 - **Print the run contract behind `--print-verify-contract`.** It prints `{boot, health, login, routes}` as JSON on stdout, exits 0, and does nothing else — no install, no symlink, no codegen. Handle it **first**, ahead of the main-checkout guard: a caller asking what the contract is has no worktree yet, and the guard would refuse it.
+- **Print the Jira contract behind `--print-jira-contract`**, on the same terms: JSON on stdout, exit 0, nothing else, handled first alongside `--print-verify-contract` and ahead of the main-checkout guard, since `/my-command:ticket` asks for it from wherever it is standing. It prints `{site, projectKey, board, sprint, defaultIssueType, issueTypes, lifecycle, never, linkType}` and **never a `cloudId`**. Emit the flag only where Step 3.6 got a yes; a repo with no Jira — and a repo that declined — omits it and `/my-command:ticket` skips. Where the answer was a decline, the `jira-contract: declined` comment goes in the flag's place so the next run of this command reads it instead of re-asking.
 - **Omitting the contract is allowed.** A bootstrap without the flag makes `/my-command:verify` fall through to detection — the `dev`/`start`/`preview` script, and the real bound port read out of the startup log. Emit the flag when the answers are worth pinning; leave it out for a repo with no app.
 - Match repo conventions: shebang + `set -euo pipefail`, `chmod +x`.
 
@@ -118,6 +228,26 @@ if [ "${1:-}" = "--print-verify-contract" ]; then
 JSON
   exit 0
 fi
+# The Jira contract, on the same terms. Emit this branch only where Step 3.6 got a yes.
+if [ "${1:-}" = "--print-jira-contract" ]; then
+  cat <<'JSON'
+{
+  "site": "example.atlassian.net",
+  "projectKey": "ENG",
+  "board": 12,
+  "sprint": "active",
+  "defaultIssueType": "Task",
+  "issueTypes": {"Task": {"id": "10002", "template": "technical"}},
+  "lifecycle": {
+    "start":  {"transitionId": "21", "transitionName": "Start work", "statusId": "3", "statusName": "In Progress"},
+    "review": {"transitionId": "31", "transitionName": "Ready for review", "statusId": "10004", "statusName": "In Review"}
+  },
+  "never": [{"transitionId": "41", "transitionName": "Done", "reason": "only QA closes an item"}],
+  "linkType": "Blocks"
+}
+JSON
+  exit 0
+fi
 WORKTREE_ROOT="$(git rev-parse --show-toplevel)"
 # --git-common-dir points at the MAIN checkout's .git even from a linked worktree
 GIT_COMMON_DIR="$(cd "$WORKTREE_ROOT" && cd "$(git rev-parse --git-common-dir)" && pwd)"
@@ -132,7 +262,7 @@ cd "$WORKTREE_ROOT"
 ## Step 6 — Verify
 
 - `bash -n scripts/bootstrap-worktree.sh`; run `shellcheck` if it's available.
-- If the script emits a contract, prove it parses: `bash scripts/bootstrap-worktree.sh --print-verify-contract | node -e "JSON.parse(require('fs').readFileSync(0,'utf8'))"`. Run it from the main checkout too — the flag must answer before the guard, not be refused by it.
+- If the script emits a contract, prove it parses: `bash scripts/bootstrap-worktree.sh --print-verify-contract | node -e "JSON.parse(require('fs').readFileSync(0,'utf8'))"`. Run it from the main checkout too — the flag must answer before the guard, not be refused by it. Prove `--print-jira-contract` the same way where Step 3.6 emitted one, and confirm its JSON carries no `cloudId`.
 - **Dry-run the logic without a slow real install:** shim the package manager onto `PATH` (a stub that just echoes its args), run the script, and confirm — env symlinks point at the main checkout, missing files are skipped, a re-run keeps existing files, target selection works, and it refuses to run from the main checkout.
 - Optionally offer a real run to confirm install + codegen actually succeed.
 

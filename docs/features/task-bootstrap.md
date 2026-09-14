@@ -4,7 +4,8 @@ title: task-bootstrap
 description: One-time per repo — interview the stack and generate that repo's own scripts/bootstrap-worktree.sh and/or "Worktree Setup" doc section, which task's Step 1.5 discovers.
 tags: [command, workflow, setup]
 timestamp: 2026-07-15
-updated: 2026-08-08
+updated: 2026-09-11
+dirty: true
 ---
 
 # task-bootstrap
@@ -44,6 +45,77 @@ never gitignored — only tracked files reach fresh worktrees. It is verified wi
 `bash -n`, `shellcheck` where available, and a package-manager-shim dry run before
 shipping. An existing bootstrap is updated, not re-scaffolded.
 
+## The Jira contract
+
+A third interview round writes the contract [ticket](ticket.md) reads, behind
+`--print-jira-contract` on the same terms as the run contract: JSON on stdout, exit 0,
+handled ahead of the main-checkout guard.
+
+**It asks only when it sees signal** — a Jira board URL in the notes passed to the
+command, the Atlassian MCP server connected in this session, a Jira URL in the README,
+or issue keys in branch names. None of the four means the repo has no Jira, which is a
+complete answer: the flag is omitted and `/ticket` skips. A repo is never asked whether
+it uses Jira when nothing in it says so. There is no `--board-url` flag; the notes are
+the fast path, and the command's flags govern where the work happens rather than what it
+writes.
+
+**Signal is not consent, so the round opens with a yes/no.** A Jira existing near a repo
+does not mean this repo's tickets belong in it, and an issue key in a branch cut years
+ago says less still. On a no, a `jira-contract: declined` marker is written where the
+contract would have gone — the spot the `--print-jira-contract` branch would have
+occupied — and no such flag is emitted, which `/ticket` already reads as its skip case.
+The marker exists for the *next* run of this command, which reads it during detection
+and asks nothing; without it the stale signal re-opens the interview on every run
+forever. Deleting the line is how the question is re-opened, and the command never
+deletes it on anyone's behalf.
+
+With a yes, the facts are **queried from Jira rather than recited**: the accessible
+sites and the project, the project's issue types with their ids, and the live
+transitions read off one real issue. The `start` and `review` entries each record four
+facts — transition id, transition name, and the target status's id and name — because
+`/ticket` checks the declared id and name against the live workflow before firing and
+confirms the resulting status afterwards. The remaining answers are the forbidden
+transitions with their reasons, the board, the sprint policy, the default issue type,
+the blocking link type, and a default template per issue type.
+
+**The board is a ladder of three paths, and only the last one asks.** A board URL in the
+notes is parsed first, because it answers site, project key, and board id at once: the
+team-managed `https://<site>/jira/software/projects/<KEY>/boards/<ID>`, the
+company-managed form carrying an extra `/c/` segment, either of them with the trailing
+`/backlog` the backlog view actually puts in the address bar, and the legacy
+`/secure/RapidBoard.jspa?rapidView=<ID>&projectKey=<KEY>`. What it parses is confirmed
+against the reachable sites and visible projects rather than trusted, so a URL pasted
+from the wrong Jira is caught then instead of resolving to nothing at run time. With no
+URL, the boards are looked up — the Atlassian MCP server exposes no board or sprint
+tool, but `GET /rest/agile/1.0/board?projectKeyOrId=<KEY>` returns every board on the
+project with its id and name, reached with the same auth `/ticket` uses for attachments:
+an API token from the macOS Keychain under service `my-command-jira`, piped into `curl
+--config -` so it never reaches argv. The boards are offered **by name**, since the name
+is the part anyone recognizes, and a lone board is taken without asking and named. Only
+with neither a URL nor a token does the command ask, and then **in prose rather than as
+a structured choice**, because a URL is free text: it asks for the board's URL, never
+for "the board id", and offers skipping Jira for the repo in the same breath — that skip
+takes the decline path, marker and all.
+
+**The sprint policy is the one answer with no URL behind it**, so it is asked outright —
+`null`, a specific sprint id, or `"active"` for whichever sprint is open when a ticket
+is created — with `"active"` offered as the default, being what a team working off a
+board almost always means and the only one of the three that cannot go stale. Where a
+board id is in hand, `GET /rest/agile/1.0/board/<ID>/sprint` lists that board's sprints
+with a state on each, so the answer is checkable rather than taken on trust.
+
+**Neither a `cloudId` nor an Atlassian account email is ever written**:
+`/ticket` resolves the cloud id at run time from `site`, so a site migration cannot
+leave a pinned id aimed at the wrong tenant, and it resolves the account email from
+whoever is authenticated, because the contract is committed and shared while that email
+belongs to the person running the command.
+
+**The leg is additive and re-runnable.** A repo that already has
+`scripts/bootstrap-worktree.sh` gains only the Jira contract — existing flags, guards,
+symlinks, install, and codegen are left as they are — and an existing Jira contract is
+updated in place rather than re-scaffolded. A repo carrying the declined marker is the
+one case that is never re-asked.
+
 Step 7 adds a changelog entry, commits only the files this command authored, runs
 `/clean` and commits whatever that leaves, then `/pr`. Its own workspace comes
 from `worktree begin` *without* `--bootstrap`, since the script it is about to write
@@ -56,4 +128,5 @@ chore/worktree-bootstrap`.
 
 - Command source: `src/commands/task-bootstrap.md`
 - Consumed by: [task](task.md) during worktree bootstrap
+- Consumed by: [ticket](ticket.md) — reads the Jira contract this command writes
 - Spec: [Adding a command](../specs/adding-a-command.md)

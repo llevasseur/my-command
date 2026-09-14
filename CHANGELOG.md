@@ -5,6 +5,27 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-09-14
+
+### Changed
+
+- **`/ticket create` attaches the branch's open PR to the item it just made.** It reads the PR off the `prs view` result already fetched, uses the same remote-link call adopt mode uses, and treats a missing PR as an expected answer rather than a failure. No transition fires from `create`.
+- **`/ticket create` sets the sprint through the Agile REST API.** The MCP server has no sprint tool, so a `"active"` policy reads `GET /rest/agile/1.0/board/<ID>/sprint` with the Keychain token and moves the new key into the one active sprint. Without the token the item is created with no sprint and the report says so.
+- **Adopt mode attaches the PR directly and never calls the bare-key default once a PR is open**, since that default would fire `review`. The `never` list is checked against every lifecycle transition about to fire, and a lifecycle entry that also appears there is refused.
+- **`/task-bootstrap`'s Jira round opens with a yes/no and remembers a no.** A decline writes a `jira-contract: declined` marker where the contract would have gone, and later runs read it ahead of any signal.
+- **The board resolves through a ladder that usually does not ask.** A board URL in the notes is parsed and confirmed against `getVisibleJiraProjects`; failing that, `GET /rest/agile/1.0/board?projectKeyOrId=<KEY>` lists the boards by name through the Keychain token; only with neither does the command ask for the board's URL, offering a skip in the same breath.
+- **The sprint policy defaults to `"active"`** and is checked against `GET /rest/agile/1.0/board/<ID>/sprint`, reading each sprint's `state` rather than passing an undocumented filter.
+
+## 2026-09-11
+
+### Fixed
+
+- **`build-plugin.sh` turned `>/dev/null` into `>/my-command:dev/null` in generated commands**, because `dev` is a command name and the namespacing regex did not exclude a following slash. It does now, and `scripts/build-plugin.test.mjs` asserts no generated file namespaces a path segment.
+
+### Added
+
+- **`/ticket` creates and moves Jira work items from a per-repo contract**, and `/task-bootstrap` gained the leg that writes it. Every site, project key, issue type id, and transition id comes from the contract at run time; `cloudId` is resolved from `site` each run. Every transition is checked against the live workflow by id and name before firing, the `never` list is refused regardless of flags, and creation is the one action that waits for a go. Composed into `/task` it only adopts an existing key, fires `start`, links the PR, and never fires `review`; `/manage` turns its dependency graph into `Blocks` links.
+
 ## 2026-09-10
 
 ### Fixed
