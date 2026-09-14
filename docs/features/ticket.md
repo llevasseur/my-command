@@ -71,9 +71,9 @@ offers. The closest match is never fired: a workflow that was edited is one whos
 have been edited, so firing an id-matched transition under a new name is how a ticket lands in a
 status nobody chose.
 
-**Every transition in the `never` list is refused, even when asked for directly**, with the reason
-the contract records. No flag overrides it. `--yes` does not reach it, because `--yes` skips a
-confirmation and a refusal is not a confirmation.
+**Every transition about to fire is checked against the `never` list, and a lifecycle entry that
+also appears there is refused**, with the reason the contract records. No flag overrides it.
+`--yes` does not reach it, because `--yes` skips a confirmation and a refusal is not a confirmation.
 
 ## What waits, and what does not
 
@@ -85,6 +85,12 @@ tool.
 
 `--yes` skips that approval and the template question together. `/god` passes it so unattended
 runs never block.
+
+**The sprint is set through the Agile REST API**, because the MCP server has no sprint tool. A
+sprint id is used as given; `"active"` reads `GET /rest/agile/1.0/board/<ID>/sprint` with the
+Keychain token and takes the single sprint whose `state` is `active`, then moves the new key into
+it with `POST /rest/agile/1.0/sprint/<id>/issue`. Without the token the item is created with no
+sprint and the report says so.
 
 **Once the item exists and its sprint is set, `create` attaches the branch's open PR to it as a
 remote link** — the same `jira-work-item-links-jira-work-item-remote-link` mechanism adopt mode
@@ -152,7 +158,9 @@ and never writes it anywhere.
 
 - It **only ever adopts an existing key**, read from the branch or the prompt. It **never creates**.
 - It fires the **start** transition when work begins.
-- It attaches the PR to the item as a **remote link** once the PR is open.
+- It attaches the PR to the item as a **remote link** once the PR is open — directly, with the
+  same remote-link call `create` uses. Adopt mode never calls the bare-key default once a PR is
+  open, because that default would fire `review`.
 - It **never fires the review transition**.
 
 Those last two are one decision. **Several `/task` runs can feed one ticket** — a fix, a follow-up,

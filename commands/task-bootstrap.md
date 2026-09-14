@@ -48,8 +48,8 @@ Read the repo so you ask only about what you can't infer:
 - **Derived/generated code + its generator:** `schema.prisma`→`prisma generate`; `codegen.ts`/`codegen.yml`→`graphql-codegen`; TanStack route trees; `*.proto`; etc. Map each generator to the `package.json` script that runs it **and the package dir it runs in**.
 - **Repo conventions:** existing `scripts/` shebang style + `set -euo pipefail`; whether a `CHANGELOG.md` or changelog command exists; `shellcheck` availability.
 - **Boot + routes:** a `dev`, `start`, or `preview` script in `package.json`; a health or readiness endpoint; the route directories a framework implies (`app/`, `pages/`, `routes/`, `src/routes/`).
-- **Jira signal — and only signal.** Four things count, and the first outranks the rest because it is also the *answer*: a **Jira board URL in the notes** passed to this command (`https://<site>/jira/software/projects/<KEY>/boards/<ID>`, and the variants Step 3.6 parses), the **Atlassian MCP server connected** in this session, a **Jira URL in the README** (`*.atlassian.net/browse/…`, or a project or board link), and **issue keys in branch names** (`git branch -a` carrying `<PROJECT>-<number>`). None of the four present means this repo has no Jira, which is a complete answer — record it and ask nothing. There is no `--board-url` flag and there must not be one: the notes are the fast path, and this command's flags are about where the work happens, not what it writes.
-- **A recorded opt-out outranks every one of those.** An existing bootstrap carrying the `jira-contract: declined` marker Step 3.6 writes means this repo was already asked and already said no. Record no-Jira and ask nothing, however loud the signal — a stale issue key in a branch someone cut two years ago is exactly what that marker exists to stop re-litigating.
+- **Jira signal — and only signal.** Four things count, and the first outranks the rest because it is also the *answer*: a **Jira board URL in the notes** passed to this command (`https://<site>/jira/software/projects/<KEY>/boards/<ID>`, and the variants Step 3.6 parses), the **Atlassian MCP server connected** in this session, a **Jira URL in the README** (`*.atlassian.net/browse/…`, or a project or board link), and **issue keys in branch names** (`git branch -a` carrying `<PROJECT>-<number>`). None of the four present means this repo has no Jira, which is a complete answer — record it and ask nothing. There is no `--board-url` flag: the notes are the fast path.
+- **A recorded opt-out outranks every one of those.** An existing bootstrap carrying the `jira-contract: declined` marker Step 3.6 writes means this repo was already asked and already said no. Record no-Jira and ask nothing, however loud the signal.
 
 ## Step 3 — Interview to confirm + fill gaps
 
@@ -89,16 +89,11 @@ tier.
 `/my-command:ticket` creates and moves this repo's Jira work items, and it hardcodes none of this repo's
 values — it reads them from a contract this step writes.
 
-**Ask only when Step 2 saw signal, and never when it found the opt-out marker.** No board URL in
-the notes, no connected Atlassian MCP server, no Jira URL in the README, and no issue keys in
-branch names means the repo has no Jira: record that, emit no Jira contract, and move on.
-`/my-command:ticket` handles a repo with no contract by skipping, so nothing downstream breaks.
-**Never ask a repo whether it uses Jira when nothing in it says so.**
+**Ask only when Step 2 saw signal and found no opt-out marker.** No signal means no Jira: record
+that, emit no contract, and move on.
 
-**Open the round with the yes/no, because signal is not consent.** Signal says a Jira exists
-somewhere near this repo. It does not say this repo's tickets belong there. So the first question
-is whether to write a Jira contract at all — asked once, before any of the lookups below, since
-every one of them costs a round trip and a decline makes all of them wasted.
+**Open the round with a yes/no — write a Jira contract for this repo?** Ask it once, before any of
+the lookups below.
 
 **On a no, write the opt-out marker where the contract would have gone**, then stop. In
 `scripts/bootstrap-worktree.sh` that is the spot the `--print-jira-contract` branch would have
@@ -109,19 +104,12 @@ occupied; in a doc section it is the `## Jira` heading's spot:
 # Delete this line to re-open the question on the next /my-command:task-bootstrap run.
 ```
 
-Emit **no** `--print-jira-contract` flag beside it. `/my-command:ticket`'s own discovery already reads a
-bootstrap with no Jira leg as its skip case, so the marker changes nothing downstream — it exists
-for the *next* run of this command, which reads it in Step 2 and asks nothing. Without it the
-signal is still there next time, and the cost of declining is paid again on every run forever.
+Emit **no** `--print-jira-contract` flag beside it.
 
-With a yes, **query Jira for the facts rather than asking me to recite them.** The ids are what
-this contract exists to pin, and an id typed from memory is the one field nobody notices is wrong
-until a transition fires into the wrong status.
+With a yes, **query Jira for the facts rather than asking me to recite them.**
 
-1. **Resolve the site and project — from a board URL when the notes carry one.** A board URL is
-   worth parsing before anything else, because it answers three fields at once — site, project
-   key, and board id — and it is the one thing everybody can produce on demand. Four shapes, all
-   of which people really paste:
+1. **Resolve the site and project — from a board URL when the notes carry one.** It answers site,
+   project key, and board id at once. Four shapes:
 
    - `https://<site>/jira/software/projects/<KEY>/boards/<ID>` — team-managed.
    - `https://<site>/jira/software/c/projects/<KEY>/boards/<ID>` — company-managed. The `/c/`
@@ -196,19 +184,12 @@ until a transition fires into the wrong status.
    `technical`. It is a default: `/my-command:ticket` picks by whether the change is user-visible and may
    override it.
 
-**Never write `cloudId` or an Atlassian account email into the contract.** `/my-command:ticket` resolves the
-cloud id at run time from `site`, so a site migration does not leave a pinned id pointing at the
-wrong tenant, and it resolves the account email from whoever is authenticated, because the
-contract is committed and shared while that email belongs to the person running the command.
-Asking for either is the one thing this round must not do.
+**Never write `cloudId` or an Atlassian account email into the contract.** `/my-command:ticket` resolves
+both at run time — the cloud id from `site`, the email from whoever is authenticated.
 
 **This leg is additive and re-runnable.** A repo that already has `scripts/bootstrap-worktree.sh`
-gains **only** the Jira contract: the existing flags, guards, symlinks, install, and codegen are
-left exactly as they are, and a repo that already has a Jira contract has it updated in place
-rather than re-scaffolded. Re-running this command to add Jira to a repo that was bootstrapped
-before this leg existed is the normal path, not a special case. A repo carrying the declined
-marker is the one case that is **not** re-asked: deleting that line is how someone re-opens the
-question, and this command never deletes it on their behalf.
+gains **only** the Jira contract: existing flags, guards, symlinks, install, and codegen are left
+as they are, and an existing Jira contract is updated in place.
 
 ## Step 4 — Recommendations (rules the generated bootstrap MUST follow)
 

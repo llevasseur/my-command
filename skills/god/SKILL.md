@@ -20,14 +20,9 @@ non-default cut point and a non-default landing branch states each one.
    with `--sub` so its cleanup and PR stage runs as one delegated subagent,
    weaving in `$review --here` there unless disabled, and require the resulting
    PR to belong to this run's branch. Added workflows are forwarded untouched
-   with one exception: a `ticket` entry is rewritten to invoke `$ticket --yes`.
-   That is a guarantee rather than a fix for a live prompt: an added entry reaches
-   the ticket workflow through `$task`, where it runs adopt-only and never
-   creates, so the creation approval the flag skips is not on that path today. It
-   is appended anyway because this workflow never asks a question and the cost is
-   asymmetric — a forgotten flag hangs an unattended run, a redundant one costs
-   nothing. It does **not** reach the forbidden-transition list, which refuses
-   whatever flags it is handed.
+   with one exception: a `ticket` entry is rewritten to invoke `$ticket --yes`,
+   so an unattended run never hangs on a prompt. It does **not** reach the
+   forbidden-transition list, which refuses whatever flags it is handed.
 2. Re-resolve the PR from GitHub. When its base is not the merge target, retarget
    it — `gh pr edit <number> --base <merge target>` — before anything else, since
    the PR wrapper opens every PR against the default branch by design and stays

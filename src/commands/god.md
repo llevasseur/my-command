@@ -26,7 +26,7 @@ Input is the text in the `<command-args>` block above. Parse leading flags off t
 
 Forwarded to `/task` untouched: `--here` / `-h`, `--base <branch>` (the **cut point** — where the branch is cut from, and nothing else), `--add` / `-a <list>` (this command appends its own `review` entry after any entries you pass).
 
-**One exception to untouched: a `ticket` entry is rewritten to invoke `/ticket --yes`.** It is a guarantee rather than a fix for a live prompt, and the difference is worth stating so nobody later "simplifies" it away on the grounds that nothing currently prompts. An `--add` entry reaches `/ticket` through `/task`, where it runs **adopt-only** — it never creates, so the creation approval `--yes` exists to skip is not on that path today. The flag is appended anyway because this command never asks a question, and the cost of being wrong is asymmetric: a forgotten flag costs an unattended run that hangs on a prompt nobody is there to answer, while a redundant one costs nothing. It does **not** reach `/ticket`'s `never` list, which refuses a forbidden transition whatever flags it is handed.
+**One exception to untouched: a `ticket` entry is rewritten to invoke `/ticket --yes`**, so an unattended run never hangs on a prompt. It does **not** reach `/ticket`'s `never` list, which refuses a forbidden transition whatever flags it is handed.
 
 Always added to the `/task` invocation, whether or not you pass it: **`--sub`** — `/task` runs `/clean` + `/pr` inline by default, and this command needs that stage to be one subagent, because that is where the woven-in `review` entry lands and where an unattended run should keep the reviewer's context off this conversation. Passing `--sub` / `-s` yourself is accepted and redundant.
 

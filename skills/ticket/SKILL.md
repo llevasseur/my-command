@@ -61,15 +61,18 @@ Then pick the template **by whether the change is user-visible, not by the Jira 
 conflating the two is how a backend story acquires Given/When/Then about a screen nobody built.
 Read the branch diff in one call and pre-fill that guess from it. Without `--yes`, show the guess
 and ask; with `--yes`, take it. Render the whole ticket as text and wait for an explicit go, then
-create it and set the sprint the contract asks for. Nothing reaches Jira before the go.
+create it. Nothing reaches Jira before the go.
 
-Then **attach this branch's pull request to the new item as a remote link**, the same mechanism
-adoption uses, from the pull request already fetched while resolving the verb rather than a second
-probe. A ticket written after the work is the case this exists for: the branch cannot carry a key
-minted seconds ago, so neither the bare-key default nor adoption can supply the link, and `link`
-is issue-to-issue only — without this the retroactive ticket points at no code at all. **No pull
-request is an expected answer, not a failure**: skip the link silently and say in the report that
-there was none to link. Report the key, its URL, and the linked pull request.
+Then set the sprint the contract asks for. The Atlassian tooling has no sprint surface, so it goes
+through the Agile REST API with the same Keychain token the screenshot upload uses — probe for it
+first. A sprint id is used as given; `active` is `GET /rest/agile/1.0/board/<board>/sprint`, taking
+the single sprint whose `state` is `active`, and none or more than one is a stop that names what
+the board returned. Then `POST /rest/agile/1.0/sprint/<sprint id>/issue` with the new key. **With
+no token, create the item with no sprint and say so in the report.**
+
+Then **attach this branch's pull request to the new item as a remote link**, from the pull request
+already fetched while resolving the verb. No pull request is not a failure: skip the link and say
+so. Report the key, its URL, the sprint, and the linked pull request.
 
 **Creating creates and links; it fires no transition** — not start, not review. A freshly made
 item already sits in its start status, and calling the work done is the user's judgement, left to
@@ -110,9 +113,9 @@ stop and report a workflow change, naming what the contract declared and what Ji
 say the contract needs regenerating. Never fire the closest match: an edited workflow is one whose
 meaning may have been edited.
 
-**Refuse every transition in the contract's `never` list, even when asked for directly**, and
-report the reason the contract records. No flag overrides it, and `--yes` does not touch it —
-`--yes` skips a confirmation, and a refusal is not a confirmation.
+**Check every transition about to fire against the contract's `never` list; a lifecycle entry
+whose id or name also appears there is refused**, with the reason the contract records. No flag
+overrides it, `--yes` included — `--yes` skips a confirmation, and a refusal is not one.
 
 The bare-key default **picks the target from the branch and the pull request first, then compares
 it against the item's current status**, in that order. Doing it the other way round makes the
@@ -129,11 +132,8 @@ anything else fires that transition after the workflow check.
 `blocks` and `blocked-by` use the contract's link type; the direction is the argument's. `relates`
 uses the plain relates link. **The verb is explicit and nothing else here creates a link**, since
 an inferred dependency is a claim about work someone else owns. `$manage` calls this verb itself
-once a wave has landed, for the edges in the dependency graph it already built, so a stacked unit
-becomes a Blocks link — one call per edge, and no edge this skill invented. It reaches only the
-edges whose two units both carry an issue key, which means the goal named those keys: that
-workflow mints branch names from unit summaries and never mints a key, so an edge between two
-keyless units has nothing to link and is skipped.
+once a wave has landed, one call per edge of its dependency graph whose two units both carry an
+issue key.
 
 ## Attaching verification screenshots
 
@@ -163,12 +163,9 @@ anywhere.
 `$task` can weave this skill in, and in that position it is deliberately narrower. It **only ever
 adopts an existing key**, read from the branch or the prompt, and **never creates**. It fires the
 **start** transition when work begins and attaches the pull request to the item as a remote link
-once the pull request is open. It **never fires the review transition**.
-
-Those last two are one decision. Several task runs can feed one ticket — a fix, a follow-up, a
-review round — so no single run is in a position to say the work is done. Calling development
-complete is the user's judgement, so adoption stops at start and leaves review to an explicit
-`move <KEY> review`.
+once the pull request is open — directly, with the same remote-link call creation uses, **never
+through the bare-key default**, which would fire review. It **never fires the review transition**:
+several task runs can feed one ticket, so review stays an explicit `move <KEY> review`.
 
 Never block the task. A missing contract, unavailable tooling, an unresolvable key, or a refused
 transition is reported, recorded, and the run continues.

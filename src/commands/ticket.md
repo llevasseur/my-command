@@ -85,7 +85,8 @@ them. Take the first source that answers:
 ```
 
 - `sprint` is one of three things: `null` (no sprint field is set), a sprint id, or the string
-  `"active"` (resolve the board's open sprint at run time).
+  `"active"` — the one sprint on the contract's board whose `state` is `active`, resolved at run
+  time by the route in Step 3, item 4.
 - `issueTypes` maps a Jira issue type **name** to its `id` and the template that type usually
   wants. The template is a default, not a rule — Step 3 picks by user-visibility and may
   override it.
@@ -154,16 +155,19 @@ that waits.
 3. **Render the whole ticket as text** — summary, issue type, project, sprint, and the full
    description — and **wait for an explicit go.** `--yes` skips this approval. Nothing is written
    to Jira before the go.
-4. **Create it** with `createJiraIssue`, then set the sprint when the contract asks for one.
+4. **Create it** with `createJiraIssue`, then set the sprint when the contract asks for one. The
+   MCP server has no sprint tool, so the sprint goes through the Agile REST API with the Keychain
+   token Step 6 describes — probe for it first with `security find-generic-password -s
+   my-command-jira -a <resolved account email> -w >/dev/null 2>&1`. A sprint id is used as given.
+   `"active"` is `GET /rest/agile/1.0/board/<board>/sprint`, taking the single entry whose `state`
+   is `active`; none or more than one is a stop that names what the board returned. Then
+   `POST /rest/agile/1.0/sprint/<sprint id>/issue` with `{"issues": ["<KEY>"]}`. **Token absent:
+   create the item with no sprint and say so in the report**, naming the Keychain service.
 5. **Attach this branch's PR to the new item as a remote link** — `addTeamworkGraphContext` with
-   `jira-work-item-links-jira-work-item-remote-link`, the same mechanism adopt mode uses. Use the
-   `my-command-tools prs view` result Step 2 already fetched rather than probing again. **A ticket
-   written after the work is the case this exists for**: the branch cannot carry a key that was
-   minted seconds ago, so neither the bare `/ticket <KEY>` default nor adopt mode can supply the
-   link, and `link` is issue-to-issue only — without this the retroactive ticket points at no code
-   at all. **No PR is an expected answer, not a failure**: skip the link silently and say in the
-   report that there was none to link.
-6. **Report the key, its URL, and the linked PR.**
+   `jira-work-item-links-jira-work-item-remote-link`, reading the PR off the `my-command-tools prs
+   view` result Step 2 already fetched. No PR is not a failure: skip the link and say so in the
+   report.
+6. **Report the key, its URL, the sprint, and the linked PR.**
 
 **`create` creates and links; it fires no transition.** Not `start`, not `review` — a freshly made
 item is already in its start status, and calling the work done is the user's judgement, left to an
@@ -171,9 +175,8 @@ explicit `/ticket move <KEY> review`.
 
 ### The five templates
 
-They are baked into this command rather than into the contract, because they are about how a
-ticket is written rather than about how one repo's Jira is configured. A repo that wants a
-different house style changes the command, not thirty contracts.
+They live in this command rather than in the contract: they govern how a ticket is written, not
+how one repo's Jira is configured.
 
 **Every template carries these three sections, in this order:**
 
@@ -234,9 +237,9 @@ mode:
 
 ### The `never` list is absolute
 
-**Refuse every transition in the contract's `never` list, even when asked for directly.** Report
-the transition and the reason the contract records. There is no flag that overrides it and
-`--yes` does not touch it — `--yes` skips a confirmation, and a refusal is not a confirmation.
+**Check every transition about to fire against the contract's `never` list; a `lifecycle` entry
+whose id or name also appears there is refused**, with the reason the contract records. No flag
+overrides it, `--yes` included — `--yes` skips a confirmation, and a refusal is not one.
 
 ### `move <KEY> start|review`
 
@@ -259,9 +262,6 @@ rule and falls through to the stop.
    A no-op is a correct answer here, not a failure.
 4. **Otherwise fire that transition**, after the workflow check above.
 
-The item's current status never picks the target, only settles whether the move is still needed.
-That is what keeps step 3 reachable for an item in either lifecycle status.
-
 ## Step 5 — `link`
 
 `link <KEY> blocks|blocked-by|relates <KEY>` links two items that already exist.
@@ -272,24 +272,16 @@ That is what keeps step 3 reachable for an item in either lifecycle status.
 - **The verb is explicit and nothing else in this command creates a link.** An inferred
   dependency is a claim about work someone else owns.
 
-**`/manage` calls this verb directly once a wave has landed**, for the edges in the dependency
-graph it already built. That graph is the one place a dependency is stated rather than guessed
-at, so a stacked unit becomes a `Blocks` link — one `link` call per edge, and no edge this
-command invented. **It only reaches the edges whose two units both carry an issue key**, which
-means the goal named those keys: `/manage` mints branch names from unit summaries and never mints
-a key, so an edge between two keyless units has nothing to link and is skipped silently.
+**`/manage` calls this verb once a wave has landed**, one call per edge of its dependency graph
+whose two units both carry an issue key; the rule is stated in `/manage`.
 
 ## Step 6 — Attach `/verify` screenshots
 
 When a `/verify` loop (or `/task` Step 2.6) recorded a **browser** tier, its screenshots are
 evidence a reviewer of the ticket wants. Read them with `my-command-tools shots read`.
 
-**Resolve the Atlassian account email first, from `atlassianUserInfo`.** It names whoever this
-session is authenticated as, which is the account whose token the upload must use. **It is
-deliberately not a contract field**, for the same reason `cloudId` is not one: the contract is
-committed and shared, and an account email is a property of the person running the command
-rather than of the repo. Pinning one would commit a teammate's address and then send everyone
-else's upload under it.
+**Resolve the Atlassian account email first, from `atlassianUserInfo`.** It is never a contract
+field: the contract is shared, and the email belongs to whoever runs the command.
 
 **The attachment route is the REST API**, because the MCP surface has none:
 
@@ -321,24 +313,17 @@ deliberately narrower than the standalone command:
 - **It only ever adopts an existing key.** It reads the key from the branch or the prompt.
   **It never creates.**
 - **It fires the `start` transition when the work begins**, after the workflow check in Step 4.
-- **It attaches the PR to the item as a remote link once the PR is open.**
-- **It never fires the `review` transition.**
-
-Those last two are one decision. **Several `/task` runs can feed one ticket** — a fix, a follow-up,
-a review round — so no single run is in a position to say the work is done. **Calling development
-complete is the user's judgement**, so adopt mode stops at `start` and leaves `review` to an
-explicit `/ticket move <KEY> review`.
+- **It attaches the PR to the item as a remote link once the PR is open** — directly, with the
+  `addTeamworkGraphContext` call from Step 3 item 5. **Adopt mode never calls the bare
+  `/ticket <KEY>` default once a PR is open**, because that default would fire `review`.
+- **It never fires the `review` transition.** Several `/task` runs can feed one ticket, so
+  `review` stays an explicit `/ticket move <KEY> review`.
 
 Never block the task. A missing contract, an unavailable MCP server, a key that cannot be
 resolved, or a refused transition is **reported, recorded, and the run continues**.
 
 ## Notes
 
-- **Nothing here is repo-specific.** Every site, project, board, type, transition, and link type
-  comes from the contract at run time. A value written into this file would be wrong for every
-  other repo that installs it.
-- **Reading is always safe; creating is the one thing that waits.** Edits and transitions fire on
-  their own because they are reversible and already named by the contract.
 - A `show` on a key you do not have access to is an access answer, not a bug — report it as such.
 - <!-- include: shared/approval-own-call.md -->**A command that may need approval goes in its own Bash call** — `git fetch`, `git config`, and, as a narrow exception to the general rule to chain dependent mutations, branch-lifecycle operations such as checkout/switch, pull, remote-branch inspection, and local branch deletion. Folding one into an `&&` chain escalates approval to the whole compound command and costs a turn plus a retry. Put status output, pipes, and follow-up verification in separate read-only calls.<!-- /include -->
 - <!-- include: shared/classifier-refusal.md -->A classifier refusal is not evidence that repository protections should be weakened. Inspect the refused command first; when the intended operation is safe and the refusal looks incidental to the command's shape — an over-broad chain, pipe, or extra flag — retry only the smallest exact command, never an allowlisted Bash pattern or a permission-settings change. **The remedy is always the command's form, and the two recorded shapes each have one:** a chained read-only probe (`head <file>; ls -l <dir>`) is refused as one command and succeeds when reissued as the single bare command you actually needed, so drop the chain rather than the intent — and where the probe was reading a file, `Read` answers it with no shell to judge; a heredoc composing a file is refused wholesale inside an isolated worktree, which is exactly where these runs work, so compose it with `Write` and change it with `Edit` instead of reaching for a quoting trick. **One refusal in this family is correct and stays correct:** a probe that names a `.env` file is refused because of the file, not the shape, and no smaller form of it is the fix — never rewrite it, never allowlist it, and never work around it. If you need a value from `.env`, ask me to run the command myself with `! <command>`.<!-- /include -->
