@@ -11,6 +11,7 @@ import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { flagsFrom } from '../lib/flags.mjs';
 import { porcelain } from '../lib/repo.mjs';
+import { noteFor, shotCell } from '../lib/shots.mjs';
 import { run as cleanup } from './cleanup.mjs';
 import { run as commit, usage as commitUsage } from './commit.mjs';
 import { run as concepts, line as conceptsLine } from './concepts.mjs';
@@ -793,14 +794,23 @@ test('pr adds nothing when the previous description had no assets', () => {
 });
 
 /**
- * A branch with screenshots and a recorded verdict, which is what `pr` gates on.
+ * A branch with screenshots and a recorded verdict, which is what `pr` gates on. Each shot
+ * gets a read-back note unless `notes` says otherwise.
  * @param {string} dir @param {string} tier @param {string[]} names
+ * @param {{notes?: string[] | false, gaps?: string[]}} [extra]
  */
-function captured(dir, tier, names) {
+function captured(dir, tier, names, extra = {}) {
   const shots = join(dir, '.my-command', 'shots');
   mkdirSync(shots, { recursive: true });
   names.map((name) => writeFileSync(join(shots, name), `pixels for ${name}`));
-  shotsVerb(ctx(dir, ['record'], { tier, verdict: 'red', rounds: '2' }));
+  /** @type {Record<string, string | true | string[]>} */
+  const flags = { tier, verdict: 'red', rounds: '2' };
+  if (extra.notes !== false) {
+    flags.shot =
+      extra.notes ?? names.map((name) => `${name} | View of ${name.replace(/\.png$/, '')} | It shows ${name}.`);
+  }
+  if (extra.gaps) flags.gap = extra.gaps;
+  shotsVerb(ctx(dir, ['record'], flags));
 }
 
 test('pr attaches nothing when no browser tier took the screenshots', () => {
@@ -886,7 +896,14 @@ test('pr publishes the screenshots a browser tier took, whatever the diff change
     writeFileSync(join(dir, 'orders.sql'), 'alter table orders add column total int;\n');
     git(['add', 'orders.sql']);
     git(['commit', '-qm', 'feat: widen orders']);
-    captured(dir, 'playwright', ['panel-before.png', 'panel-after.png', 'nav.png']);
+    captured(dir, 'playwright', ['panel-before.png', 'panel-after.png', 'nav.png'], {
+      notes: [
+        'panel-before.png | Orders panel before the change | The total column is absent.',
+        'panel-after.png | Orders panel after the change | The total column renders — populated for every row.',
+        'nav.png | Top navigation | Framing shot of the nav bar; it proves nothing about the orders change.',
+      ],
+      gaps: ['Sorting by the new column was not exercised.'],
+    });
 
     const r = pr(ctx(dir, [], { title: 'T', body: '- widened the table' }));
     const published = asComment(r);
@@ -913,10 +930,23 @@ test('pr publishes the screenshots a browser tier took, whatever the diff change
 
     const body = commentBody();
     assert.match(body, /^## Screenshots$/m);
+    assert.match(body, /`playwright` tier; verification ended `red` after 2 rounds\./);
     assert.match(body, /\| View \| Before \| After \|/);
-    assert.match(body, /^\| panel \| !\[panel-before\.png\]\(\S+\) \| !\[panel-after\.png\]\(\S+\) \|$/m);
-    assert.match(body, /!\[nav\.png\]\(\S+\)/);
-    assert.match(body, /`playwright` tier/);
+    // Every cell keeps the one order: bold label, image, sentence. The label is never the file.
+    assert.match(
+      body,
+      /^\| panel \| \*\*Orders panel before the change\*\*<br>!\[panel-before\.png\]\(\S+\)<br>The total column is absent\. \| \*\*Orders panel after the change\*\*<br>!\[panel-after\.png\]\(\S+\)<br>The total column renders, populated for every row\. \|$/m,
+    );
+    // A lone unpaired shot still sits in a table: one column, header and rule included.
+    assert.match(
+      body,
+      /^\| \|\n\| --- \|\n\| \*\*Top navigation\*\*<br>!\[nav\.png\]\(\S+\)<br>Framing shot of the nav bar; it proves nothing about the orders change\. \|$/m,
+    );
+    assert.doesNotMatch(body, /^!\[/m);
+    assert.doesNotMatch(body, /—/);
+    assert.match(body, /^### What these shots do not prove\n\n- Sorting by the new column was not exercised\.$/m);
+    // The gaps section closes the comment; only the marker follows it.
+    assert.match(body, /not exercised\.\n\n<!-- my-command-shots [0-9a-f]{64} -->\n$/);
 
     // The mechanic the whole fallback rests on: gh rewrites a body reference in place only
     // where it is byte-for-byte the string `--attach` was given.
@@ -1049,6 +1079,84 @@ test('pr attaches what one comment holds and warns about the rest', () => {
   } finally {
     restore();
   }
+});
+
+test('pr publishes an undescribed screenshot as unlabelled and says so', () => {
+  const { dir, git, commentBody, restore } = repoWithFakeGh(openPr({ body: '' }));
+  try {
+    writeFileSync(join(dir, 'notes.md'), '# notes\n');
+    git(['add', 'notes.md']);
+    git(['commit', '-qm', 'docs: notes']);
+    captured(dir, 'playwright', ['home.png'], { notes: false });
+
+    const r = pr(ctx(dir, [], { title: 'T', body: '- wrote notes' }));
+    assert.equal(asComment(r).count, 1);
+    assert.match(
+      /** @type {{shotsWarning: string}} */ (r).shotsWarning,
+      /1 screenshot\(s\) with no label or description/,
+    );
+    const body = commentBody();
+    assert.match(
+      body,
+      /^\| \*\*Unlabelled screenshot\*\*<br>!\[home\.png\]\(\S+\)<br>The verifier left no read-back for this image, so it proves nothing on its own\. \|$/m,
+    );
+    assert.match(body, /^- The verifier recorded no gaps\. That means none were written down, not that none exist\.$/m);
+  } finally {
+    restore();
+  }
+});
+
+test('shots record keeps each --shot and --gap, and names what they miss', () => {
+  const { dir, git } = repoWithOrigin();
+  git(['checkout', '-qb', 'feat/notes']);
+  const shots = join(dir, '.my-command', 'shots');
+  mkdirSync(join(shots, 'round-2'), { recursive: true });
+  writeFileSync(join(shots, 'home.png'), 'pixels');
+  writeFileSync(join(shots, 'round-2', 'detail-2.png'), 'pixels');
+  writeFileSync(join(shots, 'stray.png'), 'pixels');
+
+  const r = /** @type {{described: number, undescribed: string[], unmatched: string[]}} */ (
+    shotsVerb(
+      ctx(dir, ['record'], {
+        tier: 'playwright',
+        verdict: 'green',
+        shot: [
+          'home.png | Home page | The hero renders with the new copy.',
+          // A path is accepted and reduced to its basename; a sentence may carry the separator.
+          '/abs/shots/detail.png | Order detail | Totals match | tax included.',
+          'ghost.png | Nothing | Describes a file that was never saved.',
+        ],
+        gap: ['Checkout was not reached.', '  '],
+      }),
+    )
+  );
+  assert.equal(r.described, 3);
+  assert.deepEqual(r.undescribed, ['stray.png']);
+  assert.deepEqual(r.unmatched, ['ghost.png']);
+
+  const record = /** @type {{shots: {name: string, label: string, description: string}[], gaps: string[]}} */ (
+    /** @type {{verdict: unknown}} */ (shotsVerb(ctx(dir, ['read'], {}))).verdict
+  );
+  assert.deepEqual(record.shots[1], {
+    name: 'detail.png',
+    label: 'Order detail',
+    description: 'Totals match | tax included.',
+  });
+  assert.deepEqual(record.gaps, ['Checkout was not reached.']);
+
+  assert.throws(
+    () => shotsVerb(ctx(dir, ['record'], { tier: 'playwright', verdict: 'green', shot: 'home.png | no sentence' })),
+    /--shot must read "<file> \| <label> \| <description>"/,
+  );
+});
+
+test('a shot cell escapes pipes and drops em dashes, and finds a note through the keep suffix', () => {
+  const notes = [{ name: 'home.png', label: 'Home — hero', description: 'Copy | reads fine\nacross two lines.' }];
+  assert.equal(
+    shotCell('round-1/home-2.png', '/tmp/home-2.png', noteFor(notes, 'round-1/home-2.png')),
+    '**Home, hero**<br>![round-1/home-2.png](/tmp/home-2.png)<br>Copy \\| reads fine across two lines.',
+  );
+  assert.equal(noteFor(notes, 'other.png'), undefined);
 });
 
 test('shots record refuses a tier or verdict outside the vocabulary', () => {

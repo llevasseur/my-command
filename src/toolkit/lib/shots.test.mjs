@@ -53,22 +53,36 @@ test('a re-captured side never displaces the first one', () => {
   assert.deepEqual(groups.pairs, [{ view: 'home', before: 'home-before.png', after: null }]);
 });
 
+/**
+ * The section for `names`, each described unless `notes` says otherwise.
+ * @param {string[]} names @param {(name: string) => string} url
+ * @param {{notes?: import('./shots.mjs').ShotNote[], gaps?: string[]}} [extra]
+ */
+function render(names, url, extra = {}) {
+  const notes =
+    extra.notes ?? names.map((name) => ({ name, label: `Label for ${name}`, description: `Proves ${name}.` }));
+  return renderShots({ groups: groupShots(names), url, notes, gaps: extra.gaps ?? [], caption: 'Captured.' });
+}
+
 test('a comparison renders as one table row per view, before column then after', () => {
-  const section = renderShots(groupShots(['home-before.png', 'home-after.png']), (n) => `https://host/${n}`);
+  const section = render(['home-before.png', 'home-after.png'], (n) => `https://host/${n}`);
   const rows = section.split('\n');
   assert.equal(rows[0], '## Screenshots');
-  assert.equal(rows[2], '| View | Before | After |');
-  assert.match(rows[4], /^\| home \| !\[home-before\.png\]\(https:\/\/host\/home-before\.png\)/);
-  assert.match(rows[4], /!\[home-after\.png\]\(https:\/\/host\/home-after\.png\) \|$/);
+  assert.equal(rows[2], 'Captured.');
+  assert.equal(rows[4], '| View | Before | After |');
+  assert.match(
+    rows[6],
+    /^\| home \| \*\*Label for home-before\.png\*\*<br>!\[home-before\.png\]\(https:\/\/host\/home-before\.png\)<br>Proves home-before\.png\. \| \*\*Label for home-after\.png\*\*<br>!\[home-after\.png\]\(https:\/\/host\/home-after\.png\)<br>Proves home-after\.png\. \|$/,
+  );
 });
 
 test('a missing side says so rather than rendering an empty cell', () => {
-  const section = renderShots(groupShots(['home-before.png']), (n) => `https://host/${n}`);
-  assert.match(section, /\| home \| !\[[^|]+\| not captured \|/);
+  const section = render(['home-before.png'], (n) => `https://host/${n}`);
+  assert.match(section, /\| home \| \*\*[^|]+\| not captured \|/);
 });
 
 test('unpaired shots render as a grid, padded to the column count', () => {
-  const section = renderShots(groupShots(['a.png', 'b.png', 'c.png']), (n) => `https://host/${n}`);
+  const section = render(['a.png', 'b.png', 'c.png'], (n) => `https://host/${n}`);
   const rows = section.split('\n').filter((l) => l.startsWith('|'));
   assert.equal(rows[0], '| | |');
   assert.equal(rows[1], '| --- | --- |');
@@ -76,15 +90,37 @@ test('unpaired shots render as a grid, padded to the column count', () => {
   assert.match(rows[3], /c\.png\).+\|\s+\|$/);
 });
 
-test('a comparison and a grid appear in that order in one section', () => {
-  const section = renderShots(groupShots(['home-before.png', 'home-after.png', 'nav.png']), (n) => `u/${n}`);
+test('a lone shot still sits in a table, one column wide', () => {
+  const rows = render(['only.png'], (n) => n)
+    .split('\n')
+    .filter((l) => l.startsWith('|'));
+  assert.deepEqual(rows, ['| |', '| --- |', '| **Label for only.png**<br>![only.png](only.png)<br>Proves only.png. |']);
+});
+
+test('a comparison and a grid appear in that order, and the gaps close the section', () => {
+  const section = render(['home-before.png', 'home-after.png', 'nav.png'], (n) => `u/${n}`, {
+    gaps: ['Mobile widths were not captured.', 'The empty state — no orders — was not reached.'],
+  });
   assert.equal(section.indexOf('## Screenshots'), 0);
   assert.ok(section.indexOf('| View | Before | After |') < section.indexOf('nav.png'));
+  assert.match(
+    section,
+    /\n### What these shots do not prove\n\n- Mobile widths were not captured\.\n- The empty state, no orders, was not reached\.\n$/,
+  );
+});
+
+test('an undescribed shot is labelled as such rather than given a filename or a made-up claim', () => {
+  const section = render(['nav.png'], (n) => n, { notes: [] });
+  assert.match(
+    section,
+    /\| \*\*Unlabelled screenshot\*\*<br>!\[nav\.png\]\(nav\.png\)<br>The verifier left no read-back for this image, so it proves nothing on its own\. \|/,
+  );
+  assert.match(section, /- The verifier recorded no gaps\. That means none were written down, not that none exist\./);
 });
 
 test('nothing to show renders no section at all', () => {
   assert.equal(
-    renderShots(groupShots([]), (n) => n),
+    render([], (n) => n),
     '',
   );
 });
@@ -142,7 +178,7 @@ test('a record naming a tier this repo does not know is not a verdict', () => {
  * @param {Record<string, string>} hrefs @returns {string}
  */
 function postedBody(hrefs) {
-  return renderShots(groupShots(Object.keys(hrefs)), (name) => hrefs[name]);
+  return render(Object.keys(hrefs), (name) => hrefs[name]);
 }
 
 test('references gh rewrote count as rendered once each URL serves bytes', () => {

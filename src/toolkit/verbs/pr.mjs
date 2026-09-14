@@ -46,10 +46,15 @@ Assets already in an existing PR's description — images, videos, GitHub attach
 links — are always carried over into the new body. They are never dropped.
 
 A branch whose screenshots were taken by a **browser** tier gets them published under a
-\`## Screenshots\` heading: before/after pairs as a table, one row per view, and
-everything else as a grid. The gate is the tier \`shots record\` wrote beside the images,
-not the shape of the diff — so a backend change proven through a frontend that needed no
-edit still shows its screenshots, and the verdict itself never withholds them.
+\`## Screenshots\` heading. Every image sits in a markdown table cell, even a lone one:
+a bold label naming the shot, the image, then one sentence on what it proves, all three
+taken from the verifier's own read-back as \`shots record --shot\` stored it. Before/after
+pairs share a row per view; the rest fill a two-column grid. The comment closes with
+"What these shots do not prove", listing the \`--gap\` entries. The gate is the tier
+\`shots record\` wrote beside the images, not the shape of the diff — so a backend change
+proven through a frontend that needed no edit still shows its screenshots, and the
+verdict itself never withholds them. A shot the record never described is published as
+unlabelled and reported in \`shotsWarning\`.
 
 They land in one \`gh pr comment --attach\`, whatever the repository's visibility, which
 uploads each file to GitHub's own \`user-attachments\` CDN and renders under the reader's

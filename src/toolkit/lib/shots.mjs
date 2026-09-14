@@ -151,13 +151,39 @@ export function findShots(cwd, branch) {
 }
 
 /**
+ * What the verifier said it saw in one screenshot, in its own words.
+ * @typedef {object} ShotNote
+ * @property {string} name         The screenshot's filename, as the verifier named it.
+ * @property {string} label        What the shot is, a few words. Never the filename.
+ * @property {string} description  One sentence on what the shot proves, or that it proves nothing.
+ */
+
+/**
  * @typedef {object} Verdict
- * @property {string} tier      The driver tier that ran: playwright, http, or static.
- * @property {string} verdict   green, red, unverified, or skipped.
- * @property {number} [rounds]  How many rounds the loop took.
+ * @property {string} tier          The driver tier that ran: playwright, http, or static.
+ * @property {string} verdict       green, red, unverified, or skipped.
+ * @property {number} [rounds]      How many rounds the loop took.
+ * @property {ShotNote[]} [shots]   The verifier's read-back of each screenshot.
+ * @property {string[]} [gaps]      What the round could not prove.
  * @property {string} [branch]
  * @property {string} [recordedAt]
  */
+
+/** The separator a `saw:` line and a `--shot` value use between file, label, and description. */
+export const SHOT_SEPARATOR = '|';
+
+/**
+ * A `--shot` value, `<file> | <label> | <description>`, split into its three parts. The
+ * description keeps any later separator, since a sentence may carry one; a value short of
+ * three parts is null, for the caller to refuse.
+ * @param {string} value @returns {ShotNote | null}
+ */
+export function parseShotNote(value) {
+  const [name, label, ...rest] = value.split(SHOT_SEPARATOR);
+  const description = rest.join(SHOT_SEPARATOR).trim();
+  if (!name?.trim() || !label?.trim() || !description) return null;
+  return { name: basename(name.trim()), label: label.trim(), description };
+}
 
 /**
  * Record what a verification loop did, beside the screenshots it took.
@@ -263,49 +289,123 @@ export function groupShots(names) {
  * that shape.
  * @param {string} name @param {string} href @returns {string}
  */
-const cell = (name, href) => `![${name}](${href})`;
+const image = (name, href) => `![${name}](${href})`;
+
+/** What a cell says about a screenshot the verifier never described. */
+const UNLABELLED = {
+  label: 'Unlabelled screenshot',
+  description: 'The verifier left no read-back for this image, so it proves nothing on its own.',
+};
+
+/**
+ * Verifier prose made safe for one table cell: one line, pipes escaped, and no dashes of the
+ * kind the house style keeps out of generated markdown.
+ * @param {string} text @returns {string}
+ */
+export function cellText(text) {
+  return text
+    .replace(/\s*[—–]\s*/g, ', ')
+    .replace(/\s*\n+\s*/g, ' ')
+    .replace(/\|/g, '\\|')
+    .trim();
+}
+
+/**
+ * The verifier's note for a screenshot, by the name it used. The keep suffixes a colliding
+ * filename `-2`, and a nested shot carries its directory, so the match is tried by the full
+ * relative name, then by basename, then with the suffix stripped.
+ * @param {ShotNote[]} notes @param {string} name @returns {ShotNote | undefined}
+ */
+export function noteFor(notes, name) {
+  const base = basename(name);
+  const ext = extname(base);
+  const unsuffixed = `${base.slice(0, base.length - ext.length).replace(/-\d+$/, '')}${ext}`;
+  return (
+    notes.find((note) => note.name === name) ??
+    notes.find((note) => note.name === base) ??
+    notes.find((note) => note.name === unsuffixed)
+  );
+}
+
+/**
+ * One screenshot cell, in the fixed order every cell keeps: bold label, image, one sentence.
+ * `<br>` is the only line break a table cell renders.
+ * @param {string} name @param {string} href @param {ShotNote | undefined} note @returns {string}
+ */
+export function shotCell(name, href, note) {
+  const { label, description } = note ?? UNLABELLED;
+  return `**${cellText(label)}**<br>${image(name, href)}<br>${cellText(description)}`;
+}
+
+/**
+ * @typedef {object} ShotsSection
+ * @property {ShotGroups} groups
+ * @property {(name: string) => string} url  Where each image's reference points.
+ * @property {ShotNote[]} notes              The verifier's read-back, by filename.
+ * @property {string[]} gaps                 What the round could not prove.
+ * @property {string} caption                The line under the heading.
+ */
 
 /**
  * The `## Screenshots` section for a comment, or an empty string when there is nothing to
- * show.
- * @param {ShotGroups} groups @param {(name: string) => string} url
+ * show. Every image sits in a table cell, even a lone one, and the section closes with what
+ * the shots do not prove.
+ * @param {ShotsSection} section
  * @returns {string}
  */
-export function renderShots(groups, url) {
+export function renderShots({ groups, url, notes, gaps, caption }) {
   /** @type {string[]} */
   const lines = [];
-  const img = (/** @type {string} */ name) => cell(name, url(name));
+  const cell = (/** @type {string} */ name) => shotCell(name, url(name), noteFor(notes, name));
 
   if (groups.pairs.length) {
     lines.push('| View | Before | After |', '| --- | --- | --- |');
     for (const row of groups.pairs) {
-      lines.push(
-        `| ${row.view} | ${row.before ? img(row.before) : 'not captured'} | ${row.after ? img(row.after) : 'not captured'} |`,
-      );
+      const before = row.before ? cell(row.before) : 'not captured';
+      const after = row.after ? cell(row.after) : 'not captured';
+      lines.push(`| ${cellText(row.view)} | ${before} | ${after} |`);
     }
   }
 
   if (groups.grid.length) {
     if (lines.length) lines.push('');
-    lines.push(`|${' |'.repeat(GRID_COLUMNS)}`, `|${' --- |'.repeat(GRID_COLUMNS)}`);
-    for (let i = 0; i < groups.grid.length; i += GRID_COLUMNS) {
-      const row = groups.grid.slice(i, i + GRID_COLUMNS);
-      const cells = row.map((name) => `${img(name)}`);
-      while (cells.length < GRID_COLUMNS) cells.push('');
+    const columns = Math.min(GRID_COLUMNS, groups.grid.length);
+    lines.push(`|${' |'.repeat(columns)}`, `|${' --- |'.repeat(columns)}`);
+    for (let i = 0; i < groups.grid.length; i += columns) {
+      const cells = groups.grid.slice(i, i + columns).map(cell);
+      while (cells.length < columns) cells.push('');
       lines.push(`| ${cells.join(' | ')} |`);
     }
   }
 
-  return lines.length ? `## Screenshots\n\n${lines.join('\n')}\n` : '';
+  if (!lines.length) return '';
+
+  const unproven = gaps.length
+    ? gaps.map((gap) => `- ${cellText(gap)}`)
+    : ['- The verifier recorded no gaps. That means none were written down, not that none exist.'];
+  return [
+    '## Screenshots',
+    '',
+    caption,
+    '',
+    ...lines,
+    '',
+    '### What these shots do not prove',
+    '',
+    ...unproven,
+    '',
+  ].join('\n');
 }
 
 /**
  * @typedef {object} ShotsComment
  * @property {{name: string, path: string}[]} files  What `--attach` uploads, in body order.
  * @property {number} count                          How many images it publishes.
- * @property {string} caption                        The line under the table.
+ * @property {string} caption                        The line under the heading.
+ * @property {ShotNote[]} notes                      The verifier's read-back of each image.
+ * @property {string[]} gaps                         What the round could not prove.
  * @property {string} digest                         Names and bytes of `files`, hashed.
- * @property {string} [warning]                      Images the per-comment cap left behind.
+ * @property {string} [warning]                      Images the cap left behind, or nobody described.
  */
 
 /**
@@ -326,15 +426,28 @@ function commentPlan(shots, record) {
   const files = shots.slice(0, ATTACH_LIMIT);
   const hash = createHash('sha256');
   for (const shot of files) hash.update(`${shot.name}\0`).update(readFileSync(shot.path)).update('\0');
+  const notes = record.shots ?? [];
+  const rounds = record.rounds ? ` after ${record.rounds} round${record.rounds === 1 ? '' : 's'}` : '';
   /** @type {ShotsComment} */
   const plan = {
     files,
     count: files.length,
-    caption: `Captured and inspected by the \`${record.tier}\` tier; verification ended \`${record.verdict}\`.`,
+    caption: `Captured and inspected by the \`${record.tier}\` tier; verification ended \`${record.verdict}\`${rounds}.`,
+    notes,
+    gaps: record.gaps ?? [],
     digest: hash.digest('hex'),
   };
+  /** @type {string[]} */
+  const warnings = [];
   const over = shots.length - files.length;
-  if (over > 0) plan.warning = `${over} screenshot(s) past the ${ATTACH_LIMIT}-file limit of one comment`;
+  if (over > 0) warnings.push(`${over} screenshot(s) past the ${ATTACH_LIMIT}-file limit of one comment`);
+  const undescribed = files.filter((shot) => !noteFor(notes, shot.name)).length;
+  if (undescribed > 0) {
+    warnings.push(
+      `${undescribed} screenshot(s) with no label or description from the verifier, published as unlabelled`,
+    );
+  }
+  if (warnings.length) plan.warning = warnings.join('; ');
   return plan;
 }
 
@@ -371,9 +484,15 @@ export function postShotsComment(cwd, number, plan) {
       staged.set(shot.name, copy);
     }
 
-    const section = renderShots(groupShots(plan.files.map((shot) => shot.name)), (name) => staged.get(name) ?? name);
+    const section = renderShots({
+      groups: groupShots(plan.files.map((shot) => shot.name)),
+      url: (name) => staged.get(name) ?? name,
+      notes: plan.notes,
+      gaps: plan.gaps,
+      caption: plan.caption,
+    });
     const file = join(dir, 'comment.md');
-    writeFileSync(file, `${section}\n${plan.caption}\n\n${commentMarker(plan.digest)}\n`);
+    writeFileSync(file, `${section}\n${commentMarker(plan.digest)}\n`);
     const args = ['pr', 'comment', String(number), '--body-file', file];
     for (const path of staged.values()) args.push('--attach', path);
 
