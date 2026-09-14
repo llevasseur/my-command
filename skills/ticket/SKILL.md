@@ -61,8 +61,19 @@ Then pick the template **by whether the change is user-visible, not by the Jira 
 conflating the two is how a backend story acquires Given/When/Then about a screen nobody built.
 Read the branch diff in one call and pre-fill that guess from it. Without `--yes`, show the guess
 and ask; with `--yes`, take it. Render the whole ticket as text and wait for an explicit go, then
-create it, set the sprint the contract asks for, and report the key and its URL. Nothing reaches
-Jira before the go.
+create it and set the sprint the contract asks for. Nothing reaches Jira before the go.
+
+Then **attach this branch's pull request to the new item as a remote link**, the same mechanism
+adoption uses, from the pull request already fetched while resolving the verb rather than a second
+probe. A ticket written after the work is the case this exists for: the branch cannot carry a key
+minted seconds ago, so neither the bare-key default nor adoption can supply the link, and `link`
+is issue-to-issue only — without this the retroactive ticket points at no code at all. **No pull
+request is an expected answer, not a failure**: skip the link silently and say in the report that
+there was none to link. Report the key, its URL, and the linked pull request.
+
+**Creating creates and links; it fires no transition** — not start, not review. A freshly made
+item already sits in its start status, and calling the work done is the user's judgement, left to
+an explicit `move <KEY> review`.
 
 ### The five templates
 

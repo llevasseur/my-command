@@ -154,8 +154,20 @@ that waits.
 3. **Render the whole ticket as text** — summary, issue type, project, sprint, and the full
    description — and **wait for an explicit go.** `--yes` skips this approval. Nothing is written
    to Jira before the go.
-4. **Create it** with `createJiraIssue`, then set the sprint when the contract asks for one, and
-   report the key and its URL.
+4. **Create it** with `createJiraIssue`, then set the sprint when the contract asks for one.
+5. **Attach this branch's PR to the new item as a remote link** — `addTeamworkGraphContext` with
+   `jira-work-item-links-jira-work-item-remote-link`, the same mechanism adopt mode uses. Use the
+   `my-command-tools prs view` result Step 2 already fetched rather than probing again. **A ticket
+   written after the work is the case this exists for**: the branch cannot carry a key that was
+   minted seconds ago, so neither the bare `/my-command:ticket <KEY>` default nor adopt mode can supply the
+   link, and `link` is issue-to-issue only — without this the retroactive ticket points at no code
+   at all. **No PR is an expected answer, not a failure**: skip the link silently and say in the
+   report that there was none to link.
+6. **Report the key, its URL, and the linked PR.**
+
+**`create` creates and links; it fires no transition.** Not `start`, not `review` — a freshly made
+item is already in its start status, and calling the work done is the user's judgement, left to an
+explicit `/my-command:ticket move <KEY> review`.
 
 ### The five templates
 

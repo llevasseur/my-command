@@ -86,6 +86,15 @@ tool.
 `--yes` skips that approval and the template question together. `/god` passes it so unattended
 runs never block.
 
+**Once the item exists and its sprint is set, `create` attaches the branch's open PR to it as a
+remote link** — the same `jira-work-item-links-jira-work-item-remote-link` mechanism adopt mode
+uses, from the `my-command-tools prs view` result Step 2 already fetched. This is what keeps a
+ticket written *after* the work from pointing at nothing: the branch cannot carry a key minted
+seconds ago, so neither the bare-key default nor adopt mode can supply the link, and `link` is
+issue-to-issue only. No PR is an expected answer — the link is skipped silently and the report
+says there was none. `create` fires no transition either way; `review` stays an explicit
+`/ticket move <KEY> review`.
+
 ## The five templates
 
 Baked into the command rather than into the contract, because they are about **how a ticket is
