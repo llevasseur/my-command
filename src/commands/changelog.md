@@ -4,7 +4,7 @@ argument-hint: "[optional summary or area to record]"
 allowed-tools: Bash(git:*), Bash(my-command-tools:*), Read, Edit, Write
 ---
 
-Add a changelog entry describing the work from this session. Keep it concise and factual — what changed and why, no filler.
+Add a changelog entry describing the work from this session, held to the shape below.
 
 The `<command-args>` block above, if non-empty, is a summary or area tag to record; otherwise derive the entry from the actual changes.
 
@@ -21,12 +21,26 @@ The `<command-args>` block above, if non-empty, is a summary or area tag to reco
 - **Keep naming the step in prose as well.** Every run recorded before this marker existed is read from that prose, and the prose is still the only reading for any message the marker is missing from. Dropping it to save a line costs the fallback and buys nothing.
 <!-- /include-block -->
 
+<!-- include-block: shared/changelog-entry-shape.md -->
+### The entry's shape
+
+**"Concise" is a measurement here, not a mood.** These are the numbers that decide it.
+
+- **One bullet per user-visible change.** Not one per file, and not one per decision made along the way.
+- **A bold lead of 12 words or fewer, naming the change.** What a reader now sees, gets, or no longer has to do.
+- **A body of 2 to 3 sentences, under 60 words.** `scripts/check-changelog.mjs` fails any bullet over 80 words.
+- **At most one "because" clause.** A second reason is a design note, not a change.
+- **No nested lists.** A bullet that needs sub-bullets is carrying two changes: split it, or cut the one nobody sees.
+- **Internal wiring stays out** unless it changes behavior someone sees. Helper reuse, which call pipes into which, and where a function moved are the diff's business, not the entry's.
+- **The why lives in `docs/features/<cmd>.md`.** Link it; do not restate it. An entry that explains a rationale is a design doc growing in the wrong file.
+<!-- /include-block -->
+
 ## Steps
 
 1. Figure out what changed: `my-command-tools state` reports the branch's `commits`, the per-file `diffStat`, and any uncommitted `changes` in one call. Read the diff itself where a bullet needs more than a filename. Base the entry on real changes, not guesses.
 2. Find `CHANGELOG.md` at the repo root. If none exists, create one using the [Keep a Changelog](https://keepachangelog.com) layout.
-3. **Match the repo's existing convention.** If `CHANGELOG.md` already has entries, copy their style exactly — heading format (dated vs. versioned), bullet style, any area tags or PR references. If `CLAUDE.md`/`AGENTS.md`/`CONTRIBUTING.md` documents a changelog format, follow that. Only fall back to Keep a Changelog (`## [Unreleased]` or `## YYYY-MM-DD`, grouped under Added / Changed / Fixed / Removed) when the repo sets no precedent.
-4. Write one tight entry and insert it in the right place (most recent first). Group related changes into a single bullet rather than one per file.
+3. **Match the repo's heading and grouping convention only.** Read existing entries for the heading format (dated vs. versioned) and the grouping (Added / Changed / Fixed / Removed), and for any area tags or PR references they carry. Do not match their prose length or style; the shape above decides that. If `CLAUDE.md`/`AGENTS.md`/`CONTRIBUTING.md` documents a changelog format, follow that. Only fall back to Keep a Changelog (`## [Unreleased]` or `## YYYY-MM-DD`, grouped under Added / Changed / Fixed / Removed) when the repo sets no precedent.
+4. Write the entry to the shape above and insert it in the right place (most recent first). Group related changes into a single bullet rather than one per file.
 5. Don't invent a PR/issue number — include one only if it's known from the arguments or the branch.
 
 ## Finish

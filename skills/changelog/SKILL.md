@@ -8,8 +8,19 @@ description: Add a concise, factual CHANGELOG.md entry for the work in the curre
 Derive the entry from `my-command-tools state` when available, plus the current
 diff and commits since the task base; never guess.
 
-1. Find the root `CHANGELOG.md`, read repository guidance, and match its headings, ordering, tone, and references.
-2. Add one tight factual entry in the appropriate newest-first location. Group related work into one bullet and do not invent PR or issue numbers.
+## Entry shape
+
+Write to these numbers, not to a feeling of brevity. One bullet per change a
+user can see. Open each bullet with a bold lead of at most 12 words that names
+the change. Follow it with 2 to 3 sentences totalling under 60 words; a bullet
+over 80 words fails the repository's `scripts/check-changelog.mjs` gate. Give at
+most one "because" clause and no nested lists. Leave out internal wiring such as
+helper reuse or how one call pipes into another unless it changes visible
+behavior. Put the reasoning in `docs/features/<cmd>.md` and link that file
+instead of repeating it.
+
+1. Find the root `CHANGELOG.md` and read repository guidance. Match only the heading format (dated or versioned), the grouping (Added / Changed / Fixed / Removed), and any area tags or PR references. Do not copy the length or prose style of existing entries; the shape above decides that.
+2. Add one factual entry to that shape in the appropriate newest-first location. Group related work into one bullet and do not invent PR or issue numbers.
 3. Edit directly. Do not commit unless the surrounding workflow authorizes it.
 4. Report the exact entry and location.
 

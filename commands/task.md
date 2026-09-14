@@ -120,7 +120,21 @@ Issue the batched calls as separate tool calls in one turn, never chained with `
   - `my-command-tools commit --message <text> <path> [<path>...]`, one call per logical commit. **For a multi-line message, `Write` it to a file and pass `--message-file <absolute path>`** — never a heredoc on stdin. A heredoc is refused wholesale inside an isolated worktree, which is exactly where this step runs, and a `PreToolUse` gate now refuses `--message -` and names `--message-file` in its place. `$CLAUDE_JOB_DIR/tmp` is the natural home for that file.
   - Paths are always explicit, and the verb refuses `.`/`-A`-style whole-tree staging: only commit files **you** created or changed for this task. Pre-existing untracked files carried over from the original workspace are not yours to ship — the verb reports them under `remaining` so you can confirm they stayed put.
   - <!-- include: shared/signing-retry.md -->`1Password: failed to fill whole buffer` with `fatal: failed to write commit object` is an unapproved signing prompt, not a repository problem: the commit did not happen and the tree is untouched. Retry the same commit once after the prompt is approved. Never rewrite the commit, pass `--no-gpg-sign`, or change the repo's signing configuration to get around it.<!-- /include -->
-- If the repo tracks a changelog (e.g. a `changelog` command or `CHANGELOG.md`), add an entry.
+- If the repo tracks a changelog (e.g. a `changelog` command or `CHANGELOG.md`), add an entry held to the shape below.
+
+<!-- include-block: shared/changelog-entry-shape.md -->
+### The entry's shape
+
+**"Concise" is a measurement here, not a mood.** These are the numbers that decide it.
+
+- **One bullet per user-visible change.** Not one per file, and not one per decision made along the way.
+- **A bold lead of 12 words or fewer, naming the change.** What a reader now sees, gets, or no longer has to do.
+- **A body of 2 to 3 sentences, under 60 words.** `scripts/check-changelog.mjs` fails any bullet over 80 words.
+- **At most one "because" clause.** A second reason is a design note, not a change.
+- **No nested lists.** A bullet that needs sub-bullets is carrying two changes: split it, or cut the one nobody sees.
+- **Internal wiring stays out** unless it changes behavior someone sees. Helper reuse, which call pipes into which, and where a function moved are the diff's business, not the entry's.
+- **The why lives in `docs/features/<cmd>.md`.** Link it; do not restate it. An entry that explains a rationale is a design doc growing in the wrong file.
+<!-- /include-block -->
 
 <!-- include-block: shared/verify-wait.md -->
 **A verification run is waited on with one call, never polled.** `my-command-tools verify` runs the repo's own gates; a full sweep outlives the Bash tool's two-minute window, so start it detached and then **block on it**:
