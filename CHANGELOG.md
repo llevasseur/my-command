@@ -14,6 +14,7 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 ### Changed
 
+- **The verifier must look at its screenshots before it may report green.** On the `playwright` tier it reads back every shot it saved and states what each showed above its verdict; a shot contradicting the criteria makes that verdict `red`. Before, a change that mounted but rendered wrong passed on DOM assertions alone. Lower tiers and shot-less rounds are unchanged, and the PR screenshot caption now reads "captured and inspected".
 - **`/changelog` matches only a repo's heading and grouping convention**, dated or versioned and Added/Changed/Fixed, rather than copying existing entries' prose style.
 - **`/ticket create` attaches the branch's open PR to the item it just made.** It reads the PR off the `prs view` result already fetched, uses the same remote-link call adopt mode uses, and treats a missing PR as an expected answer rather than a failure. No transition fires from `create`.
 - **`/ticket create` sets the sprint through the Agile REST API.** The MCP server has no sprint tool, so a `"active"` policy reads `GET /rest/agile/1.0/board/<ID>/sprint` with the Keychain token and moves the new key into the one active sprint. Without the token the item is created with no sprint and the report says so.

@@ -33,6 +33,9 @@ Parse `--draft` / `-d`; treat remaining text as optional title or context.
      under a `## Screenshots` heading: before/after pairs as a table with one
      row per view, anything unpaired as a grid. The gate is the tier the
      verification loop recorded beside the images, not the diff or the verdict.
+     The caption under them says the images were captured and inspected, which
+     is what that tier means: it reads each screenshot back and states what the
+     image showed before reaching a verdict.
      The helper moves the image bytes itself and reports the count, tier, and
      verdict. There is one route and every repository takes it whatever its
      visibility: one attachment comment per PR, reused when the images are

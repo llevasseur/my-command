@@ -64,6 +64,14 @@ Four, flat. No sub-states, no qualifiers, no "green with caveats".
 Cannot fill all three → write `unverified`. "It booted" is not green. "No errors in the log" is
 not green. "The build compiles" is not green. `static` tier can never reach green.
 
+**On `tier: playwright`, `green` also requires that you looked at the shots.** Read every
+screenshot you saved that round back before you write a verdict, and say what each one showed. A
+DOM assertion proves an element is in the tree; it does not prove a person can read it.
+Overlapping text, contrast that vanishes, an element pushed off-screen, the wrong colour. Each
+of those passes `eval` and fails the criteria. **A screenshot that contradicts the criteria is
+`red`**, whatever the assertions said. A round that saved no screenshots is unchanged, and so is
+every tier below `playwright`.
+
 **The verdict is advisory.** A `red` loop does not block a merge: the caller opens the PR either
 way and records the verdict and round count in its description. That is deliberate — a
 verification loop that can block shipping becomes a thing people disable, and an advisory one
@@ -87,13 +95,18 @@ Each round:
    `<view>-after.png`** — one stem, the two sides — when you captured a view both as it was
    and as the change left it. `/pr` reads that pair into one row of the PR's before/after
    table, and every screenshot with no such marker goes into a grid below it.
-4. Reply.
+4. **Read back what you just saved, on `playwright`.** Open each screenshot from this round with
+   `Read` and judge the image against the criteria, not against "the page loaded". Carry one
+   short observation per shot into the reply. A round that saved none skips this, and so do
+   `http` and `static`, which photograph nothing.
+5. Reply.
 
 ## Replies
 
 Terse. The verdict plus the minimum evidence that supports it.
 
 ```
+saw: settings-round-3.png — the new field renders under Account, label and input aligned and legible
 verdict: red
 tier: playwright
 exercised: /settings — clicked "Save" with the new field filled — field reverts on reload
@@ -101,13 +114,19 @@ evidence: $CLAUDE_JOB_DIR/tmp/verify-round-3.log
 shots: <shotsDir>/settings-round-3.png
 ```
 
+**On `playwright`, one `saw:` line per screenshot, above the verdict line.** Name the file, then
+say in a clause what the image showed: what rendered, where, and whether it matches the
+criteria. The verdict goes underneath because it is reached from those lines. Omit them on a
+round that saved no screenshots and on every lower tier.
+
 **List every screenshot you saved this round on the `shots` line, by path, and nothing more.**
 The caller reports those paths, and a file it was never told about is evidence nobody reads.
 Omit the line on a round that took none.
 
 **Never paste logs, HTML, screenshots, or stack traces into the reply.** Leave them at the path
 and let the caller read them if it wants them. Twelve rounds of pasted output exhausts the
-caller's context, and the caller is the one holding the criteria you are verifying against.
+caller's context, and the caller is the one holding the criteria you are verifying against. A
+`saw:` clause is not a paste: it is your reading of an image, in words, and it stays one line.
 
 For `red`, add one line: the smallest thing that would have to change. Not a patch, not a diff.
 
