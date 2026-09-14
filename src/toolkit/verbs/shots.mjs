@@ -100,7 +100,7 @@ function record(ctx, cwd) {
   const written = writeVerdict(cwd, record);
   const dir = shotsIn(cwd);
   const shots = collectShots(dir);
-  // Named in the report rather than refused: the record still carries the tier `pr` gates on.
+  // Reported, never refused: the tier `pr` gates on is already written.
   const undescribed = shots.filter((name) => !noteFor(notes, name));
   const unmatched = notes.filter((note) => !shots.some((name) => noteFor([note], name))).map((note) => note.name);
   return {
