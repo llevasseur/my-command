@@ -69,10 +69,10 @@ export function bullets(text, count = SECTIONS_CHECKED) {
     }
     if (!section) continue;
 
-    if (/^- /.test(line)) {
+    if (line.startsWith('- ')) {
       flush();
       current = { section, line: i + 1, text: [line.slice(2)] };
-    } else if (current && line.trim() !== '' && !/^#/.test(line)) {
+    } else if (current && line.trim() !== '' && !line.startsWith('#')) {
       current.text.push(line.trim());
     } else {
       flush();
