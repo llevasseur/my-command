@@ -5,7 +5,7 @@ description: Implement feedback through the task workflow on the current branch 
 
 # Apply Feedback
 
-Parse `--target <branch>` / `-t <branch>` and `--worktree <path>`, and treat the remaining prompt as task criteria.
+Parse `--target <branch>` / `-t <branch>`, `--worktree <path>`, and `--no-implement`, and treat the remaining prompt as task criteria.
 
 - With `--worktree <path>`, the checkout already exists and belongs to whoever
   dispatched this run: make none of your own, work through absolute paths beneath
@@ -20,6 +20,20 @@ Parse `--target <branch>` / `-t <branch>` and `--worktree <path>`, and treat the
   worktree was created, so do not retry it and do not reinvent a workaround;
   work through absolute paths under the reported path, and tear down with the
   repository helper from outside it.
+
+- With `--no-implement`, forward it: `$task --here --no-implement <feedback>` in
+  either mode. The task workflow then implements nothing and runs its remaining
+  steps — anti-slop lint, the verification loop, cleanup, pull request — over the
+  work the branch already carries. The feedback, if any, is no longer what to
+  build but what the verifier should prove; with none given, the verifier infers
+  intent from the diff and the pull request body. The task workflow's own
+  has-work check is the only guard: a branch with commits is cleaned and its
+  pull request updated, which is what publishes the recorded screenshots, and a
+  branch with none stops without opening an empty pull request. Teardown
+  ownership is unchanged — yours with a target, nobody's without. Combined with
+  `--no-verify`, the run does nothing but cleanup and pull request; say so in
+  the report. This flag lives here rather than on the task workflow because only
+  this workflow checks an existing branch out into a worktree.
 
 Never create a missing target branch. The `$task` workflow owns implementation, verification, commits, `$clean`, `$pr`, and safe worktree teardown. Report the branch before work and the PR number and URL at completion.
 

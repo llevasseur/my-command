@@ -5,7 +5,19 @@ description: Take a plain-language task from criteria through implementation, ve
 
 # Task to Pull Request
 
-Parse `--here`, `--worktree <path>`, `--base <branch>`, `--draft`, `--sub`, and `--add <skill prompt,...>`; remaining text is the task criteria.
+Parse `--here`, `--worktree <path>`, `--base <branch>`, `--draft`, `--sub`, `--no-verify`, `--no-implement`, and `--add <skill prompt,...>`; remaining text is the task criteria.
+
+`--no-implement` mirrors `--no-verify`: skip step 4's implementation entirely and
+run every other step over the work the branch already carries. The criteria then
+name what the verifier should prove rather than what to build, and they are
+optional — with none given, the verifier infers intent from the diff and the pull
+request body. Step 7's has-work check stays the only guard against an empty pull
+request; the verification loop may still commit repairs. It is normally reached
+through the feedback workflow rather than typed here, because this workflow can
+only cut a new branch or stay on the current one, and verifying existing work
+means checking an existing branch out into a worktree, which the feedback
+workflow's `--target` does. With `--no-verify` as well, the run does nothing but
+cleanup and pull request — legal, but say so. Teardown ownership is unchanged.
 
 Before the first tool call, record this pipeline as a task list whose **last item
 is step 9's closing turn**, kept as its own item and left open until nothing else
@@ -80,7 +92,9 @@ lands every time, and the message meant to follow it never arrives.
    bootstrap or add a script to make this step runnable; a repository with no
    application has not opted in. Otherwise boot the application through the
    repository helper on an ephemeral port, spawn the verification agent once with
-   the task criteria, the changed files, and the run contract, and continue that
+   the task criteria — under `--no-implement`, the intent to prove, or none, in
+   which case the agent infers it from the diff and pull request body — the
+   changed files, and the run contract, and continue that
    same agent by message each round against that same booted server. Repair in
    this run's own context, which holds the criteria; the agent observes and never
    edits code. Loop to at most twelve rounds, then stop the application through

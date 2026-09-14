@@ -1,6 +1,6 @@
 ---
-description: Implement a feedback request via /task — on the current branch by default, or inside a worktree of a named existing branch with --target
-argument-hint: "[--target|-t <branch>] <feedback request>"
+description: Implement a feedback request via /task — on the current branch by default, or inside a worktree of a named existing branch with --target; --no-implement verifies, cleans and PRs existing work without implementing
+argument-hint: "[--target|-t <branch>] [--no-implement] [<feedback request>]"
 ---
 
 Implement a feedback request. This is a thin wrapper around `/task`: it decides **where** the work happens, then hands the feedback to `/task` to take it from criteria to a PR.
@@ -24,6 +24,7 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 
 - `--target <branch>` / `-t <branch>` — apply the feedback onto an **existing** branch inside a fresh worktree.
 - `--worktree <path>` — that worktree already exists; whoever invoked this run made it and owns it. Work through absolute paths under `<path>`, create nothing, enter nothing, and skip teardown, reporting the path as still standing. Set by a dispatching command rather than typed by hand.
+- `--no-implement` — implement nothing. Passed straight through to `/task --here`, which then skips its Step 2 and runs the rest of its pipeline — anti-slop lint, the verify loop against the running app, `/clean`, `/pr` — over the work the branch already carries. Composes with both modes below: on the current branch by default, or on the existing branch `--target <branch>` checks out. **The feedback request changes meaning under this flag:** it is no longer what to build but what the verifier should prove, and `/task` Step 2.6 hands it to the `mycommand-verifier` subagent as the intent to demonstrate. It is optional here — with none supplied, the verifier infers intent from the diff and the PR body, as `/verify` does. This is the wrapper the flag lives on because only `/fb` can check an *existing* branch out into a worktree; `/task` alone can cut a new branch or stay on the current one.
 - Anything not a recognized flag is part of the feedback request.
 
 ## Behavior
@@ -54,6 +55,7 @@ Run `/task --here <feedback request>` on the **current branch**.
 
 - `/task -h` stays on the current branch and does not create a worktree.
 - If the current branch is `main` (or the repo's default branch), `/task` will create a feature branch in place — that's expected; let it.
+- With `--no-implement`, run `/task --here --no-implement <feedback request>` instead. `/task` skips its Step 2, verifies, cleans and PRs what the branch already holds, and its Step 3 `hasWork` check is the only guard: a branch with commits gets `/clean` and `/pr`, which is what attaches the screenshots the verify loop recorded, and a branch with none stops without opening an empty PR. Nothing owns teardown in this mode, exactly as without the flag.
 
 ### `--target <branch>` / `-t <branch>` given
 
@@ -63,7 +65,7 @@ If the target repo is not the repo this session started in, prefer starting a ne
    - If it errors with `branch does not exist locally or on origin`, stop and tell me — do **not** create a new branch. This flag is for applying feedback onto existing work.
    - If it says the branch is already used by a worktree, do **not** retry `worktree begin`: inspect `my-command-tools worktree list`, validate the reported owner path and branch, then work in that existing checkout when it is this run's target. A live owner belonging to another session is a stop, not a reason to force or remove the worktree.
 2. When the target and session-start repo are the same, switch into the reported `path` with the `EnterWorktree` tool. For a cross-repo run, stay outside it and use absolute paths under `path`. <!-- include: shared/enter-worktree.md -->**The `path` `worktree begin` printed is this run's working root: resolve every read, edit, commit and `--cwd` under it as an absolute path, whether or not the session itself ever moves.** That is the documented mode rather than a recovery from something refused. **`EnterWorktree` only moves the session, and only a run you invoked directly, in the repo this session started in, has any reason to call it.** A run dispatched with the `Agent` tool starts with its cwd already *at* a repository root, where the tool refuses — "the current working directory … is the repository root" — so a dispatched run does not call it at all; ten recorded runs took that certain refusal and then worked by absolute path anyway, which is what they could have done first. Where it is called, the form is `EnterWorktree({path: "<absolute path>"})` with the path copied byte for byte from the `path` field — never `name`, which asks for a *new* worktree and is refused for a session that already made one another way, and never a relative or reassembled path, which is not in `git worktree list`. **Decide teardown with entry, because it is not `ExitWorktree({action: "remove"})`:** a worktree `my-command-tools worktree begin` created is not the session tool's to remove, so step out with `ExitWorktree({action: "keep"})` and then run `my-command-tools worktree end --branch <branch>` from outside the path.<!-- /include -->
-3. Run `/task --here <feedback request>` against the reported worktree: from inside it for a same-repo run, or through its absolute paths for a cross-repo run. `-h` keeps `/task` on the checked-out branch — no nested worktree, no new branch.
+3. Run `/task --here <feedback request>` against the reported worktree: from inside it for a same-repo run, or through its absolute paths for a cross-repo run. `-h` keeps `/task` on the checked-out branch — no nested worktree, no new branch. Under `--no-implement`, the call is `/task --here --no-implement <feedback request>`: `/task` skips implementation and verifies, cleans and PRs the work already on `<branch>`, with the request, if any, handed to the verifier as what to prove. The worktree is still this run's to remove in step 4 — the flag changes what `/task` does inside it, not who tears it down.
 4. Tear the worktree down yourself once `/task` reports the PR — **`/pr` will not do it for you.** It skips teardown for any worktree its session didn't create, and this one is yours.
    - **Same repo:** you entered it with `EnterWorktree({path})`, so `ExitWorktree` refuses to remove it. Call `ExitWorktree` with `action: "keep"` to step back out to the original checkout, then run `my-command-tools worktree end --branch <branch>` from there.
    - **Cross-repo:** you never entered it — just run `my-command-tools worktree end --branch <branch>` from outside `path`.
@@ -72,7 +74,8 @@ If the target repo is not the repo this session started in, prefer starting a ne
 ## Notes
 
 - Either path ends by delegating to `/task`, so `/task`'s own rules apply.
-- If the feedback request is too vague to act on, ask me one focused clarifying question before setting anything up.
+- If the feedback request is too vague to act on, ask me one focused clarifying question before setting anything up. Under `--no-implement` an empty request is not vague — it means the verifier infers intent from the diff and the PR body.
+- `--no-implement` together with `--no-verify` leaves `/task` nothing to do but `/clean` and `/pr`. That is legal — it re-cleans a branch and refreshes its PR — but name it in the report so nobody expects a verdict.
 - Report the branch name up front and the PR number/URL at the end (from `/task`/`/pr`). <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
 
 ## Close the run in a text-only turn

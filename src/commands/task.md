@@ -1,6 +1,6 @@
 ---
 description: Take a task from criteria to PR — set up an isolated branch/worktree, implement, then /clean and /pr (inline, or in one subagent with --sub)
-argument-hint: "[--here|-h] [--base <branch>] [--draft|-d] [--sub|-s] [--no-verify] [--add|-a <command + prompt>[, <command + prompt>]] <task criteria>"
+argument-hint: "[--here|-h] [--base <branch>] [--draft|-d] [--sub|-s] [--no-verify] [--no-implement] [--add|-a <command + prompt>[, <command + prompt>]] <task criteria>"
 ---
 
 Take a task from a plain-language description all the way to an open PR — feature, bug fix, update, refactor, anything. The end goal is always a PR, and I always run `/clean` before `/pr`.
@@ -28,6 +28,7 @@ The task is the text in the `<command-args>` block above. Parse leading flags of
 - `--draft` / `-d` — open the resulting PR as a draft. Passed straight through to `/pr` in step 3. Default is **not** draft. It does **not** keep the worktree around — step 3's teardown still removes it.
 - `--sub` / `-s` — run Step 3's `/clean` + `/pr` stage in **one fresh subagent** instead of inline. Default is **inline**: this command spawns no subagents of its own unless you ask for one.
 - `--no-verify` — skip Step 2.6's closed-loop check against the running app. Default is **on**, and the step skips itself anyway where the repo has no app to boot or the diff serves nothing.
+- `--no-implement` — the mirror of `--no-verify`: skip Step 2 and implement nothing. Steps 1, 1.5, 2.5, 2.6, 3 and 4 run unchanged over the work the branch already carries. **The task criteria change meaning under this flag:** they are no longer what to build but what the verifier should prove, and Step 2.6 hands them to the `mycommand-verifier` subagent as the intent to demonstrate. They are optional — with none supplied, the verifier infers intent from the diff and the PR body, as `/verify` does. Step 3's `hasWork` check is still the guard: a branch with commits gets `/clean` and `/pr`, which is what attaches the screenshots Step 2.6 recorded, and a branch with none stops without opening an empty PR — no second bail-out. Step 2.6 may still commit repairs, as it always could. The flag is normally reached through `/fb --no-implement` rather than typed here: `/task` can only cut a new branch (`--base`) or stay on the current one (`--here`), and verifying existing work means checking an *existing* branch out into a worktree, which is what `/fb --target <branch>` does and this command cannot. With `--no-verify` as well, the run does nothing but `/clean` and `/pr` — legal, but say so in the report. Teardown ownership does not change: `/fb` owns it for `--target`, nobody does for `--here`.
 - `--add` / `-a` — register one or more commands available to the user for the agent to weave into this `/task` run, each paired with a prompt that guides its use. See Step 0 below.
 - Anything not a recognized flag is part of the task criteria.
 
@@ -89,6 +90,8 @@ The generic fallback:
 Treat typecheck errors like "cannot find generated module" or a missing `*.gen.ts` as environment setup, not code bugs — bootstrap, then re-typecheck.
 
 ## Step 2 — Implement the task
+
+**`--no-implement` skips this step whole.** Write nothing, commit nothing, run no `verify` here — the branch already carries the work, and Step 2.5 onward verifies it as it stands. Restate the criteria in one line as what the verifier will be asked to prove, or say none were given, then go straight to Step 2.5.
 
 <!-- include-block: shared/batched-discovery.md -->
 ### Discovery runs as one batched pass
@@ -172,7 +175,10 @@ Step 2.5.
    criteria**, the changed-file list, the run contract (or the detected boot), the
    `playwright-cli` command when `my-command-tools doctor` reports `playwright.installed`, and
    the `shotsDir` Step 1's `worktree begin` reported. Once — every later round is a
-   `SendMessage` to that same live agent, against that same booted server.
+   `SendMessage` to that same live agent, against that same booted server. Under
+   `--no-implement` the criteria are the intent to demonstrate rather than a build spec, and
+   when none were given, say so and let the verifier infer intent from the diff and the PR
+   body.
 3. **Read the verdict**, not the logs. It replies with `green`, `red`, `unverified`, or
    `skipped`, a driver tier, an `exercised` line, an evidence path, and the screenshots it
    saved. Open the path only if you need it.
