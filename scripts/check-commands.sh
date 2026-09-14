@@ -526,9 +526,9 @@ if ! node scripts/check-doc-snippets.mjs; then
   fail=1
 fi
 
-# 18b. CHANGELOG.md bullets in the newest two dated sections stay under 80 words, the gate
-# behind src/shared/changelog-entry-shape.md. Without it one bloated entry sets the style for
-# every later one, because /changelog reads the existing entries first.
+# 18b. CHANGELOG.md bullets in the newest two dated sections stay under 80 words
+# (src/shared/changelog-entry-shape.md). /changelog reads existing entries first, so one
+# bloated entry would otherwise become the next one's template.
 if ! node scripts/check-changelog.mjs; then
   fail=1
 fi

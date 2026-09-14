@@ -1,11 +1,7 @@
 #!/usr/bin/env node
-// Hold CHANGELOG.md bullets to the shape src/shared/changelog-entry-shape.md prescribes.
-//
-// The shape says 2 to 3 sentences under 60 words; this gate fails a bullet over 80, so a
-// bullet that drifted past the target by a sentence still passes and one that became a
-// design doc does not. Only the top two dated sections are checked: older entries are
-// history, and rewriting them to satisfy a rule that did not exist when they were written
-// would be its own change. The shape and the gate are described in docs/features/changelog.md.
+// Fail any CHANGELOG.md bullet over 80 words in the newest two dated sections. The shape
+// (src/shared/changelog-entry-shape.md) targets 60; older sections are left as history.
+// Rationale in docs/features/changelog.md.
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';

@@ -1,6 +1,5 @@
-// The changelog gate reads the newest two dated sections and fails a bullet over 80 words.
-// It runs under `pnpm test`, which is what `my-command-tools verify` discovers, so a bloated
-// entry fails the branch before /pr rather than being noticed in review.
+// Runs the changelog gate under `pnpm test`, so `my-command-tools verify` catches an
+// oversized bullet before /pr.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
