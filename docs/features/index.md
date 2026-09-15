@@ -40,6 +40,7 @@ Add one with `okq new feature "<title>"`.
 | trim | [trim.md](trim.md) |
 | truncate | [truncate.md](truncate.md) |
 | verify | [verify.md](verify.md) |
+| warm | [warm.md](warm.md) |
 | wayfinder | [wayfinder.md](wayfinder.md) |
 | work | [work.md](work.md) |
 <!-- okq:index:end -->
