@@ -1,9 +1,12 @@
 ---
 description: Register this session with the claude proxy's cache-warming endpoint and report the registration as pending
+argument-hint: "[--TTL <hours>]"
 allowed-tools: Bash(curl:*)
 ---
 
-Register this Claude Code session with the claude proxy's cache-warming control endpoint, so that a resume after a break can reuse a warm prompt cache instead of paying to rebuild one. The whole command is a single HTTP request. It takes no arguments, reads no files, keeps no state, and needs no teardown — the registration is scoped to this session and expires on its own.
+Register this Claude Code session with the claude proxy's cache-warming control endpoint, so that a resume after a break can reuse a warm prompt cache instead of paying to rebuild one. The whole command is a single HTTP request. It reads no files and keeps no state, and it takes one optional argument: `--TTL <hours>`, how long to hold the cache open for. The registration is scoped to this session and expires on its own, so an ordinary run leaves nothing to undo — but it can be released early when the user asks, and the Notes say how.
+
+Your input is the text in the `<command-args>` block above: an optional `--TTL <hours>` and nothing else.
 
 <!-- include: shared/closing-turn-anchor.md -->**Before the first tool call, anchor the way this run ends.** Put "close the run in a text-only turn" in the harness todo/task list as its own final item — worded on its own, never folded into the work it follows. The todo list is live session state that a compaction carries forward; this prompt is not, so once this run is summarized that item is the only surviving record that an outcome is still owed. **A run another command invoked inline with the `Skill` tool anchors its handback instead**, worded as "hand back to the invoking command in its next turn": a nested run that spends a text-only turn ends the whole assistant turn and strands every step its parent still owes, so the item it carries must not tell it to. A run the user invoked directly, and one dispatched as a subagent, both anchor the text-only close. **Resolve the item in the same tool-call turn as the run's last piece of real work** — the teardown, the final `verify`, the closing `gh` call — so the anchor is already marked completed when that turn returns and the only thing left for the run to do is speak. **Never leave marking it as a call of its own after the work ends.** A run whose last scheduled action is a bookkeeping tool call ends on that call: the mark lands, the message that was meant to follow it does not, and the run records no outcome — the exact failure this anchor exists to prevent, arriving through the anchor itself. Compose the closing message against a task list that is already clean, and if the anchor somehow survives the work, close it alongside whatever you are already calling rather than scheduling a turn for it — a still-open anchor is never a reason to end the run on a tool call.<!-- /include -->
 
@@ -20,28 +23,40 @@ Register this Claude Code session with the claude proxy's cache-warming control 
 
 ## Steps
 
-1. **Send exactly one request.** Run this, and nothing else:
+1. **Decide the body from the invocation, before sending anything.** `--TTL <hours>` is the only argument, and the number after it is the window to hold this session's cache open for. **Absent the flag, send no `hours` key at all** — the proxy has its own default and applying it is its job, so inventing a number here silently overrides an operator's setting with a guess.
+
+2. **Send exactly one request.** With no `--TTL`, run this and nothing else:
 
    ```bash
    curl -s -XPOST http://127.0.0.1:${CLAUDE_PROXY_PORT:-8787}/__warm \
-     -d "{\"sessionId\":\"$CLAUDE_CODE_SESSION_ID\",\"hours\":8}"
+     -d "{\"sessionId\":\"$CLAUDE_CODE_SESSION_ID\"}"
    ```
 
-   Both variables are read from the environment by the shell, so pass the line through unchanged: `CLAUDE_CODE_SESSION_ID` is set by Claude Code, and `CLAUDE_PROXY_PORT` falls back to `8787`, which is the proxy's own default. Never substitute a literal port or paste a session id in place of either.
+   With `--TTL 12`, add `hours` and send that instead — one request either way, never both:
 
-   `hours` is `8`, and it is not yours to tune. The proxy's own recommendation is lower; the operator chose 8 deliberately, and this command ships the number they chose.
+   ```bash
+   curl -s -XPOST http://127.0.0.1:${CLAUDE_PROXY_PORT:-8787}/__warm \
+     -d "{\"sessionId\":\"$CLAUDE_CODE_SESSION_ID\",\"hours\":12}"
+   ```
 
-2. **Report the registration as pending, and claim nothing past it.** A successful response means the proxy **recorded** the registration, not that anything is being kept warm. The registration arms only when a real request from this session matches it, and the proxy drops it after 2 minutes if none does. So report three things and stop: it is pending, it arms on the next matching request from this session, and it expires in 2 minutes if no request matches.
+   Write the number the invocation gave, literally, in place of `12`. Both variables are read from the environment by the shell, so pass the rest of the line through unchanged: `CLAUDE_CODE_SESSION_ID` is set by Claude Code, and `CLAUDE_PROXY_PORT` falls back to `8787`, which is the proxy's own default. Never substitute a literal port or paste a session id in place of either.
+
+3. **Report the registration as pending, and claim nothing past it.** A successful response means the proxy **recorded** the registration, not that anything is being kept warm. The registration arms only when a real request from this session matches it, and the proxy drops it after 2 minutes if none does. So report three things and stop: it is pending, it arms on the next matching request from this session, and it expires in 2 minutes if no request matches.
+
+   **State the granted window as the response's `hours` says it, in hours, and leave it there.** The body carries `requestedHours` beside it, and the two agree — the proxy grants what it is asked for — so there is no ceiling to mention and nothing was clamped. Say what the registration is good for; do not narrate the arithmetic behind it.
 
    **Never write "session kept warm", "cache warmed", or any other wording that reports the work as finished.** A pending registration nothing matches expires silently, with no second message to correct the record — so that wording is wrong in precisely the case where it matters, and right only by luck in the rest. Where the response body says something more specific than the three facts above, quote it; otherwise those three facts are the whole report.
 
-3. **Treat a refused connection as "the proxy is not running."** Say that in one line and stop. Do not retry, do not loop, do not wait and try again, and do not reach for another port — nothing about a refused connection changes on a second attempt, and the fallback port is already in the command. Carry on with whatever else the run was doing: registration is an optimization, so its absence costs speed and breaks nothing.
+4. **Treat a `400` as a bad `--TTL`, and do not send a second request.** The proxy rejects a TTL that is not a positive number, so a `400` means the invocation asked for one — zero, a negative, or something that is not a number at all. Report it as a usage error, quote what the proxy said, and stop. Re-sending it unchanged fails identically, and re-sending it with a number nobody asked for registers a window the user did not choose.
+
+5. **Treat a refused connection as "the proxy is not running."** Say that in one line and stop. Do not retry, do not loop, do not wait and try again, and do not reach for another port — nothing about a refused connection changes on a second attempt, and the fallback port is already in the command. Carry on with whatever else the run was doing: registration is an optimization, so its absence costs speed and breaks nothing.
 
 ## Notes
 
 - **Register when you are actually stepping away, rather than at session start.** The campaign that built this endpoint measured how often a session registered up front is ever resumed and found the rate below break-even: most such registrations expire unused. Reached as a `/my-command:task --add` entry it fires at the start of a run anyway, which one request is cheap enough to justify; invoked by hand, invoke it on the way out the door.
 - **One request is the entire behaviour.** No repository reading, no state file, no follow-up poll to see whether it armed, and no second call to confirm the first.
-- **Nothing needs undoing, but unregistering is possible.** There is no teardown step — the registration expires by itself at its deadline, and the proxy's state is in memory only, so restarting the proxy clears every registration too. When the user asks to stop warming a session before then, send the same endpoint a `DELETE`:
+- **A longer `--TTL` is not free.** An armed registration pings until its deadline whether or not anyone comes back, so the window is a bet on being resumed. Pass the flag when the user names how long they are stepping away for; otherwise let the proxy's default stand.
+- **The registration ends by itself, and it can also be ended early.** Its deadline is the ordinary ending, and the proxy's state is in memory only, so restarting the proxy clears every registration too — which is why a run that registers has no teardown step of its own. But early release exists and is a real option: the claude-proxy dashboard lists the live registrations and releases any of them, and the same endpoint takes a `DELETE`:
 
   ```bash
   curl -s -XDELETE http://127.0.0.1:${CLAUDE_PROXY_PORT:-8787}/__warm \

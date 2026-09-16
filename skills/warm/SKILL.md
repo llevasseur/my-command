@@ -7,10 +7,11 @@ description: Register the current session with the claude proxy's cache-warming 
 
 Ask the claude proxy to hold this session's prompt cache open, so returning after
 a break reuses a warm cache instead of paying to rebuild one. The workflow is a
-single HTTP request made with the shell tool. It takes no arguments, reads no
-files, writes no state, and needs nothing undone afterwards — the registration is
-scoped to one session and expires by itself. It *can* be released early when the
-user asks; the last section before the closing turn says how.
+single HTTP request made with the shell tool. It reads no files and writes no
+state, and it takes one optional argument: `--TTL <hours>`, how long to hold the
+cache open for. The registration is scoped to one session and expires by itself,
+so an ordinary run leaves nothing undone — but it *can* be released early when
+the user asks, and the last section before the closing turn says how.
 
 ## Resolve the session id first
 
@@ -26,18 +27,32 @@ none, because it reports success while warming a session that does not exist.
 
 ## Send one request
 
+With no `--TTL`, send the session id alone and let the proxy apply its own
+default window:
+
 ```bash
 curl -s -XPOST http://127.0.0.1:${CLAUDE_PROXY_PORT:-8787}/__warm \
-  -d "{\"sessionId\":\"$CLAUDE_CODE_SESSION_ID\",\"hours\":8}"
+  -d "{\"sessionId\":\"$CLAUDE_CODE_SESSION_ID\"}"
 ```
 
-Hand that line to the shell unchanged so the shell expands both variables.
-`CLAUDE_PROXY_PORT` falls back to `8787`, the proxy's own default, so a literal
-port never belongs in the command.
+With `--TTL 12`, carry the number in an `hours` key and send that instead — one
+request either way, never both:
 
-The window is `8` hours. The proxy's own recorded recommendation is lower; the
-operator chose 8 on purpose, and this workflow sends what they chose. Do not tune
-it down to match the recommendation.
+```bash
+curl -s -XPOST http://127.0.0.1:${CLAUDE_PROXY_PORT:-8787}/__warm \
+  -d "{\"sessionId\":\"$CLAUDE_CODE_SESSION_ID\",\"hours\":12}"
+```
+
+Write the number the invocation gave, literally, in place of `12`. Never invent
+one when the flag is absent: the proxy's default is the operator's setting, and a
+guessed number overrides it silently. Hand the rest of the line to the shell
+unchanged so it expands both variables. `CLAUDE_PROXY_PORT` falls back to `8787`,
+the proxy's own default, so a literal port never belongs in the command.
+
+A `400` means the requested TTL was not a positive number. Report it as a usage
+error, quote what the proxy said, and stop — re-sending it unchanged fails the
+same way, and re-sending it with a substituted number registers a window nobody
+asked for.
 
 ## Report it as pending, never as warm
 
@@ -48,6 +63,11 @@ arrives. Report exactly that: the registration is pending, it arms on the next
 matching request from this session, and it expires in 2 minutes unmatched. Quote
 the response body where it says something more specific; otherwise those three
 facts are the whole report.
+
+State the granted window as the response's `hours` says it, in hours. The body
+carries `requestedHours` beside it and the two agree — the proxy grants what it
+is asked for — so no ceiling applies and nothing was clamped. Say what the
+registration is good for rather than narrating the arithmetic behind it.
 
 Never report "session kept warm", "cache warmed", or any phrasing that presents
 the work as finished. A pending registration that nothing matches expires in
@@ -74,7 +94,9 @@ invoke it on the way out.
 
 The registration expires on its own at the deadline, and the proxy keeps its
 state in memory only, so restarting the proxy clears every registration too.
-Neither is needed in the ordinary case.
+Neither is needed in the ordinary case — but early release exists and is a real
+option, so never tell the user a registration cannot be undone. The claude-proxy
+dashboard lists the live registrations and releases any of them.
 
 When the user asks to stop warming a session before then, send the same endpoint
 a `DELETE`:
