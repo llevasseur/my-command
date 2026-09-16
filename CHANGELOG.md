@@ -7,6 +7,10 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 ## 2026-09-16
 
+### Added
+
+- **`/warm` takes an optional `--TTL <hours>`.** The number rides the POST body as `hours`, and without the flag the command sends none so the proxy applies its own default. The granted window is reported from the response's `hours`, and a non-positive or non-numeric value comes back as a `400` the command surfaces as a usage error without retrying. See `docs/features/warm.md`.
+
 ### Fixed
 
 - **`/warm` no longer claims a registration cannot be cancelled.** It asserted "there is no way to unregister" while `DELETE /__warm` shipped alongside it and works, which would have stopped an agent asked to release one. The command, skill and feature doc now document that `DELETE`, and note that closing a session does not release it. See `docs/features/warm.md`.
