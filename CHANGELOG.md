@@ -9,10 +9,12 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 ### Added
 
+- **The screenshot keep is pruned to seven days.** `worktree end` now ages it out on its way past, dropping any branch whose newest file is older than the cutoff, images and verdict together. `shots prune [--max-age-days <n>] [--dry-run]` does the same on demand. See `docs/features/pr.md`.
 - **`/warm` takes an optional `--TTL <hours>`.** The number rides the POST body as `hours`, and without the flag the command sends none so the proxy applies its own default. The granted window is reported from the response's `hours`, and a non-positive or non-numeric value comes back as a `400` the command surfaces as a usage error without retrying. See `docs/features/warm.md`.
 
 ### Fixed
 
+- **A branch verified twice no longer publishes its first run's screenshots as unlabelled.** Each run records only the shots it took, and `pr` read the newest verdict file alone, so every earlier image lost its label with the read-back sitting in the file beside it. The records now merge, the newest still deciding the tier. See `docs/features/pr.md`.
 - **`/warm` no longer claims a registration cannot be cancelled.** It asserted "there is no way to unregister" while `DELETE /__warm` shipped alongside it and works, which would have stopped an agent asked to release one. The command, skill and feature doc now document that `DELETE`, and note that closing a session does not release it. See `docs/features/warm.md`.
 
 ## 2026-09-15

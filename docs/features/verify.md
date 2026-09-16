@@ -116,7 +116,9 @@ the worktree, created and reported by `my-command-tools worktree begin` — and
 `worktree end` moves them to `~/.my-command/shots/<repo>/<branch>/` before the
 workspace is removed. `.my-command/` is ignored device-wide through the user's
 global git excludes, so the directory can sit inside the checkout without turning
-up in any branch's diff.
+up in any branch's diff. The keep holds a branch for seven days from its newest
+file; `worktree end` prunes past that on its way out, so a PR that needs the images
+republished wants them within the week.
 
 `/verify` Step 6 lists the saved files by path. A screenshot whose path was never
 reported is evidence nobody reads.

@@ -3,7 +3,7 @@
 // the rendered section looks like. The publish itself is git plumbing over a real remote
 // and is covered by the `pr` verb's own tests.
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
@@ -12,6 +12,8 @@ import {
   commentId,
   groupShots,
   isBrowserTier,
+  keepBranchDirs,
+  pruneKeep,
   readVerdict,
   renderShots,
   sideOf,
@@ -258,4 +260,133 @@ test('an attached file with no reference at all is a failure', () => {
 test('a comment URL names the comment the body is read back from', () => {
   assert.equal(commentId('https://github.com/o/r/pull/7#issuecomment-3421'), 3421);
   assert.equal(commentId('https://github.com/o/r/pull/7'), null);
+});
+
+/**
+ * Two verdict files in one shots directory, as a branch verified twice leaves them.
+ * `older` is stamped a day behind `newer` so the read order is the file times, not the
+ * order the directory happens to list.
+ * @param {object} older @param {object} newer @returns {string} the workspace root
+ */
+function twiceVerified(older, newer) {
+  const dir = scratch();
+  const shots = join(dir, '.my-command', 'shots');
+  mkdirSync(shots, { recursive: true });
+  writeFileSync(join(shots, 'verdict.json'), JSON.stringify(older));
+  writeFileSync(join(shots, 'verdict-2.json'), JSON.stringify(newer));
+  const day = 24 * 60 * 60;
+  const now = Date.now() / 1000;
+  utimesSync(join(shots, 'verdict.json'), now - day, now - day);
+  utimesSync(join(shots, 'verdict-2.json'), now, now);
+  return dir;
+}
+
+test('an earlier run’s read-back survives a later run recording its own', () => {
+  const dir = twiceVerified(
+    { tier: 'playwright', verdict: 'green', shots: [{ name: 'banner.png', label: 'Banner', description: 'Amber.' }] },
+    { tier: 'playwright', verdict: 'green', shots: [{ name: 'icon.png', label: 'Icon', description: 'White.' }] },
+  );
+  const read = readVerdict(dir, 'fix/x');
+  assert.deepEqual(read?.shots?.map((note) => note.name).sort(), ['banner.png', 'icon.png']);
+});
+
+test('the newest record decides the tier and verdict, never an older one', () => {
+  const dir = twiceVerified(
+    { tier: 'static', verdict: 'red', rounds: 9, shots: [{ name: 'a.png', label: 'A', description: 'A.' }] },
+    { tier: 'playwright', verdict: 'green', rounds: 2 },
+  );
+  const read = readVerdict(dir, 'fix/x');
+  assert.equal(read?.tier, 'playwright');
+  assert.equal(read?.verdict, 'green');
+  assert.equal(read?.rounds, 2);
+  // The older record contributed its note without contributing its tier.
+  assert.deepEqual(
+    read?.shots?.map((note) => note.name),
+    ['a.png'],
+  );
+});
+
+test('the newest note for a shot wins, and a gap said twice is listed once', () => {
+  const dir = twiceVerified(
+    {
+      tier: 'playwright',
+      verdict: 'red',
+      shots: [{ name: 'icon.png', label: 'Stale', description: 'Was solid.' }],
+      gaps: ['Mobile widths were not captured.', 'Dark mode was not reached.'],
+    },
+    {
+      tier: 'playwright',
+      verdict: 'green',
+      shots: [{ name: 'icon.png', label: 'Fresh', description: 'Now white.' }],
+      gaps: ['Mobile widths were not captured.'],
+    },
+  );
+  const read = readVerdict(dir, 'fix/x');
+  assert.deepEqual(read?.shots, [{ name: 'icon.png', label: 'Fresh', description: 'Now white.' }]);
+  assert.deepEqual(read?.gaps, ['Mobile widths were not captured.', 'Dark mode was not reached.']);
+});
+
+/**
+ * A keep holding `branches`, each a relative path under the root, with every file in it
+ * stamped `ageDays` old.
+ * @param {{path: string, ageDays: number}[]} branches @returns {string} the keep root
+ */
+function keep(branches) {
+  const root = scratch();
+  for (const { path, ageDays } of branches) {
+    const dir = join(root, path);
+    mkdirSync(dir, { recursive: true });
+    for (const name of ['home.png', 'verdict.json']) {
+      const file = join(dir, name);
+      writeFileSync(file, 'pixels');
+      const at = Date.now() / 1000 - ageDays * 24 * 60 * 60;
+      utimesSync(file, at, at);
+    }
+  }
+  return root;
+}
+
+test('a branch directory is the one holding files, not the levels routing to it', () => {
+  const root = keep([
+    { path: join('repo', 'fix', 'a'), ageDays: 0 },
+    { path: join('repo', 'solo'), ageDays: 0 },
+  ]);
+  mkdirSync(join(root, 'repo', 'fix', 'a', 'round-2'));
+  writeFileSync(join(root, 'repo', 'fix', 'a', 'round-2', 'nested.png'), 'pixels');
+  // The nested round directory sits inside a branch, so the walk stops before reaching it.
+  assert.deepEqual(keepBranchDirs(root), [join(root, 'repo', 'fix', 'a'), join(root, 'repo', 'solo')].sort());
+});
+
+test('a branch older than the cutoff goes whole, and a fresh one stays', () => {
+  const root = keep([
+    { path: join('repo', 'fix', 'old'), ageDays: 30 },
+    { path: join('repo', 'fix', 'new'), ageDays: 1 },
+  ]);
+  const report = pruneKeep({ root, maxAgeDays: 7 });
+  assert.equal(report.removedCount, 1);
+  assert.equal(report.kept, 1);
+  assert.equal(existsSync(join(root, 'repo', 'fix', 'old')), false);
+  assert.equal(existsSync(join(root, 'repo', 'fix', 'new', 'verdict.json')), true);
+});
+
+test('emptying a branch takes its now-empty parents with it, and never the root', () => {
+  const root = keep([{ path: join('repo', 'fix', 'only'), ageDays: 30 }]);
+  const report = pruneKeep({ root, maxAgeDays: 7 });
+  assert.deepEqual(report.emptied, [join(root, 'repo', 'fix'), join(root, 'repo')]);
+  assert.equal(existsSync(root), true);
+});
+
+test('a dry run reports the same removal and takes none', () => {
+  const root = keep([{ path: join('repo', 'fix', 'old'), ageDays: 30 }]);
+  const report = pruneKeep({ root, maxAgeDays: 7, dryRun: true });
+  assert.equal(report.removedCount, 1);
+  assert.equal(report.dryRun, true);
+  assert.deepEqual(report.emptied, []);
+  assert.equal(existsSync(join(root, 'repo', 'fix', 'old', 'home.png')), true);
+});
+
+test('a keep that was never written prunes nothing rather than throwing', () => {
+  const report = pruneKeep({ root: join(scratch(), 'never-written'), maxAgeDays: 7 });
+  assert.equal(report.removedCount, 0);
+  assert.equal(report.kept, 0);
 });

@@ -162,8 +162,9 @@ The report:
 - the evidence path,
 - **the saved screenshots, each by path.** They outlive this run — `worktree end` moves them to
   `~/.my-command/shots/<repo>/<branch>/`, and `/pr` embeds them in the PR when the recorded tier
-  is a browser — so the report is where someone learns they exist. A screenshot nobody was told
-  the path of is evidence nobody reads. Carry the verifier's `saw:` label and sentence for each
+  is a browser — so the report is where someone learns they exist. They do not outlive it by
+  much: the keep is pruned to seven days, aged from a branch's newest file. A screenshot nobody
+  was told the path of is evidence nobody reads. Carry the verifier's `saw:` label and sentence for each
   one into the report beside its path: they are what make the image a looked-at observation
   rather than a file.
 
