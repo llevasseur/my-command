@@ -700,7 +700,7 @@ test('splitting the read leaves the merged verdict exactly as it was', () => {
     found.map((entry) => entry.run),
     ['run-2', 'run-1'],
   );
-  // The pairing rides alongside the record, so nothing names its own directory on disk.
+  // Nothing names its own directory on disk; the pairing is read-time only.
   assert.equal('run' in found[0].record, false);
 
   const merged = readVerdict(work, branch);

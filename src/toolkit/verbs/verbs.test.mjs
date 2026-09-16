@@ -1260,8 +1260,7 @@ test('shots read breaks the branch down by run and names the one to compare agai
     false,
   );
   assert.equal(existsSync(String(r.runs[0].shots[0].path)), true);
-  // Both rounds recorded, so neither is still open and the newest is what a fresh round
-  // compares against. A round that has opened its own directory skips past it.
+  // Both rounds recorded, so neither is still open and the newest is the one to compare against.
   assert.equal(r.baseline?.run, 'run-2');
   assert.deepEqual(
     r.baseline?.shots.map((shot) => shot.description),

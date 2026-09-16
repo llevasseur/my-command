@@ -160,8 +160,7 @@ function read(cwd) {
     // Named for the run each came from, since two runs can hold the same filename.
     shots: findShots(cwd, branch).map((s) => s.name),
     runs,
-    // What a fresh round compares itself against, resolved here so no caller has to work out
-    // which of `runs` is theirs and which is an earlier round's.
+    // What a fresh round compares itself against.
     baseline: baselineOf(runs),
   };
 }
