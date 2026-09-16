@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-09-15
+
+### Added
+
+- **`/warm` registers a session with the claude proxy's cache-warming endpoint.** One curl to `/__warm` with an 8-hour window, no arguments and no teardown. It reports the registration as pending rather than warm, because the proxy arms it only when a real request matches and drops it after 2 minutes if none does. See `docs/features/warm.md`.
+
 ## 2026-09-14
 
 ### Added
