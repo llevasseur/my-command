@@ -396,12 +396,9 @@ function end(ctx, cwd) {
 }
 
 /**
- * Age the keep out, right after this teardown added to it.
- *
- * Here rather than on a timer because a timer is device configuration somebody has to
- * install, and this is the one moment the keep is known to have just grown. A prune that
- * throws is reported and swallowed: removing the worktree is what the caller asked for,
- * and failing that over a housekeeping sweep would strand the checkout.
+ * Age the keep out, right after this teardown added to it — here rather than on a timer,
+ * which would be device configuration somebody has to install. A prune that throws is
+ * reported and swallowed, since failing a teardown over housekeeping strands the checkout.
  * @returns {object}
  */
 function sweep() {

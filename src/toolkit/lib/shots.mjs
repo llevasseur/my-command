@@ -176,10 +176,8 @@ export function keepBranchDirs(root) {
 }
 
 /**
- * Remove `dir` and every parent it leaves empty, stopping short of `root`.
- *
- * Without this a pruned `<repo>/fix/<branch>` leaves `<repo>/fix` and `<repo>` standing
- * empty for good, since nothing else ever revisits them.
+ * Remove every parent `dir` leaves empty, stopping short of `root`. Nothing else revisits
+ * an emptied `<repo>/fix`, so it would stand for good.
  * @param {string} dir @param {string} root @returns {string[]} the parents removed
  */
 function pruneEmptyUp(dir, root) {
