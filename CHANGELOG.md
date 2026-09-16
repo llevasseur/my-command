@@ -10,6 +10,7 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 ### Added
 
 - **The screenshot keep is pruned to seven days.** `worktree end` now ages it out on its way past, dropping any branch whose newest file is older than the cutoff, images and verdict together. `shots prune [--max-age-days <n>] [--dry-run]` does the same on demand. See `docs/features/pr.md`.
+- **`/warm` takes an optional `--TTL <hours>`.** The number rides the POST body as `hours`, and without the flag the command sends none so the proxy applies its own default. The granted window is reported from the response's `hours`, and a non-positive or non-numeric value comes back as a `400` the command surfaces as a usage error without retrying. See `docs/features/warm.md`.
 
 ### Fixed
 
