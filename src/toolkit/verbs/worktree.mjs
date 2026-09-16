@@ -65,12 +65,9 @@ function dirFor(branch) {
 /**
  * Settle the worktree's screenshots before the checkout goes.
  *
- * This run's own images are already in the keep — `begin` pointed the verifier straight at
- * `<keep>/<repo>/<branch>/run-N/`, so nothing here is what makes them survive. What is left
- * is the sweep: a run that started before the keep held run directories, or any tool still
- * writing to `.my-command/shots/`, would otherwise go with the directory. Those strays land
- * in a **fresh** run directory rather than in this run's, because they are some other run's
- * images and this run's notes do not describe them.
+ * This run's own images are already in the keep, so nothing here is what makes them survive.
+ * What is left is the sweep, and its strays land in a **fresh** run directory rather than in
+ * this run's: they are some other run's images and this run's notes do not describe them.
  *
  * A slashed branch becomes **nested** directories, one per segment, rather than one
  * flattened name: git's ref namespace forbids a branch being both a ref and another
@@ -321,9 +318,7 @@ function begin(ctx, cwd) {
 function report(ctx, made) {
   const { path, branch } = made;
 
-  // Both the created and the `--existing` path land here, so both get a run directory. It is
-  // opened in the keep rather than in the checkout: a screenshot written here is already
-  // where it will be read from, so no teardown has to cooperate for it to survive.
+  // Both the created and the `--existing` path land here, so both get a run directory.
   const shotsDir = runDir(path, branch);
 
   // Check the script in the new worktree, which is where it runs. The main checkout can

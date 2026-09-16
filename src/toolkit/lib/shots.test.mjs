@@ -76,8 +76,7 @@ test('two spellings of one side fill the cell once, the first winning', () => {
 });
 
 test('a trailing number is the verifier’s own naming, not a collision to undo', () => {
-  // Nothing renames a screenshot into the keep any more, so `-2` is a view of its own
-  // rather than a second capture of `home`.
+  // Nothing renames a screenshot into the keep any more, so `-2` is a view of its own.
   assert.deepEqual(sideOf('home-before-2.png'), { view: 'home-2', side: 'before' });
 });
 

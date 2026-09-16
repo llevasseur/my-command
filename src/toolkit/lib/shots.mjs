@@ -46,14 +46,7 @@ import { basename, dirname, extname, join } from 'node:path';
 import { ownerToken } from './gh.mjs';
 import { run as exec } from './proc.mjs';
 
-/**
- * Where a worktree's screenshots used to accumulate, relative to its root.
- *
- * Nothing writes here any more — `worktree begin` reports a run directory in the keep
- * instead. It is still read, and still swept up by `worktree end`, because a run that
- * started before that change, or any tool that still writes in-tree, would otherwise be
- * stranded in a directory about to be removed.
- */
+/** Where a worktree's screenshots used to accumulate, relative to its root. See `sweepInTree`. */
 const SHOTS = ['.my-command', 'shots'];
 
 /** Where a workspace remembers which run directories it opened, relative to its root. */
@@ -267,8 +260,8 @@ export function openedRunDirs(cwd, branch) {
  *
  * Nothing this toolkit reports writes there any more, so this is the fallback and only the
  * fallback: a run that began before the keep held run directories, or a capture tool pointed
- * at the checkout by something other than `shotsDir`. Without it those images go with the
- * worktree. An entry whose name is already taken in `dir` is left where it is rather than
+ * at the checkout by something other than `shotsDir`, whose images would otherwise go with
+ * the worktree. An entry whose name is already taken in `dir` is left where it is rather than
  * written over — two files under one name are two captures, and `worktree end` sweeps what
  * stays behind into a directory where it has the name to itself.
  * @param {string} cwd @param {string} dir @returns {string[]} what moved
