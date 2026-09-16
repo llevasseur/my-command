@@ -112,6 +112,164 @@ export function keepDirFor(cwd, branch) {
   return join(keepRoot(), segment(repoName(cwd)), ...branch.split('/').map(segment));
 }
 
+/** How long a branch's screenshots stay in the keep, in days, when nothing says otherwise. */
+export const KEEP_MAX_AGE_DAYS = 7;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The newest mtime and the total bytes under `dir`, nested.
+ *
+ * A directory's own mtime is not the age of what it holds: removing a child rewrites it,
+ * and a copy across volumes stamps it with the copy's time. The files are what the keep is
+ * keeping, so they are what it is aged by. A directory holding no file at all reports
+ * `newest: null`, which reads as ageless rather than as infinitely old.
+ * @param {string} dir @returns {{newest: number | null, bytes: number}}
+ */
+export function keepContents(dir) {
+  /** @type {number | null} */
+  let newest = null;
+  let bytes = 0;
+  /** @param {string} at */
+  const walk = (at) => {
+    for (const entry of readdirSync(at, { withFileTypes: true })) {
+      const full = join(at, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const { mtimeMs, size } = statSync(full);
+      if (newest === null || mtimeMs > newest) newest = mtimeMs;
+      bytes += size;
+    }
+  };
+  if (existsSync(dir)) walk(dir);
+  return { newest, bytes };
+}
+
+/**
+ * Every branch directory in the keep — the ones holding a run's files rather than routing
+ * to them.
+ *
+ * The layout is `<root>/<repo>/<branch segments…>/`, and a branch name carries however many
+ * segments it carries, so depth is not the test. A directory holding a file directly is:
+ * the intermediate levels hold only directories, and the nested round directories a verifier
+ * writes sit *inside* a branch directory, so descending stops before it reaches them. The
+ * root itself is never one, whatever strays sit in it.
+ * @param {string} root @returns {string[]}
+ */
+export function keepBranchDirs(root) {
+  /** @type {string[]} */
+  const found = [];
+  /** @param {string} dir @param {boolean} isRoot */
+  const walk = (dir, isRoot) => {
+    const entries = readdirSync(dir, { withFileTypes: true });
+    if (!isRoot && entries.some((entry) => entry.isFile())) {
+      found.push(dir);
+      return;
+    }
+    for (const entry of entries) if (entry.isDirectory()) walk(join(dir, entry.name), false);
+  };
+  if (existsSync(root)) walk(root, true);
+  return found.sort();
+}
+
+/**
+ * Remove `dir` and every parent it leaves empty, stopping short of `root`.
+ *
+ * Without this a pruned `<repo>/fix/<branch>` leaves `<repo>/fix` and `<repo>` standing
+ * empty for good, since nothing else ever revisits them.
+ * @param {string} dir @param {string} root @returns {string[]} the parents removed
+ */
+function pruneEmptyUp(dir, root) {
+  /** @type {string[]} */
+  const removed = [];
+  let current = dirname(dir);
+  while (current.length > root.length && current.startsWith(root)) {
+    if (existsSync(current) && readdirSync(current).length > 0) break;
+    if (existsSync(current)) {
+      rmSync(current, { recursive: true, force: true });
+      removed.push(current);
+    }
+    const up = dirname(current);
+    // A path that cannot go further up would spin here rather than ending.
+    if (up === current) break;
+    current = up;
+  }
+  return removed;
+}
+
+/**
+ * @typedef {object} PruneOptions
+ * @property {string} [root]         The keep to prune. Defaults to the device-wide one.
+ * @property {number} [maxAgeDays]   How old a branch's newest file may be. Defaults to 7.
+ * @property {number} [now]          The clock, for tests.
+ * @property {boolean} [dryRun]      Report what would go without removing it.
+ */
+
+/**
+ * @typedef {object} PruneReport
+ * @property {string} root
+ * @property {number} maxAgeDays
+ * @property {string} cutoff             The instant a branch's newest file must beat.
+ * @property {boolean} dryRun
+ * @property {{path: string, newest: string, bytes: number}[]} removed
+ * @property {number} removedCount
+ * @property {string[]} emptied          Parents dropped for having nothing left in them.
+ * @property {number} kept               Branch directories left standing.
+ * @property {number} bytes              Reclaimed, or reclaimable under `dryRun`.
+ */
+
+/**
+ * Drop the branch directories whose newest file is older than `maxAgeDays`.
+ *
+ * Only ever the keep: a live workspace's `.my-command/shots/` belongs to a run still going,
+ * and `worktree end` is what moves it here. A stale directory goes **whole**, images and
+ * verdict files together — a verdict describing images that are gone publishes nothing, and
+ * images with no verdict beside them cannot be published at all, so splitting the two only
+ * ever leaves something useless behind.
+ * @param {PruneOptions} [options] @returns {PruneReport}
+ */
+export function pruneKeep(options = {}) {
+  const { root = keepRoot(), maxAgeDays = KEEP_MAX_AGE_DAYS, now = Date.now(), dryRun = false } = options;
+  const cutoff = now - maxAgeDays * DAY_MS;
+
+  /** @type {{path: string, newest: string, bytes: number}[]} */
+  const removed = [];
+  /** @type {string[]} */
+  const emptied = [];
+  let kept = 0;
+  let bytes = 0;
+
+  for (const dir of keepBranchDirs(root)) {
+    const { newest, bytes: size } = keepContents(dir);
+    // A directory holding no file has no age to judge, so it is left for its parent sweep.
+    if (newest === null || newest >= cutoff) {
+      kept += 1;
+      continue;
+    }
+    removed.push({ path: dir, newest: new Date(newest).toISOString(), bytes: size });
+    bytes += size;
+    if (!dryRun) {
+      rmSync(dir, { recursive: true, force: true });
+      emptied.push(...pruneEmptyUp(dir, root));
+    }
+  }
+
+  return {
+    root,
+    maxAgeDays,
+    cutoff: new Date(cutoff).toISOString(),
+    dryRun,
+    removed,
+    removedCount: removed.length,
+    emptied,
+    kept,
+    bytes,
+  };
+}
+
 /**
  * Every image under `dir`, nested, as paths relative to it.
  * @param {string} dir @returns {string[]}
@@ -198,16 +356,51 @@ export function writeVerdict(cwd, record) {
 }
 
 /**
+ * Fold every record found for one branch into the single verdict `pr` reads, `ordered`
+ * newest first.
+ *
+ * The newest record alone decides what the run *was* — tier, verdict, rounds — because the
+ * tier gates publishing and must never regress to an older run's. All of them together
+ * decide what the screenshots *show*: a record describes only the shots its own round took,
+ * so the notes are a union keyed by shot name, the newest winning a repeated one.
+ * @param {Verdict[]} ordered @returns {Verdict | null}
+ */
+function mergeVerdicts(ordered) {
+  /** @type {Verdict | null} */
+  let merged = null;
+  /** @type {Map<string, ShotNote>} */
+  const notes = new Map();
+  /** @type {Set<string>} */
+  const gaps = new Set();
+  for (const record of ordered) {
+    merged ??= { ...record };
+    for (const note of record.shots ?? []) if (!notes.has(note.name)) notes.set(note.name, note);
+    for (const gap of record.gaps ?? []) gaps.add(gap);
+  }
+  if (!merged) return null;
+  if (notes.size) merged.shots = [...notes.values()];
+  if (gaps.size) merged.gaps = [...gaps];
+  return merged;
+}
+
+/**
  * The verdict recorded for this branch, or null when nothing recorded one.
  *
- * Read from the same two places the screenshots are, newest first, the live workspace
- * beating the keep. A branch verified twice leaves `verdict-2.json` beside
- * `verdict.json`, since `worktree end` suffixes a colliding name into the keep.
+ * Read from the same two places the screenshots are, the live workspace beating the keep
+ * and, inside each, the newest file beating the older ones. A branch verified twice leaves
+ * `verdict-2.json` beside `verdict.json`, since `worktree end` suffixes a colliding name
+ * into the keep.
+ *
+ * **Every record is merged, not just the newest.** A run records only the shots that run
+ * took, so reading one file and stopping published every earlier run's screenshots as
+ * unlabelled with their read-back sitting in the file beside it.
  * @param {string} cwd @param {string} branch
  * @returns {Verdict | null}
  */
 export function readVerdict(cwd, branch) {
   const named = /^verdict(-\d+)?\.json$/;
+  /** @type {Verdict[]} */
+  const records = [];
   for (const dir of [shotsIn(cwd), keepDirFor(cwd, branch)]) {
     if (!existsSync(dir)) continue;
     const found = readdirSync(dir)
@@ -218,13 +411,13 @@ export function readVerdict(cwd, branch) {
       try {
         const parsed = JSON.parse(readFileSync(path, 'utf8'));
         // A tier this repo does not know names no driver, so it answers nothing.
-        if (parsed && TIERS.includes(parsed.tier)) return parsed;
+        if (parsed && TIERS.includes(parsed.tier)) records.push(parsed);
       } catch {
         // A half-written or hand-mangled record is not a verdict; try the next one.
       }
     }
   }
-  return null;
+  return mergeVerdicts(records);
 }
 
 /** Whether a recorded tier means a browser took the screenshots. @param {string} tier */

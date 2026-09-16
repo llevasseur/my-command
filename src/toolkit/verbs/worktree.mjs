@@ -15,7 +15,7 @@ import { extname, join, resolve } from 'node:path';
 import { bool, str } from '../lib/flags.mjs';
 import { run as exec, lines, must, ToolkitError, UsageError } from '../lib/proc.mjs';
 import { defaultBranch, repoRoot, resolveBase } from '../lib/repo.mjs';
-import { keepDirFor, shotsIn } from '../lib/shots.mjs';
+import { keepDirFor, pruneKeep, shotsIn } from '../lib/shots.mjs';
 
 export const usage = `worktree begin --branch <name> [--base <ref>] [--existing] [--bootstrap]
 worktree end --branch <name> [--force] [--no-reap] [--drop-shots]
@@ -31,7 +31,8 @@ worktree list
           either way, for whatever captures the running app.
   end     Remove the worktree for <name>, refusing unless HEAD is on origin.
           Keeps the worktree's screenshots first, under
-          ~/.my-command/shots/<repo>/<branch>/, reported as \`shotsKept\`.
+          ~/.my-command/shots/<repo>/<branch>/, reported as \`shotsKept\`, then ages the
+          keep out and reports that as \`shotsPruned\`. See \`shots prune\`.
           --force        Remove even with unpushed commits or a dirty tree.
           --no-reap      Leave processes rooted in the worktree running.
           --drop-shots   Delete the screenshots instead of keeping them.
@@ -391,7 +392,25 @@ function end(ctx, cwd) {
   if (!removed.ok) throw new ToolkitError('git worktree remove failed', { code: removed.code, stderr: removed.stderr });
   exec('git', ['worktree', 'prune'], { cwd });
 
-  return { removed: true, branch, path: tree.path, pushed, wasDirty: dirty, reaped, ...shots };
+  return { removed: true, branch, path: tree.path, pushed, wasDirty: dirty, reaped, ...shots, shotsPruned: sweep() };
+}
+
+/**
+ * Age the keep out, right after this teardown added to it.
+ *
+ * Here rather than on a timer because a timer is device configuration somebody has to
+ * install, and this is the one moment the keep is known to have just grown. A prune that
+ * throws is reported and swallowed: removing the worktree is what the caller asked for,
+ * and failing that over a housekeeping sweep would strand the checkout.
+ * @returns {object}
+ */
+function sweep() {
+  try {
+    const { removedCount, bytes, kept, maxAgeDays } = pruneKeep();
+    return { removed: removedCount, bytes, kept, maxAgeDays };
+  } catch (error) {
+    return { removed: 0, error: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 /** @param {import('../cli.mjs').Ctx} ctx @param {string} cwd @returns {string} */

@@ -145,6 +145,23 @@ workspace, which is where they still are when `/task` runs `/pr` before its tear
 the device-wide keep, which is where a `--here` run or a second `/pr` after teardown finds
 them. The workspace wins a name collision, being the newer of the two.
 
+**Every verdict file is read, not only the newest.** A branch verified more than once leaves
+`verdict-2.json` beside `verdict.json`, since `worktree end` suffixes a colliding name on its
+way into the keep, and each file describes only the shots its own round took. Reading one and
+stopping published every earlier round's screenshots as unlabelled with their read-back sitting
+in the file next to them. So the records merge: the newest decides the tier and verdict, because
+the tier gates publishing and must not regress to an older run's, and the per-shot notes and gaps
+are unions, the newest winning a repeated shot name. A shot no record ever described is still
+unlabelled — that case is a verifier that skipped its read-back, and the fix is still to record
+its `saw:` line.
+
+The keep is not permanent. `worktree end` ages it out after each teardown, dropping any branch
+whose newest file is older than seven days, images and verdict together. A verdict describing
+images that are gone publishes nothing and images with no verdict cannot be published at all, so
+the two only ever go as a pair. GitHub serves an attachment comment from its own CDN copy, so a
+comment already posted keeps rendering once the local originals expire; what expires is the
+ability to publish them *again*.
+
 Filenames decide the layout. A stem carrying a `before` or `after` marker at either end —
 `home-before.png`, `after_home.png`, `settings.after.png` — pairs into a **before/after
 table**, one row per view, before column then after; a view with only one side still gets

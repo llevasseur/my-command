@@ -7,14 +7,16 @@
 // images it describes.
 import { existsSync } from 'node:fs';
 import { basename } from 'node:path';
-import { list, str } from '../lib/flags.mjs';
+import { bool, list, str } from '../lib/flags.mjs';
 import { UsageError } from '../lib/proc.mjs';
 import { currentBranch, repoRoot } from '../lib/repo.mjs';
 import {
   collectShots,
   findShots,
+  KEEP_MAX_AGE_DAYS,
   noteFor,
   parseShotNote,
+  pruneKeep,
   readVerdict,
   shotsIn,
   TIERS,
@@ -25,6 +27,7 @@ import {
 
 export const usage = `shots record --tier <tier> --verdict <verdict> [--rounds <n>] [--shot <note>]... [--gap <text>]...
 shots read
+shots prune [--max-age-days <n>] [--dry-run]
 
   record  Write ${VERDICT_FILE} into this workspace's .my-command/shots/, recording the
           driver tier and verdict a verification loop ended on, and what the verifier
@@ -39,6 +42,12 @@ shots read
           --gap <text>        One thing this round could not prove. Repeatable.
   read    Report the recorded verdict and the screenshots found for this branch, from the
           live workspace and from ~/.my-command/shots/<repo>/<branch>/ alike.
+  prune   Drop the branches in ~/.my-command/shots/ whose newest file is older than the
+          cutoff, images and verdict files together. Never touches a live workspace's
+          .my-command/shots/, which belongs to a run still going. \`worktree end\` runs
+          this itself, so it rarely needs calling by hand.
+          --max-age-days <n>  How old a branch's newest file may be. Default ${KEEP_MAX_AGE_DAYS}.
+          --dry-run           Report what would go and remove nothing.
 
 \`pr\` embeds a branch's screenshots when this record says a **browser** tier took them —
 the verdict itself never gates it, since a red loop's screenshots are the ones a reviewer
@@ -61,12 +70,23 @@ function oneOf(value, flag, allowed) {
 
 /** @param {import('../cli.mjs').Ctx} ctx */
 export function run(ctx) {
-  const cwd = repoRoot(ctx.cwd);
   const action = ctx.positionals[0];
 
-  if (action === 'record') return record(ctx, cwd);
-  if (action === 'read') return read(cwd);
+  // `prune` reads the device-wide keep, so it answers from outside a repository too.
+  if (action === 'prune') return prune(ctx);
+  if (action === 'record') return record(ctx, repoRoot(ctx.cwd));
+  if (action === 'read') return read(repoRoot(ctx.cwd));
   throw new UsageError(action ? `unknown action \`${action}\`` : 'an action is required', { usage });
+}
+
+/** @param {import('../cli.mjs').Ctx} ctx */
+function prune(ctx) {
+  const given = str(ctx.flags['max-age-days']);
+  const maxAgeDays = given === undefined ? KEEP_MAX_AGE_DAYS : Number(given);
+  if (!Number.isFinite(maxAgeDays) || maxAgeDays < 0) {
+    throw new UsageError(`--max-age-days must be a non-negative number (got \`${given}\`)`, { usage });
+  }
+  return pruneKeep({ maxAgeDays, dryRun: bool(ctx.flags['dry-run']) });
 }
 
 /** @param {import('../cli.mjs').Ctx} ctx @param {string} cwd */

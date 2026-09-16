@@ -31,7 +31,7 @@ noise, what a PR description should say, or whether a failure is worth fixing.
 | `pr` | push, then create or update the branch's PR |
 | `prs view\|list\|checks` | read-only pull-request lookups; never writes |
 | `worktree begin\|end\|reap\|list` | the isolated-workspace lifecycle, and which worktrees have outlived their branch |
-| `shots record\|read` | what a verification loop did — driver tier, verdict, rounds — written beside the screenshots it took, and read back |
+| `shots record\|read\|prune` | what a verification loop did — driver tier, verdict, rounds — written beside the screenshots it took, read back across every run that recorded one, and aged out of the keep after 7 days |
 | `cleanup` | retire a merged branch's local and remote refs, judged against its PR |
 | `identity` | which GitHub account this checkout's remote wants, and `--select` to switch to it |
 | `stash write\|restore\|list` | `/cp`'s five-deep clipboard ring under `~/.claude`, and the clipboard sink |
