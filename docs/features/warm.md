@@ -15,8 +15,10 @@ dirty: true
 Asks the claude proxy to hold this session's prompt cache open, so returning
 after a break reuses a warm cache instead of paying to rebuild one. The entire
 command is a single `POST` to the proxy's `/__warm` control endpoint. It reads no
-files, keeps no state, polls nothing, and has no teardown — the registration is
-scoped to one session and expires on its own.
+files, keeps no state, polls nothing, and needs no teardown — the registration is
+scoped to one session and expires on its own. It can still be released early,
+which is the one thing the command's first release got wrong; see
+[Releasing early](#releasing-early).
 
 Its one non-obvious rule is what it may say afterwards: the proxy answers that
 the registration is **pending**, and the command reports exactly that.
@@ -38,6 +40,33 @@ curl -s -XPOST http://127.0.0.1:${CLAUDE_PROXY_PORT:-8787}/__warm \
 
 `CLAUDE_CODE_SESSION_ID` is set by Claude Code. `CLAUDE_PROXY_PORT` falls back to
 `8787`, the proxy's own default, so no literal port is written into the command.
+
+## Releasing early
+
+A registration ends by itself at its deadline, and the proxy holds its state in
+memory only, so restarting the proxy clears every registration. Neither is needed
+in the ordinary case — but a session that is *finished* rather than paused keeps
+pinging until its deadline, because from inside the proxy an abandoned session
+and a long away-stretch are the same thing. Silence is the only signal it has.
+
+The same endpoint takes a `DELETE`, answering
+`{"ok":true,"sessionId":"…","released":true}`:
+
+```bash
+curl -s -XDELETE http://127.0.0.1:${CLAUDE_PROXY_PORT:-8787}/__warm \
+  -d "{\"sessionId\":\"$CLAUDE_CODE_SESSION_ID\"}"
+```
+
+**Prefer running it from a shell outside the session.** Asking the agent to
+release a registration replays the whole session prompt to send an 80-byte
+request, spending the thing the registration exists to save; the same curl from
+any other terminal costs nothing. `GET /__warm` lists the live entries, so the
+session id is recoverable without that session's environment.
+
+The command's first release (my-command#146) asserted there was **no** way to
+unregister, while `DELETE /__warm` had shipped in the same campaign. That claim
+was wrong and would have stopped an agent from releasing a registration when
+asked.
 
 **The window is 8 hours, and the command does not tune it.** The proxy's own
 recorded recommendation is lower — its campaign found the resume rate at session
