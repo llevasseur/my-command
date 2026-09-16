@@ -90,9 +90,9 @@ shredded into its `<img>`. Updates report the carry-over count as `assetsPreserv
 
 ### A browser-verified branch carries its screenshots
 
-`/verify` and `/task` Step 2.6 capture screenshots of the running app into
-`.my-command/shots/` inside the worktree, and `worktree end` preserves them to
-`~/.my-command/shots/<repo>/<branch>/`. Until now nothing put them in front of a reviewer:
+`/verify` and `/task` Step 2.6 capture screenshots of the running app straight into
+`~/.my-command/shots/<repo>/<branch>/run-N/`, one directory per verification run. Until now
+nothing put them in front of a reviewer:
 the person who most needed to see what the change looked like had to be told a path on the
 author's machine.
 
@@ -140,23 +140,28 @@ file extensions. The cost is a dependency between two commands that were indepen
 branch verified before this record existed, or by hand, attaches nothing until
 `shots record` runs.
 
-Screenshots are read from both places they can be: the live `.my-command/shots/` in the
-workspace, which is where they still are when `/task` runs `/pr` before its teardown, and
-the device-wide keep, which is where a `--here` run or a second `/pr` after teardown finds
-them. The workspace wins a name collision, being the newer of the two.
+Screenshots are read from the keep, which is where they were written, so it makes no
+difference whether `/pr` runs before a teardown, after one, or after a teardown that preserved
+nothing. A branch's images are named for the run directory they sit in — `run-1/home.png` — so
+two runs that photographed one view are two images rather than one overwriting the other. A
+workspace's `.my-command/shots/` is still read as a fallback, for a run that began before the
+keep held run directories, and it wins a bare name collision as the newer of the two.
 
-**Every verdict file is read, not only the newest.** A branch verified more than once leaves
-`verdict-2.json` beside `verdict.json`, since `worktree end` suffixes a colliding name on its
-way into the keep, and each file describes only the shots its own round took. Reading one and
-stopping published every earlier round's screenshots as unlabelled with their read-back sitting
-in the file next to them. So the records merge: the newest decides the tier and verdict, because
-the tier gates publishing and must not regress to an older run's, and the per-shot notes and gaps
-are unions, the newest winning a repeated shot name. A shot no record ever described is still
-unlabelled — that case is a verifier that skipped its read-back, and the fix is still to record
-its `saw:` line.
+**Every verdict file is read, not only the newest.** A branch verified more than once has one
+`verdict.json` per run directory, each describing only the shots its own round took. Reading one
+and stopping published every earlier round's screenshots as unlabelled with their read-back
+sitting in the file next to them. So the records merge: the newest decides the tier and verdict,
+because the tier gates publishing and must not regress to an older run's, and the per-shot notes
+and gaps are unions. **A note is keyed by its run directory as well as its filename**, which is
+what stops two rounds' `home.png` folding into one entry — where they did, the later round's
+sentence silently replaced the earlier one and then captioned both images. A shot no record ever
+described is still unlabelled — that case is a verifier that skipped its read-back, and the fix
+is still to record its `saw:` line.
 
-The keep is not permanent. `worktree end` ages it out after each teardown, dropping any branch
-whose newest file is older than seven days, images and verdict together. A verdict describing
+The keep is not permanent. `worktree end` ages it out after each teardown, dropping any **run**
+whose newest file is older than seven days, images and verdict together. The run is the unit, not
+the branch, so a fortnight-old round goes without taking last night's round on the same branch
+with it. A verdict describing
 images that are gone publishes nothing and images with no verdict cannot be published at all, so
 the two only ever go as a pair. GitHub serves an attachment comment from its own CDN copy, so a
 comment already posted keeps rendering once the local originals expire; what expires is the

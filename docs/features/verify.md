@@ -111,22 +111,26 @@ mutate the repo it was sent to observe.
 ## Where the screenshots go
 
 Screenshots are the one thing a verification run leaves behind. The verifier
-writes them into the `shotsDir` the caller hands it — `.my-command/shots/` inside
-the worktree, created and reported by `my-command-tools worktree begin` — and
-`worktree end` moves them to `~/.my-command/shots/<repo>/<branch>/` before the
-workspace is removed. `.my-command/` is ignored device-wide through the user's
-global git excludes, so the directory can sit inside the checkout without turning
-up in any branch's diff. The keep holds a branch for seven days from its newest
-file; `worktree end` prunes past that on its way out, so a PR that needs the images
-republished wants them within the week.
+writes them into the `shotsDir` the caller hands it — this run's own directory in a
+device-wide keep, `~/.my-command/shots/<repo>/<branch>/run-N/`, created and reported
+by `my-command-tools worktree begin`. It sits outside the checkout on purpose: an
+image inside the worktree lived only as long as somebody remembered to run
+`worktree end`, and `/pr`'s own teardown never did. The keep holds a run for seven
+days from its newest file; `worktree end` prunes past that on its way out, so a PR
+that needs the images republished wants them within the week.
+
+**The run directory is also what a read-back binds to.** Two loops on one branch both
+photograph `home.png`, and matching a sentence to an image by filename could not tell
+them apart: the second sentence displaced the first and then captioned both. Sitting
+in the same directory as its image, a note has nothing to be confused with.
 
 `/verify` Step 6 lists the saved files by path. A screenshot whose path was never
 reported is evidence nobody reads.
 
 Step 6 also **records what the loop did**, beside the images:
 `my-command-tools shots record --tier <tier> --verdict <verdict> --rounds <n> --shot "<file> | <label> | <sentence>" --gap "<text>"`
-writes `verdict.json` into the same directory, so `worktree end` carries it into
-the keep along with the screenshots it describes. That record is what makes them
+writes `verdict.json` into the same run directory, beside the screenshots it
+describes and nowhere they can be parted. That record is what makes them
 publishable — `/pr` publishes a branch's screenshots when it says a **browser**
 tier took them, and publishes nothing when no record exists.
 

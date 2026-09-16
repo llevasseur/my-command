@@ -7,15 +7,26 @@
 // step alone, for the teardowns ExitWorktree owns. `list` reports which of them have
 // outlived their branch.
 //
-// `begin` and `end` also bracket the worktree's screenshots: `begin` opens
-// `.my-command/shots/` inside the checkout for anything that captures the running app,
-// and `end` moves what landed there into a device-wide keep before the directory goes.
-import { cpSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync } from 'node:fs';
-import { extname, join, resolve } from 'node:path';
+// `begin` opens this run's screenshot directory — `<keep>/<repo>/<branch>/run-N/`, outside
+// the checkout, so the images outlive a teardown that never reaches `end`. `end` sweeps up
+// anything that landed in the checkout instead, into a run directory of its own.
+import { existsSync, readdirSync, rmSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { bool, str } from '../lib/flags.mjs';
 import { run as exec, lines, must, ToolkitError, UsageError } from '../lib/proc.mjs';
 import { defaultBranch, repoRoot, resolveBase } from '../lib/repo.mjs';
-import { keepDirFor, pruneKeep, shotsIn } from '../lib/shots.mjs';
+import {
+  claimRun,
+  keepContents,
+  keepDirFor,
+  keepRoot,
+  openedRunDirs,
+  pruneEmptyUp,
+  pruneKeep,
+  runDir,
+  shotsIn,
+  sweepInTree,
+} from '../lib/shots.mjs';
 
 export const usage = `worktree begin --branch <name> [--base <ref>] [--existing] [--bootstrap]
 worktree end --branch <name> [--force] [--no-reap] [--drop-shots]
@@ -27,15 +38,18 @@ worktree list
           --existing     Check out an existing branch instead of creating one.
                          Mutually exclusive with --base.
           --bootstrap    Run the repo's scripts/bootstrap-worktree.sh if it has one.
-          Reports \`shotsDir\` — .my-command/shots/ inside the new checkout, created
-          either way, for whatever captures the running app.
+          Reports \`shotsDir\` — ~/.my-command/shots/<repo>/<branch>/run-N/, this run's
+          own directory in the device-wide keep, created either way, for whatever
+          captures the running app. Outside the checkout, so the images survive any
+          teardown, \`end\` or not.
   end     Remove the worktree for <name>, refusing unless HEAD is on origin.
-          Keeps the worktree's screenshots first, under
-          ~/.my-command/shots/<repo>/<branch>/, reported as \`shotsKept\`, then ages the
-          keep out and reports that as \`shotsPruned\`. See \`shots prune\`.
+          Reports the branch's keep as \`shotsKept\`. Anything a tool still wrote to
+          .my-command/shots/ in the checkout is swept into a run directory of its own
+          first, reported as \`shotsMigrated\`. Then it ages the keep out and reports
+          that as \`shotsPruned\`. See \`shots prune\`.
           --force        Remove even with unpushed commits or a dirty tree.
           --no-reap      Leave processes rooted in the worktree running.
-          --drop-shots   Delete the screenshots instead of keeping them.
+          --drop-shots   Delete this worktree's screenshots instead of keeping them.
   reap    Stop processes rooted in a worktree without removing it — the step
           ExitWorktree does not take. Names it by --branch or by --path.
   list    Report every registered worktree, each marked \`reclaimable\` when its
@@ -49,61 +63,46 @@ function dirFor(branch) {
 }
 
 /**
- * `name` inside `dir`, suffixed until it is free. Screenshot tools name by route and step,
- * so a second run against the same branch lands on the first run's filenames.
- * @param {string} dir @param {string} name @returns {string}
- */
-function freeName(dir, name) {
-  const ext = extname(name);
-  const stem = name.slice(0, name.length - ext.length);
-  let candidate = join(dir, name);
-  for (let n = 2; existsSync(candidate); n++) candidate = join(dir, `${stem}-${n}${ext}`);
-  return candidate;
-}
-
-/**
- * Move one entry into `dir`, whatever it is — a file or a nested directory of them.
- * @param {string} from @param {string} dir @param {string} name
- */
-function moveInto(from, dir, name) {
-  const target = freeName(dir, name);
-  try {
-    renameSync(from, target);
-  } catch {
-    // A rename across filesystems fails outright with EXDEV, and the keep and the worktree
-    // can sit on different volumes. Copy-then-delete is the same move by a slower route.
-    cpSync(from, target, { recursive: true });
-    rmSync(from, { recursive: true, force: true });
-  }
-}
-
-/**
- * Take the worktree's screenshots out before the checkout goes: keep them under
- * `<keep>/<repo>/<branch>/`, or delete them when the caller asked for that.
+ * Settle the worktree's screenshots before the checkout goes.
+ *
+ * This run's own images are already in the keep, so nothing here is what makes them survive.
+ * What is left is the sweep, and its strays land in a **fresh** run directory rather than in
+ * this run's: they are some other run's images and this run's notes do not describe them.
  *
  * A slashed branch becomes **nested** directories, one per segment, rather than one
  * flattened name: git's ref namespace forbids a branch being both a ref and another
  * branch's directory prefix, so nesting cannot collide where flattening can.
  *
- * An absent or empty directory is not a failure — most branches capture nothing.
- * @param {string} worktreePath @param {string} cwd @param {string} branch @param {boolean} drop
- * @returns {{shotsKept: string|null, shotsDropped: boolean}}
+ * `drop` takes this worktree's runs out of the keep as well as the checkout — the flag asks
+ * for the screenshots gone, and by now most of them are no longer in the checkout to delete.
+ * @param {string} worktreePath @param {string} branch @param {boolean} drop
+ * @returns {{shotsKept: string|null, shotsDropped: boolean, shotsMigrated: string|null}}
  */
-function keepShots(worktreePath, cwd, branch, drop) {
+function keepShots(worktreePath, branch, drop) {
   const from = shotsIn(worktreePath);
-  const entries = existsSync(from) ? readdirSync(from) : [];
+  const strays = existsSync(from) ? readdirSync(from) : [];
+  const branchDir = keepDirFor(worktreePath, branch);
 
   if (drop) {
     rmSync(from, { recursive: true, force: true });
-    return { shotsKept: null, shotsDropped: true };
+    for (const dir of openedRunDirs(worktreePath, branch)) {
+      rmSync(dir, { recursive: true, force: true });
+      pruneEmptyUp(dir, keepRoot());
+    }
+    return { shotsKept: null, shotsDropped: true, shotsMigrated: null };
   }
-  if (entries.length === 0) return { shotsKept: null, shotsDropped: false };
 
-  const to = keepDirFor(cwd, branch);
-  mkdirSync(to, { recursive: true });
-  for (const name of entries) moveInto(join(from, name), to, name);
-  rmSync(from, { recursive: true, force: true });
-  return { shotsKept: to, shotsDropped: false };
+  /** @type {string|null} */
+  let migrated = null;
+  if (strays.length) {
+    const { dir } = claimRun(worktreePath, branch);
+    sweepInTree(worktreePath, dir);
+    rmSync(from, { recursive: true, force: true });
+    migrated = dir;
+  }
+
+  const kept = existsSync(branchDir) && keepContents(branchDir).newest !== null ? branchDir : null;
+  return { shotsKept: kept, shotsDropped: false, shotsMigrated: migrated };
 }
 
 /** @param {string} cwd @returns {{branch: string|null, path: string, head: string}[]} */
@@ -317,12 +316,10 @@ function begin(ctx, cwd) {
  * @param {{path: string, branch: string, base: {ref: string, sha: string} | null, fetched: boolean, existing: boolean}} made
  */
 function report(ctx, made) {
-  const { path } = made;
+  const { path, branch } = made;
 
-  // Both the created and the `--existing` path land here, so both get the directory.
-  // Recursive, so re-creating it is not an error.
-  const shotsDir = shotsIn(path);
-  mkdirSync(shotsDir, { recursive: true });
+  // Both the created and the `--existing` path land here, so both get a run directory.
+  const shotsDir = runDir(path, branch);
 
   // Check the script in the new worktree, which is where it runs. The main checkout can
   // disagree — the branch may add or drop the script relative to whatever is checked out
@@ -343,8 +340,8 @@ function report(ctx, made) {
     // one of them then worked by absolute path and finished fine. Saying so in the result puts
     // the answer where the mistake was made.
     workingRoot: path,
-    // Where anything capturing the running app should write. `worktree end` moves whatever
-    // is here into the device-wide keep.
+    // Where anything capturing the running app should write: this run's own directory in the
+    // device-wide keep, which no teardown of this checkout can take with it.
     shotsDir,
     enterWorktree:
       'not needed — resolve every read, edit, commit and --cwd as an absolute path under ' +
@@ -381,10 +378,10 @@ function end(ctx, cwd) {
   // Before the removal, not after — a survivor outlives the directory silently.
   const reaped = bool(ctx.flags['no-reap']) ? [] : reapProcesses(tree.path);
 
-  // After the reap and before the removal: a survivor would race the move, and a removed
-  // directory has nothing left to keep. Past the refusals too, so a worktree that survives
+  // After the reap and before the removal: a survivor would race the sweep, and a removed
+  // directory has nothing left to sweep. Past the refusals too, so a worktree that survives
   // keeps its screenshots.
-  const shots = keepShots(tree.path, cwd, branch, bool(ctx.flags['drop-shots']));
+  const shots = keepShots(tree.path, branch, bool(ctx.flags['drop-shots']));
 
   const args = ['worktree', 'remove', tree.path];
   if (force || dirty) args.push('--force');

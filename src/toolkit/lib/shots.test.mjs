@@ -3,19 +3,25 @@
 // the rendered section looks like. The publish itself is git plumbing over a real remote
 // and is covered by the `pr` verb's own tests.
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { after, test } from 'node:test';
 import {
+  claimRun,
   collectShots,
   commentId,
+  findShots,
   groupShots,
   isBrowserTier,
-  keepBranchDirs,
+  keepRunDirs,
+  noteFor,
+  openedRunDirs,
+  openRunDir,
   pruneKeep,
   readVerdict,
   renderShots,
+  runDir,
   sideOf,
   verifyRendered,
   writeVerdict,
@@ -23,8 +29,11 @@ import {
 
 /** @type {string[]} */
 const made = [];
+const realKeep = process.env.MY_COMMAND_SHOTS_DIR;
 after(() => {
   for (const dir of made) rmSync(dir, { recursive: true, force: true });
+  if (realKeep === undefined) delete process.env.MY_COMMAND_SHOTS_DIR;
+  else process.env.MY_COMMAND_SHOTS_DIR = realKeep;
 });
 
 /** @returns {string} */
@@ -32,6 +41,17 @@ function scratch() {
   const dir = mkdtempSync(join(tmpdir(), 'mct-shots-test-'));
   made.push(dir);
   return dir;
+}
+
+/**
+ * Point the device-wide keep at a throwaway directory for the rest of this test. Every keep
+ * path is resolved at call time, so setting it here is enough and no real home is written to.
+ * @returns {string}
+ */
+function keepAt() {
+  const root = scratch();
+  process.env.MY_COMMAND_SHOTS_DIR = root;
+  return root;
 }
 
 test('a before/after marker resolves to a view whichever end of the stem it is on', () => {
@@ -50,9 +70,22 @@ test('grouping keeps a one-sided view as a row rather than dropping it into the 
   assert.deepEqual(groups.grid, ['nav-round-1.png']);
 });
 
-test('a re-captured side never displaces the first one', () => {
-  const groups = groupShots(['home-before.png', 'home-before-2.png']);
+test('two spellings of one side fill the cell once, the first winning', () => {
+  const groups = groupShots(['home-before.png', 'home.before.png']);
   assert.deepEqual(groups.pairs, [{ view: 'home', before: 'home-before.png', after: null }]);
+});
+
+test('a trailing number is the verifier’s own naming, not a collision to undo', () => {
+  // Nothing renames a screenshot into the keep any more, so `-2` is a view of its own.
+  assert.deepEqual(sideOf('home-before-2.png'), { view: 'home-2', side: 'before' });
+});
+
+test('each run’s copy of one view is its own row, named for the run it came from', () => {
+  const groups = groupShots(['run-1/home-before.png', 'run-2/home-before.png']);
+  assert.deepEqual(
+    groups.pairs.map((row) => row.view),
+    ['run-1/home', 'run-2/home'],
+  );
 });
 
 /**
@@ -144,14 +177,28 @@ test('only the browser tier counts as having taken a screenshot', () => {
   assert.equal(isBrowserTier('anything else'), false);
 });
 
-test('a recorded verdict round-trips out of the shots directory', () => {
-  const dir = scratch();
-  const written = writeVerdict(dir, { tier: 'playwright', verdict: 'red', rounds: 3 });
-  assert.equal(written, join(dir, '.my-command', 'shots', 'verdict.json'));
-  const read = readVerdict(dir, 'feat/x');
+test('a recorded verdict round-trips out of this run’s directory in the keep', () => {
+  const root = keepAt();
+  const work = scratch();
+  const written = writeVerdict(work, 'feat/x', { tier: 'playwright', verdict: 'red', rounds: 3 });
+  assert.equal(written.run, 'run-1');
+  assert.equal(written.file, join(root, basename(work), 'feat', 'x', 'run-1', 'verdict.json'));
+  const read = readVerdict(work, 'feat/x');
   assert.equal(read?.tier, 'playwright');
   assert.equal(read?.verdict, 'red');
   assert.equal(read?.rounds, 3);
+});
+
+test('recording closes the run, so the next loop in one workspace opens its own directory', () => {
+  keepAt();
+  const work = scratch();
+  const first = runDir(work, 'feat/x');
+  assert.equal(openRunDir(work, 'feat/x'), first);
+  writeVerdict(work, 'feat/x', { tier: 'playwright', verdict: 'red' });
+  assert.equal(openRunDir(work, 'feat/x'), null);
+  const second = runDir(work, 'feat/x');
+  assert.notEqual(second, first);
+  assert.deepEqual(openedRunDirs(work, 'feat/x'), [first, second]);
 });
 
 test('a branch with no record reads as none rather than throwing', () => {
@@ -263,34 +310,35 @@ test('a comment URL names the comment the body is read back from', () => {
 });
 
 /**
- * Two verdict files in one shots directory, as a branch verified twice leaves them.
- * `older` is stamped a day behind `newer` so the read order is the file times, not the
- * order the directory happens to list.
+ * A branch verified twice: two run directories in the keep, each with its own verdict.
+ * `older` is stamped a day behind `newer` so the read order is the file times, not the order
+ * the directory happens to list.
  * @param {object} older @param {object} newer @returns {string} the workspace root
  */
 function twiceVerified(older, newer) {
-  const dir = scratch();
-  const shots = join(dir, '.my-command', 'shots');
-  mkdirSync(shots, { recursive: true });
-  writeFileSync(join(shots, 'verdict.json'), JSON.stringify(older));
-  writeFileSync(join(shots, 'verdict-2.json'), JSON.stringify(newer));
+  const work = scratch();
+  const first = writeVerdict(work, 'fix/x', /** @type {never} */ (older));
+  const second = writeVerdict(work, 'fix/x', /** @type {never} */ (newer));
+  assert.deepEqual([basename(first.dir), basename(second.dir)], ['run-1', 'run-2']);
   const day = 24 * 60 * 60;
   const now = Date.now() / 1000;
-  utimesSync(join(shots, 'verdict.json'), now - day, now - day);
-  utimesSync(join(shots, 'verdict-2.json'), now, now);
-  return dir;
+  utimesSync(first.file, now - day, now - day);
+  utimesSync(second.file, now, now);
+  return work;
 }
 
 test('an earlier run’s read-back survives a later run recording its own', () => {
+  keepAt();
   const dir = twiceVerified(
     { tier: 'playwright', verdict: 'green', shots: [{ name: 'banner.png', label: 'Banner', description: 'Amber.' }] },
     { tier: 'playwright', verdict: 'green', shots: [{ name: 'icon.png', label: 'Icon', description: 'White.' }] },
   );
   const read = readVerdict(dir, 'fix/x');
-  assert.deepEqual(read?.shots?.map((note) => note.name).sort(), ['banner.png', 'icon.png']);
+  assert.deepEqual(read?.shots?.map((note) => note.name).sort(), ['run-1/banner.png', 'run-2/icon.png']);
 });
 
 test('the newest record decides the tier and verdict, never an older one', () => {
+  keepAt();
   const dir = twiceVerified(
     { tier: 'static', verdict: 'red', rounds: 9, shots: [{ name: 'a.png', label: 'A', description: 'A.' }] },
     { tier: 'playwright', verdict: 'green', rounds: 2 },
@@ -302,11 +350,12 @@ test('the newest record decides the tier and verdict, never an older one', () =>
   // The older record contributed its note without contributing its tier.
   assert.deepEqual(
     read?.shots?.map((note) => note.name),
-    ['a.png'],
+    ['run-1/a.png'],
   );
 });
 
-test('the newest note for a shot wins, and a gap said twice is listed once', () => {
+test('two runs naming one screenshot keep both read-backs, each bound to its own image', () => {
+  keepAt();
   const dir = twiceVerified(
     {
       tier: 'playwright',
@@ -322,8 +371,124 @@ test('the newest note for a shot wins, and a gap said twice is listed once', () 
     },
   );
   const read = readVerdict(dir, 'fix/x');
-  assert.deepEqual(read?.shots, [{ name: 'icon.png', label: 'Fresh', description: 'Now white.' }]);
+  // Keyed by filename alone these were one note, and the newer one silently took the older
+  // one's place. The run directory is what keeps them apart.
+  assert.deepEqual(read?.shots, [
+    { name: 'run-2/icon.png', label: 'Fresh', description: 'Now white.' },
+    { name: 'run-1/icon.png', label: 'Stale', description: 'Was solid.' },
+  ]);
+  assert.equal(noteFor(read?.shots ?? [], 'run-1/icon.png')?.label, 'Stale');
+  assert.equal(noteFor(read?.shots ?? [], 'run-2/icon.png')?.label, 'Fresh');
   assert.deepEqual(read?.gaps, ['Mobile widths were not captured.', 'Dark mode was not reached.']);
+});
+
+test('a note never reaches out of its own run for an image of the same name', () => {
+  const notes = [
+    { name: 'run-1/home.png', label: 'One', description: 'Amber.' },
+    { name: 'run-2/home.png', label: 'Two', description: 'White.' },
+  ];
+  assert.equal(noteFor(notes, 'run-2/home.png')?.label, 'Two');
+  // A third run described nothing, so its screenshot is undescribed rather than borrowed.
+  assert.equal(noteFor(notes, 'run-3/home.png'), undefined);
+});
+
+test('a nested shot matches the note its own run wrote, by basename', () => {
+  const notes = [
+    { name: 'run-1/home.png', label: 'One', description: 'Amber.' },
+    { name: 'run-2/home.png', label: 'Two', description: 'White.' },
+  ];
+  assert.equal(noteFor(notes, 'run-2/round-3/home.png')?.label, 'Two');
+});
+
+test('two runs photographing one view keep both images and both sentences', () => {
+  keepAt();
+  const work = scratch();
+  const branch = 'feat/twice';
+
+  const first = runDir(work, branch);
+  writeFileSync(join(first, 'home.png'), 'run one pixels');
+  writeVerdict(work, branch, {
+    tier: 'playwright',
+    verdict: 'red',
+    shots: [{ name: 'home.png', label: 'Home, first pass', description: 'The banner is amber.' }],
+  });
+
+  const second = runDir(work, branch);
+  writeFileSync(join(second, 'home.png'), 'run two pixels');
+  writeVerdict(work, branch, {
+    tier: 'playwright',
+    verdict: 'green',
+    shots: [{ name: 'home.png', label: 'Home, after the fix', description: 'The banner is white.' }],
+  });
+
+  const shots = findShots(work, branch);
+  assert.deepEqual(
+    shots.map((shot) => shot.name),
+    ['run-1/home.png', 'run-2/home.png'],
+  );
+  assert.equal(readFileSync(shots[0].path, 'utf8'), 'run one pixels');
+  assert.equal(readFileSync(shots[1].path, 'utf8'), 'run two pixels');
+
+  const read = readVerdict(work, branch);
+  assert.equal(noteFor(read?.shots ?? [], 'run-1/home.png')?.description, 'The banner is amber.');
+  assert.equal(noteFor(read?.shots ?? [], 'run-2/home.png')?.description, 'The banner is white.');
+});
+
+test('a screenshot outlives a workspace torn down without worktree end', () => {
+  keepAt();
+  const work = scratch();
+  const branch = 'fix/torn-down';
+  const dir = runDir(work, branch);
+  writeFileSync(join(dir, 'home.png'), 'pixels');
+  writeVerdict(work, branch, {
+    tier: 'playwright',
+    verdict: 'green',
+    shots: [{ name: 'home.png', label: 'Home', description: 'The banner is white.' }],
+  });
+
+  // What ExitWorktree with discard_changes, or a bare `git worktree remove`, leaves behind.
+  rmSync(work, { recursive: true, force: true });
+
+  const shots = findShots(work, branch);
+  assert.deepEqual(
+    shots.map((shot) => shot.name),
+    ['run-1/home.png'],
+  );
+  assert.equal(readVerdict(work, branch)?.verdict, 'green');
+});
+
+test('a keep written before runs had directories is still read', () => {
+  const root = keepAt();
+  const work = scratch();
+  const legacy = join(root, basename(work), 'fix', 'old');
+  mkdirSync(legacy, { recursive: true });
+  writeFileSync(join(legacy, 'home.png'), 'pixels');
+  writeFileSync(
+    join(legacy, 'verdict.json'),
+    JSON.stringify({
+      tier: 'playwright',
+      verdict: 'red',
+      shots: [{ name: 'home.png', label: 'Home', description: 'Amber.' }],
+    }),
+  );
+  const read = readVerdict(work, 'fix/old');
+  assert.equal(read?.verdict, 'red');
+  assert.equal(noteFor(read?.shots ?? [], 'home.png')?.description, 'Amber.');
+  assert.deepEqual(
+    findShots(work, 'fix/old').map((shot) => shot.name),
+    ['home.png'],
+  );
+});
+
+test('a run claimed while another is open takes the next free number', () => {
+  keepAt();
+  const work = scratch();
+  const open = runDir(work, 'feat/x');
+  const swept = claimRun(work, 'feat/x');
+  assert.equal(swept.run, 'run-2');
+  assert.notEqual(swept.dir, open);
+  // Claiming does not close what was open, so the loop still records where it was writing.
+  assert.equal(openRunDir(work, 'feat/x'), open);
 });
 
 /**
@@ -346,15 +511,39 @@ function keep(branches) {
   return root;
 }
 
-test('a branch directory is the one holding files, not the levels routing to it', () => {
+test('a run directory is the one holding files, not the levels routing to it', () => {
   const root = keep([
-    { path: join('repo', 'fix', 'a'), ageDays: 0 },
-    { path: join('repo', 'solo'), ageDays: 0 },
+    { path: join('repo', 'fix', 'a', 'run-1'), ageDays: 0 },
+    { path: join('repo', 'solo', 'run-1'), ageDays: 0 },
   ]);
-  mkdirSync(join(root, 'repo', 'fix', 'a', 'round-2'));
-  writeFileSync(join(root, 'repo', 'fix', 'a', 'round-2', 'nested.png'), 'pixels');
-  // The nested round directory sits inside a branch, so the walk stops before reaching it.
-  assert.deepEqual(keepBranchDirs(root), [join(root, 'repo', 'fix', 'a'), join(root, 'repo', 'solo')].sort());
+  mkdirSync(join(root, 'repo', 'fix', 'a', 'run-1', 'round-2'));
+  writeFileSync(join(root, 'repo', 'fix', 'a', 'run-1', 'round-2', 'nested.png'), 'pixels');
+  // The nested round directory sits inside a run, so the walk stops before reaching it.
+  assert.deepEqual(
+    keepRunDirs(root),
+    [join(root, 'repo', 'fix', 'a', 'run-1'), join(root, 'repo', 'solo', 'run-1')].sort(),
+  );
+});
+
+test('a stale run goes without taking a fresh run on the same branch with it', () => {
+  const root = keep([
+    { path: join('repo', 'fix', 'x', 'run-1'), ageDays: 30 },
+    { path: join('repo', 'fix', 'x', 'run-2'), ageDays: 1 },
+  ]);
+  const report = pruneKeep({ root, maxAgeDays: 7 });
+  assert.equal(report.removedCount, 1);
+  assert.equal(report.kept, 1);
+  assert.equal(existsSync(join(root, 'repo', 'fix', 'x', 'run-1')), false);
+  assert.equal(existsSync(join(root, 'repo', 'fix', 'x', 'run-2', 'verdict.json')), true);
+  // The branch is still there for the run that survived, rather than emptied out from under it.
+  assert.deepEqual(report.emptied, []);
+});
+
+test('the last run to age out takes its branch and repo levels with it', () => {
+  const root = keep([{ path: join('repo', 'fix', 'x', 'run-1'), ageDays: 30 }]);
+  const report = pruneKeep({ root, maxAgeDays: 7 });
+  assert.deepEqual(report.emptied, [join(root, 'repo', 'fix', 'x'), join(root, 'repo', 'fix'), join(root, 'repo')]);
+  assert.equal(existsSync(root), true);
 });
 
 test('a branch older than the cutoff goes whole, and a fresh one stays', () => {

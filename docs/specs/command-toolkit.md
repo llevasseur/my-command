@@ -99,41 +99,46 @@ an existing branch without that flag and refuses `--base` with it, preventing a
 fresh branch from abandoning existing commits.
 
 `begin` and `end` also bracket the branch's **screenshots**. `begin` reports
-`shotsDir` — `.my-command/shots/` inside the new checkout, as an absolute path —
-and creates it on both the created-branch and the `--existing` path. Creation is a
-recursive `mkdir`, so re-begetting a branch's worktree needs no pre-flight check.
-Nothing in the repository ignores that path: `.my-command/` is excluded
-device-wide through the user's global git excludes, which is why the directory can
-sit inside the checkout without appearing in any branch's diff.
+`shotsDir` — `~/.my-command/shots/<repo>/<branch>/run-N/`, this run's own directory
+in the device-wide keep, as an absolute path — and creates it on both the
+created-branch and the `--existing` path. **It is outside the checkout**, which is
+what makes a screenshot survive a teardown that never calls `end`: `ExitWorktree`
+with `discard_changes`, which is what `/pr` documents for a worktree it owns, and a
+bare `git worktree remove` both took the images with them while they lived inside.
+The run number is claimed by creating the directory, so two runs racing for it
+cannot both believe they took it.
 
-`end` empties it **before** the worktree is removed, reporting the destination as
-`shotsKept` — `~/.my-command/shots/<repo>/<branch>/`, the home directory expanded
-at runtime rather than written down. `<repo>` is read from the *common* git dir,
-not from the caller's cwd, because `end` is routinely called from inside a worktree
-whose basename is the worktree's rather than the repo's. **A slashed branch becomes
-nested directories, one per segment** — `feat/a/b` keeps as `…/feat/a/b/` — not one
+`end` sweeps anything a tool still wrote to the checkout's `.my-command/shots/`
+into a **fresh** run directory — they are some other run's images, and this run's
+notes do not describe them — reporting it as `shotsMigrated` and the branch's keep
+as `shotsKept`. `<repo>` is read from the *common* git dir, not from the caller's
+cwd, because `end` is routinely called from inside a worktree whose basename is the
+worktree's rather than the repo's. **A slashed branch becomes nested directories,
+one per segment** — `feat/a/b` keeps as `…/feat/a/b/run-N/` — not one
 flattened name. Git's ref namespace already forbids a branch existing both as a ref
 and as another branch's directory prefix, so nesting cannot collide, whereas
 flattening would put `feat/a-b` and `feat-a/b` in the same place. Every segment is
 still sanitized to `[A-Za-z0-9._-]` before it is joined, since a keep path built
 from a branch name is not the place to trust git's own ref rules.
 
-Three failures the move survives, each of them ordinary rather than exotic: the
-destination not existing (created recursively), a filename already there from a
-previous run against the same branch (suffixed `-2`, `-3`, … before the extension,
-never overwritten — screenshot tools name by route and step, so collisions are the
-norm and a silent overwrite destroys the evidence the keep exists to hold), and a
-rename across filesystems, which fails outright with `EXDEV` when the home
-directory and the worktree sit on different volumes (copy-then-delete, the same
-move by a slower route). An absent or empty directory is not a failure: most
-branches capture nothing, and that reports `shotsKept: null`.
+A filename a previous run already kept is no longer a case to handle: that run's
+images are in its own directory, so nothing collides and nothing is renamed. The
+suffixing that used to answer it — `home.png`, then `home-2.png` — is gone with the
+ambiguity it created, since the note still named `home.png` and captioned whichever
+image was asked about first. What the sweep does still survive is a rename across
+filesystems, which fails outright with `EXDEV` when the home directory and the
+worktree sit on different volumes (copy-then-delete, the same move by a slower
+route). An absent or empty directory is not a failure: most branches capture
+nothing, and that reports `shotsKept: null`.
 
-`--drop-shots` deletes the directory instead, reporting `shotsDropped: true` and
-`shotsKept: null` — the flag's effect, not a count. `MY_COMMAND_SHOTS_DIR`
-overrides the keep root, which is how the tests exercise the move for real without
-writing into a developer's home directory.
+`--drop-shots` deletes this worktree's run directories as well as anything left in
+the checkout, reporting `shotsDropped: true` and `shotsKept: null` — the flag's
+effect, not a count. Reaching into the keep is the point: by then that is where the
+screenshots are. `MY_COMMAND_SHOTS_DIR` overrides the keep root, which is how the
+tests exercise all of this for real without writing into a developer's home
+directory.
 
-`shots record` writes the third thing that lives in that directory: `verdict.json`, naming
+`shots record` writes the second thing that lives in that directory: `verdict.json`, naming
 the driver tier a verification loop ran, the verdict it reached, the round count, and the
 verifier's read-back of each screenshot: one `--shot "<file> | <label> | <sentence>"` per
 image and one `--gap <text>` per thing the round could not prove. `pr` renders those into
@@ -142,12 +147,17 @@ writing anything of its own; a shot recorded without one is reported under `unde
 and published as unlabelled. It
 refuses a tier or verdict outside `mycommand-verifier`'s own vocabulary rather than storing
 a typo, since a misspelled tier would record fine and silently withhold the screenshots
-later. `/verify` Step 6 and `/task` Step 2.6 call it on every ending, green or not.
-`shots read` reports the record and the images together, from both locations.
+later. Recording also **closes the run**, so a second loop in the same workspace — routine
+under `--here` — opens its own directory rather than writing over the first loop's verdict.
+The write itself stays unconditional, which the per-run directory is what makes safe.
+`/verify` Step 6 and `/task` Step 2.6 call it on every ending, green or not.
+`shots read` reports the record and the images together, each image named for the run it
+came from.
 
 `pr` closes that loop at the other end. A branch whose recorded tier is a **browser** gets
-its screenshots — read from the live `.my-command/shots/` and from the keep, the live copy
-winning a collision — published under a `## Screenshots` heading: before/after pairs as a
+its screenshots — read from every run directory in the keep, and from a workspace's
+`.my-command/shots/` as a fallback, the workspace winning a bare collision — published
+under a `## Screenshots` heading: before/after pairs as a
 table with one row per view, everything unpaired as a two-column grid, and a lone shot as
 a one-column table. Every cell is a bold label, the image, then one sentence, in that order,
 and the comment closes with the recorded gaps.
@@ -495,13 +505,17 @@ with `allowJs` + `checkJs` + `noEmit`, run as `pnpm run check:toolkit`.
 - [ ] `worktree begin --existing` checks a branch out at its own tip; without the flag an
       existing branch is refused.
 - [ ] `worktree end` refuses a worktree with unpushed commits absent `--force`.
-- [ ] `worktree begin` reports `shotsDir` and creates it, on the created-branch path and
-      the `--existing` path alike, and creating it a second time is not an error.
-- [ ] `worktree end` moves the shots to `~/.my-command/shots/<repo>/<branch>/` before the
-      checkout is removed, reports that absolute path as `shotsKept`, nests a slashed
-      branch one directory per segment, creates a destination that is not there, suffixes
-      rather than overwrites a filename a previous run already kept, and falls back to
-      copy-then-delete when the rename crosses filesystems.
+- [ ] `worktree begin` reports `shotsDir` as `~/.my-command/shots/<repo>/<branch>/run-N/`
+      and creates it, on the created-branch path and the `--existing` path alike, outside
+      the checkout, and a second worktree on one branch gets its own run number.
+- [ ] A screenshot in the keep survives a worktree removed without `worktree end`.
+- [ ] `worktree end` sweeps anything left in the checkout's `.my-command/shots/` into a
+      fresh run directory before the checkout is removed, reports it as `shotsMigrated`
+      and the branch's keep as `shotsKept`, nests a slashed branch one directory per
+      segment, and falls back to copy-then-delete when the rename crosses filesystems.
+- [ ] Two runs that both photograph one filename keep both images and both read-backs,
+      each note bound to its own run's image.
+- [ ] `shots prune` ages out a stale run without taking a fresh run on the same branch.
 - [ ] `worktree end` reports `shotsKept: null` rather than failing when the shots
       directory is empty or absent, and leaves the shots in place when it refuses to
       remove the worktree.

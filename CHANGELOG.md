@@ -14,6 +14,7 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 ### Fixed
 
+- **Screenshots survive any teardown, and keep their own read-backs.** Every verification run now owns a directory in the keep, `~/.my-command/shots/<repo>/<branch>/run-N/`, holding its images and its own `verdict.json`. They no longer die with a worktree removed without `worktree end`, and a note can no longer caption another run's identically named image. See `docs/features/verify.md`.
 - **A branch verified twice no longer publishes its first run's screenshots as unlabelled.** Each run records only the shots it took, and `pr` read the newest verdict file alone, so every earlier image lost its label with the read-back sitting in the file beside it. The records now merge, the newest still deciding the tier. See `docs/features/pr.md`.
 - **`/warm` no longer claims a registration cannot be cancelled.** It asserted "there is no way to unregister" while `DELETE /__warm` shipped alongside it and works, which would have stopped an agent asked to release one. The command, skill and feature doc now document that `DELETE`, and note that closing a session does not release it. See `docs/features/warm.md`.
 

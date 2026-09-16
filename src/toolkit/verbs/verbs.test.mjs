@@ -348,79 +348,97 @@ after(() => {
   delete process.env.MY_COMMAND_SHOTS_DIR;
 });
 
-/** @param {unknown} r @returns {{path: string, shotsDir: string}} */
+/** @param {unknown} r @returns {{path: string, branch: string, shotsDir: string}} */
 const begun = (r) => /** @type {never} */ (r);
 
-/** @param {unknown} r @returns {{shotsKept: string|null, shotsDropped: boolean}} */
+/** @param {unknown} r @returns {{shotsKept: string|null, shotsDropped: boolean, shotsMigrated: string|null}} */
 const ended = (r) => /** @type {never} */ (r);
 
-test('worktree begin opens a shots directory in the checkout, created branch or existing', () => {
+/** The in-tree directory a tool that has not moved to the keep still writes into. */
+const inTree = (/** @type {string} */ path) => join(path, '.my-command', 'shots');
+
+test('worktree begin opens this run’s directory in the keep, created branch or existing', () => {
+  const root = keep();
   const { dir, git } = repo();
   const fresh = begun(worktree(ctx(dir, ['begin'], { branch: 'feat/fresh' })));
-  assert.equal(fresh.shotsDir, join(fresh.path, '.my-command', 'shots'));
+  assert.equal(fresh.shotsDir, join(root, basename(dir), 'feat', 'fresh', 'run-1'));
   assert.equal(existsSync(fresh.shotsDir), true);
+  // Outside the checkout, which is what lets a screenshot outlive any teardown.
+  assert.equal(existsSync(inTree(fresh.path)), false);
 
   git(['branch', 'feat/already']);
   const existing = begun(worktree(ctx(dir, ['begin'], { branch: 'feat/already', existing: true })));
-  assert.equal(existing.shotsDir, join(existing.path, '.my-command', 'shots'));
+  assert.equal(existing.shotsDir, join(root, basename(dir), 'feat', 'already', 'run-1'));
   assert.equal(existsSync(existing.shotsDir), true);
 });
 
-test('worktree begin re-opens a shots directory that is already there', () => {
+test('a second worktree on one branch gets its own run directory', () => {
+  const root = keep();
   const { dir } = repo();
   const first = begun(worktree(ctx(dir, ['begin'], { branch: 'feat/again' })));
-  writeFileSync(join(first.shotsDir, 'home.png'), 'first run\n');
-  worktree(ctx(dir, ['end'], { branch: 'feat/again', force: true, 'drop-shots': true }));
+  writeFileSync(join(first.shotsDir, 'home.png'), 'run one\n');
+  worktree(ctx(dir, ['end'], { branch: 'feat/again', force: true }));
 
   const second = begun(worktree(ctx(dir, ['begin'], { branch: 'feat/again', existing: true })));
-  assert.equal(existsSync(second.shotsDir), true);
+  writeFileSync(join(second.shotsDir, 'home.png'), 'run two\n');
+  worktree(ctx(dir, ['end'], { branch: 'feat/again', force: true }));
+
+  const branchDir = join(root, basename(dir), 'feat', 'again');
+  assert.equal(readFileSync(join(branchDir, 'run-1', 'home.png'), 'utf8'), 'run one\n');
+  assert.equal(readFileSync(join(branchDir, 'run-2', 'home.png'), 'utf8'), 'run two\n');
 });
 
-test('worktree end keeps the screenshots under <keep>/<repo>/<branch>/ before removing', () => {
+test('a screenshot in the keep survives a worktree removed without worktree end', () => {
+  const root = keep();
+  const { dir } = repo();
+  const tree = begun(worktree(ctx(dir, ['begin'], { branch: 'feat/torn/down' })));
+  writeFileSync(join(tree.shotsDir, 'home.png'), 'pixels\n');
+
+  // What ExitWorktree with discard_changes leaves behind: the checkout, gone, and nothing
+  // given the chance to preserve anything out of it.
+  execFileSync('git', ['worktree', 'remove', '--force', tree.path], { cwd: dir });
+  assert.equal(existsSync(tree.path), false);
+  assert.equal(
+    readFileSync(join(root, basename(dir), 'feat', 'torn', 'down', 'run-1', 'home.png'), 'utf8'),
+    'pixels\n',
+  );
+});
+
+test('worktree end sweeps an in-tree capture into a run directory of its own', () => {
   const root = keep();
   const { dir } = repo();
   const tree = begun(worktree(ctx(dir, ['begin'], { branch: 'feat/shots/deep' })));
-  writeFileSync(join(tree.shotsDir, 'home.png'), 'pixels\n');
-  mkdirSync(join(tree.shotsDir, 'round-2'));
-  writeFileSync(join(tree.shotsDir, 'round-2', 'detail.png'), 'more pixels\n');
+  writeFileSync(join(tree.shotsDir, 'kept.png'), 'this run\n');
+  // A run that started before the keep held run directories, or a tool that still writes
+  // in-tree: its images are some other run's, so they land beside this run's, not in it.
+  mkdirSync(join(inTree(tree.path), 'round-2'), { recursive: true });
+  writeFileSync(join(inTree(tree.path), 'home.png'), 'pixels\n');
+  writeFileSync(join(inTree(tree.path), 'round-2', 'detail.png'), 'more pixels\n');
 
   const r = ended(worktree(ctx(dir, ['end'], { branch: 'feat/shots/deep', force: true })));
   // A slashed branch nests, one directory per segment.
-  assert.equal(r.shotsKept, join(root, basename(dir), 'feat', 'shots', 'deep'));
+  const branchDir = join(root, basename(dir), 'feat', 'shots', 'deep');
+  assert.equal(r.shotsKept, branchDir);
   assert.equal(r.shotsDropped, false);
-  assert.equal(readFileSync(join(String(r.shotsKept), 'home.png'), 'utf8'), 'pixels\n');
-  assert.equal(readFileSync(join(String(r.shotsKept), 'round-2', 'detail.png'), 'utf8'), 'more pixels\n');
-  // The keep happened first: the checkout really is gone.
+  assert.equal(r.shotsMigrated, join(branchDir, 'run-2'));
+  assert.equal(readFileSync(join(branchDir, 'run-1', 'kept.png'), 'utf8'), 'this run\n');
+  assert.equal(readFileSync(join(branchDir, 'run-2', 'home.png'), 'utf8'), 'pixels\n');
+  assert.equal(readFileSync(join(branchDir, 'run-2', 'round-2', 'detail.png'), 'utf8'), 'more pixels\n');
+  // The sweep happened first: the checkout really is gone.
   assert.equal(existsSync(tree.path), false);
-});
-
-test('worktree end keeps screenshots without overwriting a previous run', () => {
-  const root = keep();
-  const { dir } = repo();
-  const first = begun(worktree(ctx(dir, ['begin'], { branch: 'feat/twice' })));
-  writeFileSync(join(first.shotsDir, 'home.png'), 'run one\n');
-  worktree(ctx(dir, ['end'], { branch: 'feat/twice', force: true }));
-
-  const second = begun(worktree(ctx(dir, ['begin'], { branch: 'feat/twice', existing: true })));
-  writeFileSync(join(second.shotsDir, 'home.png'), 'run two\n');
-  const r = ended(worktree(ctx(dir, ['end'], { branch: 'feat/twice', force: true })));
-
-  const kept = join(root, basename(dir), 'feat', 'twice');
-  assert.equal(r.shotsKept, kept);
-  assert.equal(readFileSync(join(kept, 'home.png'), 'utf8'), 'run one\n');
-  assert.equal(readFileSync(join(kept, 'home-2.png'), 'utf8'), 'run two\n');
 });
 
 test('worktree end reports no destination when there is nothing to keep', () => {
   keep();
   const { dir } = repo();
   const tree = begun(worktree(ctx(dir, ['begin'], { branch: 'feat/quiet' })));
-  // An absent directory has to read the same way as an empty one.
-  rmSync(tree.shotsDir, { recursive: true });
+  // An empty run directory reads the same way as a branch nobody ever photographed.
+  assert.equal(existsSync(inTree(tree.path)), false);
 
   const r = ended(worktree(ctx(dir, ['end'], { branch: 'feat/quiet', force: true })));
   assert.equal(r.shotsKept, null);
   assert.equal(r.shotsDropped, false);
+  assert.equal(r.shotsMigrated, null);
 });
 
 test('worktree end --drop-shots deletes the screenshots instead of keeping them', () => {
@@ -428,10 +446,13 @@ test('worktree end --drop-shots deletes the screenshots instead of keeping them'
   const { dir } = repo();
   const tree = begun(worktree(ctx(dir, ['begin'], { branch: 'feat/throwaway' })));
   writeFileSync(join(tree.shotsDir, 'home.png'), 'not worth keeping\n');
+  mkdirSync(inTree(tree.path), { recursive: true });
+  writeFileSync(join(inTree(tree.path), 'stray.png'), 'nor this\n');
 
   const r = ended(worktree(ctx(dir, ['end'], { branch: 'feat/throwaway', force: true, 'drop-shots': true })));
   assert.equal(r.shotsDropped, true);
   assert.equal(r.shotsKept, null);
+  // The keep is where they were, so dropping has to reach in there and not just the checkout.
   assert.equal(existsSync(join(root, basename(dir), 'feat', 'throwaway')), false);
 });
 
@@ -935,12 +956,12 @@ test('pr publishes the screenshots a browser tier took, whatever the diff change
     // Every cell keeps the one order: bold label, image, sentence. The label is never the file.
     assert.match(
       body,
-      /^\| panel \| \*\*Orders panel before the change\*\*<br>!\[panel-before\.png\]\(\S+\)<br>The total column is absent\. \| \*\*Orders panel after the change\*\*<br>!\[panel-after\.png\]\(\S+\)<br>The total column renders, populated for every row\. \|$/m,
+      /^\| panel \| \*\*Orders panel before the change\*\*<br>!\[run-1\/panel-before\.png\]\(\S+\)<br>The total column is absent\. \| \*\*Orders panel after the change\*\*<br>!\[run-1\/panel-after\.png\]\(\S+\)<br>The total column renders, populated for every row\. \|$/m,
     );
     // A lone unpaired shot still sits in a table: one column, header and rule included.
     assert.match(
       body,
-      /^\| \|\n\| --- \|\n\| \*\*Top navigation\*\*<br>!\[nav\.png\]\(\S+\)<br>Framing shot of the nav bar; it proves nothing about the orders change\. \|$/m,
+      /^\| \|\n\| --- \|\n\| \*\*Top navigation\*\*<br>!\[run-1\/nav\.png\]\(\S+\)<br>Framing shot of the nav bar; it proves nothing about the orders change\. \|$/m,
     );
     assert.doesNotMatch(body, /^!\[/m);
     assert.doesNotMatch(body, /—/);
@@ -1098,7 +1119,7 @@ test('pr publishes an undescribed screenshot as unlabelled and says so', () => {
     const body = commentBody();
     assert.match(
       body,
-      /^\| \*\*Unlabelled screenshot\*\*<br>!\[home\.png\]\(\S+\)<br>The verifier left no read-back for this image, so it proves nothing on its own\. \|$/m,
+      /^\| \*\*Unlabelled screenshot\*\*<br>!\[run-1\/home\.png\]\(\S+\)<br>The verifier left no read-back for this image, so it proves nothing on its own\. \|$/m,
     );
     assert.match(body, /^- The verifier recorded no gaps\. That means none were written down, not that none exist\.$/m);
   } finally {
@@ -1112,7 +1133,7 @@ test('shots record keeps each --shot and --gap, and names what they miss', () =>
   const shots = join(dir, '.my-command', 'shots');
   mkdirSync(join(shots, 'round-2'), { recursive: true });
   writeFileSync(join(shots, 'home.png'), 'pixels');
-  writeFileSync(join(shots, 'round-2', 'detail-2.png'), 'pixels');
+  writeFileSync(join(shots, 'round-2', 'detail.png'), 'pixels');
   writeFileSync(join(shots, 'stray.png'), 'pixels');
 
   const r = /** @type {{described: number, undescribed: string[], unmatched: string[]}} */ (
@@ -1140,7 +1161,7 @@ test('shots record keeps each --shot and --gap, and names what they miss', () =>
     /** @type {{verdict: unknown}} */ (shotsVerb(ctx(dir, ['read'], {}))).verdict
   );
   assert.deepEqual(record.shots[0], {
-    name: 'detail.png',
+    name: 'run-1/detail.png',
     label: 'Order detail',
     description: 'Totals match | tax included.',
   });
@@ -1174,16 +1195,18 @@ test('pr replaces its screenshot comment when only the read-back changed', () =>
   }
 });
 
-test('a shot cell escapes pipes and drops em dashes, and finds a note through the keep suffix', () => {
+test('a shot cell escapes pipes and drops em dashes, and finds the note its own run wrote', () => {
   assert.equal(
     shotCell('a.png', 'a', { name: 'a.png', label: '— Edge —', description: 'Trailing —' }),
     '**Edge**<br>![a.png](a)<br>Trailing',
   );
-  const notes = [{ name: 'home.png', label: 'Home — hero', description: 'Copy | reads fine\nacross two lines.' }];
+  const notes = [{ name: 'run-1/home.png', label: 'Home — hero', description: 'Copy | reads fine\nacross two lines.' }];
   assert.equal(
-    shotCell('round-1/home-2.png', '/tmp/home-2.png', noteFor(notes, 'round-1/home-2.png')),
-    '**Home, hero**<br>![round-1/home-2.png](/tmp/home-2.png)<br>Copy \\| reads fine across two lines.',
+    shotCell('run-1/round-2/home.png', '/tmp/home.png', noteFor(notes, 'run-1/round-2/home.png')),
+    '**Home, hero**<br>![run-1/round-2/home.png](/tmp/home.png)<br>Copy \\| reads fine across two lines.',
   );
+  // A second run's copy of the same view is not this note's to caption.
+  assert.equal(noteFor(notes, 'run-2/home.png'), undefined);
   assert.equal(noteFor(notes, 'other.png'), undefined);
 });
 
@@ -1210,7 +1233,7 @@ test('shots read reports the record and the images beside it', () => {
   assert.equal(r.branch, 'feat/read');
   assert.equal(r.verdict.tier, 'playwright');
   assert.equal(r.verdict.rounds, 2);
-  assert.deepEqual(r.shots, ['home.png', 'settings.png']);
+  assert.deepEqual(r.shots, ['run-1/home.png', 'run-1/settings.png']);
 });
 
 test('pr reports no bodyWarnings for a short bulleted description', () => {

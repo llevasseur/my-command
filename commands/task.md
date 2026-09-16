@@ -227,8 +227,9 @@ is not.
 Repo-wide smoke scenarios are optional and off by default — this step exercises the diff.
 Persisted browser spec files are out of scope; the specs and logs the verifier writes are
 scratch under `$CLAUDE_JOB_DIR/tmp`. Its **screenshots** are not scratch: they land in the
-`shotsDir`, and Step 3's `worktree end` preserves them to `~/.my-command/shots/<repo>/<branch>/`
-before it removes the workspace. **Record the loop's outcome when it ends** —
+`shotsDir`, which is this run's own directory under `~/.my-command/shots/<repo>/<branch>/` and
+outside the workspace, so Step 3's teardown cannot take them however it is done. **Record the
+loop's outcome when it ends** —
 `my-command-tools shots record --tier <tier> --verdict <verdict> --rounds <n>`, with one
 `--shot "<file> | <label> | <sentence>"` per screenshot carrying the verifier's latest `saw:`
 payload for it and one `--gap "<text>"` per `gap:` line, whatever the verdict — because that

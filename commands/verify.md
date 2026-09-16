@@ -85,8 +85,8 @@ nothing else:
 - the run contract, or the detected boot and port,
 - **the `playwright-cli` command, when `doctor` reports `playwright.installed`** — that is what
   makes the browser tier reachable in a repo with no Playwright of its own,
-- **the `shotsDir`** — `.my-command/shots/` under this workspace's root, the absolute path
-  `worktree begin` reported for it,
+- **the `shotsDir`** — this run's own directory in the keep,
+  `~/.my-command/shots/<repo>/<branch>/run-N/`, the absolute path `worktree begin` reported,
 - the round ceiling.
 
 **Spawn it once.** Every later round is a `SendMessage` to the same agent, so the boot, the
@@ -160,10 +160,11 @@ The report:
 - the intent, and whether it was given or inferred,
 - contract or detection,
 - the evidence path,
-- **the saved screenshots, each by path.** They outlive this run — `worktree end` moves them to
-  `~/.my-command/shots/<repo>/<branch>/`, and `/my-command:pr` embeds them in the PR when the recorded tier
-  is a browser — so the report is where someone learns they exist. They do not outlive it by
-  much: the keep is pruned to seven days, aged from a branch's newest file. A screenshot nobody
+- **the saved screenshots, each by path.** They outlive this run — they were written straight
+  into `~/.my-command/shots/<repo>/<branch>/run-N/`, so no teardown has to cooperate, and `/my-command:pr`
+  embeds them in the PR when the recorded tier is a browser — so the report is where someone
+  learns they exist. They do not outlive it by
+  much: the keep is pruned to seven days, aged run by run from its newest file. A screenshot nobody
   was told the path of is evidence nobody reads. Carry the verifier's `saw:` label and sentence for each
   one into the report beside its path: they are what make the image a looked-at observation
   rather than a file.
@@ -210,8 +211,8 @@ Lead with the verdict, the round count, and the tier.
   means the credentials are withheld and the round reports `unverified`.
 - Persisted Playwright specs are out of scope: the specs and logs the verifier writes are
   scratch under `$CLAUDE_JOB_DIR/tmp` and ship with nothing. **Screenshots are the exception** —
-  they go to the `shotsDir` inside the worktree, `worktree end` preserves them to
-  `~/.my-command/shots/<repo>/<branch>/` rather than discarding them with the workspace, and
+  they go to the `shotsDir`, which is this run's directory in
+  `~/.my-command/shots/<repo>/<branch>/` rather than anywhere the workspace's removal reaches, and
   `/my-command:pr` publishes them into the PR body when Step 6's record says a browser took them. A pair
   named `<view>-before.png` / `<view>-after.png` becomes one before/after row there. What `/my-command:pr`
   publishes is an inspected image rather than merely a captured one, because the browser tier is
