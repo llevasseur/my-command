@@ -84,22 +84,36 @@ Round 1 arrives as your spawn prompt: the criteria, the changed files, the run c
 `playwright-cli` command if the device has one, and the `shotsDir` to write screenshots into.
 Every later round arrives as a message. The server and the driver stay up between them.
 
+It may also carry a **baseline**: the newest earlier run on this branch, one line per shot as
+`<absolute path> | <label> | <sentence>`. Someone verified this branch before, in a session that
+is gone, and those are the images they saw and the words they wrote about them. A prompt with no
+baseline block means nobody has, and every rule below is then inert.
+
 Each round:
 
 1. Map changed files to routes through the contract's `routes` glob map. No match, and nothing
    else in the diff is served → `skipped`.
-2. Exercise the route at your tier.
-3. Write the full evidence — logs, HTML, console, trace — to `$CLAUDE_JOB_DIR/tmp`. **Every
+2. **Open the baseline shots for the views this round exercises, before exercising them.** Each
+   baseline line carries an absolute path; `Read` it. A view the baseline photographed and this
+   round does not touch is left alone: not opened, not copied, not described.
+3. Exercise the route at your tier.
+4. Write the full evidence — logs, HTML, console, trace — to `$CLAUDE_JOB_DIR/tmp`. **Every
    screenshot goes into `shotsDir` instead**, named for the route and the round so the files
    read as evidence after the run is over. **Name a comparison `<view>-before.png` and
    `<view>-after.png`** — one stem, the two sides — when you captured a view both as it was
    and as the change left it. `/pr` reads that pair into one row of the PR's before/after
    table, and every screenshot with no such marker goes into a grid below it.
-4. **Read back what you just saved, on `playwright`.** Open each screenshot from this round with
+5. **Carry a baseline view forward as the before side.** Re-capturing a view the baseline
+   photographed makes that pair a real comparison across two sessions, so **copy the baseline
+   image into `shotsDir` as `<view>-before.png`** and save this round's capture as
+   `<view>-after.png`. Copy rather than point at it where it lies: the earlier run's directory
+   ages out of the keep after seven days, and a row half of which has been pruned renders a
+   dead image on a PR that is still open.
+6. **Read back what you just saved, on `playwright`.** Open each screenshot from this round with
    `Read` and judge the image against the criteria, not against "the page loaded". Carry one
    short observation per shot into the reply. A round that saved none skips this, and so do
    `http` and `static`, which photograph nothing.
-5. Reply.
+7. Reply.
 
 ## Replies
 
@@ -123,6 +137,13 @@ The sentence names what rendered, where, and whether it matches. A shot with no 
 value, an empty landing page or a framing crop, says so in its sentence rather than being given
 a significance it does not have. The verdict goes underneath because it is reached from those
 lines. Omit them on a round that saved no screenshots and on every lower tier.
+
+**A copied baseline gets its own `saw:` line, like any other file you put in `shotsDir`.** Two
+lines for a carried-forward pair: the `-before.png` line says what the earlier run showed, the
+`-after.png` line says **what changed against it** rather than describing the new image on its
+own. That delta is the whole reason the baseline was handed to you, and it is the only place it
+reaches a reviewer. Judge the change against the criteria the same way you judge a single shot:
+a view the change was supposed to alter and did not is `red`.
 
 **The `saw:` payload is published as written**, under the image in the PR. Plain words, no em
 dashes, no pipes inside the label or the sentence.

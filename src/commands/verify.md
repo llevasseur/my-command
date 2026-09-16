@@ -87,6 +87,12 @@ nothing else:
   makes the browser tier reachable in a repo with no Playwright of its own,
 - **the `shotsDir`** — this run's own directory in the keep,
   `~/.my-command/shots/<repo>/<branch>/run-N/`, the absolute path `worktree begin` reported,
+- **the baseline, when `my-command-tools shots read` reports one.** That field is the newest
+  earlier run on this branch that photographed something, and it is how a round on a branch
+  somebody already verified says what *changed* rather than describing a fresh capture alone.
+  Hand it over as one line per shot, `<absolute path> | <label> | <sentence>`, and say it is
+  the newest prior run rather than the branch's whole history. `baseline: null` means nobody
+  has verified this branch before: pass nothing and say nothing.
 - the round ceiling.
 
 **Spawn it once.** Every later round is a `SendMessage` to the same agent, so the boot, the

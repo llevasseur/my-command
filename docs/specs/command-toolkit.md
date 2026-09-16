@@ -152,7 +152,13 @@ under `--here` — opens its own directory rather than writing over the first lo
 The write itself stays unconditional, which the per-run directory is what makes safe.
 `/verify` Step 6 and `/task` Step 2.6 call it on every ending, green or not.
 `shots read` reports the record and the images together, each image named for the run it
-came from.
+came from. It also breaks the branch down into `runs`, one entry per run directory, newest
+first by the newest file in it, each carrying that run's tier, verdict, absolute directory,
+whether a workspace is still writing into it, and every image by absolute path with the label
+and sentence **its own** run recorded. `baseline` names the one a fresh round compares
+against: the newest entry that is neither still open nor empty of screenshots, or null on a
+branch nobody has verified before. Resolving it here rather than in each command means no
+caller has to work out which of `runs` is its own.
 
 `pr` closes that loop at the other end. A branch whose recorded tier is a **browser** gets
 its screenshots — read from every run directory in the keep, and from a workspace's
@@ -516,6 +522,9 @@ with `allowJs` + `checkJs` + `noEmit`, run as `pnpm run check:toolkit`.
 - [ ] Two runs that both photograph one filename keep both images and both read-backs,
       each note bound to its own run's image.
 - [ ] `shots prune` ages out a stale run without taking a fresh run on the same branch.
+- [ ] `shots read` reports `runs` newest first, each image carrying the label and sentence
+      its own run recorded, and `baseline` naming the newest run that is neither still open
+      nor empty of screenshots, or null where the branch has no earlier run.
 - [ ] `worktree end` reports `shotsKept: null` rather than failing when the shots
       directory is empty or absent, and leaves the shots in place when it refuses to
       remove the worktree.

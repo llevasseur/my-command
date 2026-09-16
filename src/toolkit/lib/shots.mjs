@@ -621,30 +621,132 @@ function qualify(record, prefix) {
  * @returns {Verdict | null}
  */
 export function readVerdict(cwd, branch) {
+  return mergeVerdicts(readVerdicts(cwd, branch).map((found) => found.record));
+}
+
+/** The run directory names in a branch's keep. @param {string} branchDir @returns {string[]} */
+function runNamesIn(branchDir) {
+  if (!existsSync(branchDir)) return [];
+  return readdirSync(branchDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && RUN_DIR.test(entry.name))
+    .map((entry) => entry.name);
+}
+
+/**
+ * Every record this branch has, in the order `readVerdict` folds them, each paired with the
+ * run directory it was read from.
+ *
+ * The pairing rides alongside the record rather than inside it, so folding these back through
+ * `mergeVerdicts` produces exactly the verdict it always did. It is also read-time only: a
+ * `verdict.json` on disk never names its own directory, which would go stale the moment the
+ * sweep moved it. `run` is empty for the in-tree fallback and for a keep written before runs
+ * had directories, neither of which came from one.
+ * @param {string} cwd @param {string} branch
+ * @returns {{run: string, record: Verdict}[]}
+ */
+export function readVerdicts(cwd, branch) {
   const branchDir = keepDirFor(cwd, branch);
-  const runs = existsSync(branchDir)
-    ? readdirSync(branchDir, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory() && RUN_DIR.test(entry.name))
-        .map((entry) => entry.name)
-    : [];
   const found = [
     ...verdictFilesIn(shotsIn(cwd), ''),
-    ...runs.flatMap((run) => verdictFilesIn(join(branchDir, run), `${run}/`)).sort((a, b) => b.at - a.at),
+    ...runNamesIn(branchDir)
+      .flatMap((run) => verdictFilesIn(join(branchDir, run), `${run}/`))
+      .sort((a, b) => b.at - a.at),
     ...verdictFilesIn(branchDir, ''),
   ];
 
-  /** @type {Verdict[]} */
+  /** @type {{run: string, record: Verdict}[]} */
   const records = [];
   for (const { path, prefix } of found) {
     try {
       const parsed = JSON.parse(readFileSync(path, 'utf8'));
       // A tier this repo does not know names no driver, so it answers nothing.
-      if (parsed && TIERS.includes(parsed.tier)) records.push(qualify(parsed, prefix));
+      if (parsed && TIERS.includes(parsed.tier)) {
+        records.push({ run: prefix.replace(/\/$/, ''), record: qualify(parsed, prefix) });
+      }
     } catch {
       // A half-written or hand-mangled record is not a verdict; try the next one.
     }
   }
-  return mergeVerdicts(records);
+  return records;
+}
+
+/**
+ * One verification run, as a caller outside this module sees it.
+ * @typedef {object} RunReport
+ * @property {string} run              The run directory's name, `run-1` and up.
+ * @property {string} dir              Its absolute path in the keep.
+ * @property {boolean} open            Whether a workspace is still writing into it.
+ * @property {string | null} tier
+ * @property {string | null} verdict
+ * @property {number | null} rounds
+ * @property {string | null} recordedAt
+ * @property {{name: string, path: string, label: string | null, description: string | null}[]} shots
+ */
+
+/**
+ * Every run this branch has been verified in, newest first, each with its own images and the
+ * read-back written for them.
+ *
+ * Aged by the newest file in the directory rather than by the verdict's timestamp, because a
+ * run still going has images and no verdict yet, and it is the one a caller most needs to
+ * place. The in-tree fallback has no run directory and so appears nowhere here; `findShots`
+ * and `readVerdict` still read it.
+ * @param {string} cwd @param {string} branch @returns {RunReport[]}
+ */
+export function runsFor(cwd, branch) {
+  const branchDir = keepDirFor(cwd, branch);
+  const open = openRunDir(cwd, branch);
+
+  /** @type {Map<string, Verdict>} */
+  const records = new Map();
+  for (const { run, record } of readVerdicts(cwd, branch)) if (run && !records.has(run)) records.set(run, record);
+
+  /** @type {Map<string, {name: string, path: string}[]>} */
+  const images = new Map();
+  for (const shot of findShots(cwd, branch)) {
+    const run = runOf(shot.name);
+    if (!run) continue;
+    images.set(run, [...(images.get(run) ?? []), shot]);
+  }
+
+  return runNamesIn(branchDir)
+    .map((run) => ({ run, dir: join(branchDir, run), newest: keepContents(join(branchDir, run)).newest ?? 0 }))
+    .sort((a, b) => b.newest - a.newest)
+    .map(({ run, dir }) => {
+      const record = records.get(run);
+      const notes = record?.shots ?? [];
+      return {
+        run,
+        dir,
+        open: dir === open,
+        tier: record?.tier ?? null,
+        verdict: record?.verdict ?? null,
+        rounds: record?.rounds ?? null,
+        recordedAt: record?.recordedAt ?? null,
+        shots: (images.get(run) ?? []).map((shot) => {
+          const note = noteFor(notes, shot.name);
+          return {
+            name: shot.name,
+            path: shot.path,
+            label: note?.label ?? null,
+            description: note?.description ?? null,
+          };
+        }),
+      };
+    });
+}
+
+/**
+ * The run a fresh verification round should compare itself against: the newest earlier one
+ * that actually photographed something.
+ *
+ * A run still open is this round's own and is never its own baseline, and a run that captured
+ * nothing is nothing to compare with, so both are passed over rather than handed on as an
+ * empty block every caller would have to test for.
+ * @param {RunReport[]} runs @returns {RunReport | null}
+ */
+export function baselineOf(runs) {
+  return runs.find((entry) => !entry.open && entry.shots.length > 0) ?? null;
 }
 
 /** Whether a recorded tier means a browser took the screenshots. @param {string} tier */

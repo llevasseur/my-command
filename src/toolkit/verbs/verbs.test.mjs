@@ -1236,6 +1236,38 @@ test('shots read reports the record and the images beside it', () => {
   assert.deepEqual(r.shots, ['run-1/home.png', 'run-1/settings.png']);
 });
 
+test('shots read breaks the branch down by run and names the one to compare against', () => {
+  const { dir, git } = repoWithOrigin();
+  git(['checkout', '-qb', 'feat/baseline']);
+  captured(dir, 'playwright', ['home.png'], { notes: ['home.png | Home | The banner is amber.'] });
+  captured(dir, 'playwright', ['home.png'], { notes: ['home.png | Home | The banner is white.'] });
+
+  const r =
+    /** @type {{runs: {run: string, open: boolean, shots: {name: string, path: string, description: string|null}[]}[], baseline: {run: string, shots: {description: string|null}[]}|null}} */ (
+      shotsVerb(ctx(dir, ['read'], {}))
+    );
+  assert.deepEqual(
+    r.runs.map((entry) => entry.run),
+    ['run-2', 'run-1'],
+  );
+  // Each round's `home.png` kept the sentence its own round wrote.
+  assert.deepEqual(
+    r.runs.map((entry) => entry.shots.map((shot) => shot.description)),
+    [['The banner is white.'], ['The banner is amber.']],
+  );
+  assert.equal(
+    r.runs.every((entry) => entry.open),
+    false,
+  );
+  assert.equal(existsSync(String(r.runs[0].shots[0].path)), true);
+  // Both rounds recorded, so neither is still open and the newest is the one to compare against.
+  assert.equal(r.baseline?.run, 'run-2');
+  assert.deepEqual(
+    r.baseline?.shots.map((shot) => shot.description),
+    ['The banner is white.'],
+  );
+});
+
 test('pr reports no bodyWarnings for a short bulleted description', () => {
   const { dir, restore } = repoWithFakeGh(openPr({}));
   try {

@@ -157,6 +157,27 @@ round could not prove sits beside them. The caller passes each to `shots record`
 `--shot` and `--gap`, and `/pr` publishes them as written; see [Every cell says what
 its shot is and what it proves](pr.md#every-cell-says-what-its-shot-is-and-what-it-proves).
 
+### Comparing against the last session
+
+A branch is often verified more than once, and the second verifier is a different agent
+in a session the first one's context did not survive. It is handed the **baseline**:
+the newest earlier run on this branch that photographed anything, one line per shot as
+`<absolute path> | <label> | <sentence>`, which `my-command-tools shots read` resolves
+from the keep. Only that one run, not the branch's whole history, so the spawn prompt
+stays the same size however long the branch lives.
+
+The verifier opens those images before exercising the views they show, and its `saw:`
+line then says what **changed** rather than describing a fresh capture alone. Where it
+re-captures such a view it **copies the baseline image into its own run** as
+`<view>-before.png` and saves the new one as `<view>-after.png`, so the pair renders as
+one before/after row in the PR.
+
+Copying rather than pointing across run directories is deliberate on two counts. It
+keeps the run directory self-contained, which is what binds a read-back to its own
+image (see [Where the screenshots go](#where-the-screenshots-go)). And the keep drops a
+run after seven days, so a row assembled from two directories would lose half of itself
+while the PR was still open.
+
 Until now nothing asked for that. The verifier was told to save each shot into
 `shotsDir`, list the paths, and never paste images into the reply — and its verdicts
 came from `playwright-cli eval`, page navigation, and console and network error greps.
