@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { after, test } from 'node:test';
 import {
+  baselineOf,
   claimRun,
   collectShots,
   commentId,
@@ -20,8 +21,10 @@ import {
   openRunDir,
   pruneKeep,
   readVerdict,
+  readVerdicts,
   renderShots,
   runDir,
+  runsFor,
   sideOf,
   verifyRendered,
   writeVerdict,
@@ -578,4 +581,151 @@ test('a keep that was never written prunes nothing rather than throwing', () => 
   const report = pruneKeep({ root: join(scratch(), 'never-written'), maxAgeDays: 7 });
   assert.equal(report.removedCount, 0);
   assert.equal(report.kept, 0);
+});
+
+/**
+ * One finished verification run: its images written, its read-back recorded, its directory
+ * stamped `ageDays` old so the run order a test asserts is its own rather than the clock's.
+ * @param {string} work @param {string} branch
+ * @param {{shots: Record<string, string | null>, tier?: string, verdict?: string, ageDays?: number}} round
+ * @returns {string} the run directory
+ */
+function verified(work, branch, round) {
+  const dir = runDir(work, branch);
+  const notes = [];
+  for (const [name, description] of Object.entries(round.shots)) {
+    writeFileSync(join(dir, name), `pixels for ${name}`);
+    if (description) notes.push({ name, label: `View of ${name}`, description });
+  }
+  /** @type {import('./shots.mjs').Verdict} */
+  const record = {
+    tier: round.tier ?? 'playwright',
+    verdict: round.verdict ?? 'green',
+    rounds: 2,
+    recordedAt: new Date().toISOString(),
+  };
+  // A round that photographed nothing records no `shots` key at all, as `shots record` writes it.
+  if (notes.length) record.shots = notes;
+  writeVerdict(work, branch, record);
+  const at = Date.now() / 1000 - (round.ageDays ?? 0) * 24 * 60 * 60;
+  for (const name of [...Object.keys(round.shots), 'verdict.json']) utimesSync(join(dir, name), at, at);
+  return dir;
+}
+
+test('every run is reported with its own images and the read-back its own round wrote', () => {
+  keepAt();
+  const work = scratch();
+  const branch = 'feat/twice';
+  const first = verified(work, branch, { shots: { 'home.png': 'The banner is amber.' }, ageDays: 2 });
+  const second = verified(work, branch, {
+    shots: { 'home.png': 'The banner is white.', 'nav.png': null },
+    verdict: 'red',
+    ageDays: 1,
+  });
+
+  const runs = runsFor(work, branch);
+  assert.deepEqual(
+    runs.map((entry) => entry.run),
+    ['run-2', 'run-1'],
+  );
+  assert.deepEqual([runs[0].dir, runs[1].dir], [second, first]);
+  assert.equal(runs[0].verdict, 'red');
+  assert.equal(runs[1].verdict, 'green');
+  assert.equal(runs[0].tier, 'playwright');
+  assert.equal(runs[0].rounds, 2);
+
+  assert.deepEqual(
+    runs[1].shots.map((shot) => [shot.name, shot.description]),
+    [['run-1/home.png', 'The banner is amber.']],
+  );
+  assert.equal(runs[1].shots[0].path, join(first, 'home.png'));
+  // Each run's `home.png` keeps its own sentence rather than the newer one's.
+  assert.deepEqual(
+    runs[0].shots.map((shot) => [shot.name, shot.label, shot.description]),
+    [
+      ['run-2/home.png', 'View of home.png', 'The banner is white.'],
+      ['run-2/nav.png', null, null],
+    ],
+  );
+});
+
+test('the baseline is the newest earlier run, never the one still open', () => {
+  keepAt();
+  const work = scratch();
+  const branch = 'feat/twice';
+  verified(work, branch, { shots: { 'home.png': 'Amber.' }, ageDays: 2 });
+  const second = verified(work, branch, { shots: { 'home.png': 'White.' }, ageDays: 1 });
+
+  // A third round opens its directory and has not recorded yet, so it is the open one.
+  const third = runDir(work, branch);
+  writeFileSync(join(third, 'home.png'), 'pixels');
+  const runs = runsFor(work, branch);
+  assert.equal(runs.find((entry) => entry.open)?.dir, third);
+
+  const baseline = baselineOf(runs);
+  assert.equal(baseline?.dir, second);
+  assert.deepEqual(
+    baseline?.shots.map((shot) => shot.description),
+    ['White.'],
+  );
+});
+
+test('a branch nobody verified before has no baseline to hand over', () => {
+  keepAt();
+  const work = scratch();
+  const dir = runDir(work, 'feat/first');
+  writeFileSync(join(dir, 'home.png'), 'pixels');
+  assert.equal(baselineOf(runsFor(work, 'feat/first')), null);
+});
+
+test('an earlier run that photographed nothing is not offered as a baseline', () => {
+  keepAt();
+  const work = scratch();
+  const branch = 'feat/quiet';
+  verified(work, branch, { shots: {}, tier: 'static', verdict: 'skipped', ageDays: 1 });
+  runDir(work, branch);
+  assert.equal(runsFor(work, branch).length, 2);
+  assert.equal(baselineOf(runsFor(work, branch)), null);
+});
+
+test('splitting the read leaves the merged verdict exactly as it was', () => {
+  keepAt();
+  const work = scratch();
+  const branch = 'fix/x';
+  verified(work, branch, { shots: { 'icon.png': 'Was solid.' }, verdict: 'red', ageDays: 1 });
+  verified(work, branch, { shots: { 'icon.png': 'Now white.' }, ageDays: 0 });
+
+  const found = readVerdicts(work, branch);
+  assert.deepEqual(
+    found.map((entry) => entry.run),
+    ['run-2', 'run-1'],
+  );
+  // The pairing rides alongside the record, so nothing names its own directory on disk.
+  assert.equal('run' in found[0].record, false);
+
+  const merged = readVerdict(work, branch);
+  assert.equal(merged?.verdict, 'green');
+  assert.deepEqual(merged?.shots?.map((note) => note.name).sort(), ['run-1/icon.png', 'run-2/icon.png']);
+});
+
+test('a baseline carried forward renders as one row beside the run it came from', () => {
+  const names = ['run-1/home.png', 'run-2/home-before.png', 'run-2/home-after.png'];
+  const notes = [
+    { name: 'run-1/home.png', label: 'Home, first pass', description: 'The banner is amber.' },
+    { name: 'run-2/home-before.png', label: 'Home as run 1 saw it', description: 'The banner was amber.' },
+    { name: 'run-2/home-after.png', label: 'Home now', description: 'The banner is white.' },
+  ];
+  const groups = groupShots(names);
+  assert.deepEqual(groups.pairs, [
+    { view: 'run-2/home', before: 'run-2/home-before.png', after: 'run-2/home-after.png' },
+  ]);
+  assert.deepEqual(groups.grid, ['run-1/home.png']);
+
+  const section = renderShots({ groups, url: (n) => `u/${n}`, notes, gaps: [], caption: 'Captured.' });
+  assert.match(section, /\| run-2\/home \| \*\*Home as run 1 saw it\*\*.+\*\*Home now\*\*.+banner is white\. \|/);
+  // The earlier run's own shot is still published, still carrying its own sentence.
+  assert.match(
+    section,
+    /\*\*Home, first pass\*\*<br>!\[run-1\/home\.png\]\(u\/run-1\/home\.png\)<br>The banner is amber\./,
+  );
 });

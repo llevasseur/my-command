@@ -188,7 +188,11 @@ Step 2.5.
 2. **Spawn once:** `Agent` with `subagent_type: "mycommand-verifier"`, handed the **task
    criteria**, the changed-file list, the run contract (or the detected boot), the
    `playwright-cli` command when `my-command-tools doctor` reports `playwright.installed`, and
-   the `shotsDir` Step 1's `worktree begin` reported. Once — every later round is a
+   the `shotsDir` Step 1's `worktree begin` reported. Hand it the **baseline** too when
+   `my-command-tools shots read` reports one: the newest earlier run on this branch that
+   photographed something, as one line per shot, `<absolute path> | <label> | <sentence>`. That
+   is what lets a round on an already-verified branch say what changed rather than describe a
+   fresh capture alone, and `baseline: null` means pass nothing. Once — every later round is a
    `SendMessage` to that same live agent, against that same booted server. Under
    `--no-implement` the criteria are the intent to demonstrate rather than a build spec, and
    when none were given, say so and let the verifier infer intent from the diff and the PR

@@ -9,6 +9,7 @@ import { bool, list, str } from '../lib/flags.mjs';
 import { UsageError } from '../lib/proc.mjs';
 import { currentBranch, repoRoot } from '../lib/repo.mjs';
 import {
+  baselineOf,
   collectShots,
   findShots,
   KEEP_MAX_AGE_DAYS,
@@ -17,6 +18,7 @@ import {
   parseShotNote,
   pruneKeep,
   readVerdict,
+  runsFor,
   TIERS,
   VERDICT_FILE,
   VERDICTS,
@@ -44,6 +46,11 @@ shots prune [--max-age-days <n>] [--dry-run]
   read    Report the recorded verdict and the screenshots found for this branch, across
           every run directory under ~/.my-command/shots/<repo>/<branch>/ and the live
           workspace alike. A screenshot is named for the run it came from.
+          \`runs\` breaks that down one entry per run directory, newest first, each with
+          its tier, verdict and every image by absolute path with the label and sentence
+          its own run recorded. \`baseline\` is the newest of those that is not the run
+          still open here and did photograph something, or null on a branch nobody has
+          verified before. That is what a fresh round is handed to compare against.
   prune   Drop the run directories in ~/.my-command/shots/ whose newest file is older
           than the cutoff, images and verdict file together. The run ages out, not the
           branch, so a stale round goes without taking a fresh one on the same branch
@@ -143,6 +150,7 @@ function record(ctx, cwd) {
 /** @param {string} cwd */
 function read(cwd) {
   const branch = currentBranch(cwd);
+  const runs = runsFor(cwd, branch);
   return {
     branch,
     verdict: readVerdict(cwd, branch),
@@ -151,5 +159,9 @@ function read(cwd) {
     shotsDir: openRunDir(cwd, branch),
     // Named for the run each came from, since two runs can hold the same filename.
     shots: findShots(cwd, branch).map((s) => s.name),
+    runs,
+    // What a fresh round compares itself against, resolved here so no caller has to work out
+    // which of `runs` is theirs and which is an earlier round's.
+    baseline: baselineOf(runs),
   };
 }

@@ -174,9 +174,14 @@ its row, with the missing cell saying so, because that is more use to a reviewer
 losing the pairing. Everything with no marker renders as a **grid**, two columns wide, or
 one column when there is one shot: a lone image still sits in a table, never loose in the
 body. Images are markdown rather than `<img>` elements, because `![alt](<path>)` is the
-only shape `gh` rewrites into an uploaded URL. `worktree end`'s collision suffix is
-accounted for: `home-before-2.png` is the same view as `home-before.png`, not a view called
-`home-2`. `--no-shots` switches the whole thing off.
+only shape `gh` rewrites into an uploaded URL. `--no-shots` switches the whole thing off.
+
+**A pair is always two files in one run directory**, never one file matched against another
+run's. That is what lets a comparison span sessions: a verifier handed the branch's baseline
+copies the earlier image into its own run as `<view>-before.png` beside its new
+`<view>-after.png`, and the row is built from two files it wrote and described itself. The
+View column names the run only when the body carries more than one, so the ordinary
+single-run table reads as it always did.
 
 ### Every cell says what its shot is and what it proves
 
