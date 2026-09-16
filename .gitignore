@@ -6,3 +6,6 @@ dist
 # Nothing under tmp/ is tracked except the .gitkeep that preserves the directory.
 tmp/*
 !tmp/.gitkeep
+
+# The run state the toolkit writes into a checkout, and whatever still captures in-tree.
+.my-command/

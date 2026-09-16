@@ -2,11 +2,9 @@
 //
 // `/verify` ends holding two facts nothing else can derive: the driver tier that ran and
 // the verdict it reached. `pr` needs the tier to decide whether a branch's screenshots
-// belong in its description, and by then the loop is over. So the loop records it in the
-// shots directory, which `worktree end` already moves, and the record travels with the
-// images it describes.
-import { existsSync } from 'node:fs';
-import { basename } from 'node:path';
+// belong in its description, and by then the loop is over. So the loop records it in its own
+// run directory in the keep, beside the images that round took, and the record travels with
+// the images it describes because it never leaves them.
 import { bool, list, str } from '../lib/flags.mjs';
 import { UsageError } from '../lib/proc.mjs';
 import { currentBranch, repoRoot } from '../lib/repo.mjs';
@@ -15,10 +13,10 @@ import {
   findShots,
   KEEP_MAX_AGE_DAYS,
   noteFor,
+  openRunDir,
   parseShotNote,
   pruneKeep,
   readVerdict,
-  shotsIn,
   TIERS,
   VERDICT_FILE,
   VERDICTS,
@@ -29,9 +27,12 @@ export const usage = `shots record --tier <tier> --verdict <verdict> [--rounds <
 shots read
 shots prune [--max-age-days <n>] [--dry-run]
 
-  record  Write ${VERDICT_FILE} into this workspace's .my-command/shots/, recording the
-          driver tier and verdict a verification loop ended on, and what the verifier
-          said it saw in each screenshot.
+  record  Write ${VERDICT_FILE} into this run's directory in the keep —
+          ~/.my-command/shots/<repo>/<branch>/run-N/, the one \`worktree begin\` reported
+          as \`shotsDir\` — recording the driver tier and verdict a verification loop
+          ended on, and what the verifier said it saw in each screenshot. Recording
+          closes the run, so the next loop in this workspace opens its own directory
+          rather than writing over this one.
           --tier <tier>       ${TIERS.join(' | ')}
           --verdict <v>       ${VERDICTS.join(' | ')}
           --rounds <n>        How many rounds the loop took.
@@ -40,13 +41,14 @@ shots prune [--max-age-days <n>] [--dry-run]
                               what the shot is and the sentence says what it proves, or
                               that it proves nothing. Repeatable.
           --gap <text>        One thing this round could not prove. Repeatable.
-  read    Report the recorded verdict and the screenshots found for this branch, from the
-          live workspace and from ~/.my-command/shots/<repo>/<branch>/ alike.
-  prune   Drop the branches in ~/.my-command/shots/ whose newest file is older than the
-          cutoff, images and verdict files together. Never touches a live workspace's
-          .my-command/shots/, which belongs to a run still going. \`worktree end\` runs
-          this itself, so it rarely needs calling by hand.
-          --max-age-days <n>  How old a branch's newest file may be. Default ${KEEP_MAX_AGE_DAYS}.
+  read    Report the recorded verdict and the screenshots found for this branch, across
+          every run directory under ~/.my-command/shots/<repo>/<branch>/ and the live
+          workspace alike. A screenshot is named for the run it came from.
+  prune   Drop the run directories in ~/.my-command/shots/ whose newest file is older
+          than the cutoff, images and verdict file together. The run ages out, not the
+          branch, so a stale round goes without taking a fresh one on the same branch
+          with it. \`worktree end\` runs this itself, so it rarely needs calling by hand.
+          --max-age-days <n>  How old a run's newest file may be. Default ${KEEP_MAX_AGE_DAYS}.
           --dry-run           Report what would go and remove nothing.
 
 \`pr\` embeds a branch's screenshots when this record says a **browser** tier took them —
@@ -121,15 +123,15 @@ function record(ctx, cwd) {
     .filter(Boolean);
   if (gaps.length) record.gaps = gaps;
 
-  const written = writeVerdict(cwd, record);
-  const dir = shotsIn(cwd);
+  const { file, dir, run } = writeVerdict(cwd, branch, record);
   const shots = collectShots(dir);
   // Reported, never refused: the tier `pr` gates on is already written.
   const undescribed = shots.filter((name) => !noteFor(notes, name));
   const unmatched = notes.filter((note) => !shots.some((name) => noteFor([note], name))).map((note) => note.name);
   return {
-    recorded: written,
+    recorded: file,
     branch,
+    run,
     shots: shots.length,
     described: notes.length,
     undescribed,
@@ -141,11 +143,13 @@ function record(ctx, cwd) {
 /** @param {string} cwd */
 function read(cwd) {
   const branch = currentBranch(cwd);
-  const dir = shotsIn(cwd);
   return {
     branch,
     verdict: readVerdict(cwd, branch),
-    shotsDir: existsSync(dir) ? dir : null,
-    shots: findShots(cwd, branch).map((s) => basename(s.path)),
+    // The run still open here, if one is. A workspace whose loop already recorded has none,
+    // and its screenshots are found by branch below rather than by this path.
+    shotsDir: openRunDir(cwd, branch),
+    // Named for the run each came from, since two runs can hold the same filename.
+    shots: findShots(cwd, branch).map((s) => s.name),
   };
 }

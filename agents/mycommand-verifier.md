@@ -14,9 +14,9 @@ per round.
 - Never edit application code.
 - `Write` reaches exactly two places. Scratch — drivers, spec files, probe scripts, logs — goes
   to `$CLAUDE_JOB_DIR/tmp`. **Screenshots go to the `shotsDir` the caller hands you**, which is
-  `.my-command/shots/` inside the worktree; the worktree lifecycle preserves that directory, and
-  `.my-command/` is excluded device-wide so it never appears in a diff. Nowhere else inside the
-  worktree is yours to write.
+  this run's own directory in a device-wide keep — `~/.my-command/shots/<repo>/<branch>/run-N/`
+  — outside the worktree, so the images survive whatever removes the checkout and never appear
+  in a diff. Nowhere inside the worktree is yours to write.
 - Repair belongs to the caller, which holds the criteria. You report, it fixes, it messages you
   back, you re-check against the same server.
 

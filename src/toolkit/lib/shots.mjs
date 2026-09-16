@@ -1,9 +1,18 @@
 // Where a run's screenshots live, and how they reach a pull request.
 //
-// Three verbs share these paths. `worktree begin` opens `.my-command/shots/` inside a
-// checkout, `worktree end` moves what landed there into a device-wide keep, and `pr`
+// Three verbs share these paths. `worktree begin` opens a run directory in a device-wide
+// keep, `worktree end` sweeps up anything that landed in the checkout instead, and `pr`
 // publishes what it finds. The keep's layout is stated once, here, so the three cannot
 // disagree about it.
+//
+// The keep is `<root>/<repo>/<branch…>/run-N/`, and **the run directory is the unit**: one
+// verification loop's images and its own `verdict.json`, together. Two things follow from
+// that and neither survives flattening it. Screenshots are written straight into the keep,
+// so they outlive a teardown that never calls `worktree end` — `ExitWorktree` with
+// `discard_changes`, or a bare `git worktree remove`. And a read-back binds to an image by
+// sitting in the same directory as it, so two runs that both photograph `home.png` keep two
+// images and two sentences, each attached to its own. Binding by filename could not: the
+// keep had to rename the second image to store it, and the note still named the first.
 //
 // What makes a branch's screenshots publishable is the verdict `/verify` records beside
 // them: a browser tier ran, or it did not. `docs/features/pr.md` covers why the shape of
@@ -21,11 +30,13 @@
 import { createHash } from 'node:crypto';
 import {
   copyFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -35,10 +46,23 @@ import { basename, dirname, extname, join } from 'node:path';
 import { ownerToken } from './gh.mjs';
 import { run as exec } from './proc.mjs';
 
-/** Where a worktree's screenshots accumulate, relative to its root. */
+/**
+ * Where a worktree's screenshots used to accumulate, relative to its root.
+ *
+ * Nothing writes here any more — `worktree begin` reports a run directory in the keep
+ * instead. It is still read, and still swept up by `worktree end`, because a run that
+ * started before that change, or any tool that still writes in-tree, would otherwise be
+ * stranded in a directory about to be removed.
+ */
 const SHOTS = ['.my-command', 'shots'];
 
-/** Where `/verify` records what it did, inside the shots directory. */
+/** Where a workspace remembers which run directories it opened, relative to its root. */
+const RUN_STATE = ['.my-command', 'run.json'];
+
+/** A run directory's name inside a branch's keep. */
+const RUN_DIR = /^run-(\d+)$/;
+
+/** Where `/verify` records what it did, inside its run directory. */
 export const VERDICT_FILE = 'verdict.json';
 
 /** The driver tiers `mycommand-verifier` reports, and the one that takes screenshots. */
@@ -112,6 +136,166 @@ export function keepDirFor(cwd, branch) {
   return join(keepRoot(), segment(repoName(cwd)), ...branch.split('/').map(segment));
 }
 
+/** Where a workspace records the run directories it opened. @param {string} cwd */
+export function runStateFile(cwd) {
+  return join(cwd, ...RUN_STATE);
+}
+
+/**
+ * @typedef {object} RunState
+ * @property {string | null} current  The run still open here, if one is.
+ * @property {string[]} all           Every run this workspace opened, closed or not.
+ */
+
+/**
+ * A run directory's name, or null for anything that is not one.
+ *
+ * The state file comes back off disk holding whatever was last written to it, so it is
+ * checked against the one shape a run name has rather than taken at its word. That also
+ * rules out a name that would escape the branch directory it is joined onto.
+ * @param {unknown} value @returns {string | null}
+ */
+function asRunName(value) {
+  const name = String(value ?? '');
+  return RUN_DIR.test(name) ? name : null;
+}
+
+/** @param {string} cwd @returns {RunState} */
+function readRunState(cwd) {
+  try {
+    const parsed = JSON.parse(readFileSync(runStateFile(cwd), 'utf8'));
+    const listed = Array.isArray(parsed?.all) ? parsed.all : [];
+    const all = listed.flatMap((/** @type {unknown} */ entry) => {
+      const name = asRunName(entry);
+      return name ? [name] : [];
+    });
+    return { current: asRunName(parsed?.current), all };
+  } catch {
+    // Absent, half-written, or hand-mangled: a workspace that remembers nothing has no runs.
+    return { current: null, all: [] };
+  }
+}
+
+/** @param {string} cwd @param {RunState} state */
+function writeRunState(cwd, state) {
+  const file = runStateFile(cwd);
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, `${JSON.stringify(state, null, 2)}\n`);
+}
+
+/**
+ * The next free `run-N` under `branchDir`, created.
+ *
+ * `mkdir` without `recursive` fails outright on a directory that is already there, so the
+ * check and the claim are one syscall: two runs racing for the same number cannot both
+ * believe they took it, which a read-then-create would let them.
+ * @param {string} branchDir @returns {string} the name claimed
+ */
+function claimRunName(branchDir) {
+  mkdirSync(branchDir, { recursive: true });
+  let next = 1;
+  for (const entry of readdirSync(branchDir, { withFileTypes: true })) {
+    const m = entry.isDirectory() ? entry.name.match(RUN_DIR) : null;
+    if (m) next = Math.max(next, Number(m[1]) + 1);
+  }
+  for (;;) {
+    const name = `run-${next}`;
+    try {
+      mkdirSync(join(branchDir, name));
+      return name;
+    } catch (error) {
+      if (/** @type {NodeJS.ErrnoException} */ (error).code !== 'EEXIST') throw error;
+      next += 1;
+    }
+  }
+}
+
+/**
+ * Open a fresh run directory for this workspace, whatever it already has open.
+ *
+ * `worktree end` uses this for the sweep: in-tree screenshots are some *other* run's, so
+ * folding them into the run this workspace is holding would caption them with its notes.
+ * @param {string} cwd @param {string} branch @returns {{run: string, dir: string}}
+ */
+export function claimRun(cwd, branch) {
+  const branchDir = keepDirFor(cwd, branch);
+  const run = claimRunName(branchDir);
+  const state = readRunState(cwd);
+  writeRunState(cwd, { ...state, all: [...new Set([...state.all, run])] });
+  return { run, dir: join(branchDir, run) };
+}
+
+/**
+ * This workspace's open run directory, opened on first ask.
+ *
+ * One workspace holds one run at a time, and `writeVerdict` closes it — so a second
+ * verification loop in the same checkout, which `--here` makes routine, lands in its own
+ * directory rather than overwriting the first loop's images and verdict.
+ * @param {string} cwd @param {string} branch @returns {string}
+ */
+export function runDir(cwd, branch) {
+  const state = readRunState(cwd);
+  if (state.current) {
+    const dir = join(keepDirFor(cwd, branch), state.current);
+    mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+  const { run, dir } = claimRun(cwd, branch);
+  writeRunState(cwd, { ...readRunState(cwd), current: run });
+  return dir;
+}
+
+/**
+ * This workspace's open run directory if it has one, without opening one.
+ * @param {string} cwd @param {string} branch @returns {string | null}
+ */
+export function openRunDir(cwd, branch) {
+  const { current } = readRunState(cwd);
+  if (!current) return null;
+  const dir = join(keepDirFor(cwd, branch), current);
+  return existsSync(dir) ? dir : null;
+}
+
+/** Every run directory this workspace opened, open or closed. @param {string} cwd @param {string} branch */
+export function openedRunDirs(cwd, branch) {
+  const branchDir = keepDirFor(cwd, branch);
+  return readRunState(cwd).all.map((run) => join(branchDir, run));
+}
+
+/**
+ * Move whatever is still in the checkout's `.my-command/shots/` into `dir`.
+ *
+ * Nothing this toolkit reports writes there any more, so this is the fallback and only the
+ * fallback: a run that began before the keep held run directories, or a capture tool pointed
+ * at the checkout by something other than `shotsDir`. Without it those images go with the
+ * worktree. An entry whose name is already taken in `dir` is left where it is rather than
+ * written over — two files under one name are two captures, and `worktree end` sweeps what
+ * stays behind into a directory where it has the name to itself.
+ * @param {string} cwd @param {string} dir @returns {string[]} what moved
+ */
+export function sweepInTree(cwd, dir) {
+  const from = shotsIn(cwd);
+  if (!existsSync(from)) return [];
+  mkdirSync(dir, { recursive: true });
+  /** @type {string[]} */
+  const moved = [];
+  for (const name of readdirSync(from)) {
+    const target = join(dir, name);
+    if (existsSync(target)) continue;
+    try {
+      renameSync(join(from, name), target);
+    } catch {
+      // A rename across filesystems fails outright with EXDEV, and the keep and the checkout
+      // can sit on different volumes. Copy-then-delete is the same move by a slower route.
+      cpSync(join(from, name), target, { recursive: true });
+      rmSync(join(from, name), { recursive: true, force: true });
+    }
+    moved.push(name);
+  }
+  if (readdirSync(from).length === 0) rmSync(from, { recursive: true, force: true });
+  return moved;
+}
+
 /** How long a branch's screenshots stay in the keep, in days, when nothing says otherwise. */
 export const KEEP_MAX_AGE_DAYS = 7;
 
@@ -149,17 +333,19 @@ export function keepContents(dir) {
 }
 
 /**
- * Every branch directory in the keep — the ones holding a run's files rather than routing
- * to them.
+ * Every run directory in the keep — the ones holding a run's files rather than routing to
+ * them.
  *
- * The layout is `<root>/<repo>/<branch segments…>/`, and a branch name carries however many
- * segments it carries, so depth is not the test. A directory holding a file directly is:
- * the intermediate levels hold only directories, and the nested round directories a verifier
- * writes sit *inside* a branch directory, so descending stops before it reaches them. The
- * root itself is never one, whatever strays sit in it.
+ * The layout is `<root>/<repo>/<branch segments…>/run-N/`, and a branch name carries however
+ * many segments it carries, so depth is not the test. A directory holding a file directly
+ * is: the levels above hold only directories, and the round directories a verifier nests sit
+ * *inside* a run directory, so descending stops before it reaches them. A keep written before
+ * runs had directories has its files under the branch directly, and that answers here too,
+ * which is what lets the prune age an old keep out rather than walking past it. The root
+ * itself is never one, whatever strays sit in it.
  * @param {string} root @returns {string[]}
  */
-export function keepBranchDirs(root) {
+export function keepRunDirs(root) {
   /** @type {string[]} */
   const found = [];
   /** @param {string} dir @param {boolean} isRoot */
@@ -180,7 +366,7 @@ export function keepBranchDirs(root) {
  * an emptied `<repo>/fix`, so it would stand for good.
  * @param {string} dir @param {string} root @returns {string[]} the parents removed
  */
-function pruneEmptyUp(dir, root) {
+export function pruneEmptyUp(dir, root) {
   /** @type {string[]} */
   const removed = [];
   let current = dirname(dir);
@@ -210,23 +396,26 @@ function pruneEmptyUp(dir, root) {
  * @typedef {object} PruneReport
  * @property {string} root
  * @property {number} maxAgeDays
- * @property {string} cutoff             The instant a branch's newest file must beat.
+ * @property {string} cutoff             The instant a run's newest file must beat.
  * @property {boolean} dryRun
  * @property {{path: string, newest: string, bytes: number}[]} removed
  * @property {number} removedCount
  * @property {string[]} emptied          Parents dropped for having nothing left in them.
- * @property {number} kept               Branch directories left standing.
+ * @property {number} kept               Run directories left standing.
  * @property {number} bytes              Reclaimed, or reclaimable under `dryRun`.
  */
 
 /**
- * Drop the branch directories whose newest file is older than `maxAgeDays`.
+ * Drop the run directories whose newest file is older than `maxAgeDays`.
  *
- * Only ever the keep: a live workspace's `.my-command/shots/` belongs to a run still going,
- * and `worktree end` is what moves it here. A stale directory goes **whole**, images and
- * verdict files together — a verdict describing images that are gone publishes nothing, and
- * images with no verdict beside them cannot be published at all, so splitting the two only
- * ever leaves something useless behind.
+ * **The run ages out, not the branch.** A branch verified over a fortnight holds a stale run
+ * and a fresh one; aging the branch would either keep the stale run for the fresh one's sake
+ * or take the fresh one with the stale one, and neither is what the cutoff was asked for.
+ *
+ * A stale directory goes **whole**, images and verdict file together — a verdict describing
+ * images that are gone publishes nothing, and images with no verdict beside them cannot be
+ * published at all, so splitting the two only ever leaves something useless behind. The run
+ * directory is exactly that pairing, which is why it is also the unit here.
  * @param {PruneOptions} [options] @returns {PruneReport}
  */
 export function pruneKeep(options = {}) {
@@ -240,7 +429,7 @@ export function pruneKeep(options = {}) {
   let kept = 0;
   let bytes = 0;
 
-  for (const dir of keepBranchDirs(root)) {
+  for (const dir of keepRunDirs(root)) {
     const { newest, bytes: size } = keepContents(dir);
     // A directory holding no file has no age to judge, so it is left for its parent sweep.
     if (newest === null || newest >= cutoff) {
@@ -292,8 +481,10 @@ export function collectShots(dir) {
 /**
  * The branch's screenshots, wherever this run can still see them.
  *
- * Two places, one populated at a time: the live workspace before `worktree end` has run,
- * the keep afterwards. The workspace wins a name collision, being the newer of the two.
+ * The keep is the real answer, and a name there carries the run directory it sits in —
+ * `run-1/home.png` — so two runs that photographed the same view are two entries rather
+ * than one. A live workspace's `.my-command/shots/` is read as well, for whatever still
+ * writes in-tree, and wins a bare name collision as the newer of the two.
  * @param {string} cwd @param {string} branch
  * @returns {{name: string, path: string}[]}
  */
@@ -342,15 +533,26 @@ export function parseShotNote(value) {
 }
 
 /**
- * Record what a verification loop did, beside the screenshots it took.
- * @param {string} cwd @param {Verdict} record @returns {string} the file written
+ * Record what a verification loop did, in the run directory holding the screenshots it took,
+ * and close that run.
+ *
+ * The write is unconditional, and the run directory is what makes that safe: nothing else
+ * has a claim on this `verdict.json`, so there is no earlier read-back here to destroy.
+ * Closing the run afterwards is the other half — the next loop in this workspace opens its
+ * own directory rather than writing over this one.
+ * @param {string} cwd @param {string} branch @param {Verdict} record
+ * @returns {{file: string, dir: string, run: string}}
  */
-export function writeVerdict(cwd, record) {
-  const dir = shotsIn(cwd);
-  mkdirSync(dir, { recursive: true });
+export function writeVerdict(cwd, branch, record) {
+  const dir = runDir(cwd, branch);
+  // Before the record, so a capture that landed in the checkout is described by the notes
+  // being written here rather than swept into an unlabelled directory of its own later.
+  sweepInTree(cwd, dir);
   const file = join(dir, VERDICT_FILE);
   writeFileSync(file, `${JSON.stringify(record, null, 2)}\n`);
-  return file;
+  const state = readRunState(cwd);
+  writeRunState(cwd, { ...state, current: null });
+  return { file, dir, run: basename(dir) };
 }
 
 /**
@@ -381,13 +583,43 @@ function mergeVerdicts(ordered) {
   return merged;
 }
 
+/** A verdict file is `verdict.json`; a keep written before run directories also has `verdict-2.json`. */
+const VERDICT_NAMED = /^verdict(-\d+)?\.json$/;
+
+/**
+ * The verdict files directly in `dir`, newest first, each tagged with the prefix its notes
+ * name their screenshots under.
+ * @param {string} dir @param {string} prefix
+ * @returns {{path: string, prefix: string, at: number}[]}
+ */
+function verdictFilesIn(dir, prefix) {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && VERDICT_NAMED.test(entry.name))
+    .map((entry) => ({ path: join(dir, entry.name), prefix, at: statSync(join(dir, entry.name)).mtimeMs }))
+    .sort((a, b) => b.at - a.at);
+}
+
+/**
+ * A record's notes, renamed to the screenshots they describe as `findShots` reports them.
+ *
+ * The verifier names a shot by its bare filename, because that is what it wrote; the shot's
+ * name in the keep carries the run directory it landed in. Qualifying the note here is what
+ * binds it to its own run's image and to no other — two runs' `home.png` are two keys, so
+ * neither the merge nor the lookup can confuse them.
+ * @param {Verdict} record @param {string} prefix @returns {Verdict}
+ */
+function qualify(record, prefix) {
+  if (!prefix || !Array.isArray(record.shots)) return record;
+  return { ...record, shots: record.shots.map((note) => ({ ...note, name: `${prefix}${basename(note.name)}` })) };
+}
+
 /**
  * The verdict recorded for this branch, or null when nothing recorded one.
  *
- * Read from the same two places the screenshots are, the live workspace beating the keep
- * and, inside each, the newest file beating the older ones. A branch verified twice leaves
- * `verdict-2.json` beside `verdict.json`, since `worktree end` suffixes a colliding name
- * into the keep.
+ * Read from every place a record can be: the live workspace first, then the keep's run
+ * directories newest first, then the branch directory itself for a keep written before runs
+ * had directories.
  *
  * **Every record is merged, not just the newest.** A run records only the shots that run
  * took, so reading one file and stopping published every earlier run's screenshots as
@@ -396,23 +628,27 @@ function mergeVerdicts(ordered) {
  * @returns {Verdict | null}
  */
 export function readVerdict(cwd, branch) {
-  const named = /^verdict(-\d+)?\.json$/;
+  const branchDir = keepDirFor(cwd, branch);
+  const runs = existsSync(branchDir)
+    ? readdirSync(branchDir, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && RUN_DIR.test(entry.name))
+        .map((entry) => entry.name)
+    : [];
+  const found = [
+    ...verdictFilesIn(shotsIn(cwd), ''),
+    ...runs.flatMap((run) => verdictFilesIn(join(branchDir, run), `${run}/`)).sort((a, b) => b.at - a.at),
+    ...verdictFilesIn(branchDir, ''),
+  ];
+
   /** @type {Verdict[]} */
   const records = [];
-  for (const dir of [shotsIn(cwd), keepDirFor(cwd, branch)]) {
-    if (!existsSync(dir)) continue;
-    const found = readdirSync(dir)
-      .filter((name) => named.test(name))
-      .map((name) => ({ path: join(dir, name), at: statSync(join(dir, name)).mtimeMs }))
-      .sort((a, b) => b.at - a.at);
-    for (const { path } of found) {
-      try {
-        const parsed = JSON.parse(readFileSync(path, 'utf8'));
-        // A tier this repo does not know names no driver, so it answers nothing.
-        if (parsed && TIERS.includes(parsed.tier)) records.push(parsed);
-      } catch {
-        // A half-written or hand-mangled record is not a verdict; try the next one.
-      }
+  for (const { path, prefix } of found) {
+    try {
+      const parsed = JSON.parse(readFileSync(path, 'utf8'));
+      // A tier this repo does not know names no driver, so it answers nothing.
+      if (parsed && TIERS.includes(parsed.tier)) records.push(qualify(parsed, prefix));
+    } catch {
+      // A half-written or hand-mangled record is not a verdict; try the next one.
     }
   }
   return mergeVerdicts(records);
@@ -431,9 +667,10 @@ export function isBrowserTier(tier) {
  */
 export function sideOf(name) {
   const ext = extname(name);
-  // `worktree end` suffixes a colliding filename `-2`, `-3` on its way into the keep, and
-  // it lands past the marker: `home-before-2.png` is the same view as `home-before.png`.
-  const stem = name.slice(0, name.length - ext.length).replace(/-\d+$/, '');
+  // The stem is taken as the verifier wrote it. Nothing renames a screenshot on its way into
+  // the keep any more, so a trailing `-2` is a name somebody chose rather than a collision
+  // being worked around, and reading it as the same view as `-1` would be inventing a pair.
+  const stem = name.slice(0, name.length - ext.length);
   const m = stem.match(SIDE);
   if (!m || m.index === undefined) return null;
   const before = stem.slice(0, m.index);
@@ -468,7 +705,8 @@ export function groupShots(names) {
       continue;
     }
     const row = views.get(side.view) ?? { view: side.view, before: null, after: null };
-    // First one wins, so a re-captured `home-before-2.png` cannot displace `home-before.png`.
+    // First one wins, so two spellings of one side — `home-before.png`, `home.before.png` —
+    // fill the cell once rather than the later one displacing the earlier.
     if (!row[side.side]) row[side.side] = name;
     views.set(side.view, row);
   }
@@ -503,20 +741,26 @@ export function cellText(text) {
     .trim();
 }
 
+/** The run directory a screenshot or a note sits under, or '' for one that sits under none. */
+const runOf = (/** @type {string} */ name) => (RUN_DIR.test(name.split('/')[0]) ? name.split('/')[0] : '');
+
 /**
- * The verifier's note for a screenshot, by the name it used. The keep suffixes a colliding
- * filename `-2`, and a nested shot carries its directory, so the match is tried by the full
- * relative name, then by basename, then with the suffix stripped.
+ * The verifier's note for a screenshot, by the name it used.
+ *
+ * Exact first, then by basename **within the same run** — which is what a verifier's nested
+ * `round-2/home.png` needs, since it named the note `home.png`. Confining the fallback to one
+ * run is the whole point: a note can no longer reach across into another run's identically
+ * named image, so a screenshot is never captioned with a sentence written about a different
+ * one. A name with no run directory under it is from the in-tree fallback or an old keep, and
+ * matches the same way against notes that have none either.
  * @param {ShotNote[]} notes @param {string} name @returns {ShotNote | undefined}
  */
 export function noteFor(notes, name) {
   const base = basename(name);
-  const ext = extname(base);
-  const unsuffixed = `${base.slice(0, base.length - ext.length).replace(/-\d+$/, '')}${ext}`;
+  const run = runOf(name);
   return (
     notes.find((note) => note.name === name) ??
-    notes.find((note) => note.name === base) ??
-    notes.find((note) => note.name === unsuffixed)
+    notes.find((note) => basename(note.name) === base && runOf(note.name) === run)
   );
 }
 
@@ -551,12 +795,17 @@ export function renderShots({ groups, url, notes, gaps, caption }) {
   const lines = [];
   const cell = (/** @type {string} */ name) => shotCell(name, url(name), noteFor(notes, name));
 
+  // A view is named for the run it came from only where a reader has runs to tell apart.
+  // One verification loop is the ordinary case, and there `run-1/` in every row is noise.
+  const runs = new Set([...groups.pairs.map((row) => runOf(row.view)), ...groups.grid.map(runOf)]);
+  const view = (/** @type {string} */ name) => cellText(runs.size > 1 ? name : name.replace(/^run-\d+\//, ''));
+
   if (groups.pairs.length) {
     lines.push('| View | Before | After |', '| --- | --- | --- |');
     for (const row of groups.pairs) {
       const before = row.before ? cell(row.before) : 'not captured';
       const after = row.after ? cell(row.after) : 'not captured';
-      lines.push(`| ${cellText(row.view)} | ${before} | ${after} |`);
+      lines.push(`| ${view(row.view)} | ${before} | ${after} |`);
     }
   }
 
