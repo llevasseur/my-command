@@ -8,8 +8,9 @@ description: Register the current session with the claude proxy's cache-warming 
 Ask the claude proxy to hold this session's prompt cache open, so returning after
 a break reuses a warm cache instead of paying to rebuild one. The workflow is a
 single HTTP request made with the shell tool. It takes no arguments, reads no
-files, writes no state, and has nothing to undo afterwards — the registration is
-scoped to one session and expires by itself.
+files, writes no state, and needs nothing undone afterwards — the registration is
+scoped to one session and expires by itself. It *can* be released early when the
+user asks; the last section before the closing turn says how.
 
 ## Resolve the session id first
 
@@ -68,6 +69,29 @@ ever resumed and found the rate below break-even, so most such registrations
 expire unused. Composed into another workflow it fires at the start of a run
 regardless, which one request is cheap enough to justify; invoked directly,
 invoke it on the way out.
+
+## Releasing it early
+
+The registration expires on its own at the deadline, and the proxy keeps its
+state in memory only, so restarting the proxy clears every registration too.
+Neither is needed in the ordinary case.
+
+When the user asks to stop warming a session before then, send the same endpoint
+a `DELETE`:
+
+```bash
+curl -s -XDELETE http://127.0.0.1:${CLAUDE_PROXY_PORT:-8787}/__warm \
+  -d "{\"sessionId\":\"$CLAUDE_CODE_SESSION_ID\"}"
+```
+
+It answers `{"ok":true,"sessionId":"…","released":true}`. Send it only when
+asked — registering and then releasing in the same run wastes the registration.
+
+**Closing the session does not release it.** From inside the proxy an abandoned
+session and a long away-stretch are indistinguishable, because silence is the
+only signal it has, so an armed registration keeps pinging until its deadline
+whatever became of the window it was made from. That is why this `DELETE` is
+worth sending when the user is finished rather than stepping away.
 
 ## Closing turn
 

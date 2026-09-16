@@ -41,7 +41,17 @@ Register this Claude Code session with the claude proxy's cache-warming control 
 
 - **Register when you are actually stepping away, rather than at session start.** The campaign that built this endpoint measured how often a session registered up front is ever resumed and found the rate below break-even: most such registrations expire unused. Reached as a `/task --add` entry it fires at the start of a run anyway, which one request is cheap enough to justify; invoked by hand, invoke it on the way out the door.
 - **One request is the entire behaviour.** No repository reading, no state file, no follow-up poll to see whether it armed, and no second call to confirm the first.
-- **Nothing needs undoing.** There is no teardown step and no way to unregister, because the registration expires by itself.
+- **Nothing needs undoing, but unregistering is possible.** There is no teardown step — the registration expires by itself at its deadline, and the proxy's state is in memory only, so restarting the proxy clears every registration too. When the user asks to stop warming a session before then, send the same endpoint a `DELETE`:
+
+  ```bash
+  curl -s -XDELETE http://127.0.0.1:${CLAUDE_PROXY_PORT:-8787}/__warm \
+    -d "{\"sessionId\":\"$CLAUDE_CODE_SESSION_ID\"}"
+  ```
+
+  It answers `{"ok":true,"sessionId":"…","released":true}`. Do this only when asked; registering and then immediately releasing wastes the registration.
+
+  Worth telling the user once, because it is the cheaper path and they may not know it: **the same `DELETE` run from any other shell costs no tokens at all.** Asking an agent to release a registration replays this session's whole prompt to send an 80-byte request, which spends the thing the registration exists to save. `GET /__warm` lists the live entries, so a session id is recoverable from outside without this session's environment.
+- **Closing the session does not stop it.** From inside the proxy an abandoned session and a long away-stretch are the same thing — silence is the only signal it has — so an armed registration keeps pinging until its deadline whatever happens to the window it was made from. That is the waste the guidance above is about, and the `DELETE` is how to avoid paying it when the user is finished rather than stepping away.
 
 ## Close the run in a text-only turn
 

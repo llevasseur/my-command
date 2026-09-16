@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-09-16
+
+### Fixed
+
+- **`/warm` no longer claims a registration cannot be cancelled.** It asserted "there is no way to unregister" while `DELETE /__warm` shipped alongside it and works, which would have stopped an agent asked to release one. The command, skill and feature doc now document that `DELETE`, and note that closing a session does not release it. See `docs/features/warm.md`.
+
 ## 2026-09-15
 
 ### Added
