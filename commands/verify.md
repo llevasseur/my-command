@@ -77,14 +77,27 @@ the pid.
 ## Step 4 — Spawn the verifier, once
 
 Read `my-command-tools doctor` first, for the one fact the spawn needs: `playwright.installed`,
-and the `source` that answered. `Agent` with `subagent_type: "mycommand-verifier"`. Hand it, and
-nothing else:
+and the `source` that answered.
+
+**When it is true, sweep before any browser starts: `my-command-tools browser sweep`.** It closes
+`playwright-cli` daemons older than an hour whose session name matches the scheme below, and
+reports the rest under `kept` with the reason it left them. This runs first because teardown
+cannot be left to the previous round: the leak happens precisely when a round dies before its
+own close, so the sweep is the half that needs no cooperation from a run that is already gone.
+It never touches a session this scheme did not name, and `playwright-cli close-all` is never
+used — that would take a browser a human is driving.
+
+Then `my-command-tools browser session --round 1` for the name this round opens under. `Agent`
+with `subagent_type: "mycommand-verifier"`. Hand it, and nothing else:
 
 - the intent, stated as given or inferred,
 - the changed-file list,
 - the run contract, or the detected boot and port,
 - **the `playwright-cli` command, when `doctor` reports `playwright.installed`** — that is what
   makes the browser tier reachable in a repo with no Playwright of its own,
+- **the session name and the close command `browser session` printed**, and that the round
+  closes that session by name before it replies, on every exit path. The name carries the branch
+  and the round, so a sweep can recognise it after the run that opened it is gone,
 - **the `shotsDir`** — this run's own directory in the keep,
   `~/.my-command/shots/<repo>/<branch>/run-N/`, the absolute path `worktree begin` reported,
 - **the baseline, when `my-command-tools shots read` reports one.** That field is the newest
@@ -120,7 +133,9 @@ Each round:
 1. `green` → stop. Go to Step 6.
 2. `unverified` or `skipped` → stop. Neither improves by repeating.
 3. `red` → fix the code, commit it on this branch, then `SendMessage` the **same live verifier**
-   to re-check against the same booted server.
+   to re-check against the same booted server. Read `my-command-tools browser session --round
+   <n>` for that round's own name and send it along: one session per round, each closed by the
+   round that opened it.
 4. Restart the app first only when the fix changed something the running server cannot pick up.
 
 Stop at the ceiling. Record the round count.
@@ -184,7 +199,8 @@ The report:
   provenance is unset. An id nobody is told is an id nobody can resolve,
 
 - **the saved screenshots, each by path.** They outlive this run — they were written straight
-  into `~/.my-command/shots/<repo>/<branch>/run-N/`, so no teardown has to cooperate, and `/my-command:pr`
+  into `~/.my-command/shots/<repo>/<branch>/run-N/`, so no teardown has to cooperate **to keep
+  the images**, and `/my-command:pr`
   embeds them in the PR when the recorded tier is a browser — so the report is where someone
   learns they exist. They do not outlive it by
   much: the keep is pruned to seven days, aged run by run from its newest file. A screenshot nobody
@@ -230,13 +246,20 @@ Lead with the verdict, the round count, and the tier.
   no `playwright-cli` and a repo with no Playwright of its own means the tier is unavailable, and
   the verifier drops to HTTP probes exactly as it always has. The installer prints the global
   install command for a human; nothing here runs it.
+- **The browser is closed by the round that opened it, and swept by the next one.** Every
+  `playwright-cli -s=<name>` starts a persistent `cliDaemon.js` owning a Chrome tree of about
+  ten processes, which reparents to PID 1 and outlives whatever spawned it. The verifier closes
+  its own session by name on every exit path; `my-command-tools browser sweep` catches the ones
+  a round died before closing. `close-all` is never used, at either end.
 - **The seeded login is for a localhost URL this run booted, and nothing else.** Any other host
   means the credentials are withheld and the round reports `unverified`.
 - Persisted Playwright specs are out of scope: the specs and logs the verifier writes are
   scratch under `$CLAUDE_JOB_DIR/tmp` and ship with nothing. **Screenshots are the exception** —
   they go to the `shotsDir`, which is this run's directory in
   `~/.my-command/shots/<repo>/<branch>/` rather than anywhere the workspace's removal reaches, and
-  `/my-command:pr` publishes them into the PR body when Step 6's record says a browser took them. A pair
+  `/my-command:pr` publishes them into the PR body when Step 6's record says a browser took them. That is
+  about where the *images* live and nothing else: the browser session is still closed by name on
+  every exit path, and one that died before its close is swept by the next run. A pair
   named `<view>-before.png` / `<view>-after.png` becomes one before/after row there. What `/my-command:pr`
   publishes is an inspected image rather than merely a captured one, because the browser tier is
   both the gate on publishing and the tier that must read its screenshots back.

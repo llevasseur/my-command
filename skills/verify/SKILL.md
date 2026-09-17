@@ -21,8 +21,15 @@ than clamping it. `--no-verify` reports `skipped` and changes nothing.
 3. Boot the application through the repository helper, which selects an ephemeral port, waits on
    the health probe, and records the process id. Never start a server by hand. An unhealthy boot
    is read from the log it names, repaired, and retried; that costs a round.
-4. Spawn the verification agent once, handing it the intent, the changed files, the contract or
-   the detected boot, and the round ceiling. Continue the same agent with a message each later
+4. Before any browser starts, sweep the stale browser daemons through the repository helper. It
+   closes the ones older than an hour whose session name matches this repository's own scheme and
+   leaves every other session alone, so a round that died before its own teardown is cleaned up by
+   the next run rather than by nobody. Then read that round's session name from the same helper —
+   it is derived from the branch and the round number, so a later sweep recognises it — and spawn
+   the verification agent once, handing it the intent, the changed files, the contract or
+   the detected boot, that session name with its closing command, and the round ceiling. Each
+   later round carries its own name, and the agent closes the session it opened, by that exact
+   name, before it replies, on every ending including the failed ones. Continue the same agent with a message each later
    round, so the boot, the driver, and its repository context are paid for once. It replies with
    one of four flat verdicts — green, red, unverified, skipped — the driver tier it ran, an
    `exercised` line, and a path to its evidence. Read that path only on demand; never ask for
@@ -73,6 +80,12 @@ the route, the interaction, and the observed result reports `unverified` instead
 The verdict is advisory. It opens no pull request, blocks no merge, and fails no build; a red
 result is information for whoever reads it. That is deliberate: a check that can block shipping
 becomes a check people switch off.
+
+A browser session is a persistent daemon owning a tree of about ten processes; it outlives the
+agent that started it and reparents to the init process, so an unclosed one is a leak measured in
+gigabytes and CPU-hours. Closing it is the round's own job and sweeping what an abandoned round
+left is the next run's, and neither half ever closes every session on the device — that would
+take a browser a person is driving.
 
 Never install a browser or any other dependency to raise the driver tier — a repository without
 one has not opted in. The seeded login is used only against a localhost URL this run itself
