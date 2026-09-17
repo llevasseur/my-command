@@ -1,14 +1,19 @@
 // The `/task --jev` runtime surface.
 //
-// Four properties carry this unit and each is asserted rather than described: one site is
-// wired and none acts, a run that is not recording sends nothing, the per-run cap is its own
+// Four properties carry this unit and each is asserted rather than described: two sites are
+// wired and neither acts, a run that is not recording sends nothing, the per-run cap is its own
 // number rather than the process-wide one, and `--dry-run` prints what the live path would
 // post through the very function the live path posts.
 //
-// The wired site is `step-2.6/surface`, and the property that matters most about it is
-// negative: with no key, a run under `--jev` adds **zero lines** to the report. That is
-// asserted here on the wired list rather than on a hand-made one, because an empty `SITES`
-// made the claim for free and a populated one does not.
+// The wired sites are `step-2.5/complexity` and `step-2.6/surface`, and the property that
+// matters most about them is negative: with no key, a run under `--jev` adds **zero lines** to
+// the report. That is asserted here on the wired list rather than on a hand-made one, because
+// an empty `SITES` made the claim for free and a populated one does not.
+//
+// `step-2.5/complexity` builds its question map per changed file, so it is the first site whose
+// questions are not a literal in the module. Two things follow and both are asserted: the
+// expansion is keyed by path, so a recorded row pairs back to the file it was about, and a run
+// with no changed files asks nothing rather than posting an empty map.
 //
 // The byte-identical claim — a `/task` run under the flag reaching the same outcome as one
 // without it, across all nine failure modes — lives in `judge-runtime.test.mjs` beside the
@@ -21,9 +26,12 @@ import { after, test } from 'node:test';
 import { buildRequest, ENDPOINT } from './jev.mjs';
 import {
   actingSites,
+  changedFilesOf,
+  complexityQuestions,
   DEFAULT_RUN_TOKEN_CAP,
   dryRun,
   judgeRun,
+  questionsAt,
   RUN_CAP_VAR,
   records,
   reportLines,
@@ -88,21 +96,32 @@ async function withKeep(body) {
   }
 }
 
-test('one site is wired, and none of them acts', () => {
+test('two sites are wired, in run order, and none of them acts', () => {
   // ADR 0008 holds that nothing acts on a Jev answer, and wiring a site promotes nothing.
+  // The order is the order a run reaches them: the triage is asked before Step 2.6 boots.
   assert.deepEqual(
     SITES.map((site) => site.id),
-    ['step-2.6/surface'],
+    ['step-2.5/complexity', 'step-2.6/surface'],
   );
   assert.deepEqual(actingSites(), []);
 
   // ADR 0019: this site would decide a *skip*, so it is the last one that may ever be
   // promoted. Nothing enforces that ordering in code — this asserts the state it starts in.
-  const [surface] = SITES;
+  const [triage, surface] = SITES;
   assert.equal(surface.set, 'verify-surface');
   assert.equal(surface.acts, false);
   assert.deepEqual(Object.keys(surface.questions), ['REACHES_SERVED_SURFACE']);
   assert.equal(surface.questions.REACHES_SERVED_SURFACE.type, 'noul');
+
+  // ADR 0020: the mirror image. Its answer would ADD a rework pass, so it could be promoted
+  // soonest despite the worse label — and it ships `acts: false` exactly like the other.
+  assert.equal(triage.set, 'complexity-triage');
+  assert.equal(triage.acts, false);
+  // Its questions are built per changed file, so the static map is empty by design and the
+  // builder is what carries the questions. Asserting both stops a later refactor quietly
+  // dropping the builder and shipping a site that asks nothing.
+  assert.deepEqual(Object.keys(triage.questions), []);
+  assert.deepEqual(Object.keys(triage.questionsFor({ changedFiles: ['x.ts'] })), ['NEEDS_REWORK::x.ts']);
 
   // The mechanism is per set rather than per flag, so it has to be able to say yes — the
   // claim is that no shipped site does, not that the door is welded shut.
@@ -231,22 +250,84 @@ test('--dry-run prints the live body through the live builder, and is ungated', 
   assert.equal(bare.recorded, false);
   assert.deepEqual(bare.sites[0].body, buildRequest('x', QUESTIONS));
 
-  // Against the wired list, the dry run prints the real site — which is what a human reads
+  // Against the wired list, the dry run prints the real sites — which is what a human reads
   // before authorising the first egress this campaign has ever had.
-  const wired = dryRun({ state: 'x' });
+  const state = { changedFiles: ['src/a.ts', 'docs/b.md'] };
+  const wired = dryRun({ state });
   assert.deepEqual(
     wired.sites.map((site) => site.id),
-    ['step-2.6/surface'],
+    ['step-2.5/complexity', 'step-2.6/surface'],
   );
-  assert.equal(wired.sites[0].acts, false);
-  assert.deepEqual(wired.sites[0].body, buildRequest('x', SITES[0].questions));
+  for (const site of wired.sites) assert.equal(site.acts, false, `${site.set} prints able to act`);
+
+  // Each printed body is composed from what that site would actually ask, per-file expansion
+  // included. A dry run that printed the empty static map would understate the egress it
+  // exists to disclose, which is the one failure mode this assertion is for.
+  assert.deepEqual(wired.sites[0].body, buildRequest(state, questionsAt(SITES[0], state)));
+  assert.deepEqual(Object.keys(wired.sites[0].body.questions), ['NEEDS_REWORK::src/a.ts', 'NEEDS_REWORK::docs/b.md']);
+  assert.deepEqual(wired.sites[1].body, buildRequest(state, SITES[1].questions));
+});
+
+test('the triage expands one question per changed file, keyed by path', () => {
+  // The per-file shape is the question. One answer over a whole diff would average a hard
+  // change to one file together with a rename applied to nine others, and the key is what
+  // lets a recorded row be paired back to the file it was about.
+  const questions = complexityQuestions({ changedFiles: ['src/a.ts', 'src/b.ts'] });
+  assert.deepEqual(Object.keys(questions), ['NEEDS_REWORK::src/a.ts', 'NEEDS_REWORK::src/b.ts']);
+  for (const [key, question] of Object.entries(questions)) {
+    assert.equal(question.type, 'noul');
+    assert.ok(question.instructions.includes(key.replace('NEEDS_REWORK::', '')), `${key}: does not name its file`);
+    assert.ok(question.instructions.includes('rework pass'), `${key}: does not ask the set's question`);
+  }
+
+  // The state is assembled by the command rather than by a schema, so anything that is not a
+  // usable file list means no questions — never a throw inside a layer whose whole contract is
+  // that it cannot change an outcome.
+  for (const state of [
+    'x',
+    [],
+    {},
+    { changedFiles: null },
+    { changedFiles: 'src/a.ts' },
+    { changedFiles: ['', '  '] },
+  ]) {
+    assert.deepEqual(changedFilesOf(state), [], `${JSON.stringify(state)} must yield no files`);
+    assert.deepEqual(complexityQuestions(state), {}, `${JSON.stringify(state)} must yield no questions`);
+  }
+
+  // And `questionsAt` is the one place the two kinds of site are reconciled, so nothing
+  // downstream has to know which kind it is holding.
+  assert.deepEqual(questionsAt(SITE, 'x'), QUESTIONS);
+  assert.deepEqual(Object.keys(questionsAt(SITES[0], { changedFiles: ['a.ts'] })), ['NEEDS_REWORK::a.ts']);
+});
+
+test('a per-file site with no changed files asks nothing rather than posting an empty map', async () => {
+  // Spending a call to be told nothing is the failure this guards. `refuse` proves no request
+  // was composed at all, rather than one being composed and discarded.
+  const run = await judgeRun({
+    state: { changedFiles: [] },
+    sites: [SITES[0]],
+    endpoint: RECORDER,
+    env: keyed(),
+    optIn: true,
+    fetchImpl: refuse,
+  });
+
+  assert.equal(run.asked, false);
+  assert.equal(run.acted, false);
+  assert.equal(run.sites[0].reason, 'no-questions');
+  assert.deepEqual(run.sites[0].answers, {});
+  assert.equal(run.sites[0].recordedAt, null, 'nothing was sent, so nothing was recorded');
 });
 
 test('with no key a --jev run sends nothing and adds zero lines to the report', async () => {
   // The byte-identical promise, asserted on the list that actually ships. An empty `SITES`
-  // made this true for free; a wired one has to earn it, and this is where it is earned.
+  // made this true for free; a wired one has to earn it, and this is where it is earned. The
+  // state carries changed files on purpose, so the per-file site would have had real questions
+  // to ask — the silence has to come from the gate, not from an empty expansion.
+  assert.equal(SITES.length, 2, 'this test is only worth anything against a populated list');
   const run = await judgeRun({
-    state: 'the run so far',
+    state: { changedFiles: ['src/a.ts', 'src/b.ts'] },
     endpoint: RECORDER,
     env: {},
     optIn: true,
@@ -257,7 +338,7 @@ test('with no key a --jev run sends nothing and adds zero lines to the report', 
   assert.equal(run.silent, true, 'no key must be silent, not a warning');
   assert.equal(run.asked, false);
   assert.equal(run.acted, false);
-  assert.deepEqual(run.sites, [], 'a silent run reports no site, even though one is wired');
+  assert.deepEqual(run.sites, [], 'a silent run reports no site, even though two are wired');
   assert.deepEqual(reportLines(run), [], 'a no-key run must add zero lines to the report');
 
   // And the same with the opt-in absent as well, which is every run on this device today.

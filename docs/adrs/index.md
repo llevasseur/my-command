@@ -30,4 +30,5 @@ Add one with `okq new adr "<title>"`.
 | A verify failure carries its own provenance, set after the fact rather than guessed at record time | [0017-a-verify-failure-carries-its-own-provenance.md](0017-a-verify-failure-carries-its-own-provenance.md) |
 | /task records Jev answers against the outcomes it already watches, and acts on none of them | [0018-task-records-jev-answers-against-its-own-outcomes.md](0018-task-records-jev-answers-against-its-own-outcomes.md) |
 | The first wired Jev site sheds work rather than adding it, so it is the last one that may ever be promoted | [0019-the-load-shedding-site-is-promoted-last.md](0019-the-load-shedding-site-is-promoted-last.md) |
+| The site whose wrong answer only wastes work is promoted first, even though its labels are the worse ones | [0020-the-adding-work-site-is-promoted-first.md](0020-the-adding-work-site-is-promoted-first.md) |
 <!-- okq:index:end -->

@@ -44,7 +44,7 @@ The task is the text in the `<command-args>` block above. Parse leading flags of
 
 **This run is where the outcome is known.** `/task` watches a branch from criteria to an open PR, so it sees which gate failed, what the review found, and whether the verdict came back green — minutes after the question could have been asked, and on the same branch. That is the thing the proxy transcript store does not have: [ADR 0014](../../docs/adrs/0014-the-eval-returned-no.md) abandoned an eval subject at 3 labels against a floor of 200 because that store records calls and no outcomes. Asking here and writing the answer down beside what the run did is how the outcome-labelled corpus gets made. Collecting it is the entire point; acting on it is not part of this.
 
-**Nothing acts on an answer.** [ADR 0008](../../docs/adrs/0008-no-question-set-acts-in-this-campaign.md) still holds, and this flag does not touch it — promotion is per question set, never per flag, so a set let through later would be that set's change and not this one's. No set is promoted here and no question site is wired yet, so a run under `--jev` today opens a session, asks nothing, and reports that.
+**Nothing acts on an answer.** [ADR 0008](../../docs/adrs/0008-no-question-set-acts-in-this-campaign.md) still holds, and this flag does not touch it — promotion is per question set, never per flag, so a set let through later would be that set's change and not this one's. No set is promoted here. **Two sites are wired** — `step-2.5/complexity` and `step-2.6/surface` — and each carries `acts: false`, so a run under `--jev` opens a session, asks at both, writes what came back into the report, and changes nothing about what the run does.
 
 The runtime is `src/toolkit/lib/judge-run.mjs`; this section is what the run does with it.
 
@@ -176,6 +176,27 @@ Run the repo's own anti-slop lint over what Step 2 produced, before `/clean` and
 5. **Re-run the repo's gates afterwards, as a fresh run** — a new `my-command-tools verify --background`, blocked on with the `wait.blockingCall` **that new run returns**, never polled. Step 2's verdict file is already written, so re-sending Step 2's wait comes back instantly carrying Step 2's pre-fix report and verifies nothing at all; the one-wait-per-run rule bars a second watch over the *same* run, not a second run. The lint fixes are code changes, so `pass: true` on that new run is what proves they broke nothing; `pass: false` means this step is not finished. Commit them on this branch like any other Step 2 work.
 
 The lint's output is input, not a gate. A finding you deliberately leave standing — a false positive, or a rule the repo's own conventions override — is reported with that reason, never silenced by editing lint config or the script.
+
+### The pre-verify complexity triage, under `--jev`
+
+Once the lint is clear and before Step 2.6 boots anything, a run carrying `--jev` asks the
+`complexity-triage` set **one `noul` per changed file**: is the change to this file complex
+enough to warrant a rework pass before it is verified? The site is `step-2.5/complexity`, it
+carries `acts: false` like every other, and **nothing reads the answers back**. No rework pass
+is scheduled and none is withheld. A run without the flag, or on a device with no key, reaches
+Step 2.6 having done exactly what it does today.
+
+It is asked here rather than inside Step 2.6 because the question is about the code as Step 2.5
+leaves it — after the lint fixes are in, and before a verifier's verdict exists to colour the
+answer.
+
+**This is the site that could act soonest, ahead of `step-2.6/surface`**, and its labels are the
+worse of the two. Its answer would ADD a rework pass rather than skip one, so a wrong answer
+costs a wasted pass that the run report shows;
+[ADR 0020](../../docs/adrs/0020-the-adding-work-site-is-promoted-first.md) records why that
+outranks a cleaner label, and
+[ADR 0019](../../docs/adrs/0019-the-load-shedding-site-is-promoted-last.md) states the other
+half of the ordering.
 
 ## Step 2.6 — Verify against the running app, while the code is still yours to change
 
