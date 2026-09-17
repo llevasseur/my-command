@@ -4,10 +4,14 @@
 // repository's own /clean commits, with the ADR 0011 pre-filter applied so a comment the runtime
 // path would never ask about never becomes a scored row. Nothing here rebuilds any of that.
 //
-// One call covers a whole file's comments. `docs/adrs/0013-the-eval-bar-is-pre-registered.md`
-// measures latency as "p95 for one batched call covering a file's comments", and the client's own
-// `buildRequest` says why: Speculative Fan-Out makes several questions in one call cost less than
-// several calls, so there is no loop over questions here.
+// **A call's own failure is data this module carries, not data it discards.**
+// `src/toolkit/lib/jev.mjs` never throws: no key, a 401, a 422, a timeout and a body that answered
+// 7 of 125 questions all arrive as a result whose answer map is short or empty, which
+// `docs/adrs/0013-the-eval-bar-is-pre-registered.md` fixes as the layer's contract. That contract
+// is right for a runtime caller and wrong for an eval, because the same emptiness reaches a verdict
+// as "the classifier was not confident". So every call made here is recorded whole — what it asked,
+// what came back, which ids never came back, and why — and
+// `docs/adrs/0016-the-eval-reports-its-own-failures.md` is the decision that it must be.
 
 import { readFileSync } from 'node:fs';
 import { buildCorpus, summarise } from '../lib/clean-corpus.mjs';
@@ -16,6 +20,26 @@ import { recordOrEmpty } from '../lib/json.mjs';
 
 /** The question set ticket 03 versioned. Read, never written. */
 const SET_PATH = 'src/toolkit/judge/clean-comment.json';
+
+/**
+ * The most questions one call may carry.
+ *
+ * ADR 0013 measures latency as "p95 for one batched call covering a file's comments", and the
+ * client's own `buildRequest` says why the batch exists at all: Speculative Fan-Out makes several
+ * questions in one call cost less than several calls. Neither is an argument for an unbounded
+ * batch, and the run of 2026-09-17 is what an unbounded batch does — one file's 125 comments went
+ * out as a single 125-question request and 7 answers came back, which the harness then read as 118
+ * rows of low confidence.
+ *
+ * So the batch stays batched and gains a ceiling. 25 is small enough that one short answer costs a
+ * bounded number of rows and large enough to keep the fan-out advantage the ADR priced; a file
+ * under the ceiling is still exactly one call, which is the shape ADR 0013's latency bar was
+ * written against. Above it, latency p95 becomes a per-call number covering part of a file, and
+ * ADR 0016 records that as a deliberate consequence rather than leaving it to be inferred here.
+ *
+ * Overridable per run — `--chunk <n>` on the harness, `chunkSize` here.
+ */
+export const MAX_QUESTIONS_PER_CALL = 25;
 
 /**
  * The set's options as a `choice` question's criteria: option id to its rubric.
@@ -58,6 +82,25 @@ export function batchByFile(entries) {
 }
 
 /**
+ * One batch split into the requests it will actually be sent as, in order.
+ *
+ * A size of zero or less would mean no request can carry anything, so the batch is returned whole
+ * rather than silently dropped — a caller that passes a nonsensical ceiling gets the old behaviour
+ * and a visible question count, not an empty run.
+ * @template T
+ * @param {T[]} items
+ * @param {number} size
+ * @returns {T[][]}
+ */
+export function chunk(items, size) {
+  if (!Number.isFinite(size) || size <= 0) return items.length === 0 ? [] : [items];
+  /** @type {T[][]} */
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
+/**
  * A rough token count for state that was never sent, used only for the displaced-context metric.
  *
  * Four characters to the token is the conventional English approximation. It is never used for
@@ -85,43 +128,158 @@ function stateOf(entry) {
 }
 
 /**
+ * What one call asked and what it got, recorded whether or not it worked.
+ *
+ * `answered + unansweredIds.length === questionCount` always holds, which is the assertion the
+ * 2026-09-17 run had nowhere to make. `ok: true` with a non-empty `unansweredIds` is the exact
+ * shape that run hit: the transport succeeded and the answers did not arrive.
+ * @typedef {object} CallRecord
+ * @property {number} index Position in the run's call order, from 0.
+ * @property {string} file The corpus file this call's questions came from.
+ * @property {number} chunkIndex Which chunk of that file's batch, from 0.
+ * @property {number} chunkCount How many chunks that batch was split into.
+ * @property {number} questionCount
+ * @property {string[]} questionIds Keyed exactly as they were sent.
+ * @property {number} answerCount
+ * @property {string[]} unansweredIds Asked and never answered. The 7-of-125 signal.
+ * @property {boolean} ok What the client reported.
+ * @property {string | null} reason The client's `JevReason`, verbatim.
+ * @property {string} detail The client's free-text detail, verbatim.
+ * @property {number} attempts Requests actually sent.
+ * @property {number} latencyMs
+ * @property {{input_tokens: number, output_tokens: number}} usage
+ */
+
+/**
  * Replay one batch against the endpoint and score every row in it.
+ *
+ * The batch goes out as one or more calls of at most `chunkSize` questions. Cost, latency and
+ * displaced context are charged to the first row **of each chunk**, because each chunk is its own
+ * call — charging the whole batch to its first row would drop every chunk after the first out of
+ * the price metric, which is how the 2026-09-17 run counted one call of the two it made.
+ *
  * @param {import('../lib/clean-corpus.mjs').CorpusEntry[]} batch
  * @param {{question: string, criteria: Record<string, string>}} set
  * @param {import('../lib/jev.mjs').JevBudget} budget
- * @returns {Promise<{rows: import('./metrics.mjs').Scored[], reason: string | null}>}
+ * @param {object} [opts]
+ * @param {number} [opts.chunkSize]
+ * @param {string} [opts.endpoint] Passed to `ask()` — a recorder's URL routes the call through it.
+ * @param {string} [opts.key] Injected in tests; otherwise the client reads the environment.
+ * @param {typeof globalThis.fetch} [opts.fetchImpl] Injected in tests. Nothing here mocks modules.
+ * @param {number} [opts.firstCallIndex] Where this batch's calls sit in the run's call order.
+ * @returns {Promise<{rows: import('./metrics.mjs').Scored[], calls: CallRecord[]}>}
  */
-export async function replayBatch(batch, set, budget) {
-  /** @type {Record<string, import('../lib/jev.mjs').JevQuestion>} */
-  const questions = {};
-  batch.forEach((_entry, i) => {
-    questions[`c${i}`] = { type: 'choice', instructions: set.question, criteria: set.criteria };
-  });
+export async function replayBatch(batch, set, budget, opts = {}) {
+  const chunkSize = opts.chunkSize ?? MAX_QUESTIONS_PER_CALL;
+  const chunks = chunk(batch, chunkSize);
+  const file = batch.length === 0 ? '' : batch[0].file;
 
-  const state = batch.map(stateOf);
-  const displaced = approximateTokens(JSON.stringify(state));
+  /** @type {import('./metrics.mjs').Scored[]} */
+  const rows = [];
+  /** @type {CallRecord[]} */
+  const calls = [];
 
-  const started = Date.now();
-  const result = await ask({ state, questions, budget });
-  const elapsed = Date.now() - started;
+  for (const [chunkIndex, entries] of chunks.entries()) {
+    // Keys stay unique across the whole batch, so a record's `questionIds` name the same rows the
+    // corpus does no matter which chunk carried them.
+    const offset = chunkIndex * chunkSize;
+    /** @type {Record<string, import('../lib/jev.mjs').JevQuestion>} */
+    const questions = {};
+    const questionIds = entries.map((_entry, i) => `c${offset + i}`);
+    for (const id of questionIds) {
+      questions[id] = { type: 'choice', instructions: set.question, criteria: set.criteria };
+    }
 
-  // The whole batch went in one call, so the call's cost and latency belong to the batch. Charging
-  // each row the full figure would multiply both by the batch size.
-  const rows = batch.map((entry, i) => {
-    const answer = result.answers[`c${i}`];
-    const choice = answer !== undefined && answer.type === 'choice' ? answer : null;
-    return {
-      expected: entry.label,
-      actual: choice === null ? null : choice.choice,
-      confidence: choice === null ? 0 : choice.confidence,
+    const state = entries.map(stateOf);
+    const displaced = approximateTokens(JSON.stringify(state));
+
+    const started = Date.now();
+    const result = await ask({
+      state,
+      questions,
+      budget,
+      endpoint: opts.endpoint,
+      key: opts.key,
+      fetchImpl: opts.fetchImpl,
+    });
+    const elapsed = Date.now() - started;
+
+    /** @type {string[]} */
+    const unansweredIds = [];
+    for (const [i, id] of questionIds.entries()) {
+      const answer = result.answers[id];
+      const choice = answer !== undefined && answer.type === 'choice' ? answer : null;
+      if (choice === null) unansweredIds.push(id);
+      rows.push({
+        expected: entries[i].label,
+        actual: choice === null ? null : choice.choice,
+        confidence: choice === null ? 0 : choice.confidence,
+        latencyMs: elapsed,
+        inputTokens: i === 0 ? result.usage.input_tokens : 0,
+        outputTokens: i === 0 ? result.usage.output_tokens : 0,
+        displacedTokens: i === 0 ? displaced : 0,
+      });
+    }
+
+    calls.push({
+      index: (opts.firstCallIndex ?? 0) + chunkIndex,
+      file,
+      chunkIndex,
+      chunkCount: chunks.length,
+      questionCount: questionIds.length,
+      questionIds,
+      answerCount: questionIds.length - unansweredIds.length,
+      unansweredIds,
+      ok: result.ok,
+      reason: result.reason,
+      detail: result.detail,
+      attempts: result.attempts,
       latencyMs: elapsed,
-      inputTokens: i === 0 ? result.usage.input_tokens : 0,
-      outputTokens: i === 0 ? result.usage.output_tokens : 0,
-      displacedTokens: i === 0 ? displaced : 0,
-    };
-  });
+      usage: result.usage,
+    });
+  }
 
-  return { rows, reason: result.ok ? null : result.detail };
+  return { rows, calls };
+}
+
+/**
+ * What the run's calls add up to, as the one place a reader learns whether the numbers beside it
+ * mean anything.
+ *
+ * `complete` is the gate the bars read. It is deliberately strict: one unanswered question is
+ * enough to make every replay-derived number a statement about a partial run rather than about the
+ * classifier, and ADR 0016 would rather report that than average over it.
+ * @param {CallRecord[]} calls
+ */
+export function summariseCalls(calls) {
+  const questionsAsked = calls.reduce((n, c) => n + c.questionCount, 0);
+  const answersReturned = calls.reduce((n, c) => n + c.answerCount, 0);
+  const failed = calls.filter((c) => !c.ok);
+  const short = calls.filter((c) => c.ok && c.unansweredIds.length > 0);
+
+  // Each distinct reason once, with how many calls carried it — a run that timed out forty times
+  // says so in one line rather than forty identical ones, and the detail is kept verbatim so a
+  // grep for 401, 422 or timeout finds the endpoint's own words.
+  /** @type {Map<string, {reason: string, detail: string, calls: number}>} */
+  const byReason = new Map();
+  for (const call of failed) {
+    const reason = call.reason ?? 'unknown';
+    const key = `${reason} ${call.detail}`;
+    const got = byReason.get(key);
+    if (got === undefined) byReason.set(key, { reason, detail: call.detail, calls: 1 });
+    else got.calls += 1;
+  }
+
+  return {
+    calls: calls.length,
+    callsFailed: failed.length,
+    callsShortOfAnswers: short.length,
+    questionsAsked,
+    answersReturned,
+    questionsUnanswered: questionsAsked - answersReturned,
+    reasons: [...byReason.values()],
+    complete: calls.length > 0 && failed.length === 0 && questionsAsked === answersReturned,
+  };
 }
 
 /**
@@ -130,28 +288,49 @@ export async function replayBatch(batch, set, budget) {
  * The corpus half needs no network and always runs: it is what lets a run with no key still report
  * the size and the baseline, which ADR 0013 requires before any agreement number in any case.
  * @param {string} root
- * @param {{limit?: number, budget: import('../lib/jev.mjs').JevBudget, replay: boolean}} opts
+ * @param {object} opts
+ * @param {number} [opts.limit]
+ * @param {import('../lib/jev.mjs').JevBudget} opts.budget
+ * @param {boolean} opts.replay
+ * @param {number} [opts.chunkSize]
+ * @param {string} [opts.endpoint]
+ * @param {string} [opts.key]
+ * @param {typeof globalThis.fetch} [opts.fetchImpl]
  */
 export async function runSubjectA(root, opts) {
   const corpus = buildCorpus(root, opts.limit === undefined ? {} : { limit: opts.limit });
   const summary = summarise(corpus);
 
   if (!opts.replay) {
-    return { summary, rows: /** @type {import('./metrics.mjs').Scored[]} */ ([]), batches: 0, failure: null };
+    return {
+      summary,
+      rows: /** @type {import('./metrics.mjs').Scored[]} */ ([]),
+      batches: 0,
+      calls: /** @type {CallRecord[]} */ ([]),
+      // A run that asked nothing broke nothing. Its bars report `not-measured` on their own, and
+      // calling it incomplete here would read as a failure where there was only an absent key.
+      integrity: { ...summariseCalls([]), complete: true },
+    };
   }
 
   const batches = batchByFile(corpus.entries);
   /** @type {import('./metrics.mjs').Scored[]} */
   const rows = [];
-  /** @type {string | null} */
-  let failure = null;
+  /** @type {CallRecord[]} */
+  const calls = [];
 
   const set = loadQuestionSet(root);
   for (const batch of batches) {
-    const got = await replayBatch(batch, set, opts.budget);
+    const got = await replayBatch(batch, set, opts.budget, {
+      chunkSize: opts.chunkSize,
+      endpoint: opts.endpoint,
+      key: opts.key,
+      fetchImpl: opts.fetchImpl,
+      firstCallIndex: calls.length,
+    });
     rows.push(...got.rows);
-    if (got.reason !== null && failure === null) failure = got.reason;
+    calls.push(...got.calls);
   }
 
-  return { summary, rows, batches: batches.length, failure };
+  return { summary, rows, batches: batches.length, calls, integrity: summariseCalls(calls) };
 }

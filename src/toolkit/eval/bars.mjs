@@ -31,11 +31,17 @@ export { NOUL_HIGH_CONFIDENCE_DISTANCE } from '../lib/jev.mjs';
 
 /**
  * A bar measured against a result.
+ *
+ * `inconclusive` is the fourth status and the one that is not about the classifier at all: the
+ * number was computed, and the run it was computed over did not answer every question it asked, so
+ * the number describes the harness. ADR 0016 separates it from `fail` because an abandonment
+ * caused by 125 unanswered questions and one caused by measured disagreement are different
+ * findings that were previously printed with the same word.
  * @typedef {object} BarOutcome
  * @property {string} id
  * @property {string} metric
  * @property {string} statement
- * @property {'pass' | 'fail' | 'not-measured'} status
+ * @property {'pass' | 'fail' | 'inconclusive' | 'not-measured'} status
  * @property {number | null} observed
  * @property {string} detail
  */
@@ -94,18 +100,33 @@ export const DEPENDENCY_BAR =
   'If the client cannot be built as a raw fetch against Node 22 global fetch with nothing added to package.json dependencies, the layer is abandoned rather than given a dependency.';
 
 /**
- * A number that was never measured is not a number that passed. Kept as one helper so no bar can
- * quietly read `null` as clearing itself.
+ * A number that was never measured is not a number that passed, and a number measured over a run
+ * that lost answers is not a number about the classifier. Kept as one helper so no bar can quietly
+ * read `null` as clearing itself, and none can report a verdict its data does not support.
+ *
+ * `complete` downgrades **both** directions on purpose: a pass computed from 7 of 132 rows is as
+ * untrustworthy as a fail computed from them, so neither is reported as measured.
  * @param {string} id
  * @param {string} metric
  * @param {string} statement
  * @param {number | null} observed
  * @param {boolean} failed
  * @param {string} detail
+ * @param {boolean} [complete] Whether the run behind `observed` answered everything it asked.
  * @returns {BarOutcome}
  */
-function outcome(id, metric, statement, observed, failed, detail) {
+function outcome(id, metric, statement, observed, failed, detail, complete = true) {
   if (observed === null) return { id, metric, statement, status: 'not-measured', observed: null, detail };
+  if (!complete) {
+    return {
+      id,
+      metric,
+      statement,
+      status: 'inconclusive',
+      observed,
+      detail: `${detail} — measured over a run that did not answer every question it asked, so this number describes the run, not the classifier`,
+    };
+  }
   return { id, metric, statement, status: failed ? 'fail' : 'pass', observed, detail };
 }
 
@@ -119,6 +140,9 @@ function outcome(id, metric, statement, observed, failed, detail) {
  * @property {number | null} coverageAtBand
  * @property {number | null} priceRatio
  * @property {number | null} latencyP95Ms
+ * @property {boolean} [dataComplete] Whether every question the run asked was answered. Defaults
+ *   to true, so a subject that makes no calls at all — Subject B, or any run with no key — scores
+ *   exactly as it did before this field existed.
  */
 
 /**
@@ -132,6 +156,9 @@ export function scoreSubjectA(m) {
   const margin = agreement !== null && baseline !== null ? agreement - baseline : null;
   const agreementFailed =
     agreement !== null && baseline !== null && (margin === null || margin < 0.1 || agreement < 0.9);
+  // Every bar below is derived from the replayed rows, so one incomplete run makes all four
+  // inconclusive together. There is no bar here that a lost answer leaves untouched.
+  const complete = m.dataComplete !== false;
 
   return [
     outcome(
@@ -143,6 +170,7 @@ export function scoreSubjectA(m) {
       baseline === null
         ? 'no baseline, so the 10-point margin cannot be tested'
         : `agreement ${fmt(agreement)} vs baseline ${fmt(baseline)} (margin ${fmt(margin)}); needs >= 0.90 absolute and >= 0.10 margin`,
+      complete,
     ),
     outcome(
       'A.coverage',
@@ -151,6 +179,7 @@ export function scoreSubjectA(m) {
       m.coverageAtBand,
       m.coverageAtBand !== null && m.coverageAtBand < 0.2,
       `${fmt(m.coverageAtBand)} of the corpus at confidence >= ${SUBJECT_A_BAND}; needs >= 0.20`,
+      complete,
     ),
     outcome(
       'A.price',
@@ -159,6 +188,7 @@ export function scoreSubjectA(m) {
       m.priceRatio,
       m.priceRatio !== null && m.priceRatio > 0.1,
       `${fmt(m.priceRatio)} of the generative pass it replaces; needs <= 0.10`,
+      complete,
     ),
     outcome(
       'A.latency',
@@ -167,6 +197,7 @@ export function scoreSubjectA(m) {
       m.latencyP95Ms,
       m.latencyP95Ms !== null && m.latencyP95Ms > 5000,
       `p95 ${dur(m.latencyP95Ms)} for one batched call; needs <= 5000ms`,
+      complete,
     ),
   ];
 }
@@ -218,19 +249,28 @@ export function scoreSubjectB(m) {
 }
 
 /**
- * The subject's overall verdict. `abandon` the moment any bar fails; `pass` only when every bar
- * was measured and cleared; `incomplete` when nothing failed but something went unmeasured.
+ * The subject's overall verdict. `abandon` the moment any bar fails; `pass` only when every bar was
+ * measured and cleared; `inconclusive` when a bar was computed over a run that lost answers; and
+ * `incomplete` when nothing failed but something went unmeasured.
  *
- * The third value exists so a run with no API key cannot report a pass it did not earn.
+ * `incomplete` exists so a run with no API key cannot report a pass it did not earn.
+ * `inconclusive` exists for the opposite mistake, which the 2026-09-17 run made: a run that did
+ * reach the endpoint, lost 125 of 132 answers, and printed ABANDON. **A bar computed over an
+ * incomplete run can never reach `fail`**, so it can never drive an abandonment — which is why
+ * `abandon` is still tested first here and still means what it says. A genuine failure measured on
+ * complete data abandons even when another bar went unmeasured beside it.
  * @param {BarOutcome[]} bars
- * @returns {{verdict: 'pass' | 'abandon' | 'incomplete', failing: string[], unmeasured: string[]}}
+ * @returns {{verdict: 'pass' | 'abandon' | 'inconclusive' | 'incomplete', failing: string[],
+ *   inconclusive: string[], unmeasured: string[]}}
  */
 export function verdictOf(bars) {
   const failing = bars.filter((b) => b.status === 'fail').map((b) => b.id);
+  const inconclusive = bars.filter((b) => b.status === 'inconclusive').map((b) => b.id);
   const unmeasured = bars.filter((b) => b.status === 'not-measured').map((b) => b.id);
-  if (failing.length > 0) return { verdict: 'abandon', failing, unmeasured };
-  if (unmeasured.length > 0) return { verdict: 'incomplete', failing, unmeasured };
-  return { verdict: 'pass', failing, unmeasured };
+  if (failing.length > 0) return { verdict: 'abandon', failing, inconclusive, unmeasured };
+  if (inconclusive.length > 0) return { verdict: 'inconclusive', failing, inconclusive, unmeasured };
+  if (unmeasured.length > 0) return { verdict: 'incomplete', failing, inconclusive, unmeasured };
+  return { verdict: 'pass', failing, inconclusive, unmeasured };
 }
 
 /**

@@ -299,3 +299,412 @@ test('a truncated command is recorded as truncated', async () => {
   assert.equal(calls[0].truncated, true);
   assert.equal(calls[0].candidate, true);
 });
+
+// ---------------------------------------------------------------------------------------------
+// The harness reporting on its own calls. Every test below injects a fetch; none touches a
+// network, and the 2026-09-17 run — 132 questions, 7 answers, a printed ABANDON — is reproduced
+// from fixtures as the case the whole group exists to catch.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * A corpus row, with only the fields the replay reads.
+ * @param {number} i
+ * @param {'keep' | 'delete' | 'tighten'} [label]
+ * @returns {import('../lib/clean-corpus.mjs').CorpusEntry}
+ */
+function entry(i, label = 'keep') {
+  return {
+    commit: 'abc1234',
+    subject: 'chore: clean',
+    file: 'src/a.mjs',
+    line: i + 1,
+    comment: `// comment ${i}`,
+    label,
+    codeContext: 'const a = 1;',
+    surroundingDiff: '+const a = 1;',
+  };
+}
+
+const SET = { question: 'keep or delete?', criteria: { keep: 'still true', delete: 'noise' } };
+
+/**
+ * A `fetch` that answers only the first `answers` questions of whatever it is asked, which is the
+ * 2026-09-17 failure in miniature.
+ * @param {number} answers
+ * @param {number[]} [seen] Filled with each request's question count, in call order.
+ * @returns {typeof globalThis.fetch}
+ */
+function answeringFetch(answers, seen = []) {
+  /** @type {typeof globalThis.fetch} */
+  const fetchImpl = async (_input, init) => {
+    const body = JSON.parse(String(init?.body ?? '{}'));
+    const ids = Object.keys(body.questions);
+    seen.push(ids.length);
+    /** @type {Record<string, unknown>} */
+    const map = {};
+    for (const id of ids.slice(0, answers)) {
+      map[id] = { type: 'choice', choice: 'keep', probabilities: { keep: 0.99, delete: 0.01 }, confidence: 0.99 };
+    }
+    const payload = { answers: map, usage: { input_tokens: 10, output_tokens: 2 } };
+    return new Response(JSON.stringify(payload), { status: 200 });
+  };
+  return fetchImpl;
+}
+
+/**
+ * A `fetch` that refuses with one status, so the client's own reason for it can be asserted.
+ * @param {number} status
+ * @param {unknown} body
+ * @returns {typeof globalThis.fetch}
+ */
+function statusFetch(status, body) {
+  /** @type {typeof globalThis.fetch} */
+  const fetchImpl = async () => new Response(JSON.stringify(body), { status });
+  return fetchImpl;
+}
+
+test('chunk bounds a request and never drops a row', async () => {
+  const { chunk } = await import('./subject-a.mjs');
+  assert.deepEqual(chunk([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]]);
+  const many = Array.from({ length: 125 }, (_, i) => i);
+  assert.equal(chunk(many, 25).length, 5);
+  assert.deepEqual(chunk([], 25), []);
+  // A nonsensical ceiling returns the batch whole rather than sending nothing.
+  assert.deepEqual(chunk([1, 2], 0), [[1, 2]]);
+});
+
+test('a batch larger than the ceiling goes out as several calls, never one', async () => {
+  const { replayBatch, MAX_QUESTIONS_PER_CALL } = await import('./subject-a.mjs');
+  const { createBudget } = await import('../lib/jev.mjs');
+
+  /** @type {number[]} */
+  const seen = [];
+  const batch = Array.from({ length: 125 }, (_, i) => entry(i));
+  const got = await replayBatch(batch, SET, createBudget(), {
+    key: 'test-key',
+    fetchImpl: answeringFetch(MAX_QUESTIONS_PER_CALL, seen),
+  });
+
+  assert.equal(got.calls.length, 5, '125 rows at a ceiling of 25 is five calls');
+  assert.deepEqual(seen, [25, 25, 25, 25, 25], 'no single request carried more than the ceiling');
+  assert.equal(got.rows.length, 125, 'every corpus row still produces exactly one scored row');
+  assert.ok(got.calls.every((c) => c.questionCount <= MAX_QUESTIONS_PER_CALL));
+});
+
+test('a call that answers fewer questions than it asked records which ids never came back', async () => {
+  const { replayBatch } = await import('./subject-a.mjs');
+  const { createBudget } = await import('../lib/jev.mjs');
+
+  const batch = Array.from({ length: 10 }, (_, i) => entry(i));
+  const got = await replayBatch(batch, SET, createBudget(), {
+    chunkSize: 10,
+    key: 'test-key',
+    fetchImpl: answeringFetch(3),
+  });
+
+  const call = got.calls[0];
+  assert.equal(call.questionCount, 10);
+  assert.equal(call.answerCount, 3);
+  assert.deepEqual(call.unansweredIds, ['c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9']);
+  // The invariant the 2026-09-17 run had nowhere to assert.
+  assert.equal(call.answerCount + call.unansweredIds.length, call.questionCount);
+  // The transport succeeded; the answers did not arrive. Both facts are kept.
+  assert.equal(call.ok, true);
+  assert.equal(call.reason, null);
+});
+
+test('question ids stay unique across chunks, so a record names the row it asked about', async () => {
+  const { replayBatch } = await import('./subject-a.mjs');
+  const { createBudget } = await import('../lib/jev.mjs');
+
+  const batch = Array.from({ length: 6 }, (_, i) => entry(i));
+  const got = await replayBatch(batch, SET, createBudget(), {
+    chunkSize: 2,
+    key: 'test-key',
+    fetchImpl: answeringFetch(0),
+  });
+
+  const ids = got.calls.flatMap((c) => c.questionIds);
+  assert.deepEqual(ids, ['c0', 'c1', 'c2', 'c3', 'c4', 'c5']);
+  assert.equal(new Set(ids).size, 6);
+});
+
+test('every client reason reaches the call record, verbatim', async () => {
+  const { replayBatch, summariseCalls } = await import('./subject-a.mjs');
+  const { createBudget } = await import('../lib/jev.mjs');
+
+  for (const [status, reason, needle] of [
+    [401, 'bad-key', '401'],
+    [422, 'validation', '422'],
+  ]) {
+    const got = await replayBatch([entry(0)], SET, createBudget(), {
+      key: 'test-key',
+      fetchImpl: statusFetch(Number(status), { error: { message: 'nope' } }),
+    });
+    assert.equal(got.calls[0].reason, reason);
+    assert.match(got.calls[0].detail, new RegExp(String(needle)));
+
+    // And it survives serialisation, which is the form the report is grepped in.
+    const json = JSON.stringify({ calls: got.calls, integrity: summariseCalls(got.calls) });
+    assert.match(json, new RegExp(String(reason)));
+    assert.match(json, new RegExp(String(needle)));
+  }
+});
+
+test('a timeout is carried as a reason rather than as an empty answer map', async () => {
+  const { replayBatch } = await import('./subject-a.mjs');
+  const { createBudget } = await import('../lib/jev.mjs');
+
+  /** @type {typeof globalThis.fetch} */
+  const timingOut = async () => {
+    const err = new Error('the request timed out');
+    err.name = 'TimeoutError';
+    throw err;
+  };
+  const got = await replayBatch([entry(0)], SET, createBudget(), { key: 'test-key', fetchImpl: timingOut });
+  assert.equal(got.calls[0].reason, 'timeout');
+  assert.match(JSON.stringify(got.calls), /timeout/);
+});
+
+test('summariseCalls counts what was asked against what came back', async () => {
+  const { replayBatch, summariseCalls } = await import('./subject-a.mjs');
+  const { createBudget } = await import('../lib/jev.mjs');
+
+  const batch = Array.from({ length: 8 }, (_, i) => entry(i));
+  const got = await replayBatch(batch, SET, createBudget(), {
+    chunkSize: 4,
+    key: 'test-key',
+    fetchImpl: answeringFetch(1),
+  });
+  const integrity = summariseCalls(got.calls);
+
+  assert.equal(integrity.calls, 2);
+  assert.equal(integrity.questionsAsked, 8);
+  assert.equal(integrity.answersReturned, 2);
+  assert.equal(integrity.questionsUnanswered, 6);
+  assert.equal(integrity.callsShortOfAnswers, 2);
+  assert.equal(integrity.complete, false);
+});
+
+test('a run that answered everything it asked is complete', async () => {
+  const { replayBatch, summariseCalls } = await import('./subject-a.mjs');
+  const { createBudget } = await import('../lib/jev.mjs');
+
+  const batch = Array.from({ length: 4 }, (_, i) => entry(i));
+  const got = await replayBatch(batch, SET, createBudget(), {
+    chunkSize: 2,
+    key: 'test-key',
+    fetchImpl: answeringFetch(2),
+  });
+  assert.equal(summariseCalls(got.calls).complete, true);
+});
+
+test('a bar measured over an incomplete run is inconclusive, not a failure', async () => {
+  const { scoreSubjectA, verdictOf } = await import('./bars.mjs');
+  const bars = scoreSubjectA({
+    labelledSize: 132,
+    baseline: 0.865,
+    agreementAtBand: 0.857,
+    // The 2026-09-17 shape: 6 of 132 rows reached the band, because 125 were never answered.
+    coverageAtBand: 6 / 132,
+    priceRatio: null,
+    latencyP95Ms: 1200,
+    dataComplete: false,
+  });
+
+  const got = verdictOf(bars);
+  assert.equal(got.verdict, 'inconclusive');
+  assert.deepEqual(got.failing, [], 'nothing may fail on data this thin');
+  assert.ok(got.inconclusive.includes('A.coverage'));
+  assert.ok(got.inconclusive.includes('A.agreement'));
+  assert.match(bars[1].detail, /describes the run, not the classifier/);
+  // The observed number is kept rather than hidden — it is the evidence the run was broken.
+  assert.equal(bars[1].observed, 6 / 132);
+});
+
+test('an incomplete run cannot turn a passing number into a pass either', async () => {
+  const { scoreSubjectA, verdictOf } = await import('./bars.mjs');
+  const bars = scoreSubjectA({
+    labelledSize: 132,
+    baseline: 0.5,
+    agreementAtBand: 1,
+    coverageAtBand: 1,
+    priceRatio: 0.01,
+    latencyP95Ms: 100,
+    dataComplete: false,
+  });
+  assert.equal(verdictOf(bars).verdict, 'inconclusive');
+  assert.ok(bars.every((b) => b.status === 'inconclusive'));
+});
+
+test('a genuine failure on complete data still abandons', async () => {
+  const { scoreSubjectA, verdictOf } = await import('./bars.mjs');
+  const bars = scoreSubjectA({
+    labelledSize: 1911,
+    baseline: 0.865,
+    agreementAtBand: 0.93,
+    coverageAtBand: 0.5,
+    priceRatio: 0.05,
+    latencyP95Ms: 1000,
+    dataComplete: true,
+  });
+  const got = verdictOf(bars);
+  assert.equal(got.verdict, 'abandon');
+  assert.deepEqual(got.failing, ['A.agreement']);
+});
+
+test('the printed report separates an inconclusive run from an abandonment', async () => {
+  const { format } = await import('./judge-eval.mjs');
+  const { scoreSubjectA, verdictOf } = await import('./bars.mjs');
+  const { summariseCalls } = await import('./subject-a.mjs');
+
+  /** @type {import('./subject-a.mjs').CallRecord} */
+  const short = {
+    index: 0,
+    file: 'src/a.mjs',
+    chunkIndex: 0,
+    chunkCount: 1,
+    questionCount: 125,
+    questionIds: Array.from({ length: 125 }, (_, i) => `c${i}`),
+    answerCount: 7,
+    unansweredIds: Array.from({ length: 118 }, (_, i) => `c${i + 7}`),
+    ok: true,
+    reason: null,
+    detail: '',
+    attempts: 1,
+    latencyMs: 1200,
+    usage: { input_tokens: 10, output_tokens: 2 },
+  };
+  const bars = scoreSubjectA({
+    labelledSize: 132,
+    baseline: 0.865,
+    agreementAtBand: 0.857,
+    coverageAtBand: 6 / 132,
+    priceRatio: null,
+    latencyP95Ms: 1200,
+    dataComplete: false,
+  });
+
+  const text = format({
+    generatedAt: '2026-09-17T00:00:00.000Z',
+    apiKeyPresent: true,
+    recorder: null,
+    chunkSize: 25,
+    subjectA: {
+      corpus: {
+        size: 132,
+        commits: 2,
+        counts: { keep: 114, delete: 18 },
+        baseline: { label: 'keep', share: 0.865 },
+        preFiltered: { total: 0, byRule: {} },
+      },
+      batches: 2,
+      calls: [short],
+      integrity: summariseCalls([short]),
+      metrics: {
+        agreement: { overall: 0.857, atBand: 0.857, coverage: 6 / 132, answered: 7, reached: 6, size: 132 },
+        price: { inputTokens: 10, outputTokens: 2, totalTokens: 12, counted: 1, ratioOfDisplacedPass: null },
+        latency: { p50: 1200, p95: 1200, samples: 132 },
+        displacedContext: { total: 100, perRow: 1, rows: 132 },
+      },
+      bars,
+      ...verdictOf(bars),
+    },
+    subjectB: {
+      store: null,
+      corpus: null,
+      metrics: {
+        agreement: { overall: null, atBand: null, coverage: null, answered: 0, reached: 0, size: 0 },
+        price: { inputTokens: 0, outputTokens: 0, totalTokens: 0, counted: 0, ratioOfDisplacedPass: null },
+        latency: { p50: null, p95: null, samples: 0 },
+        displacedContext: { total: 0, perRow: null, rows: 0 },
+      },
+      bars: [],
+      droppedToQuestionSetOnly: true,
+      verdict: 'incomplete',
+      failing: [],
+      inconclusive: [],
+      unmeasured: [],
+    },
+  });
+
+  assert.match(text, /VERDICT: INCONCLUSIVE/);
+  assert.ok(!/VERDICT: ABANDON/.test(text), 'a broken run must not print an abandonment');
+  assert.match(text, /UNANSWERED:\s+118/);
+  assert.match(text, /answered 7 of 125/);
+  assert.match(text, /did not produce enough data to evaluate the bars/);
+  // The unanswered rows are stated as unanswered rather than divided out of the denominator.
+  assert.match(text, /125 never answered/);
+  assert.ok(!/abandon if:/.test(text), 'no abandonment clause is quoted against an untested bar');
+});
+
+test('the recorder is resolved from a session file, and a stopped session is not offered', async () => {
+  const { findRecorder } = await import('./judge-eval.mjs');
+  const { mkdtempSync, mkdirSync: mkdir, writeFileSync: write } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+
+  const dir = mkdtempSync(join(tmpdir(), 'jev-record-'));
+  /** @param {string} name @param {Record<string, unknown>} body */
+  const session = (name, body) => {
+    mkdir(join(dir, name), { recursive: true });
+    write(join(dir, name, 'session.json'), JSON.stringify(body));
+  };
+
+  assert.equal(findRecorder(dir), null, 'an empty directory offers nothing');
+
+  session('20260917T120000-aaaaaa', {
+    v: 1,
+    session: '20260917T120000-aaaaaa',
+    url: 'http://127.0.0.1:1111',
+    endedAt: '2026-09-17T12:05:00Z',
+    endpoint: 'https://api.typesafe.ai/v1/systemone',
+  });
+  assert.equal(findRecorder(dir), null, 'a session that has stopped is not a live recorder');
+
+  session('20260917T130000-bbbbbb', {
+    v: 1,
+    session: '20260917T130000-bbbbbb',
+    url: 'http://127.0.0.1:2222',
+    endpoint: 'https://api.typesafe.ai/v1/systemone',
+  });
+  assert.equal(findRecorder(dir)?.url, 'http://127.0.0.1:2222');
+
+  // A format version this reader does not know is skipped rather than guessed at, per the spec.
+  session('20260917T140000-cccccc', { v: 2, session: 'x', url: 'http://127.0.0.1:3333' });
+  assert.equal(findRecorder(dir)?.url, 'http://127.0.0.1:2222');
+});
+
+test('--record and --chunk are parsed, and --record alone means find the session', async () => {
+  const { parseArgs } = await import('./judge-eval.mjs');
+  const { MAX_QUESTIONS_PER_CALL } = await import('./subject-a.mjs');
+
+  assert.equal(parseArgs([]).chunk, MAX_QUESTIONS_PER_CALL);
+  assert.equal(parseArgs(['--chunk', '10']).chunk, 10);
+  assert.equal(parseArgs(['--chunk', '0']).chunk, MAX_QUESTIONS_PER_CALL, 'a nonsense ceiling is ignored');
+
+  assert.equal(parseArgs([]).record, false);
+  const bare = parseArgs(['--record', '--json']);
+  assert.equal(bare.record, true);
+  assert.equal(bare.recordUrl, undefined);
+  assert.equal(bare.json, true, 'a bare --record does not swallow the flag after it');
+  assert.equal(parseArgs(['--record', 'http://127.0.0.1:9']).recordUrl, 'http://127.0.0.1:9');
+});
+
+test('the replay routes through the endpoint it is given', async () => {
+  const { replayBatch } = await import('./subject-a.mjs');
+  const { createBudget } = await import('../lib/jev.mjs');
+
+  /** @type {string[]} */
+  const urls = [];
+  /** @type {typeof globalThis.fetch} */
+  const recording = async (input) => {
+    urls.push(String(input));
+    return new Response(JSON.stringify({ answers: {} }), { status: 200 });
+  };
+  await replayBatch([entry(0)], SET, createBudget(), {
+    key: 'test-key',
+    endpoint: 'http://127.0.0.1:4321/v1/systemone',
+    fetchImpl: recording,
+  });
+  assert.deepEqual(urls, ['http://127.0.0.1:4321/v1/systemone']);
+});
