@@ -14,6 +14,26 @@ This workflow is read-only. Assess concrete conversation and repository evidence
 - `N2 LIVE`: a process, conflict, mutation, or user decision remains pending.
 - `N3 VERIFIED`: completed work has relevant verification.
 
+Run `my-command-tools trim` first where it is available, and read its fields rather than
+arguing the same questions from memory. It answers four of the six deterministically — C1's
+returned-calls half, C3, N1's repeat arithmetic, and N2 — from the session transcript and the
+repository, with no key, no network call and no fail-open path. `gates.<id>.answer` is `Y`,
+`N`, or `unknown`, and `gates.<id>.evidence` is the sentence to carry into the matching
+evidence line.
+
+`unknown` is an answer and not a failure. C2 and N3 are always `unknown`, because whether a
+summary would preserve the goal and whether completed work has the verification it needed are
+judgements. So are the clauses reported as `residual` on C1 and N1 — mid-tool-sequence, and
+whether compressing would hide useful negative evidence. A gate marked `partial` is
+half-answered and the rest is yours. The verb prints no verdict: `verdict` is `null`, because
+six gates decide the outcome and two are not the toolkit's to answer.
+
+Expect `unknown` for every transcript gate on a Codex-only device. The reading comes from the
+workflow gate library, which the Codex install does not place beside the toolkit, and from
+Claude Code's own session transcripts. The repository halves — the working tree behind C3, the
+unmerged paths behind N2 — still answer. Judge the rest from the conversation and say that is
+where the evidence came from.
+
 Output exactly those six evidence lines. Recommend compaction only for `C1=Y`, `C2=Y`, `C3=Y`, `N1=N`, `N2=N`, `N3=Y`. Otherwise end with `CONTINUE -- <smallest action>`. When safe, end with `TRIM` and a copyable Codex continuation summary that preserves all active state and discards superseded narration and repetitive output.
 
 ## Closing turn
