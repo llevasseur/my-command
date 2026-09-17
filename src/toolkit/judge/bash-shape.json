@@ -1,0 +1,63 @@
+{
+  "set": "bash-shape",
+  "version": "1.0.0",
+  "kind": "noul",
+  "title": "The Bash shape gate's UNJUDGEABLE blind spot",
+  "description": "One noul over a Bash command the shape gate declined to judge. UNJUDGEABLE is an explicit bail-out, so a command containing a variable, a subshell, a brace or a tilde falls straight through the gate's regex classification unjudged.",
+  "acts": false,
+  "actsNote": "Nothing acts on an answer from this set. Nothing-acting is the safety mechanism, not shadow mode. See docs/adrs/0008-no-question-set-acts-in-this-campaign.md.",
+  "wiredInto": [],
+  "wiredIntoNote": "This set is wired into nothing. src/hooks/ is untouched by the campaign that added it, and no PreToolUse gate reads it. See docs/adrs/0010-eval-harness-before-the-layer.md.",
+  "batch": false,
+  "sources": ["src/hooks/lib/bash-shapes.mjs:15", "docs/specs/workflow-gates.md"],
+  "adrs": [
+    "docs/adrs/0008-no-question-set-acts-in-this-campaign.md",
+    "docs/adrs/0010-eval-harness-before-the-layer.md",
+    "docs/adrs/0012-two-eval-subjects-not-five.md",
+    "docs/adrs/0013-the-eval-bar-is-pre-registered.md"
+  ],
+  "blindSpot": {
+    "bailOut": "src/hooks/lib/bash-shapes.mjs:15",
+    "regexPurpose": "Characters that make a token's expansion something other than what is written.",
+    "measured": {
+      "sessionTranscriptsScanned": 1090,
+      "excludedAsEditingThisRepo": 9,
+      "recordedBashCalls": 12226,
+      "callsMatchingUnjudgeable": 1054,
+      "distinctSessionsContainingOne": 313,
+      "shareOfRecordedBashCalls": "8.6%"
+    },
+    "note": "Roughly 8.6% of every recorded Bash call falls through the regex unjudged, and the fall-throughs include shapes other gates in this repo target on purpose — a for ... do shell program, a pbcopy heredoc, a node -e one-liner naming files — reaching the tool unjudged because a $, a brace or a tilde appeared anywhere in the string."
+  },
+  "state": {
+    "carries": [
+      "the Bash command string the gate declined to judge",
+      "the tool's declared description",
+      "whether the call is on a repository the session is editing"
+    ],
+    "note": "The command string is the subject, so it is sent. Conversation-derived state leaving the device is gated twice, off by default, and printable with --dry-run.",
+    "adr": "docs/adrs/0009-conversation-derived-state-leaves-the-device.md"
+  },
+  "eval": {
+    "labels": "recoverable",
+    "subject": "B",
+    "statement": "This set is an eval subject. The candidate population is the 1054 fall-through commands, labelled by outcome: one that ran and returned content is allow; one that was refused or failed and was then reissued in a smaller form that succeeded is should-have-been-refused, with the reissued form recorded beside it as its own evidence.",
+    "candidateCountNote": "1054 IS THE CANDIDATE COUNT, NOT THE LABELLED COUNT. The outcome-pairing rule has not been run, and a reissue can happen for an unrelated reason. The first eval ticket's first output is the labelled count, reported before any agreement number; under 200 labelled commands this set drops to question-set-only and carries no numbers either.",
+    "bar": "docs/adrs/0013-the-eval-bar-is-pre-registered.md"
+  },
+  "questions": [
+    {
+      "id": "SHOULD_REFUSE",
+      "noul": "This Bash command should be refused, because a smaller or differently-shaped command would do the same job and the shape as written is one the repository's gates target.",
+      "answerMeans": "1.0 means refuse; 0.0 means allow.",
+      "confidenceBand": "A noul carries no confidence field, so the band is the value's own distance from the middle: high confidence means |noul - 0.5| >= 0.4, at or beyond 0.1 and 0.9.",
+      "why": "A false denial is worse than a missed violation, which is why this set's agreement bar is higher than the /clean set's: a wrong refusal costs a turn on somebody's Bash call.",
+      "source": "docs/specs/workflow-gates.md"
+    }
+  ],
+  "promotionBlocker": {
+    "statement": "A gate must fail open and must never refuse the same subject twice, and scripts/check-commands.sh enforces both. A nondeterministic classifier asked twice about one subject is exactly the shape the second property forbids, and nothing in this repository documents how a probabilistic gate satisfies it. This set violates nothing today because it is wired into nothing; the follow-up must answer it before any classifier reaches PreToolUse.",
+    "adr": "docs/adrs/0010-eval-harness-before-the-layer.md",
+    "spec": "docs/specs/workflow-gates.md"
+  }
+}

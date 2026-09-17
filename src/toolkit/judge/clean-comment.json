@@ -1,0 +1,78 @@
+{
+  "set": "clean-comment",
+  "version": "1.0.0",
+  "kind": "choice",
+  "title": "What /clean does to one comment",
+  "description": "The three-option choice /clean makes about a comment, lifted from the What to do to each comment in scope prose in src/commands/clean.md. It covers only the comments that survive the deterministic pre-filter.",
+  "acts": false,
+  "actsNote": "Nothing acts on an answer from this set. Nothing-acting is the safety mechanism, not shadow mode. See docs/adrs/0008-no-question-set-acts-in-this-campaign.md.",
+  "wiredInto": [],
+  "sources": [
+    "src/commands/clean.md:61",
+    "src/commands/clean.md:63",
+    "src/commands/clean.md:64",
+    "src/commands/clean.md:65"
+  ],
+  "adrs": [
+    "docs/adrs/0008-no-question-set-acts-in-this-campaign.md",
+    "docs/adrs/0011-deterministic-comment-keeps-run-before-the-classifier.md",
+    "docs/adrs/0012-two-eval-subjects-not-five.md",
+    "docs/adrs/0013-the-eval-bar-is-pre-registered.md"
+  ],
+  "preFilter": {
+    "statement": "THE FOUR MANDATORY KEEPS ARE ABSENT FROM THIS SET BY DESIGN. They are deterministic rules, not judgement, so they run as a code pre-filter before any comment reaches the classifier. A set that asked about them would hand the classifier four questions it cannot get wrong, and the agreement number would be inflated by exactly the cases the runtime path never asks about.",
+    "adr": "docs/adrs/0011-deterministic-comment-keeps-run-before-the-classifier.md",
+    "keptWithoutBeingJudged": [
+      {
+        "rule": "a license header, a linter directive (e.g. biome-ignore, eslint-disable), or a doc/JSDoc annotation tag",
+        "source": "src/commands/clean.md:65"
+      },
+      {
+        "rule": "a section-header comment inside JSX (e.g. {/* Header */}, {/* Sidebar */}) that labels a structural region of markup",
+        "source": "src/commands/clean.md:66"
+      },
+      {
+        "rule": "the sole comment inside an intentionally empty block (catch {}, else {}), load-bearing because Biome's noEmptyBlockStatements fails on an empty block with no comment",
+        "source": "src/commands/clean.md:67"
+      },
+      {
+        "rule": "never add a new comment — this command only removes and shortens, so Add is not an option this set can return",
+        "source": "src/commands/clean.md:68"
+      }
+    ],
+    "corpusNote": "The same exclusion applies to the recovered eval corpus. A comment the pre-filter would have kept is dropped from the corpus rather than scored, so the number the eval reports is the number the runtime path would have earned."
+  },
+  "state": {
+    "carries": ["the comment text", "the code it sits beside", "the surrounding diff"],
+    "note": "The rubric asks comparisons between a sentence and the code beside it, so the code must accompany the comment. Conversation-derived state leaving the device is gated twice, off by default, and printable with --dry-run.",
+    "adr": "docs/adrs/0009-conversation-derived-state-leaves-the-device.md"
+  },
+  "eval": {
+    "labels": "recoverable",
+    "subject": "A",
+    "statement": "This set is an eval subject. Labels come from git, which records which comments survived each /clean commit, filtered by the ADR 0011 pre-filter. The harness reports the majority-class baseline first, because most comments survive a /clean and a classifier that always answered Keep would otherwise look strong.",
+    "bar": "docs/adrs/0013-the-eval-bar-is-pre-registered.md"
+  },
+  "question": "What should /clean do to this comment?",
+  "options": [
+    {
+      "id": "delete",
+      "label": "Delete",
+      "rubric": "Delete comments that restate what the code plainly says, narrate steps (\"Now we loop over...\", \"This function does...\"), or add ceremony (obvious section banners, TODO-less filler).",
+      "source": "src/commands/clean.md:63"
+    },
+    {
+      "id": "tighten",
+      "label": "Tighten",
+      "rubric": "Tighten comments that carry real information but are verbose — cut them to the essential what, one line where possible.",
+      "source": "src/commands/clean.md:64"
+    },
+    {
+      "id": "keep",
+      "label": "Keep",
+      "rubric": "Keep comments that document something non-obvious the code can't express (edge cases, gotchas, external constraints).",
+      "source": "src/commands/clean.md:65",
+      "sourceNote": "The rest of clean.md:65 — leave license headers, linter directives and doc/JSDoc annotation tags intact — is a mandatory keep and is handled by the pre-filter above, not by this option."
+    }
+  ]
+}
