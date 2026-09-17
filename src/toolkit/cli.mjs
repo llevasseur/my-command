@@ -15,6 +15,7 @@ import * as commit from './verbs/commit.mjs';
 import * as concepts from './verbs/concepts.mjs';
 import * as doctor from './verbs/doctor.mjs';
 import * as identity from './verbs/identity.mjs';
+import * as judge from './verbs/judge.mjs';
 import * as pr from './verbs/pr.mjs';
 import * as prs from './verbs/prs.mjs';
 import * as scope from './verbs/scope.mjs';
@@ -43,6 +44,7 @@ const VERBS = {
   state,
   scope,
   trim,
+  judge,
   verify,
   app,
   commit,
@@ -77,6 +79,7 @@ const SWITCHES = new Set([
   'no-shots',
   'consume',
   'background',
+  'dry-run',
   'all',
   'keep-remote',
   'keep-local',
