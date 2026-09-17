@@ -16,7 +16,6 @@ const row = (pid, etime, session) =>
 test('a session name is derived from the branch and the round', () => {
   assert.equal(sessionName('fix/playwright-daemon-leak', 1), 'mc-fix-playwright-daemon-leak-r1');
   assert.equal(sessionName('feat/A_B', 12), 'mc-feat-a-b-r12');
-  // Same inputs, same name: that is what lets a later sweep recognise a dead run's session.
   assert.equal(sessionName('main', 3), sessionName('main', 3));
 });
 
@@ -32,7 +31,7 @@ test('only this scheme is ours', () => {
   // Every ad-hoc name measured in the leak, plus the two a human most likely drives.
   for (const name of ['verify', 'verify2', 'verify4', 'nexusverify', 'hb', 'default', 'admin', 'md5', 'nexus', 'warmv'])
     assert.equal(isOurs(name), false);
-  // Near-misses: a prefix collision and a missing round are both somebody else's session.
+  // Near-misses: a prefix collision and a missing round are somebody else's sessions.
   for (const name of ['mcmain-r1', 'mc-main', 'mc-main-rX', 'x-mc-main-r1']) assert.equal(isOurs(name), false);
 });
 

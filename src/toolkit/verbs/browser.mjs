@@ -2,18 +2,11 @@
 //
 // `playwright-cli -s=<name>` starts one persistent `cliDaemon.js <name>` per session name,
 // each owning a Chrome tree of about ten processes. The daemon outlives the agent that
-// spawned it and reparents to PID 1, so a round that dies early — the case a leak is made
-// of — leaves the whole tree running with nobody left to close it. Ten of them measured on
-// one device held 1.9 GB resident and 20.3 CPU-hours.
+// spawned it and reparents to PID 1, so a round that dies early leaves the whole tree
+// running with nobody left to close it.
 //
-// Two halves, and the second only works because of the first:
-//
-//   `session` names the run's session deterministically, from the branch and the round.
-//     An ad-hoc `verify`, `verify2`, `nexusverify` is what made the leak unsweepable: a
-//     teardown keyed to one name cannot recognise its own predecessors.
-//   `sweep` reaps the stale ones *before* the next round opens a browser, so teardown never
-//     depends on the previous round having finished. It matches only the scheme `session`
-//     writes, which is what keeps a browser a human is driving out of its reach.
+// The sweep only works because the names are deterministic: a teardown keyed to one
+// ad-hoc name cannot recognise its own predecessors.
 import { bool, list, str } from '../lib/flags.mjs';
 import { run as exec, UsageError } from '../lib/proc.mjs';
 import { currentBranch, repoRoot } from '../lib/repo.mjs';
@@ -55,7 +48,7 @@ const TERM_GRACE_MS = 2000;
 
 /**
  * A branch reduced to the alphabet a session name may use. Capped because the name becomes
- * a directory under `.playwright-cli/`, and a 200-character branch is a real thing.
+ * a directory under `.playwright-cli/`.
  * @param {string} branch @returns {string}
  */
 export function slug(branch) {
@@ -71,7 +64,7 @@ export function slug(branch) {
 
 /**
  * The session name for one round. Deterministic in both directions: the round derives it
- * without coordinating with anyone, and a later sweep recognises it without being told.
+ * without coordinating, and a later sweep recognises it without being told.
  * @param {string} branch @param {number} round @returns {string}
  */
 export function sessionName(branch, round) {
@@ -150,7 +143,7 @@ function sleep(ms) {
 
 /**
  * A daemon and everything beneath it. Signalling the daemon alone leaves its Chrome tree
- * running and reparented, which is the leak wearing a different pid.
+ * running and reparented.
  * @param {number} pid @param {Map<number, number[]>} children @returns {number[]}
  */
 function tree(pid, children) {
@@ -236,8 +229,8 @@ function sweep(ctx) {
   /** @type {{session: string, pid: number, ageSeconds: number, reason: string}[]} */
   const kept = [];
   for (const daemon of daemons) {
-    // Ordered so the report names the *first* reason a daemon was spared, and so a
-    // daemon nobody here started is never measured against a threshold at all.
+    // Ordered: the report names the first reason a daemon was spared, and one nobody
+    // here started is never measured against a threshold at all.
     const reason = !isOurs(daemon.session)
       ? 'not-ours'
       : keep.has(daemon.session)
