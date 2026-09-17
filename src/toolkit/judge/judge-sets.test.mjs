@@ -1,7 +1,7 @@
-// The question sets are data, so the only thing that can rot is the data: a file that stops
-// parsing, a criterion whose cited line no longer says what was lifted from it, a set that
-// quietly grows an eval number it has no labels for. The expected request shape is asserted
-// here rather than imported, because the client and the judge verb land in their own tickets.
+// The question sets are data, so what can rot is the data: a file that stops parsing, a
+// criterion whose cited line drifts, a set that grows an eval number with no labels. The
+// request shape is asserted here rather than imported because the client and the judge verb
+// land in their own tickets.
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -21,9 +21,7 @@ const sets = new Map();
 const KINDS = new Set(['noul', 'choice']);
 const LABELS = new Set(['recoverable', 'none']);
 
-// The two predicates that establish the contract for anything read off a parsed set. Every
-// representation check in this file goes through one of them, so the shape is settled here
-// rather than re-narrowed at each use.
+// Every representation check in this file goes through one of these two predicates.
 /** @param {unknown} value */
 const prose = (value) => typeof value === 'string' && value.length > 0;
 /** @param {unknown} value */
@@ -174,7 +172,6 @@ test('clean-comment is a three-option choice and excludes the four mandatory kee
   assert.match(clean.preFilter.statement, /ABSENT FROM THIS SET BY DESIGN/);
   assert.ok(clean.preFilter.corpusNote.length > 0, 'the corpus exclusion is the half that protects the metric');
 
-  // None of the four may appear as a returnable option.
   const optionIds = new Set(clean.options.map((/** @type {any} */ o) => o.id));
   for (const forbidden of ['license-header', 'linter-directive', 'jsx-section-header', 'empty-block', 'add']) {
     assert.ok(!optionIds.has(forbidden), `${forbidden} is pre-filtered and must not be an option`);
