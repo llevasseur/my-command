@@ -1,0 +1,85 @@
+{
+  "set": "dispatch-route",
+  "version": "1.0.0",
+  "kind": "choice",
+  "title": "Which subagent shape a dispatch belongs to",
+  "description": "A choice over the closed set of mycommand-* agent shapes in agents/. Each option's rubric is lifted from that definition's own declared role. This is the Intent Routing pattern: the decision is made once, at dispatch time, instead of by prose at the receiving end.",
+  "acts": false,
+  "actsNote": "Nothing acts on an answer from this set. Nothing-acting is the safety mechanism, not shadow mode. See docs/adrs/0008-no-question-set-acts-in-this-campaign.md.",
+  "wiredInto": [],
+  "wiredIntoNote": "This set is wired into nothing. No dispatch site reads it, and src/hooks/ is untouched by the campaign that added it. See docs/adrs/0010-eval-harness-before-the-layer.md.",
+  "closedSet": true,
+  "closedSetNote": "The options are exactly the definitions in agents/. A shape that is not one of them is not a routable answer; adding one means adding a definition and bumping this set's version.",
+  "sources": [
+    "agents/mycommand-delegate.md:3",
+    "agents/mycommand-doc-auditor.md:3",
+    "agents/mycommand-finisher.md:3",
+    "agents/mycommand-griller.md:3",
+    "agents/mycommand-reviewer.md:3",
+    "agents/mycommand-verifier.md:3"
+  ],
+  "adrs": [
+    "docs/adrs/0008-no-question-set-acts-in-this-campaign.md",
+    "docs/adrs/0010-eval-harness-before-the-layer.md",
+    "docs/adrs/0012-two-eval-subjects-not-five.md"
+  ],
+  "recordedFailure": {
+    "what": "A /god run lost a step when its mycommand-finisher declined to run /review, because that agent's own definition forbids applying edits beyond /clean.",
+    "cost": "an extra reviewer dispatch",
+    "why": "A wrong decision made at dispatch time, by prose. This is the one genuine label this set has, and it is a correction — corrections are rare by construction.",
+    "source": "agents/mycommand-finisher.md:22"
+  },
+  "state": {
+    "carries": [
+      "the work the dispatch is for, in one or two sentences",
+      "whether the dispatched agent may write code",
+      "whether it is expected to stay alive across rounds"
+    ],
+    "note": "Enough to tell the shapes apart, and no more. Conversation-derived state leaving the device is gated twice, off by default, and printable with --dry-run.",
+    "adr": "docs/adrs/0009-conversation-derived-state-leaves-the-device.md"
+  },
+  "eval": {
+    "labels": "none",
+    "statement": "THIS SET CARRIES NO EVAL NUMBERS. Do not look for one elsewhere; none exists. History records which subagent_type a site NAMED, never which was right, so agreement with it would measure reproduction of the status quo including its mistakes — precisely the number that would be read as justifying promotion. The one genuine label is the recorded correction above. A corpus accrues later, from corrections as they occur.",
+    "adr": "docs/adrs/0012-two-eval-subjects-not-five.md"
+  },
+  "question": "Which mycommand-* subagent shape should this dispatch use?",
+  "options": [
+    {
+      "id": "mycommand-delegate",
+      "label": "mycommand-delegate",
+      "rubric": "Runs one whole MyCommand workflow command — /task, /god, /fb or /work — end to end as a delegated unit of work, on its own branch, in its own worktree. Dispatched one per unit by /work, /manage and /improve.",
+      "source": "agents/mycommand-delegate.md:3"
+    },
+    {
+      "id": "mycommand-doc-auditor",
+      "label": "mycommand-doc-auditor",
+      "rubric": "Audits one document against the code it describes, or evaluates one document for density, and returns an inventory plus proposed edits — never the edited document. Dispatched one per doc, in parallel batches, by /docs and /truncate.",
+      "source": "agents/mycommand-doc-auditor.md:3"
+    },
+    {
+      "id": "mycommand-finisher",
+      "label": "mycommand-finisher",
+      "rubric": "Finishes a branch that already carries the work — runs /clean and then /pr in one shared context, in a worktree it does not own. Dispatched by /task --sub, and by /god through it.",
+      "source": "agents/mycommand-finisher.md:3"
+    },
+    {
+      "id": "mycommand-griller",
+      "label": "mycommand-griller",
+      "rubric": "A read-only adversarial interlocutor that stress-tests one idea, one question per round, and stays alive across rounds so its repo context is paid for once. Spawned once by /dev and continued with SendMessage.",
+      "source": "agents/mycommand-griller.md:3"
+    },
+    {
+      "id": "mycommand-reviewer",
+      "label": "mycommand-reviewer",
+      "rubric": "Reviews one pull request independently, without inheriting the authoring conversation's framing of it, and returns findings only — it never applies them. Dispatched by /review.",
+      "source": "agents/mycommand-reviewer.md:3"
+    },
+    {
+      "id": "mycommand-verifier",
+      "label": "mycommand-verifier",
+      "rubric": "Runs the repo's own app and reports whether a change is demonstrably true in it — one verdict per round, spawned once and continued with SendMessage. Dispatched by /verify and by /task Step 2.6.",
+      "source": "agents/mycommand-verifier.md:3"
+    }
+  ]
+}
