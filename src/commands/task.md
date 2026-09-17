@@ -44,7 +44,7 @@ The task is the text in the `<command-args>` block above. Parse leading flags of
 
 **This run is where the outcome is known.** `/task` watches a branch from criteria to an open PR, so it sees which gate failed, what the review found, and whether the verdict came back green — minutes after the question could have been asked, and on the same branch. That is the thing the proxy transcript store does not have: [ADR 0014](../../docs/adrs/0014-the-eval-returned-no.md) abandoned an eval subject at 3 labels against a floor of 200 because that store records calls and no outcomes. Asking here and writing the answer down beside what the run did is how the outcome-labelled corpus gets made. Collecting it is the entire point; acting on it is not part of this.
 
-**Nothing acts on an answer.** [ADR 0008](../../docs/adrs/0008-no-question-set-acts-in-this-campaign.md) still holds, and this flag does not touch it — promotion is per question set, never per flag, so a set let through later would be that set's change and not this one's. No set is promoted here and no question site is wired yet, so a run under `--jev` today opens a session, asks nothing, and reports that.
+**Nothing acts on an answer.** [ADR 0008](../../docs/adrs/0008-no-question-set-acts-in-this-campaign.md) still holds, and this flag does not touch it — promotion is per question set, never per flag, so a set let through later would be that set's change and not this one's. No set is promoted here. **Two sites are wired** — `step-2.5/complexity` and `step-2.6/surface` — and each carries `acts: false`, so a run under `--jev` opens a session, asks at both, writes what came back into the report, and changes nothing about what the run does.
 
 The runtime is `src/toolkit/lib/judge-run.mjs`; this section is what the run does with it.
 
@@ -52,7 +52,8 @@ The runtime is `src/toolkit/lib/judge-run.mjs`; this section is what the run doe
 2. **`--dry-run` is ungated and comes first.** With it, print the exact request body for every wired site and the host each would reach, then send nothing. It reads the gates not at all, because requiring the opt-in in order to read what the opt-in would send would invert what the dry run is for. The body is composed through the same `buildRequest` the live path posts, so there is no second path that could print one thing and send another.
 3. **Open the recorder before asking anything.** `my-command-tools jev-record start` prints a `url`; every call this run makes goes to it, through the `endpoint` parameter the client already takes. An answer nobody wrote down is not a corpus, so this is not separately optional — a run with no recorder asks nothing and reports `not-recorded`. Close it at the end of the run with `my-command-tools jev-record stop --session <name>`.
 4. **Cap this run's spend.** The budget is the run's own, not the process-wide `MY_COMMAND_JUDGE_TOKEN_CAP` default: `MY_COMMAND_TASK_JUDGE_TOKEN_CAP` sets it and it is conservative unset. A process can carry many runs; the number a person authorises is a run's.
-5. **Write the answers into Step 4's report**, beside what the run actually did, under a `jev:` line that ends by saying nothing acted. On any failure — a refused key, a rejected body, a timeout, an answer below the floor — the run reports the failure and carries on unchanged. There is no failure here that alters an outcome.
+5. **Compose the state the sites are asked about, and nothing more.** Both wired sites ask about files, so the state is an object carrying **`changedFiles`** — this run's changed paths, as an array of strings — and a bounded shape-only digest of what the diff changed in each of them; Step 2.6's site additionally carries whether each path matched a `routes` glob. **`changedFiles` is not optional for the per-file site**: without it the triage expands to no questions, asks nothing, and reports `no-questions`, which is indistinguishable from an empty diff. Keep the state path-shaped and diff-shaped — no goal, no prose, no transcript — which is what makes it printable with `--dry-run`.
+6. **Write the answers into Step 4's report**, beside what the run actually did, under a `jev:` line that ends by saying nothing acted. On any failure — a refused key, a rejected body, a timeout, an answer below the floor — the run reports the failure and carries on unchanged. There is no failure here that alters an outcome.
 
 ## Step 0 — Incorporate added commands
 
@@ -176,6 +177,35 @@ Run the repo's own anti-slop lint over what Step 2 produced, before `/clean` and
 5. **Re-run the repo's gates afterwards, as a fresh run** — a new `my-command-tools verify --background`, blocked on with the `wait.blockingCall` **that new run returns**, never polled. Step 2's verdict file is already written, so re-sending Step 2's wait comes back instantly carrying Step 2's pre-fix report and verifies nothing at all; the one-wait-per-run rule bars a second watch over the *same* run, not a second run. The lint fixes are code changes, so `pass: true` on that new run is what proves they broke nothing; `pass: false` means this step is not finished. Commit them on this branch like any other Step 2 work.
 
 The lint's output is input, not a gate. A finding you deliberately leave standing — a false positive, or a rule the repo's own conventions override — is reported with that reason, never silenced by editing lint config or the script.
+
+### The pre-verify complexity triage, under `--jev`
+
+Once the lint is clear and before Step 2.6 boots anything, a run carrying `--jev` asks the
+`complexity-triage` set **one `noul` per changed file**: is the change to this file complex
+enough to warrant a rework pass before it is verified? The site is `step-2.5/complexity`, it
+carries `acts: false` like every other, and **nothing reads the answers back**. No rework pass
+is scheduled and none is withheld. A run without the flag, or on a device with no key, reaches
+Step 2.6 having done exactly what it does today.
+
+It is asked here rather than inside Step 2.6 because the question is about the code as Step 2.5
+leaves it — after the lint fixes are in, and before a verifier's verdict exists to colour the
+answer.
+
+**A row nobody can attribute to its own file is dropped rather than scored.** The labels come
+after the fact and some of them are about the run instead of the file: Step 2.6 goes red against
+a run, and a later commit may touch one file to repair another. A row whose only positive signal
+cannot be pinned to the file it was asked about leaves the corpus, which is the treatment
+[ADR 0011](../../docs/adrs/0011-deterministic-comment-keeps-run-before-the-classifier.md) gives
+a pre-filtered comment. The triage also asks about a bounded number of files per run, so a
+sweeping branch cannot compose one request large enough for the endpoint to refuse whole.
+
+**This is the site that could act soonest, ahead of `step-2.6/surface`**, and its labels are the
+worse of the two. Its answer would ADD a rework pass rather than skip one, so a wrong answer
+costs a wasted pass that the run report shows;
+[ADR 0020](../../docs/adrs/0020-the-adding-work-site-is-promoted-first.md) records why that
+outranks a cleaner label, and
+[ADR 0019](../../docs/adrs/0019-the-load-shedding-site-is-promoted-last.md) states the other
+half of the ordering.
 
 ## Step 2.6 — Verify against the running app, while the code is still yours to change
 

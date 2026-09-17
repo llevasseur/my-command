@@ -11,7 +11,7 @@
   ],
   "wiredIntoNote": "Wired means asked and recorded, never consulted. The site carries acts: false like every other, so the wiring adds a row to the corpus and no branch to the run.",
   "batch": false,
-  "sources": ["src/commands/task.md:194", "src/commands/task.md:195", "src/commands/task.md:197"],
+  "sources": ["src/commands/task.md:224", "src/commands/task.md:225", "src/commands/task.md:227"],
   "adrs": [
     "docs/adrs/0008-no-question-set-acts-in-this-campaign.md",
     "docs/adrs/0009-conversation-derived-state-leaves-the-device.md",
@@ -45,7 +45,7 @@
     "confound": {
       "statement": "SKIPPED IS AMBIGUOUS UNLESS THE RUN SAYS WHICH SKIP FIRED. Step 2.6 has two skip conditions, and only the second is about surfaces — the first fires when the repo has no run contract and no dev/start/preview script, which says nothing about whether the diff reached a surface. A row labelled from a bare skipped is unusable.",
       "resolution": "Step 2.6 already requires it: 'check both first, and record whichever fired'. A row whose recorded skip is condition 1, or whose skip reason was not recorded at all, is DROPPED from the corpus rather than scored — the same treatment ADR 0011 gives a pre-filtered comment, and for the same reason: scoring the cases the question was never about inflates the number.",
-      "source": "src/commands/task.md:186"
+      "source": "src/commands/task.md:216"
     },
     "barNote": "NO PRE-REGISTERED BAR COVERS THIS SET. ADR 0013 fixed bars for Subject A and Subject B only, and this is neither. A number collected here is a number and nothing more until a superseding ADR states the bar it would have to clear, and under ADR 0019 that bar is the last one in the campaign to be written.",
     "corpusNote": "NO CORPUS EXISTS YET. Wiring the site records rows only from runs made with --jev on a device carrying a key, and the flag is off by default. Read this field again before quoting a number from it.",
@@ -60,7 +60,7 @@
       "answerMeans": "1.0 means the diff reaches a served surface, so Step 2.6 has something to exercise. 0.0 means it touches nothing the app serves, which is the condition under which the step skips.",
       "requires": ["changedFiles", "routeGlobMatches"],
       "why": "The glob answers a question about a path, and this is a question about reachability. A shared helper, a query, a schema or a config file can change every served page without matching any routes glob, and a file under a routes glob can be unreferenced — so the two answers come apart in both directions, and the second half of the skip condition is written in prose precisely because no glob expresses it.",
-      "source": "src/commands/task.md:195"
+      "source": "src/commands/task.md:225"
     }
   ]
 }

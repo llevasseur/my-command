@@ -1,5 +1,5 @@
 // What `/task --jev` opens: one run's question sites, one recorder session, one spend cap,
-// and a report of what was asked. **One site is wired, and no site acts.**
+// and a report of what was asked. **Two sites are wired, and no site acts.**
 //
 // **Why a record-only surface is worth building at zero promotion.**
 // `docs/adrs/0014-the-eval-returned-no.md` abandoned Subject B at 3 labelled commands against
@@ -20,16 +20,27 @@
 // change for that to happen — nor would it grant it. `actingSites()` is the one door, no
 // shipped site opens it, and `judge-run.test.mjs` asserts that rather than trusting it.
 //
-// **The one wired site is the one that may be promoted last**, which is worth stating where
-// the list is rather than only in the ADR. `step-2.6/surface` asks whether the diff reaches a
-// surface the app serves — a question whose answer, if anything ever acted on it, would decide
-// a **skip**. `docs/adrs/0019-the-load-shedding-site-is-promoted-last.md` fixes the rule that
-// follows: **Jev may add work, Jev may never skip work.** A wrong high answer there costs one
+// **The two wired sites are at opposite ends of the promotion order, and neither ordering
+// follows from its label.** The rule both obey is
+// `docs/adrs/0019-the-load-shedding-site-is-promoted-last.md`'s: **Jev may add work, Jev may
+// never skip work.** Promotion order is set by what a wrong answer costs, not by how good the
+// label is, and here the two come apart completely.
+//
+// `step-2.6/surface` asks whether the diff reaches a surface the app serves — a question whose
+// answer, if anything ever acted on it, would decide a **skip**. A wrong high answer costs one
 // wasted verification round; a wrong low answer silently loses a verification and leaves no
-// artefact anywhere, so it is wired first for its label and promoted last for its blast radius.
-// It is here because its label is the cleanest and highest-volume one in the campaign — the
-// verifier's own verdict, which the run computes minutes later and records regardless — and
-// because collecting that label is free.
+// artefact anywhere. It was wired first for its label, which is the cleanest and highest-volume
+// one in the campaign — the verifier's own verdict, computed minutes later and recorded
+// regardless, so collecting it is free — and it is promoted **last** for its blast radius.
+//
+// `step-2.5/complexity` is the mirror image. Its labels are the worse of the two: four partial
+// signals, every one of them arriving after the question was asked, which
+// `src/toolkit/judge/complexity-triage.json`'s `eval` block sets out rather than glossing. But
+// its answer would **add** a rework pass rather than skip one, so a wrong high answer costs a
+// wasted pass the run report shows and a wrong low answer costs nothing that was not already
+// the status quo. Under the rule above that makes it the site that could act **soonest**,
+// ahead of `step-2.6/surface`, despite the worse label —
+// `docs/adrs/0020-the-adding-work-site-is-promoted-first.md` records why.
 //
 // **Recording is not separately optional.** `--jev` implies `--record`: a run whose answers
 // were not written down produces no corpus, which is the only reason to ask at all. So
@@ -57,10 +68,106 @@ import { consult, gate } from './judge-runtime.mjs';
  * @property {string | null} version
  * @property {boolean} acts     **Always false on a shipped site.** The per-set promotion door.
  * @property {Record<string, import('./jev.mjs').JevQuestion>} questions
+ * @property {((state: import('./jev.mjs').JevState) => Record<string, import('./jev.mjs').JevQuestion>) | undefined} [questionsFor]
+ *   A site whose question map depends on what the run changed builds it here, and `questions`
+ *   is then the empty fallback rather than the thing sent. Present only on a per-file site.
  */
 
 /**
- * The sites `/task --jev` asks at. One, and it acts on nothing.
+ * The changed files a state carries, or none when it carries no such list.
+ *
+ * Tolerant on purpose: the state is assembled by the command rather than by a schema, so a
+ * missing or malformed `changedFiles` means this site asks nothing rather than throwing inside
+ * a layer whose whole contract is that it never changes an outcome.
+ * @param {import('./jev.mjs').JevState} state
+ * @returns {string[]}
+ */
+export function changedFilesOf(state) {
+  // Parsed at the boundary rather than narrowed: `Object()` gives every input a property bag
+  // to read through — a string, an array and a bare object all answer `undefined` here unless
+  // they really carry the field — and `Array.isArray` then settles whether what came back is
+  // the list this function is about. What leaves is the domain value: paths, or none.
+  const carried = /** @type {Record<string, unknown>} */ (Object(state ?? {})).changedFiles;
+  const entries = Array.isArray(carried) ? carried : [];
+
+  /** @type {string[]} */
+  const paths = [];
+  for (const entry of entries) {
+    const path = (asText(entry) ?? '').trim();
+    if (path !== '') paths.push(path);
+  }
+  return paths;
+}
+
+/**
+ * How many files one run's triage may ask about.
+ *
+ * **A per-file site is the first thing here that can compose an unbounded request**, and the
+ * run's token cap does not stop it: that cap is charged from a response's reported usage and
+ * checked before the *next* call, so it cannot bound the first one. An unbounded body is a
+ * refusal — `docs/adrs/0016-the-eval-reports-its-own-failures.md` records 28 of one run's 103
+ * eval calls coming back `max_tokens_exceeded` for exactly that reason, losing every answer in
+ * them. A branch touching 300 files would reproduce it on the `/task` path, so the expansion is
+ * capped here instead. 40 covers an ordinary branch whole and a sweeping one in part, and a
+ * partial corpus beats a refused request that yields none.
+ */
+export const MAX_TRIAGE_FILES = 40;
+
+/**
+ * One `noul` per changed file, which is what `step-2.5/complexity` asks.
+ *
+ * The per-file shape is the question: complexity is a property of a change to a file, and a
+ * single answer over a whole diff would average a hard change to one file together with a
+ * rename applied to nine others. Keys carry the path so a recorded row can be paired back to
+ * the file it was about, which is the whole of what makes the corpus labellable.
+ *
+ * Frozen like the static site's questions beside it, so one shape of question is not mutable
+ * only because it happened to be built rather than written down.
+ * @param {import('./jev.mjs').JevState} state
+ * @returns {Record<string, import('./jev.mjs').JevQuestion>}
+ */
+export function complexityQuestions(state) {
+  /** @type {Record<string, import('./jev.mjs').JevQuestion>} */
+  const questions = {};
+  for (const path of changedFilesOf(state).slice(0, MAX_TRIAGE_FILES)) {
+    questions[`NEEDS_REWORK::${path}`] = Object.freeze({
+      type: /** @type {const} */ ('noul'),
+      instructions:
+        `The change to \`${path}\` is complex enough to warrant a rework pass before it is ` +
+        'verified: it is intricate, wide-reaching, or subtle enough that a second look at the ' +
+        'code would likely find something a verification round would not. Judge the change, ' +
+        'not the file — a one-line edit to a shared guard can be the hardest thing on a branch, ' +
+        'and a three-hundred-line edit can be a rename a tool applied.',
+      criteria: Object.freeze({
+        true: 'A rework pass over this file before verification would be worth its cost.',
+        false: 'The change is straightforward and a rework pass would find nothing.',
+      }),
+    });
+  }
+  return questions;
+}
+
+/**
+ * What a site actually asks on this run: its builder's output where it has one, its static map
+ * otherwise. The one place the two kinds of site are reconciled, so nothing downstream — the
+ * live path or the dry run — has to know which kind it is holding.
+ * @param {JudgeSite} site
+ * @param {import('./jev.mjs').JevState} state
+ * @returns {Record<string, import('./jev.mjs').JevQuestion>}
+ */
+export function questionsAt(site, state) {
+  return site.questionsFor ? site.questionsFor(state) : site.questions;
+}
+
+/**
+ * The sites `/task --jev` asks at, in the order a run reaches them. Two, and neither acts.
+ *
+ * `step-2.5/complexity` sits between Step 2.5 and Step 2.6 — after the anti-slop lint is clear
+ * and before anything boots — and asks one `noul` per changed file: is this change involved
+ * enough to warrant a rework pass before it is verified? **No rework pass is scheduled and none
+ * is withheld.** Unlike the other site it shadows no deterministic check, because `/task` has
+ * never had a pre-verify rework pass; the answer is a first opinion about a decision nobody
+ * currently makes, which is why it is asked rather than computed. No line count expresses it.
  *
  * `step-2.6/surface` sits beside Step 2.6's second skip condition, where the run already
  * decides — by matching changed files against the repo's `routes` globs — whether the diff
@@ -76,6 +183,18 @@ import { consult, gate } from './judge-runtime.mjs';
  * @type {readonly JudgeSite[]}
  */
 export const SITES = Object.freeze([
+  Object.freeze({
+    id: 'step-2.5/complexity',
+    set: 'complexity-triage',
+    version: '1.0.0',
+    // ADR 0008 holds, so this is false like every other. ADR 0020 records why it would
+    // nonetheless be the first site promoted if ADR 0008 were ever superseded: its answer adds
+    // a pass rather than skipping one, and a wasted pass is visible in the run report.
+    acts: false,
+    // Built per changed file, so the static map is empty and `questionsFor` is what is sent.
+    questions: Object.freeze({}),
+    questionsFor: complexityQuestions,
+  }),
   Object.freeze({
     id: 'step-2.6/surface',
     set: 'verify-surface',
@@ -276,9 +395,30 @@ export async function judgeRun({
   /** @type {SiteReport[]} */
   const reports = [];
   for (const site of sites) {
+    const questions = questionsAt(site, state);
+
+    // A per-file site on a run with no changed files has nothing to ask. No call is at risk —
+    // `ask` already refuses an empty question map as `invalid-request`, before it composes a
+    // body or reaches `fetch`. What this buys is the *reason*: `no-questions` says the run had
+    // no files to ask about, where `invalid-request` would report it as a malformed request and
+    // send a reader looking for a bug that is not there.
+    if (Object.keys(questions).length === 0) {
+      reports.push({
+        id: site.id,
+        set: site.set,
+        acts: site.acts === true,
+        asked: false,
+        reason: 'no-questions',
+        answers: {},
+        usage: { input_tokens: 0, output_tokens: 0 },
+        recordedAt: null,
+      });
+      continue;
+    }
+
     const report = await consult({
       state,
-      questions: site.questions,
+      questions,
       set: site.set,
       version: site.version,
       existing,
@@ -304,19 +444,45 @@ export async function judgeRun({
     });
   }
 
+  const asked = reports.some((report) => report.asked);
+
   return {
     // Computed rather than fixed, because promotion is per set: a site that one day declares
     // `acts` would show here without `--jev` changing. None does, so this is false.
     acted: actingSites(sites).length > 0,
     gate: open,
-    asked: reports.some((report) => report.asked),
+    asked,
     recorded: true,
     endpoint: endpoint ?? null,
-    reason: sites.length === 0 ? 'no-sites' : null,
+    // A run that asked nothing owes a reason, and there are two ways to get here now: no sites
+    // at all, or sites that every one of them declined. Leaving the second as null printed
+    // `nothing was asked (unknown)` — a report line that names no cause and sends a reader
+    // hunting for one. The sites' own reasons are the answer, and a run whose sites all gave
+    // the same one reports it rather than the word "unknown".
+    reason: runReason(sites, reports, asked),
     silent: false,
     sites: reports,
     budget: spend,
   };
+}
+
+/**
+ * Why a run asked nothing, or null when it asked.
+ *
+ * Reads the site reports rather than restating their logic, so a reason added to a site shows
+ * up here without a second list to keep in step.
+ * @param {readonly JudgeSite[]} sites
+ * @param {SiteReport[]} reports
+ * @param {boolean} asked
+ * @returns {string | null}
+ */
+function runReason(sites, reports, asked) {
+  if (sites.length === 0) return 'no-sites';
+  if (asked) return null;
+  const reasons = new Set(reports.map((report) => report.reason ?? 'unknown'));
+  // One shared reason is the run's reason. Several means the sites declined for different
+  // causes, and naming one of them would be a lie about the others.
+  return reasons.size === 1 ? [...reasons][0] : 'no-site-asked';
 }
 
 /**
@@ -348,7 +514,7 @@ export function dryRun({ state, sites = SITES, endpoint }) {
       id: site.id,
       set: site.set,
       acts: site.acts === true,
-      body: buildRequest(state, site.questions),
+      body: buildRequest(state, questionsAt(site, state)),
     })),
   };
 }
@@ -373,7 +539,11 @@ export function reportLines(run) {
           ? `no recorder session, so nothing was sent — open one with \`${START_COMMAND}\``
           : run.reason === 'no-sites'
             ? 'no question sites are wired yet, so nothing was asked'
-            : `nothing was asked (${run.reason ?? 'unknown'})`;
+            : run.reason === 'no-questions'
+              ? 'no changed files for the per-file site to ask about'
+              : run.reason === 'no-site-asked'
+                ? 'every wired site declined, for different reasons — see the per-site lines'
+                : `nothing was asked (${run.reason ?? 'unknown'})`;
     return [`jev: ${why}. Nothing acted.`];
   }
 

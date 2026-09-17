@@ -28,14 +28,16 @@ answers into that run's report beside what the run actually did.
 
 **No answer changes any outcome, on either surface.** `--jev` is record-only: it opens
 a recorder, asks, writes down what came back, and acts on none of it. It now wires
-**one question site** — `step-2.6/surface`, asked at `/task` Step 2.6's second skip
-condition — and that site carries `acts: false` like every other, so wiring it added a
-row to the corpus and no branch to the run. Promotion stayed per question set rather
-than per flag, so a set could be let through later without `--jev` changing and without
-`--jev` granting it.
+**two question sites** — `step-2.5/complexity`, asked between `/task` Step 2.5 and Step
+2.6, and `step-2.6/surface`, asked at Step 2.6's second skip condition. Both carry
+`acts: false` like every other, so wiring them added rows to the corpus and no branch to
+the run. Promotion stayed per question set rather than per flag, so a set could be let
+through later without `--jev` changing and without `--jev` granting it.
 [ADR 0018](../adrs/0018-task-records-jev-answers-against-its-own-outcomes.md) records
-that surface and [ADR 0019](../adrs/0019-the-load-shedding-site-is-promoted-last.md)
-records the first site; neither supersedes ADR 0008.
+that surface, [ADR 0019](../adrs/0019-the-load-shedding-site-is-promoted-last.md) the
+first site, and
+[ADR 0020](../adrs/0020-the-adding-work-site-is-promoted-first.md) the second; none
+supersedes ADR 0008.
 
 Read the eval result below before reading anything else here as a recommendation.
 **The campaign that built this shipped zero measured subjects.** What exists is a
@@ -69,8 +71,9 @@ my-command-tools judge --set <name> --state-file <path> [--judge] [--shadow]
 | `--baseline <path>` | What that existing path decided, for the shadow record. |
 | `--dry-run`, `-n` | Print the exact body that would be posted and the host it would go to. No network call. |
 
-Five sets ship: `trim`, `clean-comment`, `dispatch-route`, `verify-regression`
-and `bash-shape`. **None of them carries a number.** See the eval result below.
+Seven sets ship: `trim`, `clean-comment`, `dispatch-route`, `verify-regression`,
+`bash-shape`, `verify-surface` and `complexity-triage`. **None of them carries a
+number.** See the eval result below.
 
 Exit codes: `0` for an answer, a gated-off run, or a failed ask alike; `1` for a
 question set on disk this verb cannot read; `2` for bad usage.
@@ -136,7 +139,7 @@ door. That separation is the point: "record what the layer would say" and "let t
 layer decide" would otherwise be one switch, which is the confusion ADR 0008 exists to
 prevent.
 
-### The one wired site, and why it is promoted last
+### The first wired site, and why it is promoted last
 
 `step-2.6/surface` asks the `verify-surface` set one `noul`: does the diff reach a
 surface the app serves? It sits beside `/task` Step 2.6's second skip condition, where
@@ -169,6 +172,43 @@ conditions and only the second is about surfaces, so a row labelled from a bare 
 is dropped from the corpus rather than scored — the treatment
 [ADR 0011](../adrs/0011-deterministic-comment-keeps-run-before-the-classifier.md) gives a
 pre-filtered comment, for the same reason.
+
+### The second wired site, and why it could be promoted first
+
+`step-2.5/complexity` asks the `complexity-triage` set **one `noul` per changed file**:
+is the change to this file involved enough to warrant a rework pass before it is
+verified? It sits between `/task` Step 2.5 and Step 2.6 — after the anti-slop lint is
+clear, before anything boots. **No rework pass is scheduled and none is withheld.**
+
+It shadows no deterministic check, which makes it different in kind from the first site.
+`verify-surface` sits beside a glob and records a second opinion on a decision the run
+already makes; this one asks about a rework pass `/task` has never run, so there is no
+existing answer to agree or disagree with. Nothing computes it either: a line count is
+not complexity — a one-line change to a shared guard can be the hardest thing on a
+branch, and a three-hundred-line change can be a rename a tool applied.
+
+**Its labels are the worse of the two, and the set says so rather than implying parity.**
+`verify-surface` is labelled by the verifier's own verdict: one value, computed by the
+run, recorded whatever it is, free. This site has four signals, all recoverable from the
+branch and all partial — whether Step 2.6 went red on that file, whether the lint fired
+on it, whether a later commit in the same run touched it again, whether `/review` flagged
+it. None is a clean ground truth: a hard change can draw none of them, and any one can
+fire on a trivial change, since Step 2.6 goes red against a *run* rather than a file. All
+four also arrive **after** the question was asked, so labelling means a pass back over a
+finished branch rather than a value the run already holds. A row whose only positive
+signal cannot be attributed to its file is dropped rather than scored.
+
+**It is nonetheless the site that could be promoted soonest, ahead of `verify-surface`.**
+Promotion order is set by what a wrong answer costs, not by how good the label is, and on
+these two sites those rank in opposite directions. A wrong answer here says *run an extra
+rework pass*: one wasted pass, visible in the run report. A wrong answer at
+`step-2.6/surface` says *skip the verification*: a check silently not performed, with
+nothing downstream noticing.
+[ADR 0020](../adrs/0020-the-adding-work-site-is-promoted-first.md) records that ordering
+and generalises ADR 0019's rule — **only an answer whose failure mode is wasted work may
+ever be promoted**. Soonest is not soon: the three requirements above are unchanged, this
+set has no pre-registered bar either, and being first in a queue that is not moving buys
+nothing today.
 
 `consult()` returns a report with `acted` fixed to the literal `false` on every
 path, and no field on it names a verdict, a choice, or an edit to apply. A caller
@@ -242,9 +282,10 @@ generative `/clean` pass whose token count is instrumented nowhere.
 
 ### What follows
 
-- **Zero subjects carry a number.** The six question sets ship as versioned,
-  inspectable prose with no measurement behind any of them. `verify-surface` has a
-  recoverable label and no corpus yet, and no pre-registered bar covers it.
+- **Zero subjects carry a number.** The seven question sets ship as versioned,
+  inspectable prose with no measurement behind any of them. `verify-surface` and
+  `complexity-triage` both have recoverable labels and no corpus yet, no pre-registered
+  bar covers either, and their labels are not comparable with each other.
 - **The layer is not removed.** ADR 0013 conditions removal on **both** subjects
   failing. Subject A was not measured rather than failed, and removing the layer
   would discard the only apparatus that could measure it.
@@ -298,3 +339,4 @@ it sent, so a refusal for size is readable from the report without a re-run.
 - ADR: [0014 The eval returned no](../adrs/0014-the-eval-returned-no.md)
 - ADR: [0018 /task records Jev answers against the outcomes it already watches](../adrs/0018-task-records-jev-answers-against-its-own-outcomes.md)
 - ADR: [0019 The load-shedding site is promoted last](../adrs/0019-the-load-shedding-site-is-promoted-last.md)
+- ADR: [0020 The adding-work site is promoted first](../adrs/0020-the-adding-work-site-is-promoted-first.md)
