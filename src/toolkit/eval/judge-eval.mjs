@@ -177,8 +177,8 @@ export function parseArgs(argv) {
 
 /**
  * A flag's numeric value. Missing or non-numeric is refused rather than defaulted, since the
- * default is a full run against the live endpoint. A number at or below zero is left to the
- * caller, which reads it as no ceiling.
+ * default is a live run. A value at or below zero is left to the caller, which reads it as no
+ * ceiling.
  * @param {string} flag
  * @param {string | undefined} raw
  * @returns {number}
