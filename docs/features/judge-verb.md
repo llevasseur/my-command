@@ -27,13 +27,15 @@ running it by hand is the whole of *its* invocation surface. The runtime it shar
 answers into that run's report beside what the run actually did.
 
 **No answer changes any outcome, on either surface.** `--jev` is record-only: it opens
-a recorder, asks, writes down what came back, and acts on none of it. It wires **no
-question site yet** — the flag, the session, the spend cap and the report-writing path
-ship first, and the sites follow one at a time — so a run under it today asks nothing
-and says so. Promotion stayed per question set rather than per flag, so a set could be
-let through later without `--jev` changing and without `--jev` granting it.
+a recorder, asks, writes down what came back, and acts on none of it. It now wires
+**one question site** — `step-2.6/surface`, asked at `/task` Step 2.6's second skip
+condition — and that site carries `acts: false` like every other, so wiring it added a
+row to the corpus and no branch to the run. Promotion stayed per question set rather
+than per flag, so a set could be let through later without `--jev` changing and without
+`--jev` granting it.
 [ADR 0018](../adrs/0018-task-records-jev-answers-against-its-own-outcomes.md) records
-that surface and does not supersede ADR 0008.
+that surface and [ADR 0019](../adrs/0019-the-load-shedding-site-is-promoted-last.md)
+records the first site; neither supersedes ADR 0008.
 
 Read the eval result below before reading anything else here as a recommendation.
 **The campaign that built this shipped zero measured subjects.** What exists is a
@@ -134,6 +136,40 @@ door. That separation is the point: "record what the layer would say" and "let t
 layer decide" would otherwise be one switch, which is the confusion ADR 0008 exists to
 prevent.
 
+### The one wired site, and why it is promoted last
+
+`step-2.6/surface` asks the `verify-surface` set one `noul`: does the diff reach a
+surface the app serves? It sits beside `/task` Step 2.6's second skip condition, where
+a `routes` glob match already answers that deterministically. **The glob still decides.**
+The answer goes into the run report beside the glob's and is read by nothing.
+
+It went first because of its **label**. Step 2.6 ends by recording its own verdict with
+`my-command-tools shots record --verdict <verdict>`, whatever that verdict is — so a run
+that went on to exercise a surface is the high label and a run that came back `skipped`
+or `unverified` for want of one is the low label. That is the cleanest and
+highest-volume label in the campaign: computed by the run rather than inferred from a
+transcript, produced on the same branch minutes later, available from every `/task` run,
+and **free**, because the run records it whether or not `--jev` was passed. It is
+precisely what [ADR 0014](../adrs/0014-the-eval-returned-no.md) found the proxy store
+could not supply.
+
+It is also **the last site that may ever be promoted**, and the two facts are about the
+same property. This question would decide a **skip**, so its failure is silent: a wrong
+high answer costs one wasted verification round, while a wrong low answer loses the
+verification of a change that did reach a served surface and leaves no artefact anywhere.
+[ADR 0019](../adrs/0019-the-load-shedding-site-is-promoted-last.md) fixes the rule that
+follows — **Jev may add work, Jev may never skip work** — and puts any promotion of this
+set behind a pre-registered [ADR 0013](../adrs/0013-the-eval-bar-is-pre-registered.md)
+bar it does not yet have, a result clearing it, and its own ADR superseding ADR 0008.
+Even then it could only let a high answer *add* a round, never let a low answer withhold
+one.
+
+One confound is handled in the set rather than left for a reader. Step 2.6 has two skip
+conditions and only the second is about surfaces, so a row labelled from a bare `skipped`
+is dropped from the corpus rather than scored — the treatment
+[ADR 0011](../adrs/0011-deterministic-comment-keeps-run-before-the-classifier.md) gives a
+pre-filtered comment, for the same reason.
+
 `consult()` returns a report with `acted` fixed to the literal `false` on every
 path, and no field on it names a verdict, a choice, or an edit to apply. A caller
 that ignores the entire return value is behaving correctly rather than sloppily.
@@ -206,8 +242,9 @@ generative `/clean` pass whose token count is instrumented nowhere.
 
 ### What follows
 
-- **Zero subjects carry a number.** The five question sets above ship as versioned,
-  inspectable prose with no measurement behind any of them.
+- **Zero subjects carry a number.** The six question sets ship as versioned,
+  inspectable prose with no measurement behind any of them. `verify-surface` has a
+  recoverable label and no corpus yet, and no pre-registered bar covers it.
 - **The layer is not removed.** ADR 0013 conditions removal on **both** subjects
   failing. Subject A was not measured rather than failed, and removing the layer
   would discard the only apparatus that could measure it.
@@ -260,3 +297,4 @@ it sent, so a refusal for size is readable from the report without a re-run.
 - ADR: [0013 The eval bar is pre-registered](../adrs/0013-the-eval-bar-is-pre-registered.md)
 - ADR: [0014 The eval returned no](../adrs/0014-the-eval-returned-no.md)
 - ADR: [0018 /task records Jev answers against the outcomes it already watches](../adrs/0018-task-records-jev-answers-against-its-own-outcomes.md)
+- ADR: [0019 The load-shedding site is promoted last](../adrs/0019-the-load-shedding-site-is-promoted-last.md)
