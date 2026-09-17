@@ -139,7 +139,8 @@ carry the worktree path.
 
 ```
 my-command-tools shots record --tier <tier> --verdict <verdict> --rounds <n> \
-  --shot "<file> | <label> | <sentence>" --shot "..." --gap "<what was not proven>"
+  --shot "<file> | <label> | <sentence>" --shot "..." --gap "<what was not proven>" \
+  --failure "<gate> | <what it said>" --failure "..."
 ```
 
 That writes `verdict.json` beside the screenshots, and it is the **only** thing that makes them
@@ -154,6 +155,19 @@ verbatim, and one `--gap` per `gap:` line.** `/my-command:pr` publishes those wo
 never writes its own: a shot recorded without one is published as unlabelled, and the verb names
 it under `undescribed` so you can go back for the line. The last `--shot` for a file wins.
 
+**One `--failure` per failure this loop hit, whether it was fixed along the way or was still
+standing at the end.** `<gate> | <what it said>` — the gate, check or assertion that failed, and
+its message in one line. The verb derives an id from those two parts and records the failure
+with **no provenance**, which is the point: the round knows a gate went red, and whether this
+branch caused it is settled later. Report each id, because that is what a later `resolve` names.
+
+**Never guess a provenance, and never leave one to a classifier.** When the answer becomes known
+— the fix cleared it, so it was a regression; the default branch was already red, so it was
+pre-existing — write it with `my-command-tools shots resolve --failure <id> --provenance
+regression|pre-existing --note "<why>"`. `shots read` lists the ids still waiting under
+`unresolved`. ADR 0017 carries the reasoning, and ADR 0007 is why this is a verb rather than a
+question: with both log tails in hand the comparison is a function, not a judgement.
+
 **The tier is what decides it, so name the tier you actually ran.** Writing `playwright` for an
 `http` round puts unexercised images in front of a reviewer as though a browser had loaded them,
 which is the one failure this record exists to prevent. The verb refuses a tier or verdict
@@ -166,6 +180,9 @@ The report:
 - the intent, and whether it was given or inferred,
 - contract or detection,
 - the evidence path,
+- **each failure recorded, by id**, with its gate and its one-line message, and that its
+  provenance is unset. An id nobody is told is an id nobody can resolve,
+
 - **the saved screenshots, each by path.** They outlive this run — they were written straight
   into `~/.my-command/shots/<repo>/<branch>/run-N/`, so no teardown has to cooperate, and `/my-command:pr`
   embeds them in the PR when the recorded tier is a browser — so the report is where someone

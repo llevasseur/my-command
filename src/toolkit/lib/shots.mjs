@@ -39,6 +39,7 @@ import {
   renameSync,
   rmSync,
   statSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
@@ -64,6 +65,19 @@ const BROWSER_TIERS = new Set(['playwright']);
 
 /** The four flat verdicts a round can end on. */
 export const VERDICTS = ['green', 'red', 'unverified', 'skipped'];
+
+/**
+ * Where a single failure came from, once somebody has established it.
+ *
+ * A run's verdict is red or green for the whole round, which says nothing about any one
+ * failure in it: a branch that introduced two failures and inherited a third records the
+ * same `red` as a branch that inherited all three. These two words are what tells those
+ * apart, and neither is guessable at record time — a failure is `regression` once fixing
+ * the branch clears it, and `pre-existing` once somebody checks the default branch and
+ * finds the gate was already red. So a failure is recorded with its provenance **unset**
+ * and given one later, by `shots resolve`.
+ */
+export const PROVENANCES = ['regression', 'pre-existing'];
 
 /** What counts as an image worth embedding. */
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif']);
@@ -499,12 +513,24 @@ export function findShots(cwd, branch) {
  */
 
 /**
+ * One failure a round hit, identified well enough to be spoken about after the round is over.
+ * @typedef {object} FailureNote
+ * @property {string} id                    Derived from `gate` and `summary`; see `failureId`.
+ * @property {string} gate                  The gate, check, or assertion that failed.
+ * @property {string} summary               What it said, in one line.
+ * @property {string | null} provenance     One of `PROVENANCES`, or null while nobody has settled it.
+ * @property {string} [resolvedAt]          When the provenance was set.
+ * @property {string} [note]                Why it was settled that way, in the settler's own words.
+ */
+
+/**
  * @typedef {object} Verdict
- * @property {string} tier          The driver tier that ran: playwright, http, or static.
- * @property {string} verdict       green, red, unverified, or skipped.
- * @property {number} [rounds]      How many rounds the loop took.
- * @property {ShotNote[]} [shots]   The verifier's read-back of each screenshot.
- * @property {string[]} [gaps]      What the round could not prove.
+ * @property {string} tier              The driver tier that ran: playwright, http, or static.
+ * @property {string} verdict           green, red, unverified, or skipped.
+ * @property {number} [rounds]          How many rounds the loop took.
+ * @property {ShotNote[]} [shots]       The verifier's read-back of each screenshot.
+ * @property {string[]} [gaps]          What the round could not prove.
+ * @property {FailureNote[]} [failures] The individual failures, each with its own provenance.
  * @property {string} [branch]
  * @property {string} [recordedAt]
  */
@@ -523,6 +549,47 @@ export function parseShotNote(value) {
   const description = rest.join(SHOT_SEPARATOR).trim();
   if (!name?.trim() || !label?.trim() || !description) return null;
   return { name: basename(name.trim()), label: label.trim(), description };
+}
+
+/**
+ * A failure's identity, derived from what the failure *is* rather than from where it was
+ * written down.
+ *
+ * Derived rather than assigned because the provenance is set later, by a second command, on a
+ * different day — so the id has to be something that command can arrive at again from the same
+ * failure. A counter would number the same failure differently in each round it survived, and a
+ * run directory plus an index would move the moment the keep was swept.
+ *
+ * Case and run-together whitespace are normalized out, and nothing else is. A message carrying
+ * a duration, a timestamp, or a temp path therefore takes a fresh id each round; that is the
+ * known limit of deriving an identity from prose, and it errs toward two ids for one failure
+ * rather than one id over two different failures.
+ * @param {string} gate @param {string} summary @returns {string}
+ */
+export function failureId(gate, summary) {
+  const flatten = (/** @type {string} */ text) => text.trim().toLowerCase().replace(/\s+/g, ' ');
+  return `f-${createHash('sha256')
+    .update(`${flatten(gate)}\0${flatten(summary)}`)
+    .digest('hex')
+    .slice(0, 12)}`;
+}
+
+/**
+ * A `--failure` value, `<gate> | <summary>`, as a fresh unresolved failure. The summary keeps
+ * any later separator, since a failure message may carry one; a value short of two parts is
+ * null, for the caller to refuse.
+ *
+ * **The provenance is always null here.** Nothing at record time knows it, and a flag that let
+ * a caller assert one would be asking the round to guess at the very thing this record exists
+ * to stop guessing at.
+ * @param {string} value @returns {FailureNote | null}
+ */
+export function parseFailureNote(value) {
+  const [gate, ...rest] = value.split(SHOT_SEPARATOR);
+  const summary = rest.join(SHOT_SEPARATOR).trim();
+  if (!gate?.trim() || !summary) return null;
+  const clean = gate.trim();
+  return { id: failureId(clean, summary), gate: clean, summary, provenance: null };
 }
 
 /**
@@ -556,6 +623,12 @@ export function writeVerdict(cwd, branch, record) {
  * tier gates publishing and must never regress to an older run's. All of them together
  * decide what the screenshots *show*: a record describes only the shots its own round took,
  * so the notes are a union keyed by shot name, the newest winning a repeated one.
+ *
+ * **Failures fold by id, and a provenance outranks recency.** One failure that survived three
+ * rounds is one entry here, and `shots resolve` may have written its provenance into any of the
+ * records carrying it — routinely an older one, since resolving happens after the last round
+ * recorded the failure unresolved all over again. Letting the newest entry win outright would
+ * hide exactly the field this fold exists to surface.
  * @param {Verdict[]} ordered @returns {Verdict | null}
  */
 function mergeVerdicts(ordered) {
@@ -565,15 +638,40 @@ function mergeVerdicts(ordered) {
   const notes = new Map();
   /** @type {Set<string>} */
   const gaps = new Set();
+  /** @type {Map<string, FailureNote>} */
+  const failures = new Map();
   for (const record of ordered) {
     merged ??= { ...record };
     for (const note of record.shots ?? []) if (!notes.has(note.name)) notes.set(note.name, note);
     for (const gap of record.gaps ?? []) gaps.add(gap);
+    for (const failure of record.failures ?? []) {
+      const seen = failures.get(failure.id);
+      if (!seen) {
+        failures.set(failure.id, failure);
+        continue;
+      }
+      if (seen.provenance || !failure.provenance) continue;
+      failures.set(failure.id, { ...seen, ...resolutionOf(failure) });
+    }
   }
   if (!merged) return null;
   if (notes.size) merged.shots = [...notes.values()];
   if (gaps.size) merged.gaps = [...gaps];
+  if (failures.size) merged.failures = [...failures.values()];
   return merged;
+}
+
+/**
+ * The provenance half of a failure, without the fields that describe the failure itself. What a
+ * resolution contributes to an entry some other record already described.
+ * @param {FailureNote} failure @returns {Partial<FailureNote>}
+ */
+function resolutionOf(failure) {
+  /** @type {Partial<FailureNote>} */
+  const resolution = { provenance: failure.provenance };
+  if (failure.resolvedAt) resolution.resolvedAt = failure.resolvedAt;
+  if (failure.note) resolution.note = failure.note;
+  return resolution;
 }
 
 /** A verdict file is `verdict.json`; a keep written before run directories also has `verdict-2.json`. */
@@ -671,6 +769,81 @@ export function readVerdicts(cwd, branch) {
 }
 
 /**
+ * @typedef {object} Resolution
+ * @property {string} id
+ * @property {string} provenance
+ * @property {string} resolvedAt
+ * @property {{run: string, file: string, gate: string, summary: string}[]} updated  Every record rewritten.
+ * @property {string[]} known   Every failure id this branch holds, for a caller that named none of them.
+ */
+
+/**
+ * Give one failure its provenance, after the fact.
+ *
+ * This is the second half of the record and the reason the first half leaves the field unset.
+ * A round knows a gate went red; only a later fix, or a later look at the default branch, knows
+ * whether the branch caused it. So the round writes the failure and this writes the answer.
+ *
+ * **Every record carrying the id is rewritten, not just the newest.** A failure that survived
+ * four rounds was recorded four times, and leaving three of them unresolved would make the same
+ * failure read as both settled and open depending on which run somebody opened.
+ *
+ * Each file's modification time is restored afterwards. Two things read it and neither is about
+ * this write: `readVerdicts` orders records by it, where refreshing an old run's file would
+ * promote that run's tier over a newer run's, and the keep's prune ages a run by it. A
+ * resolution is a note about a round that is over, not a fresh round.
+ * @param {string} cwd @param {string} branch @param {string} id @param {string} provenance
+ * @param {string} [note] @returns {Resolution}
+ */
+export function resolveFailure(cwd, branch, id, provenance, note) {
+  const branchDir = keepDirFor(cwd, branch);
+  const files = [
+    ...verdictFilesIn(shotsIn(cwd), ''),
+    ...runNamesIn(branchDir).flatMap((run) => verdictFilesIn(join(branchDir, run), `${run}/`)),
+    ...verdictFilesIn(branchDir, ''),
+  ];
+
+  const resolvedAt = new Date().toISOString();
+  /** @type {{run: string, file: string, gate: string, summary: string}[]} */
+  const updated = [];
+  /** @type {Set<string>} */
+  const known = new Set();
+
+  for (const { path, prefix } of files) {
+    /** @type {Verdict | null} */
+    let parsed = null;
+    try {
+      parsed = JSON.parse(readFileSync(path, 'utf8'));
+    } catch {
+      // A half-written or hand-mangled record holds no failure to resolve.
+      continue;
+    }
+    if (!Array.isArray(parsed?.failures)) continue;
+
+    let touched = false;
+    for (const failure of parsed.failures) {
+      known.add(failure.id);
+      if (failure.id !== id) continue;
+      failure.provenance = provenance;
+      failure.resolvedAt = resolvedAt;
+      // An unexplained re-resolution drops the earlier explanation rather than keeping a
+      // sentence written about a verdict that no longer stands.
+      if (note) failure.note = note;
+      else delete failure.note;
+      touched = true;
+      updated.push({ run: prefix.replace(/\/$/, ''), file: path, gate: failure.gate, summary: failure.summary });
+    }
+    if (!touched) continue;
+
+    const { mtimeMs, atimeMs } = statSync(path);
+    writeFileSync(path, `${JSON.stringify(parsed, null, 2)}\n`);
+    utimesSync(path, atimeMs / 1000, mtimeMs / 1000);
+  }
+
+  return { id, provenance, resolvedAt, updated, known: [...known] };
+}
+
+/**
  * One verification run, as a caller outside this module sees it.
  * @typedef {object} RunReport
  * @property {string} run              The run directory's name, `run-1` and up.
@@ -681,6 +854,7 @@ export function readVerdicts(cwd, branch) {
  * @property {number | null} rounds
  * @property {string | null} recordedAt
  * @property {{name: string, path: string, label: string | null, description: string | null}[]} shots
+ * @property {FailureNote[]} failures  The failures this run recorded, with whatever provenance they carry.
  */
 
 /**
@@ -723,6 +897,7 @@ export function runsFor(cwd, branch) {
         verdict: record?.verdict ?? null,
         rounds: record?.rounds ?? null,
         recordedAt: record?.recordedAt ?? null,
+        failures: record?.failures ?? [],
         shots: (images.get(run) ?? []).map((shot) => {
           const note = noteFor(notes, shot.name);
           return {

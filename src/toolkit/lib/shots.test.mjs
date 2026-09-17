@@ -12,6 +12,7 @@ import {
   claimRun,
   collectShots,
   commentId,
+  failureId,
   findShots,
   groupShots,
   isBrowserTier,
@@ -19,10 +20,12 @@ import {
   noteFor,
   openedRunDirs,
   openRunDir,
+  parseFailureNote,
   pruneKeep,
   readVerdict,
   readVerdicts,
   renderShots,
+  resolveFailure,
   runDir,
   runsFor,
   sideOf,
@@ -728,4 +731,94 @@ test('a baseline carried forward renders as one row beside the run it came from'
     section,
     /\*\*Home, first pass\*\*<br>!\[run-1\/home\.png\]\(u\/run-1\/home\.png\)<br>The banner is amber\./,
   );
+});
+
+/** @param {string} value @returns {import('./shots.mjs').FailureNote} */
+const failure = (value) =>
+  /** @type {import('./shots.mjs').FailureNote} */ (
+    parseFailureNote(value) ?? assert.fail(`not a failure note: ${value}`)
+  );
+
+test('a failure’s id is derived from the failure, not from where it was written down', () => {
+  const id = failureId('pnpm test', 'Expected 3 to equal 4');
+  assert.match(id, /^f-[0-9a-f]{12}$/);
+  // The same failure, reported by a later round in its own spacing and case, is one failure.
+  assert.equal(id, failureId('  PNPM   test ', 'expected 3 to   equal   4'));
+  // A different gate saying the same thing is not.
+  assert.notEqual(id, failureId('pnpm typecheck', 'Expected 3 to equal 4'));
+
+  assert.deepEqual(failure('pnpm test | Expected 3 to equal 4'), {
+    id,
+    gate: 'pnpm test',
+    summary: 'Expected 3 to equal 4',
+    // Record time never knows this, so parsing never claims it.
+    provenance: null,
+  });
+  assert.equal(parseFailureNote('pnpm test'), null);
+  assert.equal(parseFailureNote(' | Expected 3 to equal 4'), null);
+});
+
+test('a provenance set on an older run survives the fold without promoting that run', () => {
+  keepAt();
+  const drift = failure('pnpm test | Snapshot drift in the header');
+  const work = twiceVerified(
+    { tier: 'static', verdict: 'red', rounds: 9, failures: [drift] },
+    { tier: 'playwright', verdict: 'green', rounds: 2 },
+  );
+
+  const resolved = resolveFailure(work, 'fix/x', drift.id, 'pre-existing', 'The gate was already red on main.');
+  assert.deepEqual(
+    resolved.updated.map((entry) => entry.run),
+    ['run-1'],
+  );
+
+  const read = readVerdict(work, 'fix/x');
+  assert.equal(read?.failures?.[0].provenance, 'pre-existing');
+  assert.equal(read?.failures?.[0].note, 'The gate was already red on main.');
+  assert.equal(read?.failures?.[0].resolvedAt, resolved.resolvedAt);
+  // Resolving rewrites run-1's file, and the newest record must still decide the tier.
+  assert.equal(read?.tier, 'playwright');
+  assert.equal(read?.verdict, 'green');
+});
+
+test('one failure recorded in two runs is resolved in both, and an id nobody recorded resolves nothing', () => {
+  keepAt();
+  const unused = failure('pnpm lint | Unused import `join`');
+  const work = twiceVerified(
+    { tier: 'playwright', verdict: 'red', failures: [unused] },
+    { tier: 'playwright', verdict: 'red', failures: [{ ...unused }] },
+  );
+
+  const resolved = resolveFailure(work, 'fix/x', unused.id, 'regression');
+  assert.deepEqual(resolved.updated.map((entry) => entry.run).sort(), ['run-1', 'run-2']);
+  assert.deepEqual(
+    resolved.updated.map((entry) => entry.gate),
+    ['pnpm lint', 'pnpm lint'],
+  );
+  // One failure across two records is still one entry after the fold.
+  assert.equal(readVerdict(work, 'fix/x')?.failures?.length, 1);
+
+  const missed = resolveFailure(work, 'fix/x', 'f-000000000000', 'regression');
+  assert.deepEqual(missed.updated, []);
+  assert.deepEqual(missed.known, [unused.id]);
+});
+
+test('a run reports its own failures, and resolving one does not re-age the keep', () => {
+  keepAt();
+  const work = scratch();
+  const branch = 'feat/failing';
+  const dir = runDir(work, branch);
+  const broken = failure('pnpm test | Two suites failed');
+  writeVerdict(work, branch, { tier: 'static', verdict: 'red', failures: [broken] });
+
+  const stale = Date.now() / 1000 - 30 * 24 * 60 * 60;
+  utimesSync(join(dir, 'verdict.json'), stale, stale);
+  resolveFailure(work, branch, broken.id, 'regression');
+
+  const reported = runsFor(work, branch)[0].failures;
+  assert.deepEqual(reported, [
+    { ...broken, provenance: 'regression', resolvedAt: /** @type {string} */ (reported[0].resolvedAt) },
+  ]);
+  // A note about a finished round is not a fresh capture, so the prune still ages it out.
+  assert.equal(pruneKeep({ dryRun: true }).removedCount, 1);
 });
