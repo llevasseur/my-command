@@ -5,7 +5,33 @@ description: Take a plain-language task from criteria through implementation, ve
 
 # Task to Pull Request
 
-Parse `--here`, `--worktree <path>`, `--base <branch>`, `--draft`, `--sub`, `--no-verify`, `--no-implement`, and `--add <skill prompt,...>`; remaining text is the task criteria.
+Parse `--here`, `--worktree <path>`, `--base <branch>`, `--draft`, `--sub`, `--no-verify`, `--no-implement`, `--jev`, and `--add <skill prompt,...>`; remaining text is the task criteria.
+
+`--jev` asks an optional judgement layer a question set at two fixed points in the
+run and writes what came back into the closing report beside what the run actually
+did. **It is record-only: no answer changes anything.** It is off unless typed, and
+off again unless `TYPESAFE_API_KEY` is set in the environment — with no key the run
+says nothing at all about it, not an error, not a warning, and not a line in the
+report, so a run on a device without a key is indistinguishable from one before the
+flag existed. Neither gate alone sends anything.
+
+The flag also implies recording, because an answer nobody wrote down is not worth
+asking for: the run opens a recorder session through the repository helper, routes
+every call through it, and closes it at the end. A run that cannot open one asks
+nothing and reports that rather than asking without recording. Its spend is capped
+per run rather than per process, since one process can carry many runs and the
+number a person authorises is a run's. Adding `--dry-run` prints the exact request
+body for each site and the hosts it would reach, then sends nothing; that printing
+is deliberately ungated, because requiring the opt-in to read what the opt-in would
+send would invert the point of it.
+
+Two sites are wired and neither acts. Before step 6 boots anything, one `noul` per
+changed file asks whether that change is involved enough to warrant a rework pass
+before verification — no such pass is scheduled or withheld either way. At step 6's
+second skip condition, one `noul` asks whether the diff reaches a surface the
+application serves, beside the glob match that already decides it; the glob still
+decides. On any failure — a refused key, a rejected body, a timeout, an answer below
+the floor — report it and carry on unchanged. No failure here alters an outcome.
 
 `--no-implement` mirrors `--no-verify`: skip step 4's implementation entirely and
 run every other step over the work the branch already carries. The criteria then
