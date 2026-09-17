@@ -1,0 +1,83 @@
+{
+  "set": "complexity-triage",
+  "version": "1.0.0",
+  "kind": "noul",
+  "title": "Is the change to this file complex enough to warrant a rework pass before verification",
+  "description": "One noul per changed file, asked between /task Step 2.5 and Step 2.6 — after the anti-slop lint is clear and before anything boots. Nothing reads the answers back: no rework pass is scheduled and none is withheld.",
+  "acts": false,
+  "actsNote": "Nothing acts on an answer from this set. Nothing-acting is the safety mechanism, not shadow mode. See docs/adrs/0008-no-question-set-acts-in-this-campaign.md.",
+  "wiredInto": [
+    "/task, between Step 2.5 and Step 2.6 — registered as the step-2.5/complexity site in src/toolkit/lib/judge-run.mjs"
+  ],
+  "wiredIntoNote": "Wired means asked and recorded, never consulted. The site carries acts: false like every other, so the wiring adds rows to the corpus and no branch to the run.",
+  "batch": true,
+  "perChangedFile": true,
+  "perChangedFileNote": "THE QUESTION BELOW IS A TEMPLATE, NOT THE REQUEST. The site expands it at call time into one noul per changed file, keyed NEEDS_REWORK::<path>, and sends them as one batched call. A run with no changed files asks nothing rather than sending an empty question map, and the state must carry changedFiles for the expansion to produce anything at all.",
+  "requestBound": {
+    "statement": "THE EXPANSION IS CAPPED PER RUN, BECAUSE THE TOKEN CAP CANNOT BOUND THE FIRST CALL. A run's token cap is charged from a response's reported usage and checked before the next call, so an unbounded per-file expansion would compose one oversized body and have it refused whole — the failure ADR 0016 measured, where 28 of 103 eval calls came back max_tokens_exceeded and every answer in them was lost.",
+    "resolution": "MAX_TRIAGE_FILES in src/toolkit/lib/judge-run.mjs caps how many changed files one run asks about. A sweeping branch contributes a partial corpus instead of a refused request that contributes none.",
+    "adr": "docs/adrs/0016-the-eval-reports-its-own-failures.md"
+  },
+  "sources": [
+    "src/commands/task.md:181",
+    "src/commands/task.md:184",
+    "src/commands/task.md:185",
+    "src/commands/task.md:202"
+  ],
+  "adrs": [
+    "docs/adrs/0008-no-question-set-acts-in-this-campaign.md",
+    "docs/adrs/0009-conversation-derived-state-leaves-the-device.md",
+    "docs/adrs/0013-the-eval-bar-is-pre-registered.md",
+    "docs/adrs/0018-task-records-jev-answers-against-its-own-outcomes.md",
+    "docs/adrs/0019-the-load-shedding-site-is-promoted-last.md",
+    "docs/adrs/0020-the-adding-work-site-is-promoted-first.md"
+  ],
+  "scope": {
+    "statement": "NOTHING SCHEDULES A REWORK PASS AND NOTHING WITHHOLDS ONE. The run reaches Step 2.6 having done exactly what it does today. The answers go into the run report and are read by no branch, no gate and no later step.",
+    "note": "Unlike verify-surface, this site sits beside no deterministic check at all. There is no glob here whose answer the question shadows — /task has never had a pre-verify rework pass to compare against. So the recorded answer is not agreement with an existing decision; it is a first opinion about a decision nobody currently makes."
+  },
+  "addingWork": {
+    "statement": "THIS SITE ADDS WORK RATHER THAN SHEDDING IT, WHICH IS WHY IT COULD BE PROMOTED SOONEST. A wrong high answer costs one wasted rework pass, and that pass is visible in the run report. A wrong low answer costs nothing that was not already the status quo, because no rework pass exists today for a low answer to withhold. Jev may add work; Jev may never skip work.",
+    "consequence": "Under that rule this set outranks verify-surface in promotion order even though its labels are worse, because promotion order is set by the blast radius of a wrong answer rather than by the quality of the label. Any promotion still needs a pre-registered ADR 0013 bar it does not have, a result clearing it, and its own ADR superseding ADR 0008 — and even then a high answer could only ADD a pass, never let a low answer remove one.",
+    "adr": "docs/adrs/0020-the-adding-work-site-is-promoted-first.md",
+    "otherHalf": "docs/adrs/0019-the-load-shedding-site-is-promoted-last.md"
+  },
+  "state": {
+    "carries": [
+      "the changed-file list for this run",
+      "a bounded shape-only digest of what the diff changed in each file",
+      "the path and language of each changed file"
+    ],
+    "note": "Path-shaped and diff-shaped, not conversational. The question is about how involved a change to one file is, so the digest needs no goal, no user prose and no transcript. Conversation-derived state leaving the device is gated twice, off by default, and printable with --dry-run.",
+    "adr": "docs/adrs/0009-conversation-derived-state-leaves-the-device.md"
+  },
+  "eval": {
+    "labels": "recoverable",
+    "statement": "THESE LABELS ARE WEAKER AND LAGGING COMPARED WITH verify-surface's, AND THAT IS STATED HERE RATHER THAN DISCOVERED LATER. verify-surface is labelled by the verifier's own verdict: one value, computed by the run, written down whatever it is. This set has no such value. Four signals are recoverable from the branch afterwards, and every one of them is partial: whether Step 2.6 went red on that file, whether the anti-slop lint fired on it, whether a later commit in the same run touched it again, and whether /review flagged it. None is a clean ground truth on its own — a file can be genuinely complex and draw none of them, and any one of them can fire on a trivial change. All four also arrive AFTER the question was asked, so none of them is available at the moment of asking and the corpus can only be labelled by going back over a finished branch.",
+    "whyThisLabel": "They are the best signals that exist, not good ones. The question asks about a rework pass /task does not currently run, so there is no recorded decision anywhere to pair an answer against — the thing ADR 0012's pairing rule wants. What the branch does hold is four traces of the change having been harder than it looked, and a composite read across them is more informative than any single one. Treat agreement computed from them as a weak signal about a weak label, and do not compare a number from this set with a number from verify-surface as though they measured the same thing.",
+    "lagging": "EVERY SIGNAL IS AFTER THE FACT. The question is asked between Step 2.5 and Step 2.6; Step 2.6's verdict, the later commit, and /review's findings all land after it, and even the lint result — though computed in Step 2.5 — is only attributable per file once the branch is finished. A labelling pass therefore runs over a completed branch rather than inside the run, which is a cost verify-surface does not carry.",
+    "cost": "NOT FREE. Three of the four signals need a pass over the finished branch to attribute per file, and the run records none of them keyed by file today. That is work a labelling pass has to do, unlike verify-surface's verdict, which the run writes down anyway.",
+    "confound": {
+      "statement": "A FILE CAN DRAW A SIGNAL FOR REASONS THAT HAVE NOTHING TO DO WITH ITS OWN COMPLEXITY. Step 2.6 goes red against a run, not against a file, so attributing a red to one changed file is an inference. A later commit in the same run may touch a file to fix something in a different file. /review comments on what it reads, which is weighted by what the PR description drew attention to.",
+      "resolution": "A row whose only positive signal is a run-level one that cannot be attributed to that file is DROPPED rather than scored, the same treatment ADR 0011 gives a pre-filtered comment and ADR 0019 gives an ambiguous skip. Scoring cases the question was never about inflates the number.",
+      "source": "src/commands/task.md:194"
+    },
+    "barNote": "NO PRE-REGISTERED BAR COVERS THIS SET. ADR 0013 fixed bars for Subject A and Subject B only, and this is neither. A number collected here is a number and nothing more until a superseding ADR states the bar it would have to clear.",
+    "corpusNote": "NO CORPUS EXISTS YET. Wiring the site records rows only from runs made with --jev on a device carrying a key, and the flag is off by default. Read this field again before quoting a number from it.",
+    "bar": "docs/adrs/0013-the-eval-bar-is-pre-registered.md",
+    "adr": "docs/adrs/0012-two-eval-subjects-not-five.md"
+  },
+  "questions": [
+    {
+      "id": "NEEDS_REWORK",
+      "noul": "The change to this file is complex enough to warrant a rework pass before it is verified: it is intricate, wide-reaching, or subtle enough that a second look at the code would likely find something a verification round would not.",
+      "clause": "warrant a rework pass before it is verified",
+      "answerMeans": "1.0 means the change to this file is involved enough that a rework pass before verification would be worth its cost. 0.0 means the change is straightforward and a rework pass would find nothing. No pass is scheduled or withheld at either pole.",
+      "requires": ["changedFiles", "diffShapeDigest"],
+      "why": "Nothing deterministic answers this. A line count is not complexity — a one-line change to a shared guard can be the hardest thing on a branch, and a three-hundred-line change can be a rename applied by a tool. There is no glob, no metric and no gate in the repo that expresses it, which is why the question is asked rather than computed.",
+      "template": true,
+      "templateNote": "Expanded per changed file at call time into NEEDS_REWORK::<path>. This entry is the wording every expansion carries, not a question that is sent as written.",
+      "source": "src/commands/task.md:185"
+    }
+  ]
+}
