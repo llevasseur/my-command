@@ -15,12 +15,25 @@ dirty: true
 `my-command-tools judge` asks one versioned question set about one state file and
 prints the answers as JSON. The question sets live in `src/toolkit/judge/`, the
 client that talks to TypeSafe's System One endpoint lives in
-`src/toolkit/lib/jev.mjs`, and this verb is the only thing that composes a request
-from the two.
+`src/toolkit/lib/jev.mjs`, and this verb composes a request from the two. It is not
+the only thing that does: `src/toolkit/lib/judge-run.mjs` composes one per question
+site for [`/task --jev`](task.md). Both go through the client's own `buildRequest`, so
+there is one definition of what a request is.
 
-**It is wired into no command.** Nothing calls it, no hook reads it, and no answer
-it returns changes any outcome. Running it by hand is the whole of its invocation
-surface.
+**The verb is wired into no command** — nothing calls it and no hook reads it, so
+running it by hand is the whole of *its* invocation surface. The runtime it shares,
+`src/toolkit/lib/judge-runtime.mjs`, now has exactly one command surface:
+[`/task --jev`](task.md), which asks question sets at points in a run and writes the
+answers into that run's report beside what the run actually did.
+
+**No answer changes any outcome, on either surface.** `--jev` is record-only: it opens
+a recorder, asks, writes down what came back, and acts on none of it. It wires **no
+question site yet** — the flag, the session, the spend cap and the report-writing path
+ship first, and the sites follow one at a time — so a run under it today asks nothing
+and says so. Promotion stayed per question set rather than per flag, so a set could be
+let through later without `--jev` changing and without `--jev` granting it.
+[ADR 0018](../adrs/0018-task-records-jev-answers-against-its-own-outcomes.md) records
+that surface and does not supersede ADR 0008.
 
 Read the eval result below before reading anything else here as a recommendation.
 **The campaign that built this shipped zero measured subjects.** What exists is a
@@ -114,6 +127,13 @@ Every question set ships in shadow.
 nothing in this campaign acts on a Jev answer, and promotion is a follow-up that
 was gated on eval numbers that do not exist.
 
+**Promotion is per question set, never per flag.** `/task --jev` is the only command
+surface and it is record-only whatever a set says; each site carries its own `acts`,
+every shipped one carries `false`, and `actingSites()` in `judge-run.mjs` is the single
+door. That separation is the point: "record what the layer would say" and "let the
+layer decide" would otherwise be one switch, which is the confusion ADR 0008 exists to
+prevent.
+
 `consult()` returns a report with `acted` fixed to the literal `false` on every
 path, and no field on it names a verdict, a choice, or an edit to apply. A caller
 that ignores the entire return value is behaving correctly rather than sloppily.
@@ -136,7 +156,13 @@ That is tested rather than asserted: each mode runs a caller twice — with the 
 and without — and the test requires the two outputs to be **byte-identical**. An
 `acted` branch is left structurally unreachable so the test is not a tautology, and
 a closing assertion holds the tested set against the exported `FAILURE_MODES`, so a
-tenth mode fails there rather than shipping untested.
+tenth mode fails there rather than shipping untested. The same nine modes run a
+`/task --jev` run against a `/task` run with no layer, and require the outcome to be
+identical there too.
+
+`not-recorded` — a `--jev` run with no recorder session — is **not** a tenth mode. The
+nine are ways a call declined to answer; that one is a run declining to make the call,
+so it lives in `judge-run.mjs` rather than in the client's taxonomy.
 
 ## The eval returned no
 
@@ -233,3 +259,4 @@ it sent, so a refusal for size is readable from the report without a re-run.
 - ADR: [0010 The eval harness ships before the layer](../adrs/0010-eval-harness-before-the-layer.md)
 - ADR: [0013 The eval bar is pre-registered](../adrs/0013-the-eval-bar-is-pre-registered.md)
 - ADR: [0014 The eval returned no](../adrs/0014-the-eval-returned-no.md)
+- ADR: [0018 /task records Jev answers against the outcomes it already watches](../adrs/0018-task-records-jev-answers-against-its-own-outcomes.md)

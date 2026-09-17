@@ -1,6 +1,6 @@
 ---
 description: Take a task from criteria to PR — set up an isolated branch/worktree, implement, then /my-command:clean and /my-command:pr (inline, or in one subagent with --sub)
-argument-hint: "[--here|-h] [--base <branch>] [--draft|-d] [--sub|-s] [--no-verify] [--no-implement] [--add|-a <command + prompt>[, <command + prompt>]] <task criteria>"
+argument-hint: "[--here|-h] [--base <branch>] [--draft|-d] [--sub|-s] [--no-verify] [--no-implement] [--jev] [--add|-a <command + prompt>[, <command + prompt>]] <task criteria>"
 ---
 
 Take a task from a plain-language description all the way to an open PR — feature, bug fix, update, refactor, anything. The end goal is always a PR, and I always run `/my-command:clean` before `/my-command:pr`.
@@ -30,6 +30,7 @@ The task is the text in the `<command-args>` block above. Parse leading flags of
 - `--no-verify` — skip Step 2.6's closed-loop check against the running app. Default is **on**, and the step skips itself anyway where the repo has no app to boot or the diff serves nothing.
 - `--no-implement` — the mirror of `--no-verify`: skip Step 2 and implement nothing. Steps 1, 1.5, 2.5, 2.6, 3 and 4 run unchanged over the work the branch already carries. **The task criteria change meaning under this flag:** they are no longer what to build but what the verifier should prove, and Step 2.6 hands them to the `mycommand-verifier` subagent as the intent to demonstrate. They are optional — with none supplied, the verifier infers intent from the diff and the PR body, as `/my-command:verify` does. Step 3's `hasWork` check is still the guard: a branch with commits gets `/my-command:clean` and `/my-command:pr`, which is what attaches the screenshots Step 2.6 recorded, and a branch with none stops without opening an empty PR — no second bail-out. Step 2.6 may still commit repairs, as it always could. The flag is normally reached through `/my-command:fb --no-implement` rather than typed here: `/my-command:task` can only cut a new branch (`--base`) or stay on the current one (`--here`), and verifying existing work means checking an *existing* branch out into a worktree, which is what `/my-command:fb --target <branch>` does and this command cannot. With `--no-verify` as well, the run does nothing but `/my-command:clean` and `/my-command:pr` — legal, but say so in the report. Teardown ownership does not change: `/my-command:fb` owns it for `--target`, nobody does for `--here`.
 - `--add` / `-a` — register one or more commands available to the user for the agent to weave into this `/my-command:task` run, each paired with a prompt that guides its use. See Step 0 below.
+- `--jev` — ask the judgement layer a question set at chosen points in this run and write the answers into the closing report beside what the run actually did. **Record-only: nothing it says changes anything.** Default off, and off again without a `TYPESAFE_API_KEY` in the environment. It implies recording, so the run opens a `jev-record` session and every call goes through it. `--dry-run` alongside it prints the exact body and destination and sends nothing. See the section below.
 - Anything not a recognized flag is part of the task criteria.
 
 ### Parsing `--add`
@@ -38,6 +39,20 @@ The task is the text in the `<command-args>` block above. Parse leading flags of
 
 - The leading command token identifies the command to invoke; a leading `/` is optional. The rest of the entry is the prompt associated with that command.
 - Entries are separated by a comma that precedes the next command. A comma inside an associated prompt (not followed by a command) stays part of that prompt.
+
+### The `--jev` record-only pass
+
+**This run is where the outcome is known.** `/my-command:task` watches a branch from criteria to an open PR, so it sees which gate failed, what the review found, and whether the verdict came back green — minutes after the question could have been asked, and on the same branch. That is the thing the proxy transcript store does not have: [ADR 0014](../../docs/adrs/0014-the-eval-returned-no.md) abandoned an eval subject at 3 labels against a floor of 200 because that store records calls and no outcomes. Asking here and writing the answer down beside what the run did is how the outcome-labelled corpus gets made. Collecting it is the entire point; acting on it is not part of this.
+
+**Nothing acts on an answer.** [ADR 0008](../../docs/adrs/0008-no-question-set-acts-in-this-campaign.md) still holds, and this flag does not touch it — promotion is per question set, never per flag, so a set let through later would be that set's change and not this one's. No set is promoted here and no question site is wired yet, so a run under `--jev` today opens a session, asks nothing, and reports that.
+
+The runtime is `src/toolkit/lib/judge-run.mjs`; this section is what the run does with it.
+
+1. **Both gates, or nothing happens.** A `TYPESAFE_API_KEY` in the environment means the layer *can* run; `--jev` on the invocation means it *does*. Neither alone sends anything. **With no key, say nothing at all** — not an error, not a warning, not a mention, and not a line in the report. A run on a device without a key is byte-identical to one before this flag existed, which is `gate()`'s existing `silent` contract rather than a promise made here.
+2. **`--dry-run` is ungated and comes first.** With it, print the exact request body for every wired site and the host each would reach, then send nothing. It reads the gates not at all, because requiring the opt-in in order to read what the opt-in would send would invert what the dry run is for. The body is composed through the same `buildRequest` the live path posts, so there is no second path that could print one thing and send another.
+3. **Open the recorder before asking anything.** `my-command-tools jev-record start` prints a `url`; every call this run makes goes to it, through the `endpoint` parameter the client already takes. An answer nobody wrote down is not a corpus, so this is not separately optional — a run with no recorder asks nothing and reports `not-recorded`. Close it at the end of the run with `my-command-tools jev-record stop --session <name>`.
+4. **Cap this run's spend.** The budget is the run's own, not the process-wide `MY_COMMAND_JUDGE_TOKEN_CAP` default: `MY_COMMAND_TASK_JUDGE_TOKEN_CAP` sets it and it is conservative unset. A process can carry many runs; the number a person authorises is a run's.
+5. **Write the answers into Step 4's report**, beside what the run actually did, under a `jev:` line that ends by saying nothing acted. On any failure — a refused key, a rejected body, a timeout, an answer below the floor — the run reports the failure and carries on unchanged. There is no failure here that alters an outcome.
 
 ## Step 0 — Incorporate added commands
 
@@ -292,6 +307,8 @@ Either way it is one continuous stage: a Step 0 added command scheduled at this 
 <!-- /include-block -->
 
 For this pipeline: the run is not over when the PR opens or the worktree is removed. Lead with what shipped, the branch, and the PR number/URL — or what stopped the run. `--sub` does not move this step: the subagent runs `/my-command:clean` + `/my-command:pr` and reports back here, and its report is not this turn. If the Step 1 todo item went with a compaction, close the run anyway — any run that reached this far owes a closing turn, and a redundant one costs nothing while a skipped one loses the record.
+
+**Under `--jev`, the report carries the `jev:` lines too**, after what shipped rather than before it — the answers are recorded beside the outcome, and the outcome is what someone reads this for. A run with no key adds no line at all.
 
 ## Notes
 
