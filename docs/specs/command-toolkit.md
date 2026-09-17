@@ -4,7 +4,8 @@ title: Command toolkit
 description: The device-wide `my-command-tools` CLI that commands call for the deterministic git/gh plumbing of a workflow run, and how it ships with every install mode.
 tags: [process, toolkit, install, cli]
 timestamp: 2026-07-25
-updated: 2026-09-09
+updated: 2026-09-17
+dirty: true
 ---
 
 # Command toolkit
@@ -35,6 +36,8 @@ noise, what a PR description should say, or whether a failure is worth fixing.
 | `cleanup` | retire a merged branch's local and remote refs, judged against its PR |
 | `identity` | which GitHub account this checkout's remote wants, and `--select` to switch to it |
 | `stash write\|restore\|list` | `/cp`'s five-deep clipboard ring under `~/.claude`, and the clipboard sink |
+| `trim` | which of `/trim`'s six gates are facts about the session, and which are left for the agent |
+| `judge` | what one versioned question set says about one state file — printed, and acted on by nothing |
 | `doctor` | where the toolkit resolved from, what's on PATH, which clone it tracks, and which external tools this device has |
 
 `app` is the one verb that starts something and leaves it running. `verify` runs the
@@ -92,6 +95,28 @@ nothing left to fetch, so the per-path loop has no remaining excuse. Output is c
 
 There is deliberately no comment-scoping verb. `/clean` needs the surrounding
 branch diff to judge comments; pre-filtering would remove that context.
+
+`trim` and `judge` split one command's rubric along the line the Summary above
+draws. Four of `/trim`'s six gates are facts about the session — C1's
+returned-calls half, C3, N1's repeat arithmetic, N2 — so `trim` computes them from
+the transcript machinery in `src/hooks/lib/` and reports C2, N3 and the judgement
+clauses inside the other gates as `unknown` or `residual` rather than guessing.
+Its `verdict` is deliberately `null`: six gates decide TRIM or CONTINUE and two of
+them are not the toolkit's to answer. It needs no key, makes no network call, and
+has no fail-open path, because a computation that cannot be wrong has nothing to
+fail open from. [ADR 0007](../adrs/0007-deterministic-trim-gates-stay-a-facts-verb.md)
+records why those four never reach a classifier.
+
+`judge` is the one verb that prints a **judgement** rather than a fact. Every
+other verb here answers something the repository or the device already knows;
+this one sends conversation-derived state to a third party and reports what came
+back. That is why it is gated twice and off by default, and why `--dry-run` prints
+the exact body before anything leaves. **Its answers currently decide nothing** —
+it is wired into no command, `acted` is fixed `false` on every path, and the eval
+that would have justified promoting any of it returned *no*. So the Summary's rule
+still holds in full: judgment stays with the agent, and this verb adds a reading
+rather than a decision. See [judge-verb](../features/judge-verb.md) and
+[ADR 0014](../adrs/0014-the-eval-returned-no.md).
 
 `worktree begin` creates a branch by default (`/task`) or, with `--existing`,
 checks one out (`/fb --target`, `/review`, `/revive`, `/merge-deps`). It refuses
