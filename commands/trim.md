@@ -1,6 +1,6 @@
 ---
 description: Decide whether the current conversation is safe to compact, then provide focused /compact instructions
-allowed-tools: Read, Grep, Glob, Bash(git:*)
+allowed-tools: Read, Grep, Glob, Bash(git:*), Bash(my-command-tools:*)
 ---
 
 Assess whether the current conversation can be compacted without losing state needed to finish the user's task. This command is read-only: do not edit files, run mutating commands, or invoke other workflows.
@@ -32,6 +32,15 @@ Evaluate every gate against concrete evidence in the conversation and, when rele
 - **N3 VERIFIED:** Any work currently treated as complete has received the relevant verification. Answer N when verification is still required or its result is unknown.
 
 Trimming is safe only when `C1=Y`, `C2=Y`, `C3=Y`, `N1=N`, `N2=N`, and `N3=Y`. Be conservative. Do not recommend compaction merely because the conversation is long.
+
+## Start with the facts
+
+Four of those gates are computable from this session's transcript, so do not argue them from memory — **run `my-command-tools trim` first** and read the fields. It answers C1's returned-calls half, C3, N1's repeat arithmetic, and N2, from the same `src/hooks/lib/` machinery the workflow gates use. No key, no network call, no fail-open path: a computation that cannot be wrong has nothing to fail open from. [ADR 0007](../../docs/adrs/0007-deterministic-trim-gates-stay-a-facts-verb.md) is why these never reach a classifier.
+
+- `gates.<id>.answer` is `Y`, `N`, or `unknown`, and `gates.<id>.evidence` is the sentence to carry into your own evidence line.
+- **`unknown` is an answer, not a failure.** C2 RECOVERABLE and N3 VERIFIED come back `unknown` always — they are judgements about meaning and sufficiency, and yours to make. So are the clauses marked `residual` inside C1 and N1: whether the session is mid-tool-sequence, and whether compressing would hide useful negative evidence. A gate the verb marks `partial` is half-answered, and you owe the other half.
+- It prints **no verdict**. `verdict` is `null` by design: six gates decide `TRIM` against `CONTINUE` and two of them are not the toolkit's to answer.
+- `transcript.read: false` means it found no transcript to read — pass `--transcript <path>`, or answer those gates yourself and say the evidence came from the conversation. `transcript.foreign: true` means the transcript may belong to a different run than the one you are judging.
 
 ## Response
 

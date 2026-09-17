@@ -22,6 +22,7 @@ Add one with `okq new feature "<title>"`.
 | health | [health.md](health.md) |
 | ideate | [ideate.md](ideate.md) |
 | improve | [improve.md](improve.md) |
+| judge-verb | [judge-verb.md](judge-verb.md) |
 | judge | [judge.md](judge.md) |
 | learn | [learn.md](learn.md) |
 | lookup | [lookup.md](lookup.md) |

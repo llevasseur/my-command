@@ -15,12 +15,14 @@ import * as commit from './verbs/commit.mjs';
 import * as concepts from './verbs/concepts.mjs';
 import * as doctor from './verbs/doctor.mjs';
 import * as identity from './verbs/identity.mjs';
+import * as judge from './verbs/judge.mjs';
 import * as pr from './verbs/pr.mjs';
 import * as prs from './verbs/prs.mjs';
 import * as scope from './verbs/scope.mjs';
 import * as shots from './verbs/shots.mjs';
 import * as stash from './verbs/stash.mjs';
 import * as state from './verbs/state.mjs';
+import * as trim from './verbs/trim.mjs';
 import * as verify from './verbs/verify.mjs';
 import * as worktree from './verbs/worktree.mjs';
 
@@ -41,6 +43,8 @@ import * as worktree from './verbs/worktree.mjs';
 const VERBS = {
   state,
   scope,
+  trim,
+  judge,
   verify,
   app,
   commit,
@@ -75,6 +79,9 @@ const SWITCHES = new Set([
   'no-shots',
   'consume',
   'background',
+  'dry-run',
+  'judge',
+  'shadow',
   'all',
   'keep-remote',
   'keep-local',

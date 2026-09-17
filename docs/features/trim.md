@@ -4,7 +4,8 @@ title: trim
 description: Decide whether the current conversation is safe to compact, then provide focused instructions for Claude Code's built-in /compact.
 tags: [command, context, read-only]
 timestamp: 2026-07-15
-updated: 2026-08-02
+updated: 2026-09-16
+dirty: true
 ---
 
 # trim
@@ -19,6 +20,30 @@ files or runs mutating commands, and it never performs compaction itself
 ## Flags / Parameters
 
 - None. Reads the current conversation (and, when relevant, live repo state).
+
+## The deterministic gates are computed, not argued
+
+Four of the six gates are facts about the session, so `my-command-tools trim` answers them and
+the command reads the fields. It reports C1's returned-calls half, C3, N1's repeat arithmetic
+and N2, from the transcript machinery in `src/hooks/lib/` — `timeline()`, `read-only.mjs`,
+`watchedOutputs()` — plus the working tree. It needs no API key, makes no network call, and
+has no fail-open path, because a computation that cannot be wrong has nothing to fail open
+from. [ADR 0007](../adrs/0007-deterministic-trim-gates-stay-a-facts-verb.md) records why these
+never reach a classifier.
+
+What it deliberately does not answer is as load-bearing as what it does. C2 RECOVERABLE and N3
+VERIFIED come back `unknown` on every run, and so do the judgement clauses inside the gates it
+otherwise answers — C1's "mid-tool sequence" and N1's "would hide useful negative evidence",
+each reported as `residual` beside a gate marked `partial`. It prints no `TRIM`/`CONTINUE`
+verdict either: `verdict` is `null`, because six gates decide that and two of them are the
+agent's. Judgment stays with the agent, which is the rule
+[Command toolkit](../specs/command-toolkit.md) already states.
+
+The verb reads the transcript through the same library the workflow gates use rather than a
+second copy of it, and imports it lazily — two supported installs ship the toolkit without
+those gates beside it, and a top-level import would take every other verb down with them.
+Where the library or the transcript is missing, the transcript gates report `unknown` and the
+repository halves of C3 and N2 still answer.
 
 ## Behavior
 

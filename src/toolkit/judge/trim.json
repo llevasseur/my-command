@@ -1,0 +1,98 @@
+{
+  "set": "trim",
+  "version": "1.0.0",
+  "kind": "noul",
+  "title": "The residual /trim gates",
+  "description": "The two /trim gates no extractor answers, plus the two clauses left behind by the four that became a facts verb. Every question below is lifted from the Rubric section of src/commands/trim.md; none is invented here.",
+  "acts": false,
+  "actsNote": "Nothing acts on an answer from this set. Nothing-acting is the safety mechanism, not shadow mode. See docs/adrs/0008-no-question-set-acts-in-this-campaign.md.",
+  "wiredInto": [],
+  "batch": true,
+  "batchNote": "The four nouls below go out in ONE call, per the Speculative Fan-Out pattern. They share a state and are independent of each other's answers.",
+  "sources": [
+    "src/commands/trim.md:27",
+    "src/commands/trim.md:28",
+    "src/commands/trim.md:30",
+    "src/commands/trim.md:32"
+  ],
+  "adrs": [
+    "docs/adrs/0007-deterministic-trim-gates-stay-a-facts-verb.md",
+    "docs/adrs/0008-no-question-set-acts-in-this-campaign.md",
+    "docs/adrs/0009-conversation-derived-state-leaves-the-device.md",
+    "docs/adrs/0012-two-eval-subjects-not-five.md"
+  ],
+  "excluded": {
+    "reason": "Four of /trim's six gates are computable from the transcript machinery the hooks already run, so they are answered by a my-command-tools facts verb and never sent to the classifier. Routing a deterministic boolean through a probabilistic classifier adds a network round trip, a confidence band, and a failure mode to a computation that has none.",
+    "adr": "docs/adrs/0007-deterministic-trim-gates-stay-a-facts-verb.md",
+    "gates": [
+      {
+        "id": "C1_CLOSED",
+        "half": "the returned-calls half — the last turn's calls all returned, none came back is_error, and no Monitor or backgrounded call is still live",
+        "source": "src/commands/trim.md:27"
+      },
+      {
+        "id": "C3_PROGRESS",
+        "half": "in full — turns since the last compaction boundary carrying a call that is not read-only, plus hasWork and diffStat from state",
+        "source": "src/commands/trim.md:29"
+      },
+      {
+        "id": "N1_STUCK",
+        "half": "the arithmetic half — the repeat-identical-probe and repeat-error counts the existing gates already derive",
+        "source": "src/commands/trim.md:30"
+      },
+      {
+        "id": "N2_LIVE",
+        "half": "in full — an unreturned Agent dispatch, a live watch, or an unmerged path from git diff --diff-filter=U",
+        "source": "src/commands/trim.md:31"
+      }
+    ]
+  },
+  "state": {
+    "carries": ["the facts-verb JSON from ADR 0007", "a bounded, agent-written recoverability precis"],
+    "note": "Prose, deliberately. Every question in this set is unanswerable from a shape-only digest, and a payload that cannot answer its own questions is worse than no payload. The precis is conversation-derived state that leaves the device: gated twice, off by default, and printable in full with --dry-run before anything is sent.",
+    "adr": "docs/adrs/0009-conversation-derived-state-leaves-the-device.md"
+  },
+  "eval": {
+    "labels": "none",
+    "statement": "THIS SET CARRIES NO EVAL NUMBERS. Do not look for one elsewhere; none exists. /trim's six gates are answered inside a live conversation and the verdict is written nowhere — no commit, no artifact, no verdict.json field — so there is no recorded ground truth to measure agreement against. A corpus may accrue later, prospectively, from shadow records paired with what the session did next.",
+    "adr": "docs/adrs/0012-two-eval-subjects-not-five.md"
+  },
+  "questions": [
+    {
+      "id": "C1_MID_SEQUENCE",
+      "gate": "C1 CLOSED",
+      "noul": "The latest unit of work is complete: nothing is mid-edit, mid-command, mid-tool sequence, mid-merge resolution, or awaiting a result.",
+      "clause": "mid-tool sequence",
+      "answerMeans": "1.0 means the work is closed; 0.0 means it is mid-sequence.",
+      "why": "Every call returning cleanly is compatible with being halfway through a sequence the agent intends to finish, so the extractor's returned-calls half cannot answer this clause.",
+      "source": "src/commands/trim.md:27"
+    },
+    {
+      "id": "C2_RECOVERABLE",
+      "gate": "C2 RECOVERABLE",
+      "noul": "A replacement summary can preserve the original goal and acceptance criteria, user decisions and constraints, branch/worktree and dirty state, files changed and why, commands and tests run with their outcomes, confirmed findings, relevant failed approaches, unresolved risks or blockers, and the exact next action.",
+      "clause": "in full",
+      "answerMeans": "1.0 means a replacement summary preserves all of it; 0.0 means compaction would lose something on that list.",
+      "why": "No extractor reads a summary that does not exist yet and judges what it would preserve.",
+      "source": "src/commands/trim.md:28"
+    },
+    {
+      "id": "N1_NEGATIVE_EVIDENCE",
+      "gate": "N1 STUCK",
+      "noul": "Recent work is cycling or repeatedly failing such that compressing it would hide useful negative evidence or make the same attempts likely.",
+      "clause": "would hide useful negative evidence",
+      "answerMeans": "1.0 means compressing would hide evidence worth keeping; 0.0 means it would not. This gate is safe when the answer is low.",
+      "why": "The repeat count is arithmetic and the worth of the evidence is not.",
+      "source": "src/commands/trim.md:30"
+    },
+    {
+      "id": "N3_VERIFIED",
+      "gate": "N3 VERIFIED",
+      "noul": "Any work currently treated as complete has received the relevant verification. Answer low when verification is still required or its result is unknown.",
+      "clause": "in full",
+      "answerMeans": "1.0 means everything treated as done was verified; 0.0 means verification is outstanding or its result is unknown.",
+      "why": "Whether a given verification was the relevant one for a given piece of work is a comparison no extractor makes.",
+      "source": "src/commands/trim.md:32"
+    }
+  ]
+}

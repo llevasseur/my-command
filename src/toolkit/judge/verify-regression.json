@@ -1,0 +1,44 @@
+{
+  "set": "verify-regression",
+  "version": "1.0.0",
+  "kind": "noul",
+  "title": "Pre-existing failure, or a regression from this branch",
+  "description": "One noul over two verify log tails. It judges provenance only, once both states are already in hand.",
+  "acts": false,
+  "actsNote": "Nothing acts on an answer from this set. Nothing-acting is the safety mechanism, not shadow mode. See docs/adrs/0008-no-question-set-acts-in-this-campaign.md.",
+  "wiredInto": [],
+  "batch": false,
+  "sources": ["docs/specs/command-toolkit.md"],
+  "adrs": [
+    "docs/adrs/0008-no-question-set-acts-in-this-campaign.md",
+    "docs/adrs/0010-eval-harness-before-the-layer.md",
+    "docs/adrs/0012-two-eval-subjects-not-five.md"
+  ],
+  "scope": {
+    "statement": "THE EXPENSIVE HALF OF THIS PROBLEM IS NOT THE JUDGEMENT. It is acquiring the baseline state — checking out the default branch, booting it, and running the gates again — and that wants a caching verb rather than a classifier. This set judges only once BOTH states are already in hand. A run that has only the branch's own failure has nothing for this set to answer and must acquire the baseline first.",
+    "note": "A classifier asked to guess the baseline it was never given would be answering a different, easier question and scoring well on it."
+  },
+  "state": {
+    "carries": [
+      "the verify log tail from this branch",
+      "the verify log tail from the same gate on the default branch",
+      "the changed-file list for the branch"
+    ],
+    "note": "Both tails are required. Conversation-derived state leaving the device is gated twice, off by default, and printable with --dry-run.",
+    "adr": "docs/adrs/0009-conversation-derived-state-leaves-the-device.md"
+  },
+  "eval": {
+    "labels": "none",
+    "statement": "THIS SET CARRIES NO EVAL NUMBERS. Do not look for one elsewhere; none exists. The screenshot keep is bounded at 7 days, so the corpus is a few dozen runs on one device; and verdict.json records red/green for a RUN, not the provenance of a specific failure, so even the surviving runs do not contain the label.",
+    "adr": "docs/adrs/0012-two-eval-subjects-not-five.md"
+  },
+  "questions": [
+    {
+      "id": "IS_REGRESSION",
+      "noul": "This failure is a regression introduced by the branch under test, rather than a failure that is already present on the default branch.",
+      "answerMeans": "1.0 means the branch introduced it; 0.0 means it was already failing on the default branch before this branch existed.",
+      "requires": ["branchLogTail", "baselineLogTail"],
+      "why": "The same failure text can be produced by a branch's own change or by a gate that was already red, and telling them apart is a comparison between two log tails rather than a property of either one."
+    }
+  ]
+}
