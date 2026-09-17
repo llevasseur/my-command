@@ -62,7 +62,8 @@ Read this instead of guessing a path. Every path below is real; nothing else is.
   [`docs/specs/subagent-definitions.md`](docs/specs/subagent-definitions.md).
 - `scripts/` — `build-plugin.sh` (regenerates `commands/`), `expand-includes.mjs` (expands
   `src/shared/` snippets in place; `--check` reports drift), `check-commands.sh` (the
-  invariant gate), `install-codex-personal.sh`.
+  invariant gate), `install-codex-personal.sh`, `bootstrap-worktree.sh` (installs deps and
+  builds `dist/` in a fresh worktree; `/task` Step 1.5 runs it).
 - `docs/` — an okq bundle: `docs/features/<name>.md` per command, plus `docs/specs/`.
 - Tests sit beside their subject: `scripts/*.test.mjs`, `src/toolkit/**/*.test.mjs`, and
   `src/hooks/**/*.test.mjs`, all run by `pnpm test`. There is no top-level `test/`.
