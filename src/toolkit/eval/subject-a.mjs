@@ -15,7 +15,7 @@
 
 import { readFileSync } from 'node:fs';
 import { buildCorpus, summarise } from '../lib/clean-corpus.mjs';
-import { ask } from '../lib/jev.mjs';
+import { ask, buildRequest } from '../lib/jev.mjs';
 import { recordOrEmpty } from '../lib/json.mjs';
 
 /** The question set ticket 03 versioned. Read, never written. */
@@ -36,6 +36,9 @@ const SET_PATH = 'src/toolkit/judge/clean-comment.json';
  * under the ceiling is still exactly one call, which is the shape ADR 0013's latency bar was
  * written against. Above it, latency p95 becomes a per-call number covering part of a file, and
  * ADR 0016 records that as a deliberate consequence rather than leaving it to be inferred here.
+ *
+ * It bounds how many questions a call carries and nothing about how large they are, which is what
+ * `MAX_REQUEST_BYTES` below exists to bound. Both ceilings apply to every call.
  *
  * Overridable per run — `--chunk <n>` on the harness, `chunkSize` here.
  */
@@ -82,22 +85,80 @@ export function batchByFile(entries) {
 }
 
 /**
+ * The most bytes one serialised request body may carry.
+ *
+ * The endpoint enforces a ceiling on a request's input tokens and refuses anything above it with
+ * `400` and a body of `{"detail":{"error_type":"max_tokens_exceeded"}}`. `MAX_QUESTIONS_PER_CALL`
+ * bounds how many questions a call asks and says nothing about how large they are, so a batch of
+ * 25 comments carrying long `surroundingDiff` context sailed past the ceiling and every call for
+ * it was refused — 28 of the 103 calls on 2026-09-17, losing 684 rows.
+ *
+ * 96 KiB is the budget, chosen from what the endpoint has been observed to accept rather than from
+ * a documented limit, because there is no documented limit. Recorded through the ADR 0015 proxy: a
+ * 130,000-byte body was accepted and a 133,000-byte one refused. Across the 2026-09-17 run the
+ * largest accepted request was 124,761 bytes, and real corpus text runs between 2.95 and 3.80
+ * bytes to the token. At the densest of those, 96 KiB is about 33,300 tokens — under the 35,238
+ * the endpoint has actually been seen to accept, with the margin absorbing the fact that this is a
+ * byte count standing in for a token count it cannot compute.
+ *
+ * Overridable per run with `--bytes <n>` on the harness, `maxBytes` here.
+ */
+export const MAX_REQUEST_BYTES = 98_304;
+
+/**
  * One batch split into the requests it will actually be sent as, in order.
  *
- * A size of zero or less would mean no request can carry anything, so the batch is returned whole
- * rather than silently dropped — a caller that passes a nonsensical ceiling gets the old behaviour
- * and a visible question count, not an empty run.
+ * Two ceilings, because the endpoint has two ways to refuse: at most `maxItems` questions, and at
+ * most `maxBytes` of serialised body. A ceiling of zero or less on either would mean no request
+ * can carry anything, so it is read as no ceiling rather than silently dropping the batch — a
+ * caller that passes a nonsensical bound gets a visible question count, not an empty run.
+ *
+ * **An item too large to fit alone is still sent, alone.** Dropping it would quietly shrink the
+ * corpus, and ADR 0016 keeps an unanswered row counted as unanswered rather than removed; the call
+ * goes out, and if the endpoint refuses it, that refusal is recorded like any other.
  * @template T
  * @param {T[]} items
- * @param {number} size
+ * @param {(item: T) => number} sizeOf Bytes this item contributes to a request body.
+ * @param {object} [opts]
+ * @param {number} [opts.maxItems]
+ * @param {number} [opts.maxBytes]
+ * @param {number} [opts.envelope] Bytes every request carries whatever it asks.
  * @returns {T[][]}
  */
-export function chunk(items, size) {
-  if (!Number.isFinite(size) || size <= 0) return items.length === 0 ? [] : [items];
+export function packChunks(items, sizeOf, opts = {}) {
+  const maxItems = bound(opts.maxItems, MAX_QUESTIONS_PER_CALL);
+  const maxBytes = bound(opts.maxBytes, MAX_REQUEST_BYTES);
+  const envelope = Number.isFinite(opts.envelope) ? Number(opts.envelope) : 0;
+
   /** @type {T[][]} */
   const chunks = [];
-  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  /** @type {T[]} */
+  let current = [];
+  let bytes = envelope;
+
+  for (const item of items) {
+    const size = sizeOf(item);
+    if (current.length > 0 && (current.length >= maxItems || bytes + size > maxBytes)) {
+      chunks.push(current);
+      current = [];
+      bytes = envelope;
+    }
+    current.push(item);
+    bytes += size;
+  }
+  if (current.length > 0) chunks.push(current);
   return chunks;
+}
+
+/**
+ * A ceiling as a usable number, or `Infinity` for one that cannot bound anything.
+ * @param {number | undefined} value
+ * @param {number} fallback
+ * @returns {number}
+ */
+function bound(value, fallback) {
+  const n = value ?? fallback;
+  return Number.isFinite(n) && n > 0 ? n : Number.POSITIVE_INFINITY;
 }
 
 /**
@@ -139,6 +200,8 @@ function stateOf(entry) {
  * @property {number} chunkIndex Which chunk of that file's batch, from 0.
  * @property {number} chunkCount How many chunks that batch was split into.
  * @property {number} questionCount
+ * @property {number} requestBytes The serialised body's own length, so a refusal for size is
+ *   readable from the report rather than reproduced.
  * @property {string[]} questionIds Keyed exactly as they were sent.
  * @property {number} answerCount
  * @property {string[]} unansweredIds Asked and never answered. The 7-of-125 signal.
@@ -163,6 +226,7 @@ function stateOf(entry) {
  * @param {import('../lib/jev.mjs').JevBudget} budget
  * @param {object} [opts]
  * @param {number} [opts.chunkSize]
+ * @param {number} [opts.maxBytes]
  * @param {string} [opts.endpoint] Passed to `ask()` — a recorder's URL routes the call through it.
  * @param {string} [opts.key] Injected in tests; otherwise the client reads the environment.
  * @param {typeof globalThis.fetch} [opts.fetchImpl] Injected in tests. Nothing here mocks modules.
@@ -170,28 +234,48 @@ function stateOf(entry) {
  * @returns {Promise<{rows: import('./metrics.mjs').Scored[], calls: CallRecord[]}>}
  */
 export async function replayBatch(batch, set, budget, opts = {}) {
-  const chunkSize = opts.chunkSize ?? MAX_QUESTIONS_PER_CALL;
-  const chunks = chunk(batch, chunkSize);
+  /** One entry's question, which is the same for every row: the set's rubric, verbatim. */
+  const questionOf = () =>
+    /** @type {import('../lib/jev.mjs').JevQuestion} */ ({
+      type: 'choice',
+      instructions: set.question,
+      criteria: set.criteria,
+    });
+
+  // What one row adds to a body: its state, its question, and the punctuation joining both to
+  // what is already there. Measured off the real builder rather than estimated, so a change to
+  // either shape moves this with it.
+  const envelope = JSON.stringify(buildRequest([], {})).length;
+  const perQuestion = JSON.stringify(questionOf()).length + '"c000":,'.length;
+  /** @param {import('../lib/clean-corpus.mjs').CorpusEntry} entry */
+  const sizeOf = (entry) => JSON.stringify(stateOf(entry)).length + 1 + perQuestion;
+
+  const chunks = packChunks(batch, sizeOf, {
+    maxItems: opts.chunkSize,
+    maxBytes: opts.maxBytes,
+    envelope,
+  });
   const file = batch.length === 0 ? '' : batch[0].file;
 
   /** @type {import('./metrics.mjs').Scored[]} */
   const rows = [];
   /** @type {CallRecord[]} */
   const calls = [];
+  // Chunks vary in size now, so the next id is counted rather than multiplied out of the chunk
+  // index. Keys stay unique across the whole batch, so a record's `questionIds` name the same rows
+  // the corpus does no matter which chunk carried them.
+  let asked = 0;
 
   for (const [chunkIndex, entries] of chunks.entries()) {
-    // Keys stay unique across the whole batch, so a record's `questionIds` name the same rows the
-    // corpus does no matter which chunk carried them.
-    const offset = chunkIndex * chunkSize;
     /** @type {Record<string, import('../lib/jev.mjs').JevQuestion>} */
     const questions = {};
-    const questionIds = entries.map((_entry, i) => `c${offset + i}`);
-    for (const id of questionIds) {
-      questions[id] = { type: 'choice', instructions: set.question, criteria: set.criteria };
-    }
+    const questionIds = entries.map((_entry, i) => `c${asked + i}`);
+    for (const id of questionIds) questions[id] = questionOf();
+    asked += entries.length;
 
     const state = entries.map(stateOf);
     const displaced = approximateTokens(JSON.stringify(state));
+    const requestBytes = JSON.stringify(buildRequest(state, questions)).length;
 
     const started = Date.now();
     const result = await ask({
@@ -227,6 +311,7 @@ export async function replayBatch(batch, set, budget, opts = {}) {
       chunkIndex,
       chunkCount: chunks.length,
       questionCount: questionIds.length,
+      requestBytes,
       questionIds,
       answerCount: questionIds.length - unansweredIds.length,
       unansweredIds,
@@ -293,6 +378,7 @@ export function summariseCalls(calls) {
  * @param {import('../lib/jev.mjs').JevBudget} opts.budget
  * @param {boolean} opts.replay
  * @param {number} [opts.chunkSize]
+ * @param {number} [opts.maxBytes]
  * @param {string} [opts.endpoint]
  * @param {string} [opts.key]
  * @param {typeof globalThis.fetch} [opts.fetchImpl]
@@ -323,6 +409,7 @@ export async function runSubjectA(root, opts) {
   for (const batch of batches) {
     const got = await replayBatch(batch, set, opts.budget, {
       chunkSize: opts.chunkSize,
+      maxBytes: opts.maxBytes,
       endpoint: opts.endpoint,
       key: opts.key,
       fetchImpl: opts.fetchImpl,

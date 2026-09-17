@@ -19,6 +19,8 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 ### Fixed
 
+- **The eval's requests no longer exceed the endpoint's token ceiling.** Chunking bounded how many questions a call asked and never how large they were, so 28 of the 2026-09-17 run's 103 calls were refused with `max_tokens_exceeded` and 684 rows went unanswered. Calls are now packed to 96 KiB as well as to 25 questions, and each call record carries the size it sent. See `docs/adrs/0016-the-eval-reports-its-own-failures.md`.
+- **`pnpm judge:eval` refuses an unknown flag instead of billing for it.** `--help` parsed as nothing and fell through to a full replay of 103 real calls against the live endpoint. An unrecognised argument now exits non-zero with usage before any request, and `--help` / `-h` prints usage and calls nothing. See `docs/features/judge-verb.md`.
 - **A run that lost its own answers is reported, not scored.** `replayBatch` sent a whole file's comments as one request, so the 2026-09-17 run asked 132 questions, got 7 back, and printed ABANDON off the 125 that never came. It now chunks at 25 a call and records what each call asked and answered. A bar over incomplete data scores `inconclusive` rather than fail, and unanswered rows still count against coverage. See `docs/adrs/0016-the-eval-reports-its-own-failures.md`.
 
 ## 2026-09-16
