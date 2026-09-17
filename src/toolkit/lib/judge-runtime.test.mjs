@@ -23,6 +23,7 @@ import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { createBudget } from './jev.mjs';
+import { judgeRun, reportLines } from './judge-run.mjs';
 import {
   ABSTENTION_FLOOR,
   budgetFrom,
@@ -268,38 +269,131 @@ async function decideWithLayer(comment, options) {
   return { ...decision, report };
 }
 
+/** A recorder URL. Nothing connects to it — every mode below injects its own fetch. */
+const RECORDER = 'http://127.0.0.1:1/jev-record';
+
+/** One `/task` question site, shaped as the follow-up units will ship them and acting on nothing. */
+const SITE = {
+  id: 'step-2/verify',
+  set: 'verify-regression',
+  version: null,
+  acts: false,
+  questions: QUESTIONS,
+};
+
+/**
+ * A `/task` run as it is today: an outcome computed on this device, with no layer near it.
+ * This is the control the `--jev` run below is compared against.
+ * @param {string} criteria
+ */
+function runWithoutLayer(criteria) {
+  return { branch: 'feat/x', criteria, gates: ['test', 'lint'], verdict: 'green' };
+}
+
+/**
+ * The same run under `--jev`: it asks at each site, records what came back, and then reports
+ * the outcome it computed from the same line of code as the control.
+ *
+ * The `acted` branch is what keeps this a test rather than a tautology. `judgeRun` computes
+ * `acted` from the sites rather than fixing it, so the branch is reachable in principle — and
+ * the assertion that the two runs agree byte for byte is the assertion that no shipped site
+ * reaches it.
+ * @param {string} criteria @param {Record<string, unknown>} options
+ */
+async function runWithLayer(criteria, options) {
+  const run = await judgeRun({
+    state: criteria,
+    sites: [SITE],
+    endpoint: RECORDER,
+    existing: runWithoutLayer(criteria),
+    ...options,
+  });
+  const outcome = run.acted
+    ? { branch: 'the layer changed this', criteria, gates: [], verdict: 'red' }
+    : runWithoutLayer(criteria);
+  return { ...outcome, run };
+}
+
 test('all nine failure modes leave the caller’s behaviour identical to the no-layer path', async () => {
   const seen = new Set();
 
-  for (const { mode, env, fetchImpl, budget } of MODES) {
-    for (const comment of ['// TODO: fix the off-by-one', '// bump i']) {
-      const control = decideWithoutLayer(comment);
-      const { report, ...layered } = await decideWithLayer(comment, {
+  await withKeep(async () => {
+    for (const { mode, env, fetchImpl, budget } of MODES) {
+      for (const comment of ['// TODO: fix the off-by-one', '// bump i']) {
+        const control = decideWithoutLayer(comment);
+        const { report, ...layered } = await decideWithLayer(comment, {
+          env,
+          optIn: true,
+          fetchImpl,
+          budget,
+          // Retries are asserted elsewhere; here they would only make the test wait.
+          maxRetries: 0,
+          sleep: async () => {},
+        });
+
+        assert.equal(report.reason, mode, `${mode}: consult reported ${report.reason}`);
+        assert.equal(report.acted, false, `${mode}: something acted on a Jev answer`);
+        assert.deepEqual(report.answers, {}, `${mode}: an answer reached the caller`);
+        // The claim that matters: same bytes out, layer or no layer.
+        assert.equal(
+          JSON.stringify(layered),
+          JSON.stringify(control),
+          `${mode}: the layered caller behaved differently from the no-layer path`,
+        );
+        seen.add(mode);
+      }
+
+      // The same claim for the `/task` path, against the same nine modes: a run under `--jev`
+      // reaches the outcome it would have reached without the flag, whatever the layer did.
+      const criteria = 'add a flag';
+      const control = runWithoutLayer(criteria);
+      const { run, ...layered } = await runWithLayer(criteria, {
         env,
         optIn: true,
         fetchImpl,
-        budget,
-        // Retries are asserted elsewhere; here they would only make the test wait.
+        // A fresh budget per mode, except where the mode *is* the exhausted one.
+        budget: budget ?? createBudget(1_000),
         maxRetries: 0,
         sleep: async () => {},
       });
 
-      assert.equal(report.reason, mode, `${mode}: consult reported ${report.reason}`);
-      assert.equal(report.acted, false, `${mode}: something acted on a Jev answer`);
-      assert.deepEqual(report.answers, {}, `${mode}: an answer reached the caller`);
-      // The claim that matters: same bytes out, layer or no layer.
+      // `no-key` is refused at the gate, before any site is reached, so it names itself on the
+      // run; the other eight are reached and name themselves on the site. Both are the mode.
+      const reported = run.asked ? run.sites[0]?.reason : run.reason;
+      assert.equal(run.acted, false, `${mode}: a /task run acted on a Jev answer`);
+      assert.equal(reported, mode, `${mode}: the /task run reported ${reported}`);
+      assert.deepEqual(run.sites[0]?.answers ?? {}, {}, `${mode}: an answer reached the /task run`);
       assert.equal(
         JSON.stringify(layered),
         JSON.stringify(control),
-        `${mode}: the layered caller behaved differently from the no-layer path`,
+        `${mode}: the /task run behaved differently from the no-layer path`,
       );
-      seen.add(mode);
     }
-  }
+  });
 
   // Every mode the module names is covered, so a tenth added later fails here rather than
   // shipping untested.
   assert.deepEqual([...seen].sort(), [...FAILURE_MODES].sort());
+});
+
+test('with no key a /task run is silent and writes nothing into its report', async () => {
+  // ADR 0009's promise, at the surface `--jev` adds: a device with no key behaves exactly as
+  // one where this was never written, and the report gains not a line — not an error, not a
+  // warning, not a mention.
+  for (const optIn of [false, true]) {
+    const run = await judgeRun({
+      state: 'add a flag',
+      sites: [SITE],
+      endpoint: RECORDER,
+      env: {},
+      optIn,
+      fetchImpl: refuse,
+    });
+    assert.equal(run.gate.silent, true);
+    assert.equal(run.asked, false);
+    assert.equal(run.acted, false);
+    assert.deepEqual(reportLines(run), [], 'a no-key run must add nothing to the report');
+  }
 });
 
 test('consult never throws, whatever the transport does', async () => {
