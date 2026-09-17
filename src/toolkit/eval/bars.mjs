@@ -157,7 +157,7 @@ export function scoreSubjectA(m) {
   const agreementFailed =
     agreement !== null && baseline !== null && (margin === null || margin < 0.1 || agreement < 0.9);
   // Every bar below is derived from the replayed rows, so one incomplete run makes all four
-  // inconclusive together. There is no bar here that a lost answer leaves untouched.
+  // inconclusive together.
   const complete = m.dataComplete !== false;
 
   return [
