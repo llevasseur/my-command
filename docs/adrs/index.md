@@ -26,4 +26,6 @@ Add one with `okq new adr "<title>"`.
 | The numbers that abandon the judgement layer are fixed before the eval runs | [0013-the-eval-bar-is-pre-registered.md](0013-the-eval-bar-is-pre-registered.md) |
 | The eval returned no, and the layer ships measured rather than working | [0014-the-eval-returned-no.md](0014-the-eval-returned-no.md) |
 | Jev traffic is recorded outside the client, by a local proxy | [0015-jev-traffic-is-recorded-outside-the-client.md](0015-jev-traffic-is-recorded-outside-the-client.md) |
+| The eval reports its own failures rather than scoring them as low confidence | [0016-the-eval-reports-its-own-failures.md](0016-the-eval-reports-its-own-failures.md) |
+| A verify failure carries its own provenance, set after the fact rather than guessed at record time | [0017-a-verify-failure-carries-its-own-provenance.md](0017-a-verify-failure-carries-its-own-provenance.md) |
 <!-- okq:index:end -->
