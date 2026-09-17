@@ -17,8 +17,15 @@
 // into a file in this repository: `package.json`'s `files` list ships `src`, so a key committed
 // here is a key published to npm.
 
-/** Where System One answers. */
-const ENDPOINT = 'https://api.typesafe.ai/v1/systemone';
+/**
+ * Where System One answers.
+ *
+ * Exported so `--dry-run` can name the destination rather than restate it. ADR 0009 makes the
+ * dry run the mechanism by which a human reads what leaves the device before it leaves, and a
+ * body with no destination beside it answers half of that; a second copy of this string in the
+ * verb would answer it in a way that could drift.
+ */
+export const ENDPOINT = 'https://api.typesafe.ai/v1/systemone';
 
 /** The only model this client asks for. */
 const MODEL = 'jev-latest';

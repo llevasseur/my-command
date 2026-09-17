@@ -21,11 +21,27 @@ const sets = new Map();
 const KINDS = new Set(['noul', 'choice']);
 const LABELS = new Set(['recoverable', 'none']);
 
-// Every representation check in this file goes through one of these two predicates.
-/** @param {unknown} value */
-const prose = (value) => typeof value === 'string' && value.length > 0;
-/** @param {unknown} value */
-const filled = (value) => Array.isArray(value) && value.length > 0;
+// A question set is JSON on disk, so every field arrives as `unknown`. These two are the
+// parsers at that boundary: each answers with the domain value the checks below are actually
+// about — the prose a criterion carries, or the entries a list holds — or with undefined when
+// the field carried no such value. The assertions then branch on that value rather than
+// re-narrowing the representation it arrived in.
+
+/**
+ * The prose a field carried, or undefined when it carried none. `String(value) === value`
+ * holds for a string primitive and nothing else.
+ * @param {unknown} value @returns {string | undefined}
+ */
+const prose = (value) => {
+  const text = String(value) === value ? value : '';
+  return text.length > 0 ? text : undefined;
+};
+
+/**
+ * The entries a field carried, or undefined when it carried none.
+ * @param {unknown} value @returns {unknown[] | undefined}
+ */
+const filled = (value) => (Array.isArray(value) && value.length > 0 ? value : undefined);
 
 /** Sets that ADR 0012 leaves without recoverable labels. Each must say so in its own file. */
 const NO_LABELS = ['trim', 'dispatch-route', 'verify-regression'];
