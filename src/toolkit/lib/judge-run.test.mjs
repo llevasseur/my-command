@@ -121,7 +121,9 @@ test('two sites are wired, in run order, and none of them acts', () => {
   // builder is what carries the questions. Asserting both stops a later refactor quietly
   // dropping the builder and shipping a site that asks nothing.
   assert.deepEqual(Object.keys(triage.questions), []);
-  assert.deepEqual(Object.keys(triage.questionsFor({ changedFiles: ['x.ts'] })), ['NEEDS_REWORK::x.ts']);
+  // Proven by asking rather than by inspecting the field: if a refactor dropped the builder,
+  // `questionsAt` would fall back to that empty static map and this line would fail.
+  assert.deepEqual(Object.keys(questionsAt(triage, { changedFiles: ['x.ts'] })), ['NEEDS_REWORK::x.ts']);
 
   // The mechanism is per set rather than per flag, so it has to be able to say yes — the
   // claim is that no shipped site does, not that the door is welded shut.
