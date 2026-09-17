@@ -14,12 +14,13 @@
 // only exist in a real process — so those run the CLI end to end rather than calling `run`.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { flagsFrom } from '../lib/flags.mjs';
+import { ENDPOINT } from '../lib/jev.mjs';
 import { run as judge } from './judge.mjs';
 
 const CLI = fileURLToPath(new URL('../cli.mjs', import.meta.url));
@@ -67,11 +68,18 @@ function recorder(body, status = 200) {
   return { impl, calls };
 }
 
-/** Run the CLI for real and report what the process did. @param {string[]} args @param {boolean} withKey */
-function cli(args, withKey = false) {
+/**
+ * Run the CLI for real and report what the process did.
+ * @param {string[]} args @param {boolean} withKey @param {Record<string, string>} [extra]
+ */
+function cli(args, withKey = false, extra = {}) {
   const env = { ...process.env };
+  // Both gates start from a known-off position, so a value exported in the developer's own
+  // shell cannot decide what these tests prove.
   delete env.TYPESAFE_API_KEY;
+  delete env.MY_COMMAND_JUDGE;
   if (withKey) env.TYPESAFE_API_KEY = FAKE_KEY;
+  Object.assign(env, extra);
   try {
     const stdout = execFileSync(process.execPath, [CLI, ...args], { encoding: 'utf8', env, stdio: 'pipe' });
     return { code: 0, stdout, stderr: '' };
@@ -123,7 +131,7 @@ test('the dry-run body is byte-identical to what the live call sends', async () 
   const previous = process.env.TYPESAFE_API_KEY;
   process.env.TYPESAFE_API_KEY = FAKE_KEY;
   try {
-    await judge(ctx([], { set: 'clean-comment', 'state-file': path }), impl);
+    await judge(ctx([], { set: 'clean-comment', 'state-file': path, judge: true }), impl);
   } finally {
     if (previous === undefined) delete process.env.TYPESAFE_API_KEY;
     else process.env.TYPESAFE_API_KEY = previous;
@@ -191,7 +199,7 @@ test('an answered noul carries the confidence its value implies', async () => {
   let r;
   try {
     r = /** @type {Record<string, any>} */ (
-      await judge(ctx([], { set: 'verify-regression', 'state-file': path }), impl)
+      await judge(ctx([], { set: 'verify-regression', 'state-file': path, judge: true }), impl)
     );
   } finally {
     if (previous === undefined) delete process.env.TYPESAFE_API_KEY;
@@ -217,7 +225,9 @@ test('a malformed response answers nothing rather than throwing', async () => {
   /** @type {Record<string, any>} */
   let r;
   try {
-    r = /** @type {Record<string, any>} */ (await judge(ctx([], { set: 'trim', 'state-file': path }), impl));
+    r = /** @type {Record<string, any>} */ (
+      await judge(ctx([], { set: 'trim', 'state-file': path, judge: true }), impl)
+    );
   } finally {
     if (previous === undefined) delete process.env.TYPESAFE_API_KEY;
     else process.env.TYPESAFE_API_KEY = previous;
@@ -297,4 +307,138 @@ test('judge is registered, and its help is prose rather than JSON', () => {
   // The egress is stated in the help itself, not only in the ADR it points at.
   assert.match(help.stdout, /sends the state file's contents to TypeSafe/);
   assert.match(help.stdout, /wired into no command/);
+  // Both gates, and the default, are in the help rather than only in the code.
+  assert.match(help.stdout, /Two gates, and the default is off/);
+  assert.match(help.stdout, /MY_COMMAND_JUDGE=1/);
+  // And the thing a later change would be tempted to get wrong.
+  assert.match(help.stdout, /Nothing acting is what makes this safe, not shadow mode/);
+});
+
+test('the default is off with a key present, and says so rather than sending', () => {
+  const { path } = stateFile('{"x": 1}');
+  const r = cli(['judge', '--set', 'trim', '--state-file', path], true);
+
+  assert.equal(r.code, 0);
+  assert.equal(r.stderr, '');
+  const printed = JSON.parse(r.stdout);
+  assert.equal(printed.sent, false, 'a key alone must not send anything');
+  assert.equal(printed.reason, 'not-opted-in');
+  assert.equal(printed.gate.capable, true);
+  assert.equal(printed.gate.optedIn, false);
+  assert.equal(printed.gate.enabled, false);
+  assert.equal(printed.acted, false);
+  assert.match(printed.note, /The default is off with a key present/);
+});
+
+test('only an opt-in value switches the environment gate on', () => {
+  const { path } = stateFile('{"x": 1}');
+  const args = ['judge', '--set', 'trim', '--state-file', path];
+
+  // Off by any value that is not an opt-in, which is the reversed polarity of the hooks
+  // disarm. Run end to end, because the exit code is part of what is being claimed.
+  for (const off of ['0', 'off', 'no', 'false']) {
+    const r = cli(args, true, { MY_COMMAND_JUDGE: off });
+    assert.equal(r.code, 0);
+    const printed = JSON.parse(r.stdout);
+    assert.equal(printed.sent, false, `MY_COMMAND_JUDGE=${off} must not switch the layer on`);
+    assert.equal(printed.reason, 'not-opted-in');
+  }
+});
+
+test('the environment opt-in switches the layer on, exactly as --judge does', async () => {
+  const { path } = stateFile('{"x": 1}');
+  // In process with an injected fetch rather than through the CLI: the gate being on is the
+  // one state in which a real request would leave this machine, so no test puts it there.
+  const { impl, calls } = recorder({
+    answers: { N3_VERIFIED: { type: 'noul', noul: 0.97 } },
+    usage: { input_tokens: 3, output_tokens: 1 },
+  });
+
+  const previousKey = process.env.TYPESAFE_API_KEY;
+  const previousOptIn = process.env.MY_COMMAND_JUDGE;
+  process.env.TYPESAFE_API_KEY = FAKE_KEY;
+  process.env.MY_COMMAND_JUDGE = '1';
+  /** @type {Record<string, any>} */
+  let r;
+  try {
+    r = /** @type {Record<string, any>} */ (await judge(ctx([], { set: 'trim', 'state-file': path }), impl));
+  } finally {
+    if (previousKey === undefined) delete process.env.TYPESAFE_API_KEY;
+    else process.env.TYPESAFE_API_KEY = previousKey;
+    if (previousOptIn === undefined) delete process.env.MY_COMMAND_JUDGE;
+    else process.env.MY_COMMAND_JUDGE = previousOptIn;
+  }
+
+  assert.equal(r.gate.enabled, true, 'the environment alone is a valid opt-in');
+  assert.equal(r.sent, true);
+  assert.equal(calls.length, 1);
+  assert.equal(r.endpoint, ENDPOINT);
+  assert.equal(r.acted, false);
+});
+
+test('no key means no send and no mention of the layer, whatever else was asked for', () => {
+  const { path } = stateFile('{"x": 1}');
+  // Opted in every way there is, and still silent, because capability is the other gate.
+  const r = cli(['judge', '--set', 'trim', '--state-file', path, '--judge'], false, { MY_COMMAND_JUDGE: '1' });
+
+  assert.equal(r.code, 0);
+  assert.equal(r.stderr, '');
+  const printed = JSON.parse(r.stdout);
+  assert.equal(printed.sent, false);
+  assert.equal(printed.reason, 'no-key');
+  assert.equal(printed.gate.silent, true, 'with no key a caller must say nothing at all');
+  assert.equal(printed.endpoint, null, 'nothing was sent, so nothing has a destination');
+});
+
+test('the dry run names the host the data would go to', () => {
+  const { path } = stateFile('{"x": 1}');
+  // Ungated on purpose: reading what would be sent must not require opting in to send it.
+  const r = cli(['judge', '--set', 'trim', '--state-file', path, '--dry-run']);
+
+  assert.equal(r.code, 0);
+  const printed = JSON.parse(r.stdout);
+  assert.equal(printed.sent, false);
+  assert.equal(printed.endpoint, ENDPOINT);
+  assert.match(printed.endpoint, /^https:\/\/api\.typesafe\.ai\//);
+  // The note points at the field rather than leaving a reader to find it.
+  assert.match(printed.note, /`endpoint` is where it would go/);
+});
+
+test('--shadow records outside the checkout and puts nothing in the repository', async () => {
+  const { path } = stateFile('{"comment": "// bump i"}');
+  const { path: baseline } = stateFile('{"verdict": "delete"}');
+  const root = mkdtempSync(join(tmpdir(), 'mct-judge-keep-'));
+  made.push(root);
+
+  const { impl } = recorder({
+    answers: { 'clean-comment': { type: 'choice', choice: 'keep', probabilities: { keep: 0.9 }, confidence: 0.9 } },
+    usage: { input_tokens: 5, output_tokens: 1 },
+  });
+
+  const previousKey = process.env.TYPESAFE_API_KEY;
+  const previousKeep = process.env.MY_COMMAND_JUDGE_DIR;
+  process.env.TYPESAFE_API_KEY = FAKE_KEY;
+  process.env.MY_COMMAND_JUDGE_DIR = root;
+  /** @type {Record<string, any>} */
+  let r;
+  try {
+    r = /** @type {Record<string, any>} */ (
+      await judge(ctx([], { set: 'clean-comment', 'state-file': path, judge: true, shadow: true, baseline }), impl)
+    );
+  } finally {
+    if (previousKey === undefined) delete process.env.TYPESAFE_API_KEY;
+    else process.env.TYPESAFE_API_KEY = previousKey;
+    if (previousKeep === undefined) delete process.env.MY_COMMAND_JUDGE_DIR;
+    else process.env.MY_COMMAND_JUDGE_DIR = previousKeep;
+  }
+
+  assert.equal(r.acted, false, 'a shadow run acts on neither answer');
+  assert.ok(String(r.shadowRecord).startsWith(root), 'the record went to the redirected keep');
+
+  const written = JSON.parse(readFileSync(String(r.shadowRecord), 'utf8'));
+  assert.equal(written.acted, false);
+  // Both answers: the layer's, and the one the path already in place gave.
+  assert.deepEqual(written.existing, { verdict: 'delete' });
+  assert.equal(written.judge.answers['clean-comment'].choice, 'keep');
+  assert.doesNotMatch(readFileSync(String(r.shadowRecord), 'utf8'), new RegExp(FAKE_KEY));
 });

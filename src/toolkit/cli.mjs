@@ -80,6 +80,8 @@ const SWITCHES = new Set([
   'consume',
   'background',
   'dry-run',
+  'judge',
+  'shadow',
   'all',
   'keep-remote',
   'keep-local',

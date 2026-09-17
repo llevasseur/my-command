@@ -31,33 +31,50 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bool, str } from '../lib/flags.mjs';
-import { ask, buildRequest, isHighConfidenceNoul, noulConfidence } from '../lib/jev.mjs';
+import { buildRequest, ENDPOINT, isHighConfidenceNoul, noulConfidence } from '../lib/jev.mjs';
+import { consult, keepRoot, OPT_IN_VAR } from '../lib/judge-runtime.mjs';
 import { ToolkitError, UsageError } from '../lib/proc.mjs';
 
-export const usage = `judge --set <name> --state-file <path> [--dry-run]
+export const usage = `judge --set <name> --state-file <path> [--judge] [--shadow] [--dry-run]
 
 Ask one versioned question set about one state file, and print the answers as JSON.
 
   --set <name>         A question set shipped at src/toolkit/judge/<name>.json.
   --state-file <path>  The state to judge, as a path. JSON is sent as JSON;
                        anything else is sent as text.
-  --dry-run, -n        Print the exact request that would be sent and make no
-                       network call. Nothing leaves the device.
+  --judge              Opt in, for this invocation only. Without it nothing is
+                       sent, even with a key present.
+  --shadow             Record what the layer said, beside what the path already
+                       in place decided, and act on neither.
+  --baseline <path>    What that existing path decided, for the shadow record.
+  --dry-run, -n        Print the exact request that would be sent, and the host
+                       it would go to, making no network call.
 
-Without --dry-run this sends the state file's contents to TypeSafe's System One
-endpoint, which is a third party. That is the point of the verb and it is stated
-here rather than buried: read docs/adrs/0009-conversation-derived-state-leaves-the-device.md,
-or run the same invocation with --dry-run first and read the body yourself.
+Two gates, and the default is off. A key present means this CAN run; --judge, or
+MY_COMMAND_JUDGE=1 in the environment, means it DOES. Neither alone is enough.
+With no key set, nothing is sent and nothing leaves the device.
+
+Asking sends the state file's contents to TypeSafe's System One endpoint at
+${ENDPOINT}, which is a third party. That is the point of the
+verb and it is stated here rather than buried: read
+docs/adrs/0009-conversation-derived-state-leaves-the-device.md, or run the same
+invocation with --dry-run first and read the body and the destination yourself.
 
 The API key is read from TYPESAFE_API_KEY in the environment and from nowhere
-else. With no key set, nothing is sent and the result says so — that is the
-ordinary case, not an error, and it still exits 0.
+else. A run that is off, or that fails for any reason, still exits 0 — a judge
+error must never change a run's outcome or fail a gate.
+
+Shadow records land outside any checkout, under the keep at
+${keepRoot()}
+so a record of what was sent can never be committed by accident.
 
 This verb is wired into no command. Nothing calls it, and no answer it returns
-changes any outcome — see docs/adrs/0010-eval-harness-before-the-layer.md.
+changes any outcome. Nothing acting is what makes this safe, not shadow mode —
+see docs/adrs/0008-no-question-set-acts-in-this-campaign.md and
+docs/adrs/0010-eval-harness-before-the-layer.md.
 
-Exit codes: 0 always for an answer or a failed ask · 1 an unreadable question
-set · 2 bad usage.`;
+Exit codes: 0 always for an answer, a gated-off run, or a failed ask · 1 an
+unreadable question set · 2 bad usage.`;
 
 /** Where the versioned sets ship — beside this verb, not beside the caller's cwd. */
 const SETS_DIR = fileURLToPath(new URL('../judge/', import.meta.url));
@@ -282,7 +299,7 @@ function describeAnswer(answer) {
  * What the result says about itself, in a sentence, for whoever is reading it by eye. A judge
  * that answers nothing has to say so plainly when it is called directly; staying quiet is the
  * caller's job, and this verb has no caller.
- * @param {import('../lib/jev.mjs').JevResult} result
+ * @param {{ok: boolean, reason: string | null}} result
  * @returns {string}
  */
 function noteFor(result) {
@@ -292,6 +309,20 @@ function noteFor(result) {
       'TYPESAFE_API_KEY is not set in this environment, so no question was asked and nothing ' +
       'left this device. That is the ordinary case rather than a failure, which is why this ' +
       'exits 0. Run the same invocation with --dry-run to read the request it would have sent.'
+    );
+  }
+  if (result.reason === 'not-opted-in') {
+    return (
+      'A key is present, so this layer can run, but nothing opted this invocation in — so ' +
+      `nothing was asked and nothing left this device. Pass --judge, or set ${OPT_IN_VAR}=1, ` +
+      'to ask. The default is off with a key present, deliberately.'
+    );
+  }
+  if (result.reason === 'below-threshold') {
+    return (
+      'The set was asked and answered, and every answer sat below the confidence floor — so ' +
+      'there is nothing here a caller could read. That is one of the nine ways this layer ' +
+      'declines, and like the other eight it exits 0 and changes nothing.'
     );
   }
   return (
@@ -318,6 +349,9 @@ export async function run(ctx, fetchImpl) {
   // flag. Reading it here keeps the short spelling the plan asks for without widening the
   // shared parser — and therefore every other verb's argv — for one verb's switch.
   const dryRun = bool(ctx.flags['dry-run']) || ctx.positionals.includes('-n');
+  const optIn = bool(ctx.flags.judge);
+  const shadow = bool(ctx.flags.shadow);
+  const baselinePath = str(ctx.flags.baseline);
 
   const set = loadSet(name);
   const questions = questionsFor(set, name);
@@ -341,37 +375,62 @@ export async function run(ctx, fetchImpl) {
   // value through the same function, so what a human reads is what would leave.
   const request = buildRequest(state.value, questions);
 
+  // The dry run is ungated on purpose. It is how ADR 0009's inspect-before-you-send promise is
+  // kept, so requiring the opt-in to read what the opt-in would send would invert it.
   if (dryRun) {
     return {
       ...head,
       dryRun: true,
       sent: false,
+      // Named rather than described: a human reading a dry run should see where the data goes
+      // without having to know the client's source. It is the client's own constant, so the
+      // host printed here is the host that would be posted to.
+      endpoint: ENDPOINT,
       request,
       requestBytes: Buffer.byteLength(JSON.stringify(request)),
       note:
         'Nothing was sent and no network call was made. `request` is the exact body this ' +
-        'invocation would POST. The API key is never part of it — it travels as an ' +
-        'Authorization header and is not printed here.',
+        `invocation would POST, and \`endpoint\` is where it would go. The API key is never ` +
+        'part of it — it travels as an Authorization header and is not printed here.',
     };
   }
 
-  const result = await ask({ state: state.value, questions, fetchImpl });
+  const report = await consult({
+    state: state.value,
+    questions,
+    set: head.set,
+    version: head.version,
+    existing: baselinePath === undefined ? null : readState(baselinePath).value,
+    shadow,
+    optIn,
+    fetchImpl,
+  });
 
   /** @type {Record<string, unknown>} */
   const answers = {};
-  for (const [key, answer] of Object.entries(result.answers)) answers[key] = describeAnswer(answer);
+  for (const [key, answer] of Object.entries(report.answers)) answers[key] = describeAnswer(answer);
+  /** @type {Record<string, unknown>} */
+  const belowFloor = {};
+  for (const [key, answer] of Object.entries(report.belowFloor)) belowFloor[key] = describeAnswer(answer);
 
+  const ok = report.reason === null;
   return {
     ...head,
     dryRun: false,
-    sent: true,
-    ok: result.ok,
-    reason: result.reason,
-    detail: result.detail,
-    attempts: result.attempts,
+    sent: report.asked,
+    endpoint: report.asked ? ENDPOINT : null,
+    gate: report.gate,
+    ok,
+    reason: report.reason,
+    detail: report.detail,
+    attempts: report.attempts,
     answered: Object.keys(answers).length,
     answers,
-    usage: result.usage,
-    note: noteFor(result),
+    belowFloor,
+    usage: report.usage,
+    // Restated on every result, like `acts` above: this verb reads an answer out and stops.
+    acted: false,
+    shadowRecord: report.recordedAt,
+    note: noteFor({ ...report, ok }),
   };
 }
