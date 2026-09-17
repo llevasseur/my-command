@@ -93,9 +93,8 @@ what you report back.
 
 ## Active tasks
 
-| # | Task | Plan | Branch | Status | Note |
-|---|------|------|--------|--------|------|
-| zz | retire-done-plans | [jev-judgement-layer-zz-retire-done-plans](jev-judgement-layer-zz-retire-done-plans.md) | `task/jev-judgement-layer-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
+**None.** All nine tickets have merged into the campaign base and the plan files are
+retired. The campaign is ready for its close operation.
 
 <!--
 Status is exactly one of these six:
@@ -131,6 +130,13 @@ Everything after them depends on what they land:
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### jev-judgement-layer-zz — Retire the campaign's done plans · 2026-09-17
+
+**Built:** The nine `jev-judgement-layer-*.md` plan files deleted, this ticket's own included, and `docs/plans/index.md` regenerated — 738 deletions and nothing else. **This is the one completion with no plan left to mark done, because it deleted its own**, so its plan's status was never flipped and the step is skipped rather than looked for.
+**Key files:** `docs/plans/` (nine deletions plus the regenerated index)
+**Docs:** none. No CHANGELOG entry, deliberately — retiring scaffolding is not user-visible.
+**Follow-ups / deviations:** The boundaries were **measured rather than asserted**: a sha256 fingerprint of all 18 sensitive files taken before the first edit and re-checked against the merged base verified every one byte-identical — ADRs 0001 through 0014 and their index, this map, `CHANGELOG.md` and `README.md`. `src/` never appeared in the diff. **One finding for any future deletion-heavy ticket:** `my-command-tools commit` stages with `git add`, which exits 128 with `pathspec … did not match any files` when a path was already removed by `git rm`. Passing the scoped directory works where passing the deleted paths does not. PR #161.
 
 ### jev-judgement-layer-08 — The docs this campaign owes · 2026-09-17
 
