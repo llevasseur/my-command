@@ -9,6 +9,8 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 ### Added
 
+- **This repo now has its own `scripts/bootstrap-worktree.sh`, so `/task` Step 1.5 finds one here.** It locates the main checkout through `git rev-parse --git-common-dir`, refuses to run outside a linked worktree, and takes `all`, `deps` or `build` so docs-only work can skip `tsc`. `dist/` is rebuilt from the worktree's own `src/`, never copied across. No env leg and no contract: nothing here is gitignored env, and nothing boots.
+
 - **`my-command-tools judge` asks a versioned question set about one state file.** It prints the answers as JSON, is gated twice and off by default, and is wired into no command. `--dry-run` prints the exact body and the destination host before anything leaves the device. See `docs/features/judge-verb.md`.
 - **`my-command-tools trim` answers `/trim`'s four deterministic gates.** It computes them from the session transcript with no key and no network call, and reports the other two as `unknown` rather than guessing. Its `verdict` stays `null`, since two of the six gates are the agent's. See `docs/features/trim.md`.
 - **`pnpm judge:eval` runs the judgement layer's eval harness.** It reports each subject's labelled corpus size before any agreement number, then emits the pass/fail verdict against thresholds fixed in advance. It is unreachable from `verify`, from `pnpm test` and from CI. See `docs/features/judge-verb.md`.
