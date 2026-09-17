@@ -754,6 +754,20 @@ test('an unrecognised argument is refused before anything can be sent', async ()
   assert.doesNotThrow(() => parseArgs(['--limit', '5', '--chunk', '10', '--json', '--out', '/tmp/x', '--record']));
 });
 
+test('a flag value that is not a number is refused, and -h is never a recorder url', async () => {
+  const { parseArgs, UsageError } = await import('./judge-eval.mjs');
+
+  assert.throws(() => parseArgs(['--chunk', '2O']), UsageError);
+  assert.throws(() => parseArgs(['--limit']), /--limit needs a number/);
+  assert.throws(() => parseArgs(['--bytes', 'lots']), /--bytes needs a number/);
+
+  // `-h` is a flag, so a bare --record leaves it to be parsed as one rather than dialling it.
+  const helped = parseArgs(['--record', '-h']);
+  assert.equal(helped.record, true);
+  assert.equal(helped.recordUrl, undefined);
+  assert.equal(helped.help, true);
+});
+
 test('--help asks for usage rather than for a replay', async () => {
   const { parseArgs, USAGE } = await import('./judge-eval.mjs');
 

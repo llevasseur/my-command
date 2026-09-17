@@ -132,28 +132,29 @@ export function parseArgs(argv) {
       continue;
     }
     if (arg === '--limit') {
-      const n = Number(argv[i + 1]);
-      if (Number.isFinite(n) && n > 0) limit = n;
+      const n = numberValue(arg, argv[i + 1]);
+      if (n > 0) limit = n;
       i += 1;
       continue;
     }
     if (arg === '--chunk') {
-      const n = Number(argv[i + 1]);
-      if (Number.isFinite(n) && n > 0) chunk = n;
+      const n = numberValue(arg, argv[i + 1]);
+      if (n > 0) chunk = n;
       i += 1;
       continue;
     }
     if (arg === '--bytes') {
-      const n = Number(argv[i + 1]);
-      if (Number.isFinite(n) && n > 0) bytes = n;
+      const n = numberValue(arg, argv[i + 1]);
+      if (n > 0) bytes = n;
       i += 1;
       continue;
     }
     if (arg === '--record') {
       record = true;
       // A bare `--record` finds the running session itself; `--record <url>` names one outright.
+      // Any token starting with `-` is a flag, `-h` included, and is never read as a url.
       const next = argv[i + 1];
-      if (next !== undefined && !next.startsWith('--')) {
+      if (next !== undefined && !next.startsWith('-')) {
         recordUrl = next;
         i += 1;
       }
@@ -172,6 +173,22 @@ export function parseArgs(argv) {
     throw new UsageError(`unrecognised argument: ${arg}`);
   }
   return { limit, json, out, chunk, bytes, record, recordUrl, help };
+}
+
+/**
+ * A flag's numeric value. Missing or non-numeric is refused rather than defaulted, since the
+ * default is a full run against the live endpoint. A number at or below zero is left to the
+ * caller, which reads it as no ceiling.
+ * @param {string} flag
+ * @param {string | undefined} raw
+ * @returns {number}
+ */
+function numberValue(flag, raw) {
+  const n = Number(raw);
+  if (raw === undefined || raw.trim() === '' || !Number.isFinite(n)) {
+    throw new UsageError(`${flag} needs a number, got: ${raw ?? '(nothing)'}`);
+  }
+  return n;
 }
 
 /** @param {number | null} n */

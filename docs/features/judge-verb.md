@@ -197,6 +197,32 @@ becomes possible at all.
 
 Eight ADRs, 0007 through 0014, bind this work. Six carry `needs-human: true`.
 
+## Running the harness
+
+`pnpm judge:eval [options]`. With `TYPESAFE_API_KEY` set it makes real calls and
+spends real budget, so the parser refuses anything it does not recognise —
+an unknown flag, a stray value, or a missing or non-numeric value for a flag that
+takes one — and exits non-zero with usage before a single request is built. `--help`
+and `-h` print usage and call nothing.
+
+| Flag | What it does |
+| --- | --- |
+| `--limit <n>` | Score at most `n` corpus rows. Use it before any full run. |
+| `--chunk <n>` | Questions per call. Default 25; a value at or below zero means no ceiling. |
+| `--bytes <n>` | Bytes per request. Default 98,304, which is 96 KiB. |
+| `--record [url]` | Route every call through a `jev-record` proxy. Bare, it finds the running session; no live recorder is an error. |
+| `--json` | Print the report as JSON instead of as text. |
+| `--out <dir>` | Write the report somewhere other than the default directory. |
+
+**Every call carries two ceilings, and both apply.** At most 25 questions, from
+[ADR 0016](../adrs/0016-the-eval-reports-its-own-failures.md), and at most 96 KiB of
+serialised request body. The question ceiling alone was not enough: the endpoint caps
+a request's input tokens, and 25 comments carrying long diff context serialise well
+past that cap, which is how 28 of the 2026-09-17 run's 103 calls were refused with
+`max_tokens_exceeded`. The byte figure comes from what the endpoint has been observed
+to accept, since no limit is documented. Each call record carries the `requestBytes`
+it sent, so a refusal for size is readable from the report without a re-run.
+
 ## Related
 
 - Spec: [Command toolkit](../specs/command-toolkit.md) — the verb table this joins
