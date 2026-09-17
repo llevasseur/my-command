@@ -44,7 +44,8 @@ than clamping it. `--no-verify` reports `skipped` and changes nothing.
 6. Stop the application through the repository helper on every path — green, red, skipped,
    refused, or stopped early — then record the loop's driver tier, verdict, and round count
    beside the screenshots through the same helper, passing it each screenshot's label and
-   sentence exactly as the agent wrote them and each gap the agent named, and report the
+   sentence exactly as the agent wrote them, each gap the agent named, and one failure entry
+   per failure the loop hit, and report the
    verdict, tier, round count,
    the `exercised` line or what stood in the way, whether the intent was given or inferred,
    whether the contract or detection was used, and the evidence path.
@@ -54,6 +55,16 @@ than clamping it. `--no-verify` reports `skipped` and changes nothing.
      ending rather than only a green one, and name the tier actually run. Claiming a browser
      for a round that only probed over HTTP puts unexercised images in front of a reviewer as
      though a browser had loaded them, which is the one failure the record exists to prevent.
+   - Each failure is recorded on its own, as the gate that failed and its message in one line,
+     whether the loop went on to fix it or left it standing. The helper derives an identifier
+     from those two parts and stores the failure with its provenance unset, because a round
+     knows a gate went red and does not know whether this branch caused it. Report every
+     identifier: it is what a later resolution names. When the answer is established — the fix
+     cleared the failure, so the branch introduced it; the default branch was already red, so
+     the failure predates it — write it back through the same helper's resolve action, naming
+     the identifier, the provenance, and why. Never guess a provenance at record time, and
+     never route the question to a classifier: with both log tails in hand the comparison is a
+     function.
 
 Green means the intent is demonstrably true in the running application. A boot that succeeded, a
 build that compiled, and a log without errors are none of them green. An agent that cannot name

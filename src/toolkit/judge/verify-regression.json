@@ -12,7 +12,8 @@
   "adrs": [
     "docs/adrs/0008-no-question-set-acts-in-this-campaign.md",
     "docs/adrs/0010-eval-harness-before-the-layer.md",
-    "docs/adrs/0012-two-eval-subjects-not-five.md"
+    "docs/adrs/0012-two-eval-subjects-not-five.md",
+    "docs/adrs/0017-a-verify-failure-carries-its-own-provenance.md"
   ],
   "scope": {
     "statement": "THE EXPENSIVE HALF OF THIS PROBLEM IS NOT THE JUDGEMENT. It is acquiring the baseline state — checking out the default branch, booting it, and running the gates again — and that wants a caching verb rather than a classifier. This set judges only once BOTH states are already in hand. A run that has only the branch's own failure has nothing for this set to answer and must acquire the baseline first.",
@@ -29,7 +30,9 @@
   },
   "eval": {
     "labels": "none",
-    "statement": "THIS SET CARRIES NO EVAL NUMBERS. Do not look for one elsewhere; none exists. The screenshot keep is bounded at 7 days, so the corpus is a few dozen runs on one device; and verdict.json records red/green for a RUN, not the provenance of a specific failure, so even the surviving runs do not contain the label.",
+    "statement": "THIS SET CARRIES NO EVAL NUMBERS. Do not look for one elsewhere; none exists. What changed is why: the label is no longer absent by construction, only unaccumulated. verdict.json used to record red or green for a RUN and nothing per failure, so no surviving run could contain this set's label whatever else happened. It now records each failure on its own — the gate, what it said, and an id derived from those two — with its provenance unset, and `my-command-tools shots resolve --failure <id> --provenance regression|pre-existing` writes the answer onto that id once a fix or a look at the default branch settles it. A resolved failure is exactly this set's label, sitting beside the run it came from.",
+    "corpusNote": "NO CORPUS EXISTS YET, and recording the structure does not create one. Labels accumulate only as people actually resolve failures, none has been resolved, and the screenshot keep still ages a run out at 7 days, which bounds how long a resolved failure survives to be counted. Read this field again before quoting a number from it.",
+    "recordedBy": "docs/adrs/0017-a-verify-failure-carries-its-own-provenance.md",
     "adr": "docs/adrs/0012-two-eval-subjects-not-five.md"
   },
   "questions": [
