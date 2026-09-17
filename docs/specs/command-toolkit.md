@@ -28,6 +28,7 @@ noise, what a PR description should say, or whether a failure is worth fixing.
 | `scope` | what a branch changed: the ref to diff, its commits, its files, and with `--diff` the hunks themselves |
 | `verify` | which of the repo's gates ran and passed; bounded output only on failure |
 | `app start\|stop` | boot this repo's app on an ephemeral port and stop it again, by recorded pid |
+| `browser session\|sweep` | the session name a verification round opens its browser under, and the reaping of the daemons an abandoned round left behind |
 | `commit` | stage an explicit path list and commit, with guards |
 | `pr` | push, then create or update the branch's PR |
 | `prs view\|list\|checks` | read-only pull-request lookups; never writes |
@@ -564,6 +565,49 @@ command to the export so the two cannot drift.
 Whether a *repository* has Playwright of its own is a separate question, asked by
 [`/verify`](../features/verify.md) when it picks a tier. This field is about the device,
 which is why it sits beside `node`, `git`, and `gh`.
+
+### `browser` — the session lifecycle behind that fact
+
+`doctor.playwright` says a browser is reachable. `browser` owns what happens once one is
+opened, because `playwright-cli -s=<name>` starts a **persistent** `cliDaemon.js <name>` per
+session name, each owning a Chrome tree of about ten processes. The daemon outlives the agent
+that spawned it and reparents to PID 1. Ten of them measured on one device held 100 processes,
+1.9 GB resident and 20.3 CPU-hours, and drove a 12-core machine's load average to 56.
+
+Two halves, and the second only works because of the first:
+
+- **`browser session --round <n>`** prints the name that round opens under:
+  `mc-<branch-slug>-r<n>`, with the branch lowercased to `[a-z0-9-]` and capped at 32
+  characters. It also prints the `open` and `close` commands spelled out. The name is
+  deterministic in both directions — the round derives it without coordinating with anyone, and
+  a later sweep recognises it without being told. The ad-hoc `verify`, `verify2`, `verify4`,
+  `nexusverify` this replaces is the failure it exists to prevent: a teardown keyed to one name
+  cannot catch its own predecessors.
+- **`browser sweep`** closes every daemon older than `--older-than` minutes (default 60) whose
+  session name matches that scheme, and reports the rest under `kept` with the reason — `not-ours`,
+  `protected`, `too-young`. `--keep <session>` is repeatable, so a wave of concurrent runs can
+  name its own live sessions and not reap its siblings; `--dry-run` reports without signalling.
+
+The sweep runs **before** a round opens its browser rather than after it closes one, because the
+leak happens precisely when a round dies before its own close. Teardown that depends on the
+round finishing cannot clean up the case it exists for, so this half needs no cooperation from
+the run that is already gone.
+
+Three properties keep it from taking a browser someone is using:
+
+- **Only this scheme is reaped.** `not-ours` covers every name the repo did not write, which is
+  every session a human opened by hand. `playwright-cli close-all` is never used here or in any
+  command — it would take them all.
+- **A daemon is asked before it is signalled.** `playwright-cli -s=<name> close` takes the Chrome
+  tree with it; SIGTERM, then SIGKILL two seconds later, is the fallback for one that ignored the
+  ask, and it is sent to the whole process tree because signalling the daemon alone orphans ten
+  Chrome processes rather than ending them.
+- **An unreadable age counts as brand new.** A `ps` row whose elapsed time will not parse is
+  never reaped; a sweep may not act on a guess.
+
+Closing the session it opened is still the round's own job — `agents/mycommand-verifier.md`
+carries that, on every exit path including the failed ones. The sweep is the backstop for the
+rounds that never reach it, which is why both halves exist.
 
 ### `gitExcludes`
 

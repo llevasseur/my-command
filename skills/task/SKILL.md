@@ -91,11 +91,20 @@ lands every time, and the message meant to follow it never arrives.
    record it when the diff touches nothing the application serves. Never write a
    bootstrap or add a script to make this step runnable; a repository with no
    application has not opted in. Otherwise boot the application through the
-   repository helper on an ephemeral port, spawn the verification agent once with
+   repository helper on an ephemeral port, sweep the stale browser daemons
+   through that same helper before any browser starts — it closes only the ones
+   older than an hour whose session name matches this repository's own scheme,
+   so a round that died before its own teardown is cleaned up by the next run
+   rather than by nobody — read this round's session name from the helper, which
+   derives it from the branch and the round number so a later sweep recognises
+   it, then spawn the verification agent once with
    the task criteria — under `--no-implement`, the intent to prove, or none, in
    which case the agent infers it from the diff and pull request body — the
-   changed files, and the run contract, and continue that
-   same agent by message each round against that same booted server. Repair in
+   changed files, the run contract, and that session name with its closing
+   command — the agent closes the session it opened, by that exact name, before
+   it replies, on every ending including the failed ones — and continue that
+   same agent by message each round against that same booted server, carrying
+   that round's own session name. Repair in
    this run's own context, which holds the criteria; the agent observes and never
    edits code. Loop to at most twelve rounds, then stop the application through
    the repository helper on every exit path, including a refusal or an early
@@ -106,7 +115,11 @@ lands every time, and the message meant to follow it never arrives.
    count go into its description, and no downstream workflow treats a red result
    as a reason not to merge, because a check that can block shipping is one people
    switch off. Repository-wide smoke scenarios are optional and off by default,
-   and persisted browser specification files are out of scope.
+   and persisted browser specification files are out of scope. A browser session
+   is a persistent daemon owning a tree of about ten processes that outlives the
+   agent which started it, so it is closed by the round that opened it and swept
+   by the next run; nothing ever closes every session on the device, which would
+   take a browser a person is driving.
 7. Add changelog work when the repository tracks it, and hold each entry to a
    measured shape: one bullet per user-visible change, a bold lead of at most
    12 words naming it, then 2 to 3 sentences under 60 words, with at most one

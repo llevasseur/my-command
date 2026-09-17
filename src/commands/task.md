@@ -185,10 +185,16 @@ Step 2.5.
 
 1. **Boot:** `my-command-tools app start`. Ephemeral port, health-waited, pid recorded. Never
    background a dev server by hand.
-2. **Spawn once:** `Agent` with `subagent_type: "mycommand-verifier"`, handed the **task
-   criteria**, the changed-file list, the run contract (or the detected boot), the
-   `playwright-cli` command when `my-command-tools doctor` reports `playwright.installed`, and
-   the `shotsDir` Step 1's `worktree begin` reported. Hand it the **baseline** too when
+2. **Sweep, then spawn once.** When `my-command-tools doctor` reports `playwright.installed`,
+   run `my-command-tools browser sweep` **before any browser starts**: it closes the
+   `playwright-cli` daemons older than an hour whose session name matches this repo's own
+   scheme, and leaves every other session alone. Teardown cannot be left to the previous round,
+   because the leak happens precisely when a round dies before its own close. Then
+   `my-command-tools browser session --round 1` for the name this round opens under. `Agent`
+   with `subagent_type: "mycommand-verifier"`, handed the **task criteria**, the changed-file
+   list, the run contract (or the detected boot), the `playwright-cli` command, **that session
+   name and its close command** — the round closes the session by name before it replies, on
+   every exit path — and the `shotsDir` Step 1's `worktree begin` reported. Hand it the **baseline** too when
    `my-command-tools shots read` reports one: the newest earlier run on this branch that
    photographed something, as one line per shot, `<absolute path> | <label> | <sentence>`. That
    is what lets a round on an already-verified branch say what changed rather than describe a
@@ -206,12 +212,16 @@ Step 2.5.
    not prove as `gap:` lines. Shots plus a `playwright` tier plus no `saw:` lines means it has
    not looked at its own evidence; message it back for them.
 4. **Repair here.** This context holds the criteria; the verifier does not and never edits code.
-   Fix, commit on this branch, then `SendMessage` the same verifier to re-check.
+   Fix, commit on this branch, then `SendMessage` the same verifier to re-check, carrying that
+   round's own name from `my-command-tools browser session --round <n>`. One session per round,
+   each closed by the round that opened it.
 5. **Loop to at most 12 rounds.** `green`, `unverified`, and `skipped` all end it — only `red`
    is worth another round.
 6. **`my-command-tools app stop`, always.** Every exit path, including a refusal or an early
    stop. A booted server outlives this run otherwise, and `worktree reap` misses one whose argv
-   does not carry the worktree path — which under `--here` is every one of them.
+   does not carry the worktree path — which under `--here` is every one of them. The browser is
+   the verifier's to close and the next run's sweep to catch; `playwright-cli close-all` is
+   never used here or there, since it would take a browser a human is driving.
 
 **`green` means the task criteria are demonstrably true in the running app.** Not that nothing
 crashed. A verifier that cannot name the route, the interaction, and the observed result must

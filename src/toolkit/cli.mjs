@@ -10,6 +10,7 @@ import { bool, flag, str } from './lib/flags.mjs';
 import { ToolkitError } from './lib/proc.mjs';
 import { GATED_VERBS, requireArmed } from './lib/require-armed.mjs';
 import * as app from './verbs/app.mjs';
+import * as browser from './verbs/browser.mjs';
 import * as cleanup from './verbs/cleanup.mjs';
 import * as commit from './verbs/commit.mjs';
 import * as concepts from './verbs/concepts.mjs';
@@ -49,6 +50,7 @@ const VERBS = {
   'jev-record': jevRecord,
   verify,
   app,
+  browser,
   commit,
   pr,
   prs,
