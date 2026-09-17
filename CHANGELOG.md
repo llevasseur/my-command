@@ -5,6 +5,16 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-09-17
+
+### Added
+
+- **`my-command-tools judge` asks a versioned question set about one state file.** It prints the answers as JSON, is gated twice and off by default, and is wired into no command. `--dry-run` prints the exact body and the destination host before anything leaves the device. See `docs/features/judge-verb.md`.
+- **`my-command-tools trim` answers `/trim`'s four deterministic gates.** It computes them from the session transcript with no key and no network call, and reports the other two as `unknown` rather than guessing. Its `verdict` stays `null`, since two of the six gates are the agent's. See `docs/features/trim.md`.
+- **`pnpm judge:eval` runs the judgement layer's eval harness.** It reports each subject's labelled corpus size before any agreement number, then emits the pass/fail verdict against thresholds fixed in advance. It is unreachable from `verify`, from `pnpm test` and from CI. See `docs/features/judge-verb.md`.
+- **A 1,911-row labelled comment corpus, extracted from 24 `/clean` commits.** It comes from this repository's own git history and sits at an 86.5% majority-class baseline, with 584 comments excluded by the deterministic pre-filter. That exclusion drops the baseline 3.2 points. See `docs/features/judge-verb.md`.
+- **The eval returned no, and zero subjects carry a number.** Subject B was abandoned: 1,923 candidates yielded 3 labelled commands against a floor of 200, since the transcript store records no outcomes. Subject A went unmeasured for want of a key. See `docs/adrs/0014-the-eval-returned-no.md`.
+
 ## 2026-09-16
 
 ### Added
