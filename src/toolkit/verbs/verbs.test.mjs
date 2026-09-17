@@ -2084,3 +2084,72 @@ test('verify --wait says so when there is no detached run to wait on', () => {
     else process.env.MY_COMMAND_VERIFY_DIR = before;
   }
 });
+
+/** @param {unknown} r @returns {{failures: {id: string, gate: string, provenance: string | null}[]}} */
+const recorded = (r) => /** @type {never} */ (r);
+
+/**
+ * @param {unknown} r
+ * @returns {{unresolved: string[], verdict: {failures?: {id: string, provenance: string | null, note?: string}[]}}}
+ */
+const readBack = (r) => /** @type {never} */ (r);
+
+test('a failure is recorded with no provenance and given one afterwards', () => {
+  keep();
+  const { dir, git } = repoWithOrigin();
+  git(['checkout', '-qb', 'fix/gates']);
+
+  const written = recorded(
+    shotsVerb(
+      ctx(dir, ['record'], {
+        tier: 'static',
+        verdict: 'red',
+        failure: [
+          'pnpm test | Expected 3 to equal 4',
+          'pnpm lint | Unused import `join`',
+          // The same failure reported twice in one round is one failure.
+          'PNPM TEST | expected 3 to equal 4',
+        ],
+      }),
+    ),
+  );
+  assert.equal(written.failures.length, 2);
+  assert.deepEqual(
+    written.failures.map((entry) => entry.provenance),
+    [null, null],
+  );
+
+  const [drift, unused] = written.failures;
+  assert.deepEqual(readBack(shotsVerb(ctx(dir, ['read'], {}))).unresolved, [drift.id, unused.id]);
+
+  shotsVerb(ctx(dir, ['resolve'], { failure: drift.id, provenance: 'pre-existing', note: 'Already red on main.' }));
+
+  const after = readBack(shotsVerb(ctx(dir, ['read'], {})));
+  // Only the one nobody has settled is still waiting.
+  assert.deepEqual(after.unresolved, [unused.id]);
+  const entry = after.verdict.failures?.find((failure) => failure.id === drift.id);
+  assert.equal(entry?.provenance, 'pre-existing');
+  assert.equal(entry?.note, 'Already red on main.');
+});
+
+test('shots resolve refuses a provenance, a failure, or an id it cannot stand behind', () => {
+  keep();
+  const { dir, git } = repoWithOrigin();
+  git(['checkout', '-qb', 'fix/refusals']);
+
+  assert.throws(
+    () => shotsVerb(ctx(dir, ['resolve'], { failure: 'f-000000000000', provenance: 'flaky' })),
+    /--provenance must be one of regression, pre-existing/,
+  );
+  assert.throws(() => shotsVerb(ctx(dir, ['resolve'], { provenance: 'regression' })), /--failure is required/);
+  // An id nobody recorded is a typo, not a failure to file away silently.
+  assert.throws(
+    () => shotsVerb(ctx(dir, ['resolve'], { failure: 'f-000000000000', provenance: 'regression' })),
+    /no failure `f-000000000000` on fix\/refusals/,
+  );
+  assert.throws(
+    () => shotsVerb(ctx(dir, ['record'], { tier: 'static', verdict: 'red', failure: 'no separator here' })),
+    /--failure must read "<gate> \| <what it said>"/,
+  );
+  assert.match(shotsUsage, /shots resolve --failure <id> --provenance <provenance>/);
+});
