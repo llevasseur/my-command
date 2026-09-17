@@ -18,6 +18,7 @@ Folders: `adrs/` (decisions), `features/` (specs).
 
 - [adrs/](adrs/)
 - [features/](features/)
+- [plans/](plans/)
 - [research/](research/)
 - [specs/](specs/)
 
