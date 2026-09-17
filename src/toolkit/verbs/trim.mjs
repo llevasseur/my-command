@@ -404,12 +404,9 @@ function n1(lib, line) {
   const readOnly = (/** @type {string} */ name, /** @type {Record<string, any>} */ input) =>
     lib.isReadOnly(name, input) || isSelfCall(name, input);
 
-  // `repeatedProbe` answers a hook's question — "is the call about to be issued a repeat" —
-  // so the turn that already carries the command has to be excepted, exactly as the hook
-  // excepts the turn it was fired from. Without that it matches the command against itself
-  // and calls every command a repeat. Each command is therefore asked about from its own
-  // most recent turn, and answers true only if an earlier turn issued it with nothing in
-  // between that could have changed the answer.
+  // `repeatedProbe` answers "is the call about to be issued a repeat", so the turn that
+  // already carries the command must be excepted — otherwise every command matches itself.
+  // Each command is asked from its own most recent turn.
   /** @type {Map<string, string>} */
   const latest = new Map();
   for (const turn of stretch) {
