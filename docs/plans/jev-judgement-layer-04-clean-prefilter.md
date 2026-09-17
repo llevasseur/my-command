@@ -10,7 +10,7 @@ timestamp: 2026-09-16
 
 **Wayfinder:** `jev-judgement-layer`
 **Branch:** `task/jev-judgement-layer-04-clean-prefilter`
-**Status:** active
+**Status:** done · 2026-09-17
 
 **Depends on** ticket 03 — the `/clean` question set defines what the pre-filter excludes.
 

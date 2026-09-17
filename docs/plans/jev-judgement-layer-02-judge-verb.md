@@ -10,7 +10,7 @@ timestamp: 2026-09-16
 
 **Wayfinder:** `jev-judgement-layer`
 **Branch:** `task/jev-judgement-layer-02-judge-verb`
-**Status:** active
+**Status:** done · 2026-09-17
 
 **Depends on** ticket 01 (the client) and ticket 03 (a question set to load).
 

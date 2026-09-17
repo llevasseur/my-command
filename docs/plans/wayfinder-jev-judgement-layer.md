@@ -93,8 +93,6 @@ what you report back.
 
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
-| 02 | judge-verb | [jev-judgement-layer-02-judge-verb](jev-judgement-layer-02-judge-verb.md) | `task/jev-judgement-layer-02-judge-verb` | in-progress | |
-| 04 | clean-prefilter | [jev-judgement-layer-04-clean-prefilter](jev-judgement-layer-04-clean-prefilter.md) | `task/jev-judgement-layer-04-clean-prefilter` | todo | |
 | 05 | eval-harness | [jev-judgement-layer-05-eval-harness](jev-judgement-layer-05-eval-harness.md) | `task/jev-judgement-layer-05-eval-harness` | todo | |
 | 07 | runtime-surface | [jev-judgement-layer-07-runtime-surface](jev-judgement-layer-07-runtime-surface.md) | `task/jev-judgement-layer-07-runtime-surface` | todo | |
 | 08 | docs | [jev-judgement-layer-08-docs](jev-judgement-layer-08-docs.md) | `task/jev-judgement-layer-08-docs` | todo | |
@@ -134,6 +132,20 @@ Everything after them depends on what they land:
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### jev-judgement-layer-04 — The /clean pre-filter and its git-history corpus · 2026-09-17
+
+**Built:** The four mandatory keeps as deterministic rules, with a zero-dependency comment scanner that ignores `//` inside strings, template literals and regex literals — and a corpus extractor that walked 24 `/clean` commits in this repo's real history. **It produced the campaign's first numbers: a corpus of 1,911 rows — keep 1,653, delete 168, tighten 90 — at a majority-class baseline of 86.5% keep.**
+**Key files:** `src/toolkit/lib/clean-prefilter.mjs`, `clean-prefilter.test.mjs`, `clean-corpus.mjs`, `clean-corpus.test.mjs`
+**Docs:** none — ticket 08 owns the campaign's docs
+**Follow-ups / deviations:** **[ADR 0011](../adrs/0011-deterministic-comment-keeps-run-before-the-classifier.md) is now measured rather than argued.** 584 comments were excluded by the pre-filter rather than scored; without that exclusion the corpus would be 2,495 rows at an **89.7%** baseline, so applying it drops the baseline **3.2 points** — exactly the inflation the ADR exists to prevent. **Consequence for ticket 05:** [ADR 0013](../adrs/0013-the-eval-bar-is-pre-registered.md)'s Subject A bar now resolves to roughly **96.5% agreement**, demanding precisely because the baseline is honest. Each keep has a near-miss test so the rules cannot quietly keep everything, and a test holds the module's citations against `clean-comment.json`. The corpus reads the file as `/clean` found it rather than diff hunks, because a Keep leaves no hunk and Keeps are the majority class. No live license-header exclusions appeared: this repo keeps its licence in `LICENSE` rather than in code headers, so that rule is test-exercised but found nothing. PR #156.
+
+### jev-judgement-layer-02 — The my-command-tools judge verb · 2026-09-17
+
+**Built:** `my-command-tools judge --set <name> --state-file <path> [--dry-run]`, loading a versioned set and composing one request from it, printing JSON on stdout on every path. The dry-run body is **byte-identical** to what the live call puts on the wire, because both go through one `buildRequest` — which is what makes [ADR 0009](../adrs/0009-conversation-derived-state-leaves-the-device.md)'s inspect-before-you-send guarantee real rather than a claim. A missing key exits 0 with a no-answer result, proven in a real process with the variable deleted.
+**Key files:** `src/toolkit/verbs/judge.mjs`, `src/toolkit/verbs/judge.test.mjs`, `src/toolkit/cli.mjs`
+**Docs:** none — ticket 08 owns the campaign's docs
+**Follow-ups / deviations:** The second gate, the shadow store and the spend cap are deliberately **not** here — [ADR 0010](../adrs/0010-eval-harness-before-the-layer.md) lists them as the runtime surface, which is ticket 07. Running the verb by hand is itself the explicit per-invocation act, and it is wired into nothing. `'dry-run'` was added to `cli.mjs`'s `SWITCHES` so the flag does not swallow the next token. **Two things later tickets should know:** CI reported "no checks reported" on this PR and no run had been created at all, which the workflow would read as a pass — a close-and-reopen produced one, all six green; and `src/toolkit/lib/jev.mjs` does not export its `ENDPOINT`, so `--dry-run` cannot yet name the destination host, which a one-line export would fix. PR #157.
 
 ### jev-judgement-layer-06 — The deterministic trim gates verb · 2026-09-17
 
