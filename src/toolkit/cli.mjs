@@ -15,6 +15,7 @@ import * as commit from './verbs/commit.mjs';
 import * as concepts from './verbs/concepts.mjs';
 import * as doctor from './verbs/doctor.mjs';
 import * as identity from './verbs/identity.mjs';
+import * as jevRecord from './verbs/jev-record.mjs';
 import * as judge from './verbs/judge.mjs';
 import * as pr from './verbs/pr.mjs';
 import * as prs from './verbs/prs.mjs';
@@ -45,6 +46,7 @@ const VERBS = {
   scope,
   trim,
   judge,
+  'jev-record': jevRecord,
   verify,
   app,
   commit,
@@ -82,6 +84,7 @@ const SWITCHES = new Set([
   'dry-run',
   'judge',
   'shadow',
+  'full',
   'all',
   'keep-remote',
   'keep-local',

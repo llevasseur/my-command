@@ -38,6 +38,7 @@ noise, what a PR description should say, or whether a failure is worth fixing.
 | `stash write\|restore\|list` | `/cp`'s five-deep clipboard ring under `~/.claude`, and the clipboard sink |
 | `trim` | which of `/trim`'s six gates are facts about the session, and which are left for the agent |
 | `judge` | what one versioned question set says about one state file — printed, and acted on by nothing |
+| `jev-record start\|stop\|serve\|read` | a loopback proxy between a caller and the System One endpoint, and the whole of each exchange written down outside the Jev client |
 | `doctor` | where the toolkit resolved from, what's on PATH, which clone it tracks, and which external tools this device has |
 
 `app` is the one verb that starts something and leaves it running. `verify` runs the
@@ -268,6 +269,136 @@ true`, and the only refusal left is `not-merged` — no merged PR and no contain
 history, which is the one case where the commits really do exist nowhere else.
 A branch a worktree still holds is refused as `checked-out`, naming the path.
 `--keep-local` and `--keep-remote` each skip their half.
+
+### `jev-record`
+
+`jev-record` is the counterpart to `judge`, and it exists because the client both
+verbs sit on cannot report on itself. `src/toolkit/lib/jev.mjs` never throws: no key,
+a refused key, a 422, a timeout and an unreadable body all resolve to a result whose
+answer map is empty, which
+[ADR 0013](../adrs/0013-the-eval-bar-is-pre-registered.md) fixes as the layer's
+contract. The cost is that a 401, a 422, and a model that answered 7 of 125 questions
+are one observation at the call site — so a call that failed silently reaches an eval
+as a verdict. Recording has to happen outside the client, and it does: `jev.mjs` is
+unchanged, because `ask()` already takes an `endpoint`, so pointing Jev at the proxy
+is `ask({ endpoint: <the proxy url> })` and nothing else.
+
+`start` spawns the proxy detached and prints a URL that already answers. `stop`
+signals it, so it writes its closing session file rather than being killed mid-record.
+`serve` is the foreground form `start` spawns, bounded by `--exchanges` or `--idle`.
+`read` reports a session — one summary line per exchange, or the records whole under
+`--full`.
+
+The proxy binds loopback only, forwards each request untouched, relays each response
+untouched, and **synthesises nothing**. It does not parse a question set, read an
+answer, or retry a 429. An upstream that never answered is recorded as `status: null`
+with an `error` and relayed as a 502, because an invented empty answer map would be
+the exact lie the verb exists to expose.
+
+**Neither judgement gate applies here, deliberately.** `--judge` and
+`MY_COMMAND_JUDGE=1` gate *asking Jev a question* — sending conversation-derived state
+to a third party, per
+[ADR 0009](../adrs/0009-conversation-derived-state-leaves-the-device.md). This verb
+asks nothing: it forwards what a caller already decided to send, and with no caller it
+sends nothing at all. It is wired into no command, and nothing is promoted by its
+existence ([ADR 0008](../adrs/0008-no-question-set-acts-in-this-campaign.md)).
+
+**The key is forwarded and never written.** It is read from `TYPESAFE_API_KEY` in the
+environment and nowhere else, supplied on the upstream request only when the caller
+sent no `Authorization` of its own, and redacted out of every record twice over: by
+header name, and by a literal scan of each decoded body — the second being what
+catches an endpoint echoing a rejected key back inside its 401. `package.json` ships
+`src`, so a key written into a file here is a key published to npm.
+
+#### The on-disk record format
+
+Two readers parse these files and neither can ask: an eval harness in this repo, and
+an ingest pass in a separate repository. The layout and every field are therefore
+stated here rather than only in the writer.
+
+Records land outside any checkout, under `MY_COMMAND_JEV_RECORD_DIR` when it is set
+and `~/.my-command/jev-record/` otherwise:
+
+```text
+~/.my-command/jev-record/
+  20260917T143012-4f2a1b/   one proxy run: UTC to the second, then six characters of entropy
+    session.json            what that run was
+    serve.log               the detached child's output; written by `start`, absent under `serve`
+    000001.json             one exchange, zero-padded to six digits
+    000002.json             numbered in call order, so the sorted listing is the order
+```
+
+Every file is UTF-8 JSON, pretty-printed with a trailing newline (`serve.log` is plain
+text). A field is always present: absence is `null`, never a missing key. `v` is the
+format version and is `1`; a reader that does not recognise `v` should skip the record
+rather than guess at it.
+
+`session.json`:
+
+| Field | Type | What it is |
+|---|---|---|
+| `v` | number | Format version. `1`. |
+| `session` | string | The directory's own name. |
+| `startedAt` | string | ISO 8601 UTC, when the run opened. |
+| `endedAt` | string | ISO 8601 UTC. Written on a clean stop; absent if the proxy was killed. |
+| `endpoint` | string | The upstream every exchange in this run was forwarded to. |
+| `pid` | number \| null | The serving process. `null` until it is spawned. |
+| `host` | string | Always `127.0.0.1`. |
+| `port` | number \| null | `null` until the server is listening — a port here is the readiness signal. |
+| `url` | string \| null | What to pass as `ask({ endpoint })`. |
+| `health` | string | GET this for `{ok, session, dir, endpoint, recorded}`. Never recorded. |
+| `recorded` | number | Exchanges written. Present on a clean stop; count the files otherwise. |
+
+Each `NNNNNN.json`:
+
+| Field | Type | What it is |
+|---|---|---|
+| `v` | number | Format version. `1`. |
+| `id` | number | Sequence within the session, matching the filename. |
+| `session` | string | The session this belongs to. |
+| `startedAt` | string | ISO 8601 UTC, when the proxy received the request. |
+| `endedAt` | string | ISO 8601 UTC, when the upstream settled or failed. |
+| `durationMs` | number | `endedAt` minus `startedAt`. |
+| `endpoint` | string | Where it was forwarded. |
+| `request` | object | Below. |
+| `response` | object | Below. |
+
+`request`:
+
+| Field | Type | What it is |
+|---|---|---|
+| `method` | string | `POST` for every Jev call. |
+| `path` | string | The path on the **proxy**, which a caller may have varied. |
+| `headers` | object of string to string | Lowercased. A credential header reads `<redacted>`. |
+| `bytes` | number | Byte length of the body as received. |
+| `model` | string \| null | `body.model`. |
+| `state` | JSON value \| null | `body.state` verbatim, redacted. A string, object or array. |
+| `questions` | object \| null | The outgoing question map verbatim, keyed as the caller keyed it. |
+| `questionCount` | number | `questions`' key count. `0` when there was no map. |
+| `questionIds` | array of string | Those keys, in order. |
+| `body` | JSON value \| null | The whole decoded body, redacted. `null` when the body was not JSON. |
+| `bodyText` | string \| null | The raw text, **only** when the body was not JSON. Never both this and `body`. |
+
+`response`:
+
+| Field | Type | What it is |
+|---|---|---|
+| `status` | number \| null | The HTTP status. `null` means no HTTP response arrived at all. |
+| `ok` | boolean | `status` is 2xx. |
+| `headers` | object of string to string | Lowercased, redacted the same way. |
+| `bytes` | number | Byte length of the response body. |
+| `answers` | object \| null | The answer map verbatim, keyed as the questions were. |
+| `answerCount` | number | `answers`' key count. |
+| `answeredIds` | array of string | Those keys. |
+| `unansweredIds` | array of string | `questionIds` minus `answeredIds`. The 7-of-125 signal, named rather than left to be derived. |
+| `usage` | `{input_tokens, output_tokens}` \| null | Both numbers. `null` when the response reported none — an unknown cost is never written as zeroes, so a total across records never sums a guess. |
+| `body` | JSON value \| null | The decoded body, redacted. Where a JSON 401 or 422 error lands, whole. |
+| `bodyText` | string \| null | The raw text, only when the body was not JSON. Where a prose error body lands. |
+| `error` | `{name, message}` \| null | A transport failure: DNS, a refused connection, a timeout. Both strings. Non-`null` exactly when `status` is `null`. |
+
+The counts are conveniences over the maps beside them rather than a replacement for
+them. `questions` and `answers` are written in full on every record, so a reader that
+distrusts the recorder's arithmetic can recount from the file.
 
 ## Guards
 
@@ -582,6 +713,21 @@ with `allowJs` + `checkJs` + `noEmit`, run as `pnpm run check:toolkit`.
       and creating the file when it is unset — leaves existing entries in their original
       order, is byte-identical on a second run, never edits any repository's own
       `.gitignore`, and exits 0 when the config or the path is unwritable.
+- [ ] `jev-record` records a call that answered 7 of 125 questions with
+      `questionCount: 125`, `answerCount: 7` and 118 `unansweredIds`, and both maps whole —
+      the case an empty answer map from `ask()` cannot be told from a full one.
+- [ ] A 401 and a 422 the Jev client turned into an empty answer map are each readable from
+      the record, with the endpoint's own error body attached: `body` when it was JSON,
+      `bodyText` when it was prose.
+- [ ] An endpoint that never answered records `status: null` with an `error`, and the proxy
+      relays 502 rather than synthesising a response.
+- [ ] `TYPESAFE_API_KEY` reaches the upstream as an `Authorization` header and appears in no
+      file the session wrote — including when the endpoint echoes it back inside a 401 body,
+      and when the key carries regex metacharacters.
+- [ ] A caller that sent its own `Authorization` keeps it; the proxy supplies one only when
+      the caller sent none.
+- [ ] `jev-record start` prints a URL that already answers, `stop` lets the proxy write its
+      closing session file, and `read` reports the exchange without opening the record.
 - [ ] `pnpm run check:toolkit` and `pnpm test` pass in CI.
 - [ ] A fresh `npx` install lands a runnable shim on the device root **and** leaves a
       bare `my-command-tools` call working in a new shell.

@@ -25,4 +25,5 @@ Add one with `okq new adr "<title>"`.
 | The judgement layer ships with two eval subjects, not five | [0012-two-eval-subjects-not-five.md](0012-two-eval-subjects-not-five.md) |
 | The numbers that abandon the judgement layer are fixed before the eval runs | [0013-the-eval-bar-is-pre-registered.md](0013-the-eval-bar-is-pre-registered.md) |
 | The eval returned no, and the layer ships measured rather than working | [0014-the-eval-returned-no.md](0014-the-eval-returned-no.md) |
+| Jev traffic is recorded outside the client, by a local proxy | [0015-jev-traffic-is-recorded-outside-the-client.md](0015-jev-traffic-is-recorded-outside-the-client.md) |
 <!-- okq:index:end -->
