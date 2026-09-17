@@ -10,7 +10,7 @@ timestamp: 2026-09-16
 
 **Wayfinder:** `jev-judgement-layer`
 **Branch:** `task/jev-judgement-layer-03-question-sets`
-**Status:** active
+**Status:** done · 2026-09-17
 
 No predecessors. Runs in the first wave.
 

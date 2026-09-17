@@ -10,7 +10,7 @@ timestamp: 2026-09-16
 
 **Wayfinder:** `jev-judgement-layer`
 **Branch:** `task/jev-judgement-layer-06-trim-facts-verb`
-**Status:** active
+**Status:** done · 2026-09-17
 
 No predecessors, and no dependency on the client or the question sets. **Runs in the
 first wave, in parallel with 01 and 03.**

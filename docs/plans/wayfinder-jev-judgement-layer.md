@@ -93,12 +93,9 @@ what you report back.
 
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
-| 01 | jev-client | [jev-judgement-layer-01-jev-client](jev-judgement-layer-01-jev-client.md) | `task/jev-judgement-layer-01-jev-client` | todo | |
-| 02 | judge-verb | [jev-judgement-layer-02-judge-verb](jev-judgement-layer-02-judge-verb.md) | `task/jev-judgement-layer-02-judge-verb` | todo | |
-| 03 | question-sets | [jev-judgement-layer-03-question-sets](jev-judgement-layer-03-question-sets.md) | `task/jev-judgement-layer-03-question-sets` | todo | |
+| 02 | judge-verb | [jev-judgement-layer-02-judge-verb](jev-judgement-layer-02-judge-verb.md) | `task/jev-judgement-layer-02-judge-verb` | in-progress | |
 | 04 | clean-prefilter | [jev-judgement-layer-04-clean-prefilter](jev-judgement-layer-04-clean-prefilter.md) | `task/jev-judgement-layer-04-clean-prefilter` | todo | |
 | 05 | eval-harness | [jev-judgement-layer-05-eval-harness](jev-judgement-layer-05-eval-harness.md) | `task/jev-judgement-layer-05-eval-harness` | todo | |
-| 06 | trim-facts-verb | [jev-judgement-layer-06-trim-facts-verb](jev-judgement-layer-06-trim-facts-verb.md) | `task/jev-judgement-layer-06-trim-facts-verb` | todo | |
 | 07 | runtime-surface | [jev-judgement-layer-07-runtime-surface](jev-judgement-layer-07-runtime-surface.md) | `task/jev-judgement-layer-07-runtime-surface` | todo | |
 | 08 | docs | [jev-judgement-layer-08-docs](jev-judgement-layer-08-docs.md) | `task/jev-judgement-layer-08-docs` | todo | |
 | zz | retire-done-plans | [jev-judgement-layer-zz-retire-done-plans](jev-judgement-layer-zz-retire-done-plans.md) | `task/jev-judgement-layer-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
@@ -137,3 +134,24 @@ Everything after them depends on what they land:
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### jev-judgement-layer-06 — The deterministic trim gates verb · 2026-09-17
+
+**Built:** `my-command-tools trim` answers C1's returned-calls half, C3, N1's repeat arithmetic and N2 from the hook library, and reports C2, N3 and the two residual clauses as `unknown`/`residual` rather than guessing. `verdict` is deliberately `null`: six gates decide TRIM or CONTINUE and two of them are not the toolkit's to answer. `/trim` now declares `Bash(my-command-tools:*)`, which it could not call before.
+**Key files:** `src/toolkit/verbs/trim.mjs`, `src/toolkit/verbs/trim.test.mjs`, `src/toolkit/cli.mjs`, `src/commands/trim.md`, `commands/trim.md`, `skills/trim/SKILL.md`, `docs/features/trim.md`
+**Docs:** `docs/features/trim.md` updated, `dirty: true`
+**Follow-ups / deviations:** The hook import is **lazy by necessity, not preference** — a Codex install ships `toolkit` with no `hooks` sibling, so a top-level import would throw while `cli.mjs` built its verb table and take every verb down on those devices. It degrades to `unknown` instead: still one detector, loaded when asked. Two real bugs were caught by the fixtures before review — `repeatedProbe()` matching a command against itself, and the final turn of a transcript always reading as in-flight, so C1 is asked of the last *settled* turn. **One follow-up is outside every ticket's lane and outside this campaign:** `READ_ONLY_TOOLKIT` in `src/hooks/lib/read-only.mjs` does not list `trim`, so the gates read a `my-command-tools trim` call as a mutation and reset their discovery and polling counters. It is a one-word change in `src/hooks/`, which [ADR 0010](../adrs/0010-eval-harness-before-the-layer.md) puts off-limits to this campaign, so it is left for a human rather than smuggled in. It fails open — the gates get laxer, never stricter. PR #155.
+
+### jev-judgement-layer-03 — The versioned question sets · 2026-09-17
+
+**Built:** Five versioned question sets under `src/toolkit/judge/`, criteria lifted from existing rubric prose with every one citing `path:line`. A test re-reads each cited line to confirm it still carries the lifted fragment, so a later edit to `trim.md` or `clean.md` that moves a line fails here rather than drifting silently.
+**Key files:** `src/toolkit/judge/trim.json`, `clean-comment.json`, `dispatch-route.json`, `verify-regression.json`, `bash-shape.json`, `judge-sets.test.mjs`
+**Docs:** none — ticket 08 owns the campaign's docs
+**Follow-ups / deviations:** The four deterministic `/trim` gates sit in an `excluded` block and a test asserts none is ever asked (ADR 0007); the four mandatory keeps sit in a `preFilter` block (ADR 0011); the three label-less sets carry `eval.labels: "none"` (ADR 0012). One `no-runtime-typeof` anti-slop finding left standing on a boundary predicate rather than editing lint config. **The `dispatch-route` test asserts its options are exactly the definitions in `agents/`, so adding a seventh agent fails that test until the set is updated and its version bumped — intended coupling, and a tripwire a later ticket will hit.** PR #154.
+
+### jev-judgement-layer-01 — The zero-dependency Jev client · 2026-09-17
+
+**Built:** A raw `fetch` client for the System One endpoint with the three question types, the error taxonomy, exponential backoff on 429 and 529 only, a spend cap charged from returned `usage`, and fail-open at every mode — `ask()` never throws. The noul confidence band is exported once as the single definition every caller shares.
+**Key files:** `src/toolkit/lib/jev.mjs`, `src/toolkit/lib/jev.test.mjs`
+**Docs:** none — ticket 08 owns the campaign's docs
+**Follow-ups / deviations:** `package.json` dependencies byte-identical, so ADR 0013's abandonment condition was never approached. Wired into nothing, per ADR 0010. 25 tests with an injected `fetch` stub rather than module mocking, which the repo's anti-slop lint forbids. PR #153.
