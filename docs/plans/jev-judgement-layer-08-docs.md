@@ -10,7 +10,7 @@ timestamp: 2026-09-16
 
 **Wayfinder:** `jev-judgement-layer`
 **Branch:** `task/jev-judgement-layer-08-docs`
-**Status:** active
+**Status:** done · 2026-09-17
 
 **Depends on every code ticket**, because it documents what actually landed rather than
 what was planned.

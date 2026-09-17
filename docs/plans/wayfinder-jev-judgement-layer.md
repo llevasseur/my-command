@@ -95,7 +95,6 @@ what you report back.
 
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
-| 08 | docs | [jev-judgement-layer-08-docs](jev-judgement-layer-08-docs.md) | `task/jev-judgement-layer-08-docs` | todo | |
 | zz | retire-done-plans | [jev-judgement-layer-zz-retire-done-plans](jev-judgement-layer-zz-retire-done-plans.md) | `task/jev-judgement-layer-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
 
 <!--
@@ -132,6 +131,13 @@ Everything after them depends on what they land:
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### jev-judgement-layer-08 — The docs this campaign owes · 2026-09-17
+
+**Built:** `docs/features/judge-verb.md`, named to avoid colliding with the existing `docs/features/judge.md` for the `/judge` command; `trim` and `judge` rows in [Command toolkit](../specs/command-toolkit.md)'s Verbs table with a paragraph separating them from every other verb; five `### Added` CHANGELOG bullets; and README rows. **The feature doc carries a top-level "The eval returned no" section and the PR body leads with it.** It states "zero subjects carry a number" outright, in the doc, the README row and the CHANGELOG.
+**Key files:** `docs/features/judge-verb.md`, `docs/specs/command-toolkit.md`, `CHANGELOG.md`, `README.md`
+**Docs:** this ticket *is* the docs. Both `docs/` files carry `dirty: true`; `CHANGELOG.md` and `README.md` have no frontmatter to flag.
+**Follow-ups / deviations:** The CHANGELOG claims no behaviour — the five bullets are a verb, a verb, a script, a corpus, and the negative result as its own bullet. **The campaign's phantom-run trap fired a fourth time**, and by now the pattern is established rather than anecdotal: GitHub Actions created no workflow run for the head commit on tickets 02, 04, 07 and 08, so check-runs read `total_count: 0` while three permanently-queued third-party suites (vercel, railway, netlify) made a suite count read 3. Every one of those tickets closed and reopened its own PR to fire the `reopened` trigger and merged only on a real green run. **The reliable probe is `gh run list --branch <branch>` being non-empty, or check-runs `total_count > 0` — never a suite count.** PR #160.
 
 ### jev-judgement-layer-07 — The runtime surface, gated twice and acting on nothing · 2026-09-17
 
