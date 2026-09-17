@@ -192,7 +192,11 @@ Step 2.5.
    without an app has not opted in, and opting it in is `/my-command:task-bootstrap`, not a side effect
    here.
 2. **The diff touches nothing the app serves.** No changed file matches a `routes` glob, and
-   nothing else in the diff reaches a served surface → **skip**, and record that.
+   nothing else in the diff reaches a served surface → **skip**, and record that. Under
+   `--jev` the judgement layer is asked this same question at this point and the answer is
+   **recorded beside what the glob decided, in the report and nowhere else**. The glob still
+   decides. Nothing reads the answer back, no skip is taken or withheld because of it, and a
+   run without the flag or without a key reaches this line unchanged.
 
 `--no-verify`, if the invocation carried it, skips the step outright.
 
