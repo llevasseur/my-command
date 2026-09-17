@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { createBudget, NOUL_HIGH_CONFIDENCE_DISTANCE } from '../lib/jev.mjs';
 import { SUBJECT_A_BAND, scoreSubjectA, scoreSubjectB, verdictOf } from './bars.mjs';
 import { allMetrics } from './metrics.mjs';
-import { MAX_QUESTIONS_PER_CALL, runSubjectA } from './subject-a.mjs';
+import { MAX_QUESTIONS_PER_CALL, MAX_REQUEST_BYTES, runSubjectA } from './subject-a.mjs';
 import { buildCorpus as buildSubjectB, storePath } from './subject-b.mjs';
 
 /** Results land outside the repository, per the ticket's constraints. */
@@ -82,50 +82,113 @@ export function findRecorder(dir = recordDir()) {
   return null;
 }
 
+/** What `--help` prints, and what an unrecognised argument is answered with. */
+export const USAGE = `pnpm judge:eval [options]
+
+Replay the pre-registered eval. With TYPESAFE_API_KEY set, this makes real API calls
+against a real endpoint and spends real budget.
+
+  --limit <n>     Score at most n corpus rows. Use this before any full run.
+  --chunk <n>     Questions per call (default ${MAX_QUESTIONS_PER_CALL}).
+  --bytes <n>     Bytes per request (default ${MAX_REQUEST_BYTES}). The endpoint refuses
+                  a request over its input-token ceiling with a 400.
+  --record [url]  Route every call through a jev-record proxy so the whole exchange is
+                  written down. Bare, it finds the running session; with a url, it uses
+                  that one. No live recorder is an error, not a fall-through.
+  --json          Print the report as JSON instead of as text.
+  --out <dir>     Write the report here instead of ${OUT_DIR}.
+  --help, -h      Print this and exit, without calling anything.
+`;
+
+/** An argument this harness does not recognise. Thrown, because every caller must stop. */
+export class UsageError extends Error {
+  /** @param {string} message */
+  constructor(message) {
+    super(message);
+    this.name = 'UsageError';
+  }
+}
+
 /**
  * @param {string[]} argv
  * @returns {{limit: number | undefined, json: boolean, out: string, chunk: number,
- *   record: boolean, recordUrl: string | undefined}}
+ *   bytes: number, record: boolean, recordUrl: string | undefined, help: boolean}}
+ * @throws {UsageError} On any argument this harness does not recognise, before anything is sent.
  */
 export function parseArgs(argv) {
   let limit;
   let json = false;
   let out = OUT_DIR;
   let chunk = MAX_QUESTIONS_PER_CALL;
+  let bytes = MAX_REQUEST_BYTES;
   let record = false;
+  let help = false;
   /** @type {string | undefined} */
   let recordUrl;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
+    if (arg === '--help' || arg === '-h') {
+      help = true;
+      continue;
+    }
     if (arg === '--limit') {
-      const n = Number(argv[i + 1]);
-      if (Number.isFinite(n) && n > 0) limit = n;
+      const n = numberValue(arg, argv[i + 1]);
+      if (n > 0) limit = n;
       i += 1;
       continue;
     }
     if (arg === '--chunk') {
-      const n = Number(argv[i + 1]);
-      if (Number.isFinite(n) && n > 0) chunk = n;
+      const n = numberValue(arg, argv[i + 1]);
+      if (n > 0) chunk = n;
+      i += 1;
+      continue;
+    }
+    if (arg === '--bytes') {
+      const n = numberValue(arg, argv[i + 1]);
+      if (n > 0) bytes = n;
       i += 1;
       continue;
     }
     if (arg === '--record') {
       record = true;
       // A bare `--record` finds the running session itself; `--record <url>` names one outright.
+      // Any token starting with `-` is a flag, `-h` included, and is never read as a url.
       const next = argv[i + 1];
-      if (next !== undefined && !next.startsWith('--')) {
+      if (next !== undefined && !next.startsWith('-')) {
         recordUrl = next;
         i += 1;
       }
       continue;
     }
-    if (arg === '--json') json = true;
+    if (arg === '--json') {
+      json = true;
+      continue;
+    }
     if (arg === '--out') {
       out = String(argv[i + 1] ?? out);
       i += 1;
+      continue;
     }
+    // Anything left is unrecognised, and the run stops here rather than at the endpoint.
+    throw new UsageError(`unrecognised argument: ${arg}`);
   }
-  return { limit, json, out, chunk, record, recordUrl };
+  return { limit, json, out, chunk, bytes, record, recordUrl, help };
+}
+
+/**
+ * A flag's numeric value. Missing or non-numeric is refused rather than defaulted, since the
+ * default is a live run. A value at or below zero is left to the caller, which reads it as no
+ * ceiling.
+ * @param {string} flag
+ * @param {string | undefined} raw
+ * @returns {number}
+ */
+function numberValue(flag, raw) {
+  const n = Number(raw);
+  if (raw === undefined || raw.trim() === '' || !Number.isFinite(n)) {
+    throw new UsageError(`${flag} needs a number, got: ${raw ?? '(nothing)'}`);
+  }
+  return n;
 }
 
 /** @param {number | null} n */
@@ -207,6 +270,7 @@ function printIntegrity(integrity, calls, lines) {
  * @param {object} opts
  * @param {number | undefined} opts.limit
  * @param {number} [opts.chunk]
+ * @param {number} [opts.bytes]
  * @param {{url: string, session: string, dir: string, endpoint: string} | null} [opts.recorder]
  *   A running `jev-record` proxy to route every call through, or null for the real endpoint.
  */
@@ -222,6 +286,7 @@ export async function runEval(root, opts) {
     budget,
     replay: haveKey,
     chunkSize: opts.chunk,
+    maxBytes: opts.bytes,
     endpoint: recorder === null ? undefined : recorder.url,
   });
   // The generative pass /clean replaces was never run here, so its token count is unknown and the
@@ -264,6 +329,7 @@ export async function runEval(root, opts) {
     // record sits beside the report by reference: this is the pointer from one to the other.
     recorder,
     chunkSize: opts.chunk ?? MAX_QUESTIONS_PER_CALL,
+    maxRequestBytes: opts.bytes ?? MAX_REQUEST_BYTES,
     subjectA: {
       corpus: a.summary,
       batches: a.batches,
@@ -311,7 +377,7 @@ export function format(report) {
   lines.push('# judge:eval — the pre-registered bar');
   lines.push('');
   lines.push(`API key present: ${report.apiKeyPresent ? 'yes' : 'NO — nothing was sent to the endpoint'}`);
-  lines.push(`Questions per call: ${report.chunkSize}`);
+  lines.push(`Questions per call: ${report.chunkSize}, and at most ${report.maxRequestBytes} bytes per request`);
   lines.push(
     report.recorder === null
       ? 'Recording: off — calls went straight to the endpoint and nothing was written down'
@@ -386,7 +452,22 @@ export function format(report) {
 }
 
 async function main() {
-  const { limit, json, out, chunk, record, recordUrl } = parseArgs(process.argv.slice(2));
+  // Parsed first: everything below this block can spend money, nothing in it can.
+  /** @type {ReturnType<typeof parseArgs>} */
+  let args;
+  try {
+    args = parseArgs(process.argv.slice(2));
+  } catch (cause) {
+    process.stderr.write(`${cause instanceof Error ? cause.message : String(cause)}\n\n${USAGE}`);
+    process.exitCode = 1;
+    return;
+  }
+  if (args.help) {
+    process.stdout.write(USAGE);
+    return;
+  }
+
+  const { limit, json, out, chunk, bytes, record, recordUrl } = args;
   const root = process.cwd();
 
   /** @type {{url: string, session: string, dir: string, endpoint: string} | null} */
@@ -408,7 +489,7 @@ async function main() {
     }
   }
 
-  const report = await runEval(root, { limit, chunk, recorder });
+  const report = await runEval(root, { limit, chunk, bytes, recorder });
 
   mkdirSync(out, { recursive: true });
   const file = join(out, `judge-eval-${Date.now()}.json`);

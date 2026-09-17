@@ -304,6 +304,10 @@ function noConsult(gate, reason) {
  * @param {NodeJS.ProcessEnv} [options.env]
  * @param {boolean} [options.optIn]
  * @param {import('./jev.mjs').JevBudget} [options.budget]
+ * @param {string} [options.endpoint]   Where to post. Absent means the client's own default.
+ *   A caller recording its traffic passes the local proxy `jev-record` printed, which is the
+ *   seam `docs/adrs/0015-jev-traffic-is-recorded-outside-the-client.md` chose precisely because
+ *   `ask()` already took it — so recording changes the destination and nothing else.
  * @param {typeof globalThis.fetch} [options.fetchImpl]
  * @param {number} [options.maxRetries] Passed through to the client; injected in tests.
  * @param {(ms: number) => Promise<void>} [options.sleep] Injected in tests, to assert the
@@ -322,6 +326,7 @@ export async function consult({
   env = process.env,
   optIn = false,
   budget,
+  endpoint,
   fetchImpl,
   maxRetries,
   sleep,
@@ -332,14 +337,15 @@ export async function consult({
   // — the half that matters — sends nothing.
   if (!open.enabled) return noConsult(open, open.reason);
 
-  // `maxRetries` and `sleep` go over as they arrived, undefined included: the client declares
-  // both as defaulted parameters, so an absent one resolves to its own default there rather
-  // than needing to be omitted here.
+  // `endpoint`, `maxRetries` and `sleep` go over as they arrived, undefined included: the
+  // client declares all three as defaulted parameters, so an absent one resolves to its own
+  // default there rather than needing to be omitted here.
   const result = await ask({
     state,
     questions,
     key: env[KEY_VAR],
     budget: budget ?? budgetFrom(env),
+    endpoint,
     fetchImpl,
     maxRetries,
     sleep,

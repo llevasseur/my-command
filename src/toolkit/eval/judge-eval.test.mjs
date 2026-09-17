@@ -363,14 +363,63 @@ function statusFetch(status, body) {
   return fetchImpl;
 }
 
-test('chunk bounds a request and never drops a row', async () => {
-  const { chunk } = await import('./subject-a.mjs');
-  assert.deepEqual(chunk([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]]);
+test('packChunks bounds a request by count and never drops a row', async () => {
+  const { packChunks } = await import('./subject-a.mjs');
+  const free = () => 0;
+  assert.deepEqual(packChunks([1, 2, 3, 4, 5], free, { maxItems: 2 }), [[1, 2], [3, 4], [5]]);
   const many = Array.from({ length: 125 }, (_, i) => i);
-  assert.equal(chunk(many, 25).length, 5);
-  assert.deepEqual(chunk([], 25), []);
+  assert.equal(packChunks(many, free, { maxItems: 25 }).length, 5);
+  assert.deepEqual(packChunks([], free, { maxItems: 25 }), []);
   // A nonsensical ceiling returns the batch whole rather than sending nothing.
-  assert.deepEqual(chunk([1, 2], 0), [[1, 2]]);
+  assert.deepEqual(packChunks([1, 2], free, { maxItems: 0, maxBytes: 0 }), [[1, 2]]);
+});
+
+test('packChunks bounds a request by size, which the question count never did', async () => {
+  const { packChunks } = await import('./subject-a.mjs');
+  const size = (/** @type {number} */ n) => n;
+
+  // Four items of 30 bytes under a 100-byte ceiling: three fit, the fourth starts a call.
+  assert.deepEqual(packChunks([30, 30, 30, 30], size, { maxItems: 25, maxBytes: 100 }), [[30, 30, 30], [30]]);
+
+  // The envelope every request carries counts against the ceiling too.
+  assert.deepEqual(packChunks([30, 30, 30], size, { maxItems: 25, maxBytes: 100, envelope: 50 }), [[30], [30], [30]]);
+
+  // An item too large to fit alone is still sent alone rather than dropped (ADR 0016).
+  assert.deepEqual(packChunks([500, 10], size, { maxItems: 25, maxBytes: 100 }), [[500], [10]]);
+});
+
+test('a batch of large rows is split by payload, not just by question count', async () => {
+  const { replayBatch, MAX_REQUEST_BYTES } = await import('./subject-a.mjs');
+  const { createBudget } = await import('../lib/jev.mjs');
+
+  /** @type {number[]} */
+  const bodies = [];
+  /** @type {typeof globalThis.fetch} */
+  const measuring = async (_input, init) => {
+    bodies.push(String(init?.body ?? '').length);
+    return new Response(JSON.stringify({ answers: {}, usage: { input_tokens: 1, output_tokens: 1 } }), {
+      status: 200,
+    });
+  };
+
+  // Ten rows of 20 KB diff context each: at 25 questions per call the old splitter sent all ten
+  // as one ~200 KB request, the shape the endpoint refused.
+  const batch = Array.from({ length: 10 }, (_, i) => ({ ...entry(i), surroundingDiff: 'd'.repeat(20_000) }));
+  const got = await replayBatch(batch, SET, createBudget(), { key: 'test-key', fetchImpl: measuring });
+
+  assert.ok(bodies.length > 1, 'a batch over the byte ceiling goes out as several calls');
+  assert.ok(
+    bodies.every((n) => n <= MAX_REQUEST_BYTES),
+    `no request may exceed ${MAX_REQUEST_BYTES} bytes, got ${JSON.stringify(bodies)}`,
+  );
+  assert.equal(got.rows.length, 10, 'every corpus row still produces exactly one scored row');
+  assert.deepEqual(
+    got.calls.flatMap((c) => c.questionIds),
+    Array.from({ length: 10 }, (_, i) => `c${i}`),
+    'ids stay unique and contiguous across chunks of differing size',
+  );
+  // The size that was sent is on the record, so a refusal for size is readable without a re-run.
+  assert.ok(got.calls.every((c) => c.requestBytes > 0));
 });
 
 test('a batch larger than the ceiling goes out as several calls, never one', async () => {
@@ -565,6 +614,7 @@ test('the printed report separates an inconclusive run from an abandonment', asy
     chunkIndex: 0,
     chunkCount: 1,
     questionCount: 125,
+    requestBytes: 4096,
     questionIds: Array.from({ length: 125 }, (_, i) => `c${i}`),
     answerCount: 7,
     unansweredIds: Array.from({ length: 118 }, (_, i) => `c${i + 7}`),
@@ -590,6 +640,7 @@ test('the printed report separates an inconclusive run from an abandonment', asy
     apiKeyPresent: true,
     recorder: null,
     chunkSize: 25,
+    maxRequestBytes: 98_304,
     subjectA: {
       corpus: {
         size: 132,
@@ -688,6 +739,70 @@ test('--record and --chunk are parsed, and --record alone means find the session
   assert.equal(bare.recordUrl, undefined);
   assert.equal(bare.json, true, 'a bare --record does not swallow the flag after it');
   assert.equal(parseArgs(['--record', 'http://127.0.0.1:9']).recordUrl, 'http://127.0.0.1:9');
+});
+
+test('an unrecognised argument is refused before anything can be sent', async () => {
+  const { parseArgs, UsageError } = await import('./judge-eval.mjs');
+
+  assert.throws(() => parseArgs(['--help-me']), UsageError);
+  assert.throws(() => parseArgs(['--dry-run']), /unrecognised argument: --dry-run/);
+  assert.throws(() => parseArgs(['--limit', '5', '--nope']), /unrecognised argument: --nope/);
+  // A stray value is as unrecognised as a stray flag.
+  assert.throws(() => parseArgs(['subjectA']), /unrecognised argument: subjectA/);
+
+  // The recognised flags still parse.
+  assert.doesNotThrow(() => parseArgs(['--limit', '5', '--chunk', '10', '--json', '--out', '/tmp/x', '--record']));
+});
+
+test('a flag value that is not a number is refused, and -h is never a recorder url', async () => {
+  const { parseArgs, UsageError } = await import('./judge-eval.mjs');
+
+  assert.throws(() => parseArgs(['--chunk', '2O']), UsageError);
+  assert.throws(() => parseArgs(['--limit']), /--limit needs a number/);
+  assert.throws(() => parseArgs(['--bytes', 'lots']), /--bytes needs a number/);
+
+  // `-h` is a flag, so a bare --record leaves it to be parsed as one rather than dialling it.
+  const helped = parseArgs(['--record', '-h']);
+  assert.equal(helped.record, true);
+  assert.equal(helped.recordUrl, undefined);
+  assert.equal(helped.help, true);
+});
+
+test('--help asks for usage rather than for a replay', async () => {
+  const { parseArgs, USAGE } = await import('./judge-eval.mjs');
+
+  assert.equal(parseArgs(['--help']).help, true);
+  assert.equal(parseArgs(['-h']).help, true);
+  assert.equal(parseArgs([]).help, false);
+  // Usage names every flag it accepts, and says plainly that a run costs money.
+  for (const flag of ['--limit', '--chunk', '--bytes', '--record', '--json', '--out', '--help']) {
+    assert.ok(USAGE.includes(flag), `usage does not mention ${flag}`);
+  }
+  assert.match(USAGE, /spends real budget/);
+});
+
+test('the harness exits non-zero on a bad flag and zero on --help, calling nothing either way', async () => {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const run = promisify(execFile);
+
+  // No key in the child's environment, so the test stays offline whichever way the guard behaves.
+  const env = { ...process.env, TYPESAFE_API_KEY: '' };
+  const harness = join(ROOT, HARNESS);
+
+  const helped = await run(process.execPath, [harness, '--help'], { env });
+  assert.match(helped.stdout, /pnpm judge:eval \[options\]/);
+  assert.ok(!helped.stdout.includes('Subject A —'), '--help must not run the eval');
+
+  await assert.rejects(
+    run(process.execPath, [harness, '--nonsense'], { env }),
+    (/** @type {Error & {code?: number, stderr?: string}} */ err) => {
+      assert.equal(err.code, 1);
+      assert.match(String(err.stderr), /unrecognised argument: --nonsense/);
+      assert.match(String(err.stderr), /pnpm judge:eval \[options\]/);
+      return true;
+    },
+  );
 });
 
 test('the replay routes through the endpoint it is given', async () => {
