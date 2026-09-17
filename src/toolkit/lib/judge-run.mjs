@@ -100,20 +100,37 @@ export function changedFilesOf(state) {
 }
 
 /**
+ * How many files one run's triage may ask about.
+ *
+ * **A per-file site is the first thing here that can compose an unbounded request**, and the
+ * run's token cap does not stop it: that cap is charged from a response's reported usage and
+ * checked before the *next* call, so it cannot bound the first one. An unbounded body is a
+ * refusal — `docs/adrs/0016-the-eval-reports-its-own-failures.md` records 28 of one run's 103
+ * eval calls coming back `max_tokens_exceeded` for exactly that reason, losing every answer in
+ * them. A branch touching 300 files would reproduce it on the `/task` path, so the expansion is
+ * capped here instead. 40 covers an ordinary branch whole and a sweeping one in part, and a
+ * partial corpus beats a refused request that yields none.
+ */
+export const MAX_TRIAGE_FILES = 40;
+
+/**
  * One `noul` per changed file, which is what `step-2.5/complexity` asks.
  *
  * The per-file shape is the question: complexity is a property of a change to a file, and a
  * single answer over a whole diff would average a hard change to one file together with a
  * rename applied to nine others. Keys carry the path so a recorded row can be paired back to
  * the file it was about, which is the whole of what makes the corpus labellable.
+ *
+ * Frozen like the static site's questions beside it, so one shape of question is not mutable
+ * only because it happened to be built rather than written down.
  * @param {import('./jev.mjs').JevState} state
  * @returns {Record<string, import('./jev.mjs').JevQuestion>}
  */
 export function complexityQuestions(state) {
   /** @type {Record<string, import('./jev.mjs').JevQuestion>} */
   const questions = {};
-  for (const path of changedFilesOf(state)) {
-    questions[`NEEDS_REWORK::${path}`] = {
+  for (const path of changedFilesOf(state).slice(0, MAX_TRIAGE_FILES)) {
+    questions[`NEEDS_REWORK::${path}`] = Object.freeze({
       type: /** @type {const} */ ('noul'),
       instructions:
         `The change to \`${path}\` is complex enough to warrant a rework pass before it is ` +
@@ -121,11 +138,11 @@ export function complexityQuestions(state) {
         'code would likely find something a verification round would not. Judge the change, ' +
         'not the file — a one-line edit to a shared guard can be the hardest thing on a branch, ' +
         'and a three-hundred-line edit can be a rename a tool applied.',
-      criteria: {
+      criteria: Object.freeze({
         true: 'A rework pass over this file before verification would be worth its cost.',
         false: 'The change is straightforward and a rework pass would find nothing.',
-      },
-    };
+      }),
+    });
   }
   return questions;
 }
@@ -380,10 +397,11 @@ export async function judgeRun({
   for (const site of sites) {
     const questions = questionsAt(site, state);
 
-    // A per-file site on a run with no changed files has nothing to ask. Sending an empty
-    // question map would spend a call to be told nothing, so it is refused here and reported,
-    // which keeps the reason readable in the run report rather than arriving as a malformed
-    // answer from the far end.
+    // A per-file site on a run with no changed files has nothing to ask. No call is at risk —
+    // `ask` already refuses an empty question map as `invalid-request`, before it composes a
+    // body or reaches `fetch`. What this buys is the *reason*: `no-questions` says the run had
+    // no files to ask about, where `invalid-request` would report it as a malformed request and
+    // send a reader looking for a bug that is not there.
     if (Object.keys(questions).length === 0) {
       reports.push({
         id: site.id,
@@ -426,19 +444,45 @@ export async function judgeRun({
     });
   }
 
+  const asked = reports.some((report) => report.asked);
+
   return {
     // Computed rather than fixed, because promotion is per set: a site that one day declares
     // `acts` would show here without `--jev` changing. None does, so this is false.
     acted: actingSites(sites).length > 0,
     gate: open,
-    asked: reports.some((report) => report.asked),
+    asked,
     recorded: true,
     endpoint: endpoint ?? null,
-    reason: sites.length === 0 ? 'no-sites' : null,
+    // A run that asked nothing owes a reason, and there are two ways to get here now: no sites
+    // at all, or sites that every one of them declined. Leaving the second as null printed
+    // `nothing was asked (unknown)` — a report line that names no cause and sends a reader
+    // hunting for one. The sites' own reasons are the answer, and a run whose sites all gave
+    // the same one reports it rather than the word "unknown".
+    reason: runReason(sites, reports, asked),
     silent: false,
     sites: reports,
     budget: spend,
   };
+}
+
+/**
+ * Why a run asked nothing, or null when it asked.
+ *
+ * Reads the site reports rather than restating their logic, so a reason added to a site shows
+ * up here without a second list to keep in step.
+ * @param {readonly JudgeSite[]} sites
+ * @param {SiteReport[]} reports
+ * @param {boolean} asked
+ * @returns {string | null}
+ */
+function runReason(sites, reports, asked) {
+  if (sites.length === 0) return 'no-sites';
+  if (asked) return null;
+  const reasons = new Set(reports.map((report) => report.reason ?? 'unknown'));
+  // One shared reason is the run's reason. Several means the sites declined for different
+  // causes, and naming one of them would be a lie about the others.
+  return reasons.size === 1 ? [...reasons][0] : 'no-site-asked';
 }
 
 /**
@@ -495,7 +539,11 @@ export function reportLines(run) {
           ? `no recorder session, so nothing was sent — open one with \`${START_COMMAND}\``
           : run.reason === 'no-sites'
             ? 'no question sites are wired yet, so nothing was asked'
-            : `nothing was asked (${run.reason ?? 'unknown'})`;
+            : run.reason === 'no-questions'
+              ? 'no changed files for the per-file site to ask about'
+              : run.reason === 'no-site-asked'
+                ? 'every wired site declined, for different reasons — see the per-site lines'
+                : `nothing was asked (${run.reason ?? 'unknown'})`;
     return [`jev: ${why}. Nothing acted.`];
   }
 

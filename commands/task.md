@@ -52,7 +52,8 @@ The runtime is `src/toolkit/lib/judge-run.mjs`; this section is what the run doe
 2. **`--dry-run` is ungated and comes first.** With it, print the exact request body for every wired site and the host each would reach, then send nothing. It reads the gates not at all, because requiring the opt-in in order to read what the opt-in would send would invert what the dry run is for. The body is composed through the same `buildRequest` the live path posts, so there is no second path that could print one thing and send another.
 3. **Open the recorder before asking anything.** `my-command-tools jev-record start` prints a `url`; every call this run makes goes to it, through the `endpoint` parameter the client already takes. An answer nobody wrote down is not a corpus, so this is not separately optional — a run with no recorder asks nothing and reports `not-recorded`. Close it at the end of the run with `my-command-tools jev-record stop --session <name>`.
 4. **Cap this run's spend.** The budget is the run's own, not the process-wide `MY_COMMAND_JUDGE_TOKEN_CAP` default: `MY_COMMAND_TASK_JUDGE_TOKEN_CAP` sets it and it is conservative unset. A process can carry many runs; the number a person authorises is a run's.
-5. **Write the answers into Step 4's report**, beside what the run actually did, under a `jev:` line that ends by saying nothing acted. On any failure — a refused key, a rejected body, a timeout, an answer below the floor — the run reports the failure and carries on unchanged. There is no failure here that alters an outcome.
+5. **Compose the state the sites are asked about, and nothing more.** Both wired sites ask about files, so the state is an object carrying **`changedFiles`** — this run's changed paths, as an array of strings — and a bounded shape-only digest of what the diff changed in each of them; Step 2.6's site additionally carries whether each path matched a `routes` glob. **`changedFiles` is not optional for the per-file site**: without it the triage expands to no questions, asks nothing, and reports `no-questions`, which is indistinguishable from an empty diff. Keep the state path-shaped and diff-shaped — no goal, no prose, no transcript — which is what makes it printable with `--dry-run`.
+6. **Write the answers into Step 4's report**, beside what the run actually did, under a `jev:` line that ends by saying nothing acted. On any failure — a refused key, a rejected body, a timeout, an answer below the floor — the run reports the failure and carries on unchanged. There is no failure here that alters an outcome.
 
 ## Step 0 — Incorporate added commands
 
@@ -189,6 +190,14 @@ Step 2.6 having done exactly what it does today.
 It is asked here rather than inside Step 2.6 because the question is about the code as Step 2.5
 leaves it — after the lint fixes are in, and before a verifier's verdict exists to colour the
 answer.
+
+**A row nobody can attribute to its own file is dropped rather than scored.** The labels come
+after the fact and some of them are about the run instead of the file: Step 2.6 goes red against
+a run, and a later commit may touch one file to repair another. A row whose only positive signal
+cannot be pinned to the file it was asked about leaves the corpus, which is the treatment
+[ADR 0011](../../docs/adrs/0011-deterministic-comment-keeps-run-before-the-classifier.md) gives
+a pre-filtered comment. The triage also asks about a bounded number of files per run, so a
+sweeping branch cannot compose one request large enough for the endpoint to refuse whole.
 
 **This is the site that could act soonest, ahead of `step-2.6/surface`**, and its labels are the
 worse of the two. Its answer would ADD a rework pass rather than skip one, so a wrong answer

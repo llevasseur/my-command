@@ -145,12 +145,16 @@ The costs, stated rather than softened:
   recorded as a rule anyway because an ordering invented per site is one argued from
   whichever site is being proposed.
 - **One question per changed file leaves the device per `--jev` run**, where the other
-  site asks one per run. A large diff therefore costs proportionally more, which is what
-  the per-run token cap from
-  [ADR 0018](0018-task-records-jev-answers-against-its-own-outcomes.md) bounds. The state
-  is path-shaped and diff-shaped, gated twice under
-  [ADR 0009](0009-conversation-derived-state-leaves-the-device.md), and printable in full
-  with `--dry-run` before anything is sent.
+  site asks one per run, so a large diff costs proportionally more. The per-run token cap
+  from [ADR 0018](0018-task-records-jev-answers-against-its-own-outcomes.md) does **not**
+  bound that: it is charged from a response's reported usage and checked before the *next*
+  call, so it cannot bound the first one. An unbounded body is a refused body —
+  [ADR 0016](0016-the-eval-reports-its-own-failures.md) records 28 of one run's 103 eval
+  calls coming back `max_tokens_exceeded`, losing every answer in them — so the expansion
+  is capped at a fixed number of files per run instead, and a partial corpus is preferred
+  to a request that yields none. The state is path-shaped and diff-shaped, gated twice
+  under [ADR 0009](0009-conversation-derived-state-leaves-the-device.md), and printable in
+  full with `--dry-run` before anything is sent.
 
 What a human now owns: whether blast radius is the right primary key for promotion order
 at all, whether four partial lagging signals are worth building a corpus on, and whether

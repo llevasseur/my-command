@@ -33,6 +33,16 @@ application serves, beside the glob match that already decides it; the glob stil
 decides. On any failure — a refused key, a rejected body, a timeout, an answer below
 the floor — report it and carry on unchanged. No failure here alters an outcome.
 
+The state both sites are asked about is an object carrying `changedFiles`, this run's
+changed paths as an array of strings, plus a bounded shape-only digest of what the
+diff changed in each of them. **`changedFiles` is not optional for the per-file
+site**: without it that site expands to no questions and asks nothing, reporting a
+reason indistinguishable from an empty diff. The expansion is capped at a fixed
+number of files per run, because a run's token budget is charged from a reply and
+therefore cannot bound the first request; an uncapped one would be refused whole and
+lose every answer in it. Keep the state path-shaped and diff-shaped — no goal, no
+prose, no transcript.
+
 `--no-implement` mirrors `--no-verify`: skip step 4's implementation entirely and
 run every other step over the work the branch already carries. The criteria then
 name what the verifier should prove rather than what to build, and they are

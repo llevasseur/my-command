@@ -31,6 +31,7 @@ import {
   DEFAULT_RUN_TOKEN_CAP,
   dryRun,
   judgeRun,
+  MAX_TRIAGE_FILES,
   questionsAt,
   RUN_CAP_VAR,
   records,
@@ -320,6 +321,43 @@ test('a per-file site with no changed files asks nothing rather than posting an 
   assert.equal(run.sites[0].reason, 'no-questions');
   assert.deepEqual(run.sites[0].answers, {});
   assert.equal(run.sites[0].recordedAt, null, 'nothing was sent, so nothing was recorded');
+
+  // The run owes a reason too, not just the site. Left null this printed `nothing was asked
+  // (unknown)`, which names no cause and sends a reader hunting for one that does not exist.
+  assert.equal(run.reason, 'no-questions');
+  assert.match(reportLines(run)[0], /no changed files for the per-file site to ask about/);
+  assert.match(reportLines(run)[0], /Nothing acted\./);
+
+  // Sites declining for different reasons cannot all be named by one of them.
+  const mixed = await judgeRun({
+    state: { changedFiles: [] },
+    sites: [SITES[0], { ...SITE, questions: {} }],
+    endpoint: RECORDER,
+    env: keyed(),
+    optIn: true,
+    fetchImpl: refuse,
+  });
+  assert.equal(mixed.reason, 'no-questions', 'one shared reason is the run’s reason');
+});
+
+test('the per-file expansion is capped, because the token cap cannot bound the first call', () => {
+  // A run's cap is charged from a response's usage and checked before the *next* call, so an
+  // unbounded expansion would compose one oversized body and have it refused whole — ADR 0016's
+  // measured failure, where 28 of 103 eval calls came back max_tokens_exceeded.
+  const many = Array.from({ length: MAX_TRIAGE_FILES + 25 }, (_, i) => `src/file-${i}.ts`);
+  const questions = complexityQuestions({ changedFiles: many });
+
+  assert.equal(Object.keys(questions).length, MAX_TRIAGE_FILES);
+  assert.ok(MAX_TRIAGE_FILES > 0, 'a cap of zero would silently disable the site');
+  // Capped from the front, so which files were asked about is predictable rather than arbitrary.
+  assert.ok(questions[`NEEDS_REWORK::${many[0]}`], 'the first changed file must be asked about');
+  assert.ok(!questions[`NEEDS_REWORK::${many[MAX_TRIAGE_FILES]}`], 'the file past the cap must not be');
+
+  // Frozen like the static site's questions beside it, so one shape of question is not mutable
+  // only because it happened to be built rather than written down.
+  const [built] = Object.values(questions);
+  assert.ok(Object.isFrozen(built), 'a built question must be frozen like a written one');
+  assert.ok(Object.isFrozen(built.criteria), 'its criteria too');
 });
 
 test('with no key a --jev run sends nothing and adds zero lines to the report', async () => {

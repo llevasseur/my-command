@@ -337,7 +337,7 @@ test('verify-surface lifts its noul from the skip condition it sits beside', () 
 
   // And the command still says, at that same site, that the answer is recorded and the glob
   // decides. If that sentence goes, this set is no longer describing what the run does.
-  const step = task.slice(211, 221).join('\n');
+  const step = task.slice(221, 231).join('\n');
   assert.match(step, /recorded beside what the glob decided/);
   assert.match(step, /The glob still\s+decides\./);
 
@@ -421,10 +421,25 @@ test('complexity-triage lifts its noul from the section it sits in', () => {
 
   // And the command still says, at that same site, that nothing reads the answers back. If
   // that sentence goes, this set is no longer describing what the run does.
-  const section = task.slice(179, 200).join('\n');
+  const section = task.slice(180, 201).join('\n');
   assert.match(section, /one `noul` per changed file/);
   assert.match(section, /nothing reads the answers back/);
   assert.match(section, /No rework pass\s+is scheduled and none is withheld\./);
+
+  // The confound's own citation points at the instruction that makes the drop decidable, the
+  // way verify-surface's does. Without this the citation is both wrong and unguarded, which is
+  // exactly how the first version of this file shipped.
+  const confoundLine = Number(set.eval.confound.source.split(':')[1]);
+  assert.ok(
+    task[confoundLine - 1].includes('dropped rather than scored'),
+    'the confound resolution must cite the line that states the drop',
+  );
+
+  // And the per-run bound is stated in the command as well as in the module, since a reader
+  // deciding what one --jev run sends reads the command.
+  assert.match(section, /bounded number of files per run/);
+  assert.match(set.requestBound.statement, /THE EXPANSION IS CAPPED PER RUN/);
+  assert.ok(set.requestBound.adr.includes('0016'), 'must cite the ADR that measured the refusal');
 });
 
 test('no set carries a credential', () => {

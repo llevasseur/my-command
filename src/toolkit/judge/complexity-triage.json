@@ -12,12 +12,17 @@
   "wiredIntoNote": "Wired means asked and recorded, never consulted. The site carries acts: false like every other, so the wiring adds rows to the corpus and no branch to the run.",
   "batch": true,
   "perChangedFile": true,
-  "perChangedFileNote": "THE QUESTION BELOW IS A TEMPLATE, NOT THE REQUEST. The site expands it at call time into one noul per changed file, keyed NEEDS_REWORK::<path>, and sends them as one batched call. A run with no changed files asks nothing rather than sending an empty question map.",
+  "perChangedFileNote": "THE QUESTION BELOW IS A TEMPLATE, NOT THE REQUEST. The site expands it at call time into one noul per changed file, keyed NEEDS_REWORK::<path>, and sends them as one batched call. A run with no changed files asks nothing rather than sending an empty question map, and the state must carry changedFiles for the expansion to produce anything at all.",
+  "requestBound": {
+    "statement": "THE EXPANSION IS CAPPED PER RUN, BECAUSE THE TOKEN CAP CANNOT BOUND THE FIRST CALL. A run's token cap is charged from a response's reported usage and checked before the next call, so an unbounded per-file expansion would compose one oversized body and have it refused whole — the failure ADR 0016 measured, where 28 of 103 eval calls came back max_tokens_exceeded and every answer in them was lost.",
+    "resolution": "MAX_TRIAGE_FILES in src/toolkit/lib/judge-run.mjs caps how many changed files one run asks about. A sweeping branch contributes a partial corpus instead of a refused request that contributes none.",
+    "adr": "docs/adrs/0016-the-eval-reports-its-own-failures.md"
+  },
   "sources": [
-    "src/commands/task.md:180",
-    "src/commands/task.md:183",
+    "src/commands/task.md:181",
     "src/commands/task.md:184",
-    "src/commands/task.md:193"
+    "src/commands/task.md:185",
+    "src/commands/task.md:202"
   ],
   "adrs": [
     "docs/adrs/0008-no-question-set-acts-in-this-campaign.md",
@@ -55,7 +60,7 @@
     "confound": {
       "statement": "A FILE CAN DRAW A SIGNAL FOR REASONS THAT HAVE NOTHING TO DO WITH ITS OWN COMPLEXITY. Step 2.6 goes red against a run, not against a file, so attributing a red to one changed file is an inference. A later commit in the same run may touch a file to fix something in a different file. /review comments on what it reads, which is weighted by what the PR description drew attention to.",
       "resolution": "A row whose only positive signal is a run-level one that cannot be attributed to that file is DROPPED rather than scored, the same treatment ADR 0011 gives a pre-filtered comment and ADR 0019 gives an ambiguous skip. Scoring cases the question was never about inflates the number.",
-      "source": "src/commands/task.md:183"
+      "source": "src/commands/task.md:194"
     },
     "barNote": "NO PRE-REGISTERED BAR COVERS THIS SET. ADR 0013 fixed bars for Subject A and Subject B only, and this is neither. A number collected here is a number and nothing more until a superseding ADR states the bar it would have to clear.",
     "corpusNote": "NO CORPUS EXISTS YET. Wiring the site records rows only from runs made with --jev on a device carrying a key, and the flag is off by default. Read this field again before quoting a number from it.",
@@ -72,7 +77,7 @@
       "why": "Nothing deterministic answers this. A line count is not complexity — a one-line change to a shared guard can be the hardest thing on a branch, and a three-hundred-line change can be a rename applied by a tool. There is no glob, no metric and no gate in the repo that expresses it, which is why the question is asked rather than computed.",
       "template": true,
       "templateNote": "Expanded per changed file at call time into NEEDS_REWORK::<path>. This entry is the wording every expansion carries, not a question that is sent as written.",
-      "source": "src/commands/task.md:184"
+      "source": "src/commands/task.md:185"
     }
   ]
 }
