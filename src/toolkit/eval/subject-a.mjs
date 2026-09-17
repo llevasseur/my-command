@@ -37,8 +37,7 @@ const SET_PATH = 'src/toolkit/judge/clean-comment.json';
  * written against. Above it, latency p95 becomes a per-call number covering part of a file, and
  * ADR 0016 records that as a deliberate consequence rather than leaving it to be inferred here.
  *
- * It bounds how many questions a call carries and nothing about how large they are, which is what
- * `MAX_REQUEST_BYTES` below exists to bound. Both ceilings apply to every call.
+ * Question count only; `MAX_REQUEST_BYTES` below bounds body size. Both apply to every call.
  *
  * Overridable per run — `--chunk <n>` on the harness, `chunkSize` here.
  */
@@ -87,19 +86,16 @@ export function batchByFile(entries) {
 /**
  * The most bytes one serialised request body may carry.
  *
- * The endpoint enforces a ceiling on a request's input tokens and refuses anything above it with
- * `400` and a body of `{"detail":{"error_type":"max_tokens_exceeded"}}`. `MAX_QUESTIONS_PER_CALL`
- * bounds how many questions a call asks and says nothing about how large they are, so a batch of
- * 25 comments carrying long `surroundingDiff` context sailed past the ceiling and every call for
- * it was refused — 28 of the 103 calls on 2026-09-17, losing 684 rows.
+ * The endpoint caps a request's input tokens and refuses anything above it with `400` and a body
+ * of `{"detail":{"error_type":"max_tokens_exceeded"}}`. `MAX_QUESTIONS_PER_CALL` bounds how many
+ * questions a call asks, never how large they are, so 25 comments carrying long `surroundingDiff`
+ * context went past the cap and every call for that file was refused.
  *
- * 96 KiB is the budget, chosen from what the endpoint has been observed to accept rather than from
- * a documented limit, because there is no documented limit. Recorded through the ADR 0015 proxy: a
- * 130,000-byte body was accepted and a 133,000-byte one refused. Across the 2026-09-17 run the
- * largest accepted request was 124,761 bytes, and real corpus text runs between 2.95 and 3.80
- * bytes to the token. At the densest of those, 96 KiB is about 33,300 tokens — under the 35,238
- * the endpoint has actually been seen to accept, with the margin absorbing the fact that this is a
- * byte count standing in for a token count it cannot compute.
+ * There is no documented limit, so 96 KiB comes from what the endpoint has been observed to
+ * accept: a 130,000-byte body accepted, a 133,000-byte one refused, and 124,761 bytes the largest
+ * accepted on 2026-09-17. Corpus text runs 2.95–3.80 bytes to the token, so at the densest 96 KiB
+ * is about 33,300 tokens — under the 35,238 seen accepted, the margin covering a byte count
+ * standing in for a token count it cannot compute.
  *
  * Overridable per run with `--bytes <n>` on the harness, `maxBytes` here.
  */
@@ -108,14 +104,11 @@ export const MAX_REQUEST_BYTES = 98_304;
 /**
  * One batch split into the requests it will actually be sent as, in order.
  *
- * Two ceilings, because the endpoint has two ways to refuse: at most `maxItems` questions, and at
- * most `maxBytes` of serialised body. A ceiling of zero or less on either would mean no request
- * can carry anything, so it is read as no ceiling rather than silently dropping the batch — a
- * caller that passes a nonsensical bound gets a visible question count, not an empty run.
+ * Two ceilings: at most `maxItems` questions and at most `maxBytes` of serialised body. A ceiling
+ * of zero or less is read as no ceiling rather than silently dropping the batch.
  *
- * **An item too large to fit alone is still sent, alone.** Dropping it would quietly shrink the
- * corpus, and ADR 0016 keeps an unanswered row counted as unanswered rather than removed; the call
- * goes out, and if the endpoint refuses it, that refusal is recorded like any other.
+ * **An item too large to fit alone is still sent, alone.** ADR 0016 keeps an unanswered row
+ * counted, and a row that was never asked about cannot be.
  * @template T
  * @param {T[]} items
  * @param {(item: T) => number} sizeOf Bytes this item contributes to a request body.
@@ -242,9 +235,8 @@ export async function replayBatch(batch, set, budget, opts = {}) {
       criteria: set.criteria,
     });
 
-  // What one row adds to a body: its state, its question, and the punctuation joining both to
-  // what is already there. Measured off the real builder rather than estimated, so a change to
-  // either shape moves this with it.
+  // What one row adds to a body — state, question, joining punctuation — measured off the real
+  // builder rather than estimated, so a change to either shape moves this with it.
   const envelope = JSON.stringify(buildRequest([], {})).length;
   const perQuestion = JSON.stringify(questionOf()).length + '"c000":,'.length;
   /** @param {import('../lib/clean-corpus.mjs').CorpusEntry} entry */
@@ -261,9 +253,8 @@ export async function replayBatch(batch, set, budget, opts = {}) {
   const rows = [];
   /** @type {CallRecord[]} */
   const calls = [];
-  // Chunks vary in size now, so the next id is counted rather than multiplied out of the chunk
-  // index. Keys stay unique across the whole batch, so a record's `questionIds` name the same rows
-  // the corpus does no matter which chunk carried them.
+  // Chunks vary in size, so the next id is counted rather than multiplied out of the chunk index.
+  // Keys stay unique across the batch, so `questionIds` name the same rows the corpus does.
   let asked = 0;
 
   for (const [chunkIndex, entries] of chunks.entries()) {

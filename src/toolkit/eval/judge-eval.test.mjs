@@ -384,8 +384,7 @@ test('packChunks bounds a request by size, which the question count never did', 
   // The envelope every request carries counts against the ceiling too.
   assert.deepEqual(packChunks([30, 30, 30], size, { maxItems: 25, maxBytes: 100, envelope: 50 }), [[30], [30], [30]]);
 
-  // An item too large to fit alone is still sent alone rather than dropped: ADR 0016 keeps an
-  // unanswered row counted, and a row that was never asked about cannot be.
+  // An item too large to fit alone is still sent alone rather than dropped (ADR 0016).
   assert.deepEqual(packChunks([500, 10], size, { maxItems: 25, maxBytes: 100 }), [[500], [10]]);
 });
 
@@ -403,8 +402,8 @@ test('a batch of large rows is split by payload, not just by question count', as
     });
   };
 
-  // Ten rows, each carrying 20 KB of diff context. At 25 questions per call the old splitter sent
-  // all ten as one ~200 KB request, which is the body the endpoint refused on 2026-09-17.
+  // Ten rows of 20 KB diff context each: at 25 questions per call the old splitter sent all ten
+  // as one ~200 KB request, the shape the endpoint refused.
   const batch = Array.from({ length: 10 }, (_, i) => ({ ...entry(i), surroundingDiff: 'd'.repeat(20_000) }));
   const got = await replayBatch(batch, SET, createBudget(), { key: 'test-key', fetchImpl: measuring });
 
@@ -745,14 +744,13 @@ test('--record and --chunk are parsed, and --record alone means find the session
 test('an unrecognised argument is refused before anything can be sent', async () => {
   const { parseArgs, UsageError } = await import('./judge-eval.mjs');
 
-  // The recorded failure: `--help` parsed as nothing, fell through, and billed 103 calls.
   assert.throws(() => parseArgs(['--help-me']), UsageError);
   assert.throws(() => parseArgs(['--dry-run']), /unrecognised argument: --dry-run/);
   assert.throws(() => parseArgs(['--limit', '5', '--nope']), /unrecognised argument: --nope/);
-  // A stray value is as unrecognised as a stray flag — neither may reach the endpoint.
+  // A stray value is as unrecognised as a stray flag.
   assert.throws(() => parseArgs(['subjectA']), /unrecognised argument: subjectA/);
 
-  // And the flags that are recognised still are, so the guard did not close over the real ones.
+  // The recognised flags still parse.
   assert.doesNotThrow(() => parseArgs(['--limit', '5', '--chunk', '10', '--json', '--out', '/tmp/x', '--record']));
 });
 
@@ -774,9 +772,7 @@ test('the harness exits non-zero on a bad flag and zero on --help, calling nothi
   const { promisify } = await import('node:util');
   const run = promisify(execFile);
 
-  // No key in the child's environment, so even a fall-through could not reach the endpoint — what
-  // is asserted here is the exit code and the output, and the absence of a key keeps the test
-  // offline whichever way the guard behaves.
+  // No key in the child's environment, so the test stays offline whichever way the guard behaves.
   const env = { ...process.env, TYPESAFE_API_KEY: '' };
   const harness = join(ROOT, HARNESS);
 

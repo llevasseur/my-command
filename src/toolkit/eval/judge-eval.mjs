@@ -82,12 +82,7 @@ export function findRecorder(dir = recordDir()) {
   return null;
 }
 
-/**
- * What `--help` prints, and what an unrecognised argument is answered with.
- *
- * It is the whole flag list rather than a pointer to one, because the failure this exists to stop
- * is a run that spent real money before anyone could read anything.
- */
+/** What `--help` prints, and what an unrecognised argument is answered with. */
 export const USAGE = `pnpm judge:eval [options]
 
 Replay the pre-registered eval. With TYPESAFE_API_KEY set, this makes real API calls
@@ -105,13 +100,7 @@ against a real endpoint and spends real budget.
   --help, -h      Print this and exit, without calling anything.
 `;
 
-/**
- * An argument this harness does not recognise.
- *
- * It is a thrown error rather than a return value because every caller must stop: the recorded
- * failure is a `--help` that parsed as nothing, fell through to a full replay, and spent the
- * budget on 103 calls nobody asked for.
- */
+/** An argument this harness does not recognise. Thrown, because every caller must stop. */
 export class UsageError extends Error {
   /** @param {string} message */
   constructor(message) {
@@ -179,8 +168,7 @@ export function parseArgs(argv) {
       i += 1;
       continue;
     }
-    // Anything left is unrecognised, and the run stops here rather than at the endpoint. Silently
-    // ignoring it is what turned a `--help` into 103 billed calls.
+    // Anything left is unrecognised, and the run stops here rather than at the endpoint.
     throw new UsageError(`unrecognised argument: ${arg}`);
   }
   return { limit, json, out, chunk, bytes, record, recordUrl, help };
@@ -447,8 +435,7 @@ export function format(report) {
 }
 
 async function main() {
-  // Parsed before anything else, and a bad argument stops the run here. Everything below this
-  // block can spend money; nothing in it can.
+  // Parsed first: everything below this block can spend money, nothing in it can.
   /** @type {ReturnType<typeof parseArgs>} */
   let args;
   try {
