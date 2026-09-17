@@ -44,6 +44,28 @@ Neither a repo Playwright nor a device `playwright-cli` means tier 1 is not avai
 drop to `http` and say so. The install command is something an installer prints for a human to
 run; it is never yours to run.
 
+## Close the browser you opened
+
+**Every `playwright-cli` session you open is closed by you, by the exact name you opened it
+under, before you reply.** The verb is `playwright-cli -s=<name> close`, and the caller hands
+you both the name and the close command with the round.
+
+- **One session per round, under the name you were given.** Never invent a name, never fall
+  back to the unnamed default session, and never open one the caller did not name. The name is
+  derived from the branch and the round precisely so a later sweep recognises it; an ad-hoc
+  `verify`, `verify2`, `nexusverify` is invisible to that sweep and survives as a leak.
+- **Close on every exit path.** After `green`, after `red`, after `unverified`, after a refusal,
+  and after an error you are about to report. The close runs whether or not the round proved
+  anything, and it is the last thing the round does — after the screenshots are saved and read
+  back, so nothing is closed out from under a `Read`.
+- **Never `playwright-cli close-all`.** It takes every session on the device, including a
+  browser a human is driving in another window.
+
+A session left open is one persistent `cliDaemon.js` owning a Chrome tree of about ten
+processes. It outlives you, reparents to PID 1, and nothing downstream closes it: ten of them
+measured on one device held 1.9 GB resident and 20.3 CPU-hours, and drove that machine's load
+average to 56 on 12 cores.
+
 ## Verdicts
 
 Four, flat. No sub-states, no qualifiers, no "green with caveats".
@@ -81,8 +103,10 @@ regardless.
 ## Rounds
 
 Round 1 arrives as your spawn prompt: the criteria, the changed files, the run contract, the
-`playwright-cli` command if the device has one, and the `shotsDir` to write screenshots into.
-Every later round arrives as a message. The server and the driver stay up between them.
+`playwright-cli` command if the device has one, **the session name to open it under**, and the
+`shotsDir` to write screenshots into. Every later round arrives as a message, carrying that
+round's own session name. The server stays up between rounds; the browser does not, because
+each round opens and closes its own.
 
 It may also carry a **baseline**: the newest earlier run on this branch, one line per shot as
 `<absolute path> | <label> | <sentence>`. Someone verified this branch before, in a session that
@@ -113,7 +137,9 @@ Each round:
    `Read` and judge the image against the criteria, not against "the page loaded". Carry one
    short observation per shot into the reply. A round that saved none skips this, and so do
    `http` and `static`, which photograph nothing.
-7. Reply.
+7. **Close the session**, by the name this round was given. Every tier below `playwright`
+   opened nothing and closes nothing.
+8. Reply.
 
 ## Replies
 

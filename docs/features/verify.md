@@ -108,9 +108,41 @@ a repo with no Playwright of its own falls back to HTTP probes exactly as before
 human and never runs it. Quietly opting a repo in would make a verification run
 mutate the repo it was sent to observe.
 
+## Closing the browser
+
+A `playwright-cli` session is a **persistent daemon**, not a process that ends with the
+command that started it. `playwright-cli -s=<name>` starts one `cliDaemon.js <name>` owning a
+Chrome tree of about ten processes; it outlives the agent that spawned it and reparents to
+PID 1. Nothing used to close one. Ten left behind on one device held 100 processes, 1.9 GB
+resident and 20.3 CPU-hours, pushed a 16 GB laptop into a 7.3 GB compressor, and took its load
+average to 56 on 12 cores — the machine stopped responding.
+
+Two halves close it, and the second is the one that matters:
+
+1. **The round closes the session it opened**, by the exact name it opened it under, on every
+   exit path: green, red, unverified, refused, and errored. The close is the last thing the
+   round does, after the screenshots are saved and read back.
+2. **The next run sweeps what the last one abandoned.** `my-command-tools browser sweep` runs
+   *before* a browser starts, not after one closes, because a round that dies early never
+   reaches its own close — which is exactly the case the leak is made of. Teardown that depends
+   on the round finishing cannot clean up the round that did not finish.
+
+The sweep is possible only because the names are **derived from the run**: `mc-<branch-slug>-r<n>`,
+printed by `my-command-tools browser session --round <n>`. The ad-hoc `verify`, `verify2`,
+`verify4`, `nexusverify` that came before it is the failure — a teardown keyed to one name
+cannot recognise its own predecessors. One session per round, so an abandoned round leaves one
+recognisable daemon rather than an anonymous one.
+
+**A browser a human is driving is never touched.** The sweep reaps only names matching that
+scheme, leaves everything else under `kept` as `not-ours`, and `playwright-cli close-all` is
+used nowhere in this repo. `docs/specs/command-toolkit.md` carries the verb's own contract,
+including the threshold, the `--keep` list a concurrent wave uses, and why a daemon is asked to
+close before it is signalled.
+
 ## Where the screenshots go
 
-Screenshots are the one thing a verification run leaves behind. The verifier
+Screenshots are the one thing a verification run leaves behind — the browser that
+took them is closed, and only the images persist. The verifier
 writes them into the `shotsDir` the caller hands it — this run's own directory in a
 device-wide keep, `~/.my-command/shots/<repo>/<branch>/run-N/`, created and reported
 by `my-command-tools worktree begin`. It sits outside the checkout on purpose: an
