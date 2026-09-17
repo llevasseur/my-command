@@ -1,9 +1,14 @@
 // The `/task --jev` runtime surface.
 //
-// Four properties carry this unit and each is asserted rather than described: no site is wired
-// and none acts, a run that is not recording sends nothing, the per-run cap is its own number
-// rather than the process-wide one, and `--dry-run` prints what the live path would post
-// through the very function the live path posts.
+// Four properties carry this unit and each is asserted rather than described: one site is
+// wired and none acts, a run that is not recording sends nothing, the per-run cap is its own
+// number rather than the process-wide one, and `--dry-run` prints what the live path would
+// post through the very function the live path posts.
+//
+// The wired site is `step-2.6/surface`, and the property that matters most about it is
+// negative: with no key, a run under `--jev` adds **zero lines** to the report. That is
+// asserted here on the wired list rather than on a hand-made one, because an empty `SITES`
+// made the claim for free and a populated one does not.
 //
 // The byte-identical claim — a `/task` run under the flag reaching the same outcome as one
 // without it, across all nine failure modes — lives in `judge-runtime.test.mjs` beside the
@@ -83,11 +88,21 @@ async function withKeep(body) {
   }
 }
 
-test('no site is wired in this unit, and none of them acts', () => {
-  // ADR 0008 holds that nothing acts on a Jev answer, and this unit promotes nothing. The
-  // list is empty, so there is not yet anything that *could* be promoted.
-  assert.deepEqual([...SITES], []);
+test('one site is wired, and none of them acts', () => {
+  // ADR 0008 holds that nothing acts on a Jev answer, and wiring a site promotes nothing.
+  assert.deepEqual(
+    SITES.map((site) => site.id),
+    ['step-2.6/surface'],
+  );
   assert.deepEqual(actingSites(), []);
+
+  // ADR 0019: this site would decide a *skip*, so it is the last one that may ever be
+  // promoted. Nothing enforces that ordering in code — this asserts the state it starts in.
+  const [surface] = SITES;
+  assert.equal(surface.set, 'verify-surface');
+  assert.equal(surface.acts, false);
+  assert.deepEqual(Object.keys(surface.questions), ['REACHES_SERVED_SURFACE']);
+  assert.equal(surface.questions.REACHES_SERVED_SURFACE.type, 'noul');
 
   // The mechanism is per set rather than per flag, so it has to be able to say yes — the
   // claim is that no shipped site does, not that the door is welded shut.
@@ -216,8 +231,38 @@ test('--dry-run prints the live body through the live builder, and is ungated', 
   assert.equal(bare.recorded, false);
   assert.deepEqual(bare.sites[0].body, buildRequest('x', QUESTIONS));
 
-  // With no sites wired there is nothing to print, which is this unit's actual state.
-  assert.deepEqual(dryRun({ state: 'x' }).sites, []);
+  // Against the wired list, the dry run prints the real site — which is what a human reads
+  // before authorising the first egress this campaign has ever had.
+  const wired = dryRun({ state: 'x' });
+  assert.deepEqual(
+    wired.sites.map((site) => site.id),
+    ['step-2.6/surface'],
+  );
+  assert.equal(wired.sites[0].acts, false);
+  assert.deepEqual(wired.sites[0].body, buildRequest('x', SITES[0].questions));
+});
+
+test('with no key a --jev run sends nothing and adds zero lines to the report', async () => {
+  // The byte-identical promise, asserted on the list that actually ships. An empty `SITES`
+  // made this true for free; a wired one has to earn it, and this is where it is earned.
+  const run = await judgeRun({
+    state: 'the run so far',
+    endpoint: RECORDER,
+    env: {},
+    optIn: true,
+    fetchImpl: refuse,
+  });
+
+  assert.equal(run.gate.enabled, false);
+  assert.equal(run.silent, true, 'no key must be silent, not a warning');
+  assert.equal(run.asked, false);
+  assert.equal(run.acted, false);
+  assert.deepEqual(run.sites, [], 'a silent run reports no site, even though one is wired');
+  assert.deepEqual(reportLines(run), [], 'a no-key run must add zero lines to the report');
+
+  // And the same with the opt-in absent as well, which is every run on this device today.
+  const off = await judgeRun({ state: 'x', endpoint: RECORDER, env: {}, fetchImpl: refuse });
+  assert.deepEqual(reportLines(off), []);
 });
 
 test('an asked run writes the answers into the report beside what the run did, and acts on none', async () => {
@@ -257,7 +302,16 @@ test('an asked run writes the answers into the report beside what the run did, a
 });
 
 test('a run with no sites asks nothing and says so', async () => {
-  const run = await judgeRun({ state: 'x', endpoint: RECORDER, env: keyed(), optIn: true, fetchImpl: refuse });
+  // `sites: []` is explicit now that `SITES` carries one: the reason-reporting path is still
+  // reachable and still has to say the right thing, but it is no longer the default state.
+  const run = await judgeRun({
+    state: 'x',
+    sites: [],
+    endpoint: RECORDER,
+    env: keyed(),
+    optIn: true,
+    fetchImpl: refuse,
+  });
   assert.equal(run.asked, false);
   assert.equal(run.reason, 'no-sites');
   assert.equal(run.acted, false);

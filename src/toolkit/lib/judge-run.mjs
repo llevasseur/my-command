@@ -1,5 +1,5 @@
 // What `/task --jev` opens: one run's question sites, one recorder session, one spend cap,
-// and a report of what was asked. **No site is wired in this unit and no site acts.**
+// and a report of what was asked. **One site is wired, and no site acts.**
 //
 // **Why a record-only surface is worth building at zero promotion.**
 // `docs/adrs/0014-the-eval-returned-no.md` abandoned Subject B at 3 labelled commands against
@@ -17,9 +17,19 @@
 // `docs/adrs/0008-no-question-set-acts-in-this-campaign.md` still stands unchanged. What holds
 // it is `acts` on each site below: promotion is **per question set**, so one set could be let
 // through later while `--jev` as a whole stays record-only, and the flag would not have to
-// change for that to happen — nor would it grant it. `SITES` ships empty, so there is nothing
-// to promote yet, and `actingSites()` is the one door. No shipped site opens it, and
-// `judge-run.test.mjs` asserts that rather than trusting it.
+// change for that to happen — nor would it grant it. `actingSites()` is the one door, no
+// shipped site opens it, and `judge-run.test.mjs` asserts that rather than trusting it.
+//
+// **The one wired site is the one that may be promoted last**, which is worth stating where
+// the list is rather than only in the ADR. `step-2.6/surface` asks whether the diff reaches a
+// surface the app serves — a question whose answer, if anything ever acted on it, would decide
+// a **skip**. `docs/adrs/0019-the-load-shedding-site-is-promoted-last.md` fixes the rule that
+// follows: **Jev may add work, Jev may never skip work.** A wrong high answer there costs one
+// wasted verification round; a wrong low answer silently loses a verification and leaves no
+// artefact anywhere, so it is wired first for its label and promoted last for its blast radius.
+// It is here because its label is the cleanest and highest-volume one in the campaign — the
+// verifier's own verdict, which the run computes minutes later and records regardless — and
+// because collecting that label is free.
 //
 // **Recording is not separately optional.** `--jev` implies `--record`: a run whose answers
 // were not written down produces no corpus, which is the only reason to ask at all. So
@@ -50,15 +60,46 @@ import { consult, gate } from './judge-runtime.mjs';
  */
 
 /**
- * The sites `/task --jev` asks at. **Empty, deliberately.**
+ * The sites `/task --jev` asks at. One, and it acts on nothing.
  *
- * This unit ships the flag, the session, the budget and the report-writing path; the sites
- * themselves land in follow-up units. An empty list is a working run that asks nothing, which
- * is a better starting state than a site nobody has read yet — and it makes the no-key path
- * and the wired path the same path, since both send nothing.
+ * `step-2.6/surface` sits beside Step 2.6's second skip condition, where the run already
+ * decides — by matching changed files against the repo's `routes` globs — whether the diff
+ * reaches anything the app serves. **The glob still decides.** This answer is recorded beside
+ * the glob's in the run report and read by nothing: no branch consults it, and no skip is
+ * taken or withheld because of it.
+ *
+ * The question is worth asking because the glob answers something narrower than the condition
+ * it implements. A glob matches a path; the condition is about reachability, and the two come
+ * apart in both directions — a shared helper under a non-route path can change every served
+ * page, and a file under a routes glob can be dead. Step 2.6 writes the second half in prose
+ * ("nothing else in the diff reaches a served surface") precisely because no glob expresses it.
  * @type {readonly JudgeSite[]}
  */
-export const SITES = Object.freeze([]);
+export const SITES = Object.freeze([
+  Object.freeze({
+    id: 'step-2.6/surface',
+    set: 'verify-surface',
+    version: '1.0.0',
+    // ADR 0008, and ADR 0019 on top of it: this is the last site in the campaign that may ever
+    // be promoted, because its answer would decide a skip rather than an addition.
+    acts: false,
+    questions: Object.freeze({
+      REACHES_SERVED_SURFACE: Object.freeze({
+        type: /** @type {const} */ ('noul'),
+        instructions:
+          'The diff reaches a surface the app serves: something a user is served is rendered ' +
+          'differently, behaves differently, or returns different data because of these changes. ' +
+          'Judge reachability, not file paths — a shared helper, query, schema or config file ' +
+          'that no routes glob matches can still change every served page, and a file sitting ' +
+          'under a routes glob can be unreferenced.',
+        criteria: Object.freeze({
+          true: 'The diff reaches a served surface, so there is something to exercise in the running app.',
+          false: 'The diff touches nothing the app serves.',
+        }),
+      }),
+    }),
+  }),
+]);
 
 /**
  * Caps one `/task` run's spend, separately from the process-wide default.

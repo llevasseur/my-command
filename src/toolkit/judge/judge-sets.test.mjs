@@ -61,13 +61,14 @@ test('every set parses as JSON', () => {
   }
 });
 
-test('the five planned sets are all present', () => {
+test('every planned set is present, including the one wired into a run', () => {
   assert.deepEqual(files, [
     'bash-shape.json',
     'clean-comment.json',
     'dispatch-route.json',
     'trim.json',
     'verify-regression.json',
+    'verify-surface.json',
   ]);
 });
 
@@ -259,8 +260,8 @@ test('the three sets with no recoverable labels say so in the file', () => {
     assert.ok(set.eval.adr.includes('0012'), `${stem}: must cite the ADR that decided it`);
   }
 
-  for (const stem of ['clean-comment', 'bash-shape']) {
-    assert.equal(sets.get(`${stem}.json`).eval.labels, 'recoverable', `${stem}: is an eval subject`);
+  for (const stem of ['clean-comment', 'bash-shape', 'verify-surface']) {
+    assert.equal(sets.get(`${stem}.json`).eval.labels, 'recoverable', `${stem}: has a recoverable label`);
   }
 });
 
@@ -270,6 +271,81 @@ test('the unwired sets say they are wired into nothing', () => {
     assert.deepEqual(set.wiredInto, [], `${stem}: must be wired into nothing`);
     assert.match(set.wiredIntoNote, /wired into nothing/, `${stem}: must say so`);
   }
+});
+
+test('verify-surface asks one noul and leaves the glob in charge', () => {
+  const set = sets.get('verify-surface.json');
+  assert.equal(set.questions.length, 1, 'a single noul');
+  assert.equal(set.questions[0].id, 'REACHES_SERVED_SURFACE');
+  assert.deepEqual(set.questions[0].requires, ['changedFiles', 'routeGlobMatches']);
+
+  // The whole claim of this set: the deterministic check still decides, and the answer is
+  // recorded beside it. A set that stopped saying so would be a set that had been promoted.
+  assert.match(set.scope.statement, /THE GLOB DECIDES AND KEEPS DECIDING/);
+  assert.equal(set.acts, false);
+
+  // Unlike the unwired sets, this one names where it is asked — and says what wiring means.
+  assert.ok(filled(set.wiredInto), 'verify-surface is wired into /task Step 2.6');
+  assert.match(set.wiredIntoNote, /asked and recorded, never consulted/);
+});
+
+test('verify-surface records that it sheds work, which is why it is promoted last', () => {
+  const set = sets.get('verify-surface.json');
+
+  // ADR 0019's rule, carried in the set itself rather than only in the ADR: a reader deciding
+  // whether to promote this set reads the set.
+  assert.match(set.loadShedding.statement, /Jev may add work; Jev may never skip work\./);
+  assert.match(set.loadShedding.statement, /PROMOTED LAST/);
+  assert.match(set.loadShedding.consequence, /never let a low answer withhold one the glob would have run/);
+  assert.ok(set.loadShedding.adr.includes('0019'), 'must cite the ADR that fixed the rule');
+  assert.ok(
+    set.adrs.some((/** @type {string} */ adr) => adr.includes('0019')),
+    'the ADR list must carry 0019 too',
+  );
+});
+
+test('verify-surface labels rows with the verifier verdict, and drops the ambiguous ones', () => {
+  const set = sets.get('verify-surface.json');
+
+  // The label is the run's own recorded verdict — free, because the run records it anyway.
+  assert.match(set.eval.statement, /THE LABEL IS THE VERIFIER'S OWN VERDICT/);
+  assert.match(set.eval.statement, /shots record/);
+  assert.match(set.eval.cost, /^FREE\./);
+  assert.match(set.eval.whyThisLabel, /cleanest and the highest-volume label/);
+
+  // Step 2.6 has two skip conditions and only the second is about surfaces, so a bare
+  // `skipped` cannot label a row. Dropping beats scoring, per ADR 0011's precedent.
+  assert.match(set.eval.confound.statement, /SKIPPED IS AMBIGUOUS/);
+  assert.match(set.eval.confound.resolution, /DROPPED from the corpus rather than scored/);
+
+  // And no bar covers it yet: ADR 0013 pre-registered Subject A and Subject B only.
+  assert.match(set.eval.barNote, /NO PRE-REGISTERED BAR COVERS THIS SET/);
+  assert.match(set.eval.corpusNote, /NO CORPUS EXISTS YET/);
+});
+
+test('verify-surface lifts its noul from the skip condition it sits beside', () => {
+  const set = sets.get('verify-surface.json');
+  const task = readFileSync(join(repoRoot, 'src/commands/task.md'), 'utf8').split('\n');
+  const question = set.questions[0];
+
+  // The clause is the prose half of the skip condition — the half no glob expresses.
+  const fragment = 'nothing else in the diff reaches a served surface';
+  assert.equal(question.clause, fragment);
+  const lineNo = Number(question.source.split(':')[1]);
+  assert.ok(task[lineNo - 1].includes(fragment), 'the cited line no longer carries the clause');
+
+  // And the command still says, at that same site, that the answer is recorded and the glob
+  // decides. If that sentence goes, this set is no longer describing what the run does.
+  const step = task.slice(190, 200).join('\n');
+  assert.match(step, /recorded beside what the glob decided/);
+  assert.match(step, /The glob still\s+decides\./);
+
+  // The confound's own citation points at the instruction that makes the drop decidable.
+  const confoundLine = Number(set.eval.confound.source.split(':')[1]);
+  assert.ok(
+    task[confoundLine - 1].includes('record whichever fired'),
+    'the confound resolution cites the line that requires recording which skip fired',
+  );
 });
 
 test('no set carries a credential', () => {
