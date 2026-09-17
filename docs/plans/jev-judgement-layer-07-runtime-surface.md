@@ -10,7 +10,7 @@ timestamp: 2026-09-16
 
 **Wayfinder:** `jev-judgement-layer`
 **Branch:** `task/jev-judgement-layer-07-runtime-surface`
-**Status:** active
+**Status:** done · 2026-09-17
 
 **Depends on** tickets 01 and 02. **This is the last code ticket**, by
 [ADR 0010](../adrs/0010-eval-harness-before-the-layer.md).

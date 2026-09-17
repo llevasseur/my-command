@@ -10,7 +10,7 @@ timestamp: 2026-09-16
 
 **Wayfinder:** `jev-judgement-layer`
 **Branch:** `task/jev-judgement-layer-05-eval-harness`
-**Status:** active
+**Status:** done · 2026-09-17
 
 **Depends on** tickets 01, 03 and 04.
 

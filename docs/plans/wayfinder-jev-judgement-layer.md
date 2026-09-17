@@ -23,8 +23,9 @@ timestamp: 2026-09-16
 
 ## The decisions this campaign is bound by
 
-Seven ADRs were written before any ticket was planned, five of them marked
-`needs-human: true`. **They are binding on every ticket.** Read them first:
+Seven ADRs were written before any ticket was planned, and an eighth records what the
+eval concluded. Six carry `needs-human: true`. **They are binding on every ticket.** Read
+them first:
 
 | ADR | What it binds |
 |---|---|
@@ -35,6 +36,7 @@ Seven ADRs were written before any ticket was planned, five of them marked
 | [0011](../adrs/0011-deterministic-comment-keeps-run-before-the-classifier.md) | `/clean`'s four mandatory keeps are a code pre-filter, and pre-filtered comments leave the eval corpus. |
 | [0012](../adrs/0012-two-eval-subjects-not-five.md) | Two eval subjects, not five. Targets 1, 3 and 4 ship as question sets with no numbers. |
 | [0013](../adrs/0013-the-eval-bar-is-pre-registered.md) | The abandonment bar is fixed before the harness runs and is the harness's own pass/fail output. |
+| [0014](../adrs/0014-the-eval-returned-no.md) | **The eval returned *no*.** Subject B abandoned on a labelled corpus of 3 against a floor of 200; Subject A was never replayed for want of a key. The campaign ships zero measured subjects, and the docs must say so. |
 
 ## Agent kickoff prompt
 
@@ -93,8 +95,6 @@ what you report back.
 
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
-| 05 | eval-harness | [jev-judgement-layer-05-eval-harness](jev-judgement-layer-05-eval-harness.md) | `task/jev-judgement-layer-05-eval-harness` | todo | |
-| 07 | runtime-surface | [jev-judgement-layer-07-runtime-surface](jev-judgement-layer-07-runtime-surface.md) | `task/jev-judgement-layer-07-runtime-surface` | todo | |
 | 08 | docs | [jev-judgement-layer-08-docs](jev-judgement-layer-08-docs.md) | `task/jev-judgement-layer-08-docs` | todo | |
 | zz | retire-done-plans | [jev-judgement-layer-zz-retire-done-plans](jev-judgement-layer-zz-retire-done-plans.md) | `task/jev-judgement-layer-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
 
@@ -132,6 +132,20 @@ Everything after them depends on what they land:
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### jev-judgement-layer-07 — The runtime surface, gated twice and acting on nothing · 2026-09-17
+
+**Built:** `src/toolkit/lib/judge-runtime.mjs` — two gates, the shadow store under `~/.my-command/judge/<set>/`, the spend cap, and the fail-open branches. The opt-in pattern `/^(1|on|true|yes)$/i` deliberately mirrors `hooks-status.mjs`'s disarm pattern with the polarity reversed. No key wins outright over any opt-in, verified with every opt-in set at once. `consult()` fixes `acted: false` on every path and returns no field naming a verdict. **All nine failure modes are tested by running a caller twice — with the layer and without — and asserting byte-identical output**, with an `acted` branch structurally unreachable so the test is not a tautology, and a closing assertion holding the tested set against the exported `FAILURE_MODES` so a tenth mode fails there rather than shipping untested.
+**Key files:** `src/toolkit/lib/judge-runtime.mjs` and its test, `src/toolkit/lib/jev.mjs` (one-line `ENDPOINT` export), `src/toolkit/judge/judge-sets.test.mjs`
+**Docs:** none — ticket 08 owns the campaign's docs
+**Follow-ups / deviations:** Three authorised extras, all done. The `anti-slop/no-runtime-typeof` error this campaign introduced is **fixed properly** — both predicates are now parsers at the JSON boundary answering with the domain value, no lint config edited and no suppression — so `pnpm lint:anti-slop` exits 0 repo-wide again. `ENDPOINT` is exported, so the dry run names where the data would go, which is [ADR 0009](../adrs/0009-conversation-derived-state-leaves-the-device.md)'s intent. **Its own tests caught two real bugs:** `budgetFrom` read an absent cap through `Number('') === 0`, and 0 spells "no cap", so every run that never set the variable would have been silently uncapped; and a test helper's `finally` restored the shadow root on a returned rather than resolved promise, which would have written real records into a developer's home directory. **Shadow mode is described nowhere as the safety mechanism** — nothing acting is, and the module header says so citing ADRs 0008 and 0010. PR #159.
+
+### jev-judgement-layer-05 — The eval harness and the pre-registered bar · 2026-09-17
+
+**Built:** `pnpm judge:eval`, reporting the labelled corpus size before any agreement number and emitting [ADR 0013](../adrs/0013-the-eval-bar-is-pre-registered.md)'s pass/fail verdict per subject. The three hard constraints are enforced by test rather than convention — a test reads the real `verify.mjs`, `package.json` and workflow to prove the harness is unreachable from `verify`, from `pnpm test` and from CI, and self-checks its own glob matcher against a file the suite really runs.
+**Key files:** `src/toolkit/eval/` (six new files), `package.json`
+**Docs:** none — ticket 08 owns the campaign's docs
+**Follow-ups / deviations:** **The eval returned *no*, and [ADR 0014](../adrs/0014-the-eval-returned-no.md) records it.** Subject B ABANDONS on bar `B.corpus` — 1,923 candidates across 527 sessions yielded **3** labelled commands against a floor of 200, because the proxy store records tool calls and prose but no results, exit codes or error text, so the outcome half of the pairing rule is nowhere on disk. The labeller refuses to default to `allow`, which would have labelled everything and made agreement meaningless. Subject A is INCOMPLETE: `TYPESAFE_API_KEY` is unset on this device, so nothing was sent and every bar reports `not-measured` rather than a pass. Its corpus half is real and reproduces ticket 04 exactly. **Subject A's price bar cannot be measured as written** — it is a ratio against a generative `/clean` pass whose token count is instrumented nowhere. PR #158.
 
 ### jev-judgement-layer-04 — The /clean pre-filter and its git-history corpus · 2026-09-17
 
