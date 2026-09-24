@@ -138,7 +138,12 @@ lands every time, and the message meant to follow it never arrives.
    which case the agent infers it from the diff and pull request body — the
    changed files, the run contract, and that session name with its closing
    command — the agent closes the session it opened, by that exact name, before
-   it replies, on every ending including the failed ones — and continue that
+   it replies, on every ending including the failed ones — plus the newest
+   earlier run's shots as a baseline when the screenshot helper reports one,
+   stated as for comparison only: the agent describes what changed in its
+   observation lines, never copies a baseline image into this run's screenshot
+   directory or records one, and captures a before/after pair in this run, the
+   before on the base branch, or omits it — and continue that
    same agent by message each round against that same booted server, carrying
    that round's own session name. Repair in
    this run's own context, which holds the criteria; the agent observes and never

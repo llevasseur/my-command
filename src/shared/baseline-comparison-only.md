@@ -1,0 +1,1 @@
+**Say the baseline is for comparison only.** The verifier describes what changed in its `saw:` sentences, and never copies a baseline image into this run's `shotsDir` or passes one to `shots record`: that image was published with its own run, and a copy is posted a second time. A before/after pair is captured in this run, the before on the base branch, or it is omitted.
