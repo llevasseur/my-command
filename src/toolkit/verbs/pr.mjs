@@ -307,11 +307,10 @@ function shotsReport(cwd, slug, shots, number) {
 /**
  * Post the attachment comment and report what came of it.
  *
- * One comment per run, not one per PR re-uploading every run. The same images reuse the
- * comment already posted. A comment an earlier run posted is linked from the new one and
- * kept, so the new comment carries the latest run's shots alone; every run's shots are
- * merged into one comment only when no earlier comment exists. A comment covering the
- * latest run with different images is replaced once the new one is up.
+ * One comment per run. The same images reuse the comment already posted. An earlier run's
+ * comment is linked and kept, and the new one carries the latest run's shots alone; every
+ * run is merged only when no earlier comment exists. A comment covering the latest run with
+ * different images is replaced once the new one is up.
  * @param {string} cwd @param {{owner: string, repo: string} | null} slug
  * @param {import('../lib/shots.mjs').Attached} shots
  * @param {import('../lib/shots.mjs').ShotsComment} latest @param {number | null} number
