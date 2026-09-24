@@ -42,8 +42,12 @@ Parse `--draft` / `-d`; treat remaining text as optional title or context.
      captured and inspected, which is what that tier means.
      The helper moves the image bytes itself and reports the count, tier, and
      verdict. There is one route and every repository takes it whatever its
-     visibility: one attachment comment per PR, reused when the images are
-     unchanged, with its URL reported beside the rest. Never post
+     visibility: one attachment comment per verification run, reused when the
+     images are unchanged, with its URL reported beside the rest. A branch
+     verified more than once publishes the latest run's shots only; when an
+     earlier run's comment is already on the PR the new one links it as
+     "Earlier captures: <url>" instead of re-uploading those images, and every
+     run is merged into one comment only when no earlier comment exists. Never post
      screenshots by hand with an attachment comment; the helper handles the
      path matching. Report nothing about screenshots when the helper reports
      nothing. A warning means something could not be published, so name it.

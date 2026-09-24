@@ -88,9 +88,15 @@ const GRID_COLUMNS = 2;
 /** How many files one `gh pr comment` call accepts. */
 const ATTACH_LIMIT = 50;
 
-/** Marks an attachment comment as this tool's, with a digest of what it carries. */
+/**
+ * Marks an attachment comment as this tool's, with a digest of what it carries and the runs
+ * its images came from. A comment posted before runs were named carries no `runs=`.
+ */
 const COMMENT_MARKER = 'my-command-shots';
-const MARKER_RE = /<!-- my-command-shots ([0-9a-f]+) -->/;
+const MARKER_RE = /<!-- my-command-shots ([0-9a-f]+)(?: runs=(\S*))? -->/;
+
+/** How the in-tree fallback, which has no run directory, is named in a marker. */
+const TREE_RUN = 'tree';
 
 /** A before/after marker inside a filename's stem. */
 const SIDE = /(^|[-_. ])(before|after)([-_. ]|$)/i;
@@ -1051,6 +1057,7 @@ export function shotCell(name, href, note) {
  * @property {ShotNote[]} notes              The verifier's read-back, by filename.
  * @property {string[]} gaps                 What the round could not prove.
  * @property {string} caption                The line under the heading.
+ * @property {string} [earlier]              An earlier screenshot comment this one follows on from.
  */
 
 /**
@@ -1060,7 +1067,7 @@ export function shotCell(name, href, note) {
  * @param {ShotsSection} section
  * @returns {string}
  */
-export function renderShots({ groups, url, notes, gaps, caption }) {
+export function renderShots({ groups, url, notes, gaps, caption, earlier }) {
   /** @type {string[]} */
   const lines = [];
   const cell = (/** @type {string} */ name) => shotCell(name, url(name), noteFor(notes, name));
@@ -1100,6 +1107,7 @@ export function renderShots({ groups, url, notes, gaps, caption }) {
     '',
     caption,
     '',
+    ...(earlier ? [`Earlier captures: ${earlier}`, ''] : []),
     ...lines,
     '',
     '### What these shots do not prove',
@@ -1117,6 +1125,7 @@ export function renderShots({ groups, url, notes, gaps, caption }) {
  * @property {ShotNote[]} notes                      The verifier's read-back of each image.
  * @property {string[]} gaps                         What the round could not prove.
  * @property {string} digest                         Names and bytes of `files`, hashed.
+ * @property {string[]} runs                         The run directories `files` came from.
  * @property {string} [warning]                      Images the cap left behind, or nobody described.
  */
 
@@ -1125,7 +1134,9 @@ export function renderShots({ groups, url, notes, gaps, caption }) {
  * @property {number} count             How many images it publishes.
  * @property {string} [tier]            The driver tier that took them.
  * @property {string} [verdict]         The verdict the loop ended on.
- * @property {ShotsComment} [comment]   The comment to post once the PR number is known.
+ * @property {ShotsComment} [comment]   The comment to post once the PR number is known: the latest run's shots.
+ * @property {ShotsComment} [merged]    Every run's shots, for a PR with no earlier comment to link.
+ *                                      Absent when the latest run is the only one with shots.
  * @property {string} [warning]         Why screenshots that exist got attached to nothing.
  */
 
@@ -1135,6 +1146,7 @@ export function renderShots({ groups, url, notes, gaps, caption }) {
  * @returns {ShotsComment}
  */
 function commentPlan(shots, record) {
+  const runs = [...new Set(shots.map((shot) => runOf(shot.name)))].sort();
   const files = shots.slice(0, ATTACH_LIMIT);
   const notes = record.shots ?? [];
   const gaps = record.gaps ?? [];
@@ -1146,7 +1158,7 @@ function commentPlan(shots, record) {
   for (const shot of files) hash.update(`${shot.name}\0`).update(readFileSync(shot.path)).update('\0');
   hash.update(JSON.stringify({ caption, notes, gaps }));
   /** @type {ShotsComment} */
-  const plan = { files, count: files.length, caption, notes, gaps, digest: hash.digest('hex') };
+  const plan = { files, count: files.length, caption, notes, gaps, digest: hash.digest('hex'), runs };
   /** @type {string[]} */
   const warnings = [];
   const over = shots.length - files.length;
@@ -1161,8 +1173,14 @@ function commentPlan(shots, record) {
   return plan;
 }
 
-/** The hidden line that marks a comment as this tool's. @param {string} digest */
-export const commentMarker = (digest) => `<!-- ${COMMENT_MARKER} ${digest} -->`;
+/**
+ * The hidden line that marks a comment as this tool's.
+ * @param {string} digest @param {string[]} [runs]
+ */
+export const commentMarker = (digest, runs) =>
+  runs?.length
+    ? `<!-- ${COMMENT_MARKER} ${digest} runs=${runs.map((run) => run || TREE_RUN).join(',')} -->`
+    : `<!-- ${COMMENT_MARKER} ${digest} -->`;
 
 /**
  * Post the attachment comment, once the PR it belongs to has a number.
@@ -1174,10 +1192,13 @@ export const commentMarker = (digest) => `<!-- ${COMMENT_MARKER} ${digest} -->`;
  * `gh` rewrites a body reference only where it is byte-for-byte the `--attach` string;
  * otherwise it silently appends the images and leaves the reference broken. Paths go over
  * bare: the `#alt` suffix's effect on that matching is unverified.
- * @param {string} cwd @param {number} number @param {ShotsComment} plan
+ *
+ * `earlier` is the URL of a comment an earlier run already posted, linked rather than
+ * re-uploaded.
+ * @param {string} cwd @param {number} number @param {ShotsComment} plan @param {string} [earlier]
  * @returns {{url?: string, warning?: string}}
  */
-export function postShotsComment(cwd, number, plan) {
+export function postShotsComment(cwd, number, plan, earlier) {
   const dir = mkdtempSync(join(tmpdir(), 'mct-shots-comment-'));
   try {
     /** @type {Map<string, string>} */
@@ -1200,9 +1221,10 @@ export function postShotsComment(cwd, number, plan) {
       notes: plan.notes,
       gaps: plan.gaps,
       caption: plan.caption,
+      earlier,
     });
     const file = join(dir, 'comment.md');
-    writeFileSync(file, `${section}\n${commentMarker(plan.digest)}\n`);
+    writeFileSync(file, `${section}\n${commentMarker(plan.digest, plan.runs)}\n`);
     const args = ['pr', 'comment', String(number), '--body-file', file];
     for (const path of staged.values()) args.push('--attach', path);
 
@@ -1404,12 +1426,21 @@ export function verifyShotsComment(cwd, slug, id, names) {
 }
 
 /**
- * The attachment comment this tool already posted on the PR, if any — the newest one
- * carrying the marker. An unanswerable lookup reads as none.
- * @param {string} cwd @param {{owner: string, repo: string}} slug @param {number} number
- * @returns {{id: number, url: string, digest: string} | null}
+ * @typedef {object} PostedShots
+ * @property {number} id
+ * @property {string} url
+ * @property {string} digest
+ * @property {string[] | null} runs  The runs its images came from, or null for a comment
+ *                                   posted before the marker named them.
  */
-export function findShotsComment(cwd, slug, number) {
+
+/**
+ * Every attachment comment this tool already posted on the PR, oldest first. An
+ * unanswerable lookup reads as none.
+ * @param {string} cwd @param {{owner: string, repo: string}} slug @param {number} number
+ * @returns {PostedShots[]}
+ */
+export function findShotsComments(cwd, slug, number) {
   const r = exec(
     'gh',
     [
@@ -1421,14 +1452,16 @@ export function findShotsComment(cwd, slug, number) {
     ],
     { cwd },
   );
-  if (!r.ok) return null;
-  /** @type {{id: number, url: string, digest: string} | null} */
-  let found = null;
+  if (!r.ok) return [];
+  /** @type {PostedShots[]} */
+  const found = [];
   for (const line of r.stdout.split('\n').filter(Boolean)) {
     try {
       const [id, url, body] = JSON.parse(line);
-      const digest = String(body).match(MARKER_RE)?.[1];
-      if (Number.isInteger(id) && url && digest) found = { id, url: String(url), digest };
+      const [, digest, runs] = String(body).match(MARKER_RE) ?? [];
+      if (!Number.isInteger(id) || !url || !digest) continue;
+      const named = runs === undefined ? null : runs.split(',').map((run) => (run === TREE_RUN ? '' : run));
+      found.push({ id, url: String(url), digest, runs: named });
     } catch {
       // Not one of ours.
     }
@@ -1455,6 +1488,11 @@ export function deleteShotsComment(cwd, slug, id) {
  * are the one case that warns.
  *
  * What comes back is a `comment` plan, which the caller posts once the PR has a number.
+ *
+ * **The plan carries the latest run's shots only.** A branch verified more than once has a
+ * verdict file per run, and publishing every run's images re-posted screenshots an earlier
+ * comment already carried. The every-run plan comes back as `merged`, for the caller to post
+ * only when the PR has no earlier comment to link.
  * @param {string} cwd @param {string} branch
  * @returns {Attached}
  */
@@ -1464,11 +1502,17 @@ export function attachShots(cwd, branch) {
   const shots = findShots(cwd, branch);
   if (!shots.length) return none;
 
-  const record = readVerdict(cwd, branch);
+  const records = readVerdicts(cwd, branch);
+  const record = mergeVerdicts(records.map((found) => found.record));
   if (!record) {
     return { ...none, warning: `${shots.length} screenshot(s) with no recorded verdict — run \`shots record\`` };
   }
   if (!isBrowserTier(record.tier)) return none;
 
-  return { ...none, tier: record.tier, verdict: record.verdict, comment: commentPlan(shots, record) };
+  const found = { ...none, tier: record.tier, verdict: record.verdict };
+  const latest = records[0];
+  const own = shots.filter((shot) => runOf(shot.name) === latest.run);
+  // A latest run that photographed nothing, or the only run there is, has nothing to split.
+  if (!own.length || own.length === shots.length) return { ...found, comment: commentPlan(shots, record) };
+  return { ...found, comment: commentPlan(own, latest.record), merged: commentPlan(shots, record) };
 }

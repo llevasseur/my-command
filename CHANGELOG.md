@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-09-24
+
+### Fixed
+
+- **A re-verified branch no longer re-posts earlier runs' screenshots.** `my-command-tools pr` publishes the latest run's shots and links an earlier run's comment as "Earlier captures: <url>", merging every run only when no such comment exists. The verifier compares against the baseline in words and never copies a baseline image into its own run. See `docs/features/pr.md`.
+
 ## 2026-09-17
 
 ### Added

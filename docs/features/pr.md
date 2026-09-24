@@ -177,11 +177,21 @@ body. Images are markdown rather than `<img>` elements, because `![alt](<path>)`
 only shape `gh` rewrites into an uploaded URL. `--no-shots` switches the whole thing off.
 
 **A pair is always two files in one run directory**, never one file matched against another
-run's. That is what lets a comparison span sessions: a verifier handed the branch's baseline
-copies the earlier image into its own run as `<view>-before.png` beside its new
-`<view>-after.png`, and the row is built from two files it wrote and described itself. The
+run's, and both are captures that run took itself, the before on the base branch. A verifier
+handed the branch's baseline compares against it in its `saw:` sentences and never copies an
+earlier image into its own run, since that image was already published with its own run. The
 View column names the run only when the body carries more than one, so the ordinary
 single-run table reads as it always did.
+
+**Each run publishes its own shots once.** A branch verified more than once has a verdict file
+per run, and publishing all of them re-posted every earlier run's images in each new comment.
+The verb now publishes the latest run's shots only, and when a screenshot comment from an
+earlier run is already on the PR, the new comment opens with "Earlier captures: <url>" and keeps
+that comment rather than replacing it. The marker names the runs a comment covers
+(`<!-- my-command-shots <digest> runs=run-2 -->`), which is how the verb tells an earlier run's
+comment from one to replace. Every run is merged into one comment only when the PR has no
+earlier comment to link, and a comment posted before the marker named runs is treated as an
+earlier one.
 
 ### Every cell says what its shot is and what it proves
 
