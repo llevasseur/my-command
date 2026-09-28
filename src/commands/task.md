@@ -247,7 +247,9 @@ Step 2.5.
    `my-command-tools shots read` reports one: the newest earlier run on this branch that
    photographed something, as one line per shot, `<absolute path> | <label> | <sentence>`. That
    is what lets a round on an already-verified branch say what changed rather than describe a
-   fresh capture alone, and `baseline: null` means pass nothing. Once — every later round is a
+   fresh capture alone, and `baseline: null` means pass nothing.
+   <!-- include: shared/baseline-comparison-only.md -->**Say the baseline is for comparison only.** The verifier describes what changed in its `saw:` sentences, and never copies a baseline image into this run's `shotsDir` or passes one to `shots record`: that image was published with its own run, and a copy is posted a second time. A before/after pair is captured in this run, the before on the base branch, or it is omitted.<!-- /include -->
+   Once — every later round is a
    `SendMessage` to that same live agent, against that same booted server. Under
    `--no-implement` the criteria are the intent to demonstrate rather than a build spec, and
    when none were given, say so and let the verifier infer intent from the diff and the PR

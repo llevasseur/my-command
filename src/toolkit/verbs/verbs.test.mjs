@@ -906,7 +906,7 @@ test("pr --no-shots leaves a verified branch's screenshots off the body", () => 
 /**
  * @param {unknown} r
  * @returns {{count: number, via: string, tier: string, verdict: string, comment: string,
- *            rendered: number, failed: number}}
+ *            rendered: number, failed: number, earlier?: string}}
  */
 const asComment = (r) => /** @type {never} */ (/** @type {{screenshots?: unknown}} */ (r).screenshots);
 
@@ -967,7 +967,7 @@ test('pr publishes the screenshots a browser tier took, whatever the diff change
     assert.doesNotMatch(body, /—/);
     assert.match(body, /^### What these shots do not prove\n\n- Sorting by the new column was not exercised\.$/m);
     // The gaps section closes the comment; only the marker follows it.
-    assert.match(body, /not exercised\.\n\n<!-- my-command-shots [0-9a-f]{64} -->\n$/);
+    assert.match(body, /not exercised\.\n\n<!-- my-command-shots [0-9a-f]{64} runs=run-1 -->\n$/);
 
     // The mechanic the whole fallback rests on: gh rewrites a body reference in place only
     // where it is byte-for-byte the string `--attach` was given.
@@ -977,7 +977,7 @@ test('pr publishes the screenshots a browser tier took, whatever the diff change
     // Staged copies, not the repo's own paths: nothing under the checkout reaches the comment.
     for (const path of attached) assert.ok(!path.startsWith(dir), `${path} is a checkout path`);
     assert.doesNotMatch(body, new RegExp(dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-    assert.match(body, /<!-- my-command-shots [0-9a-f]{64} -->/);
+    assert.match(body, /<!-- my-command-shots [0-9a-f]{64} runs=run-1 -->/);
   } finally {
     restore();
   }
@@ -1055,14 +1055,34 @@ test('pr replaces its earlier screenshot comment when the images changed', () =>
       {
         id: 4,
         url: 'https://github.test/o/r/pull/9#issuecomment-4',
-        body: `stale\n\n<!-- my-command-shots ${'0'.repeat(64)} -->\n`,
+        body: `stale\n\n<!-- my-command-shots ${'0'.repeat(64)} runs=run-1 -->\n`,
       },
     ]);
 
     const r = pr(ctx(dir, [], { title: 'T', body: '- wrote notes' }));
     assert.equal(asComment(r).comment, COMMENT_URL);
+    assert.equal(asComment(r).earlier, undefined);
     assert.match(calls(), /^pr comment 9 /m);
     assert.match(calls(), /^api --method DELETE repos\/\S+\/issues\/comments\/4$/m);
+  } finally {
+    restore();
+  }
+});
+
+test('pr keeps a screenshot comment that names no runs and links it as earlier', () => {
+  const { dir, git, calls, commentBody, setComments, restore } = repoWithFakeGh(openPr({ body: '' }));
+  try {
+    writeFileSync(join(dir, 'notes.md'), '# notes\n');
+    git(['add', 'notes.md']);
+    git(['commit', '-qm', 'docs: notes']);
+    captured(dir, 'playwright', ['home.png']);
+    const earlier = 'https://github.test/o/r/pull/9#issuecomment-4';
+    setComments([{ id: 4, url: earlier, body: `old\n\n<!-- my-command-shots ${'0'.repeat(64)} -->\n` }]);
+
+    const r = pr(ctx(dir, [], { title: 'T', body: '- wrote notes' }));
+    assert.equal(asComment(r).earlier, earlier);
+    assert.doesNotMatch(calls(), /--method DELETE/);
+    assert.match(commentBody(), /^Earlier captures: /m);
   } finally {
     restore();
   }
@@ -1175,21 +1195,59 @@ test('shots record keeps each --shot and --gap, and names what they miss', () =>
   );
 });
 
-test('pr replaces its screenshot comment when only the read-back changed', () => {
+test('pr publishes only the latest run and links the comment an earlier run posted', () => {
   const { dir, git, calls, commentBody, setComments, restore } = repoWithFakeGh(openPr({ body: '' }));
   try {
     writeFileSync(join(dir, 'notes.md'), '# notes\n');
     git(['add', 'notes.md']);
     git(['commit', '-qm', 'docs: notes']);
-    captured(dir, 'playwright', ['home.png'], { notes: false });
+    captured(dir, 'playwright', ['home.png', 'nav.png']);
     pr(ctx(dir, [], { title: 'T', body: '- wrote notes' }));
-    setComments([{ id: 1, url: 'https://github.test/o/r/pull/9#issuecomment-1', body: commentBody() }]);
+    const earlier = 'https://github.test/o/r/pull/9#issuecomment-1';
+    const first = commentBody();
+    setComments([{ id: 1, url: earlier, body: first }]);
 
-    // Same image bytes, now described: a new digest, so the unlabelled comment is replaced.
+    // A second verification loop lands in run-2.
     captured(dir, 'playwright', ['home.png'], { notes: ['home.png | Home | The hero renders.'] });
     const again = pr(ctx(dir, [], { title: 'T', body: '- wrote notes' }));
     assert.equal(asComment(again).comment, COMMENT_URL);
-    assert.match(calls(), /^api --method DELETE repos\/\S+\/issues\/comments\/1$/m);
+    assert.equal(asComment(again).earlier, earlier);
+    assert.equal(asComment(again).count, 1);
+    // The earlier comment stays: it is the only place run-1's images are published.
+    assert.doesNotMatch(calls(), /--method DELETE/);
+
+    const second = commentBody().slice(first.length);
+    assert.match(second, new RegExp(`^Earlier captures: ${earlier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm'));
+    assert.match(second, /!\[run-2\/home\.png\]/);
+    assert.doesNotMatch(second, /run-1\//);
+    assert.match(second, /<!-- my-command-shots [0-9a-f]{64} runs=run-2 -->/);
+    const lastPost =
+      calls()
+        .split('\n')
+        .filter((line) => line.startsWith('pr comment 9 '))
+        .pop() ?? '';
+    assert.equal(lastPost.match(/--attach /g)?.length, 1);
+  } finally {
+    restore();
+  }
+});
+
+test('pr merges every run into one comment when no earlier comment exists', () => {
+  const { dir, git, calls, commentBody, restore } = repoWithFakeGh(openPr({ body: '' }));
+  try {
+    writeFileSync(join(dir, 'notes.md'), '# notes\n');
+    git(['add', 'notes.md']);
+    git(['commit', '-qm', 'docs: notes']);
+    captured(dir, 'playwright', ['nav.png']);
+    captured(dir, 'playwright', ['home.png']);
+
+    const r = pr(ctx(dir, [], { title: 'T', body: '- wrote notes' }));
+    assert.equal(asComment(r).count, 2);
+    assert.equal(asComment(r).earlier, undefined);
+    assert.equal(calls().match(/--attach /g)?.length, 2);
+    const body = commentBody();
+    assert.doesNotMatch(body, /Earlier captures/);
+    assert.match(body, /<!-- my-command-shots [0-9a-f]{64} runs=run-1,run-2 -->/);
   } finally {
     restore();
   }

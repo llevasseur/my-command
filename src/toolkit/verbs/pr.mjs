@@ -9,7 +9,7 @@ import {
   attachShots,
   commentId,
   deleteShotsComment,
-  findShotsComment,
+  findShotsComments,
   postShotsComment,
   verifyShotsComment,
 } from '../lib/shots.mjs';
@@ -58,9 +58,13 @@ unlabelled and reported in \`shotsWarning\`.
 
 They land in one \`gh pr comment --attach\`, whatever the repository's visibility, which
 uploads each file to GitHub's own \`user-attachments\` CDN and renders under the reader's
-own credential. That comment is one per PR, not per run: a re-run with the same images
-reuses it, and one with different images replaces it. \`screenshots\` reports the count,
-tier, and verdict, plus \`via: comment\` and the comment's URL.
+own credential. A re-run with the same images reuses the comment already posted. A branch
+verified more than once publishes the latest run's shots only, and when an earlier run's
+comment is already on the PR the new one links it as "Earlier captures: <url>" instead of
+re-uploading those images; every run's shots are merged into one comment only when no
+earlier comment exists. A comment covering the latest run with different images is
+replaced. \`screenshots\` reports the count, tier, and verdict, plus \`via: comment\`, the
+comment's URL, and \`earlier\` when it linked one.
 
 Once it is up, the comment is read back and checked: every attached file must have a
 \`user-attachments\` image URL in the body, no local path may be left behind, and each of
@@ -165,6 +169,7 @@ function restCall(cwd, method, path, body) {
  * @property {string} comment  The attachment comment's URL.
  * @property {number} rendered How many of them a reviewer actually sees.
  * @property {number} failed   How many resolved to nothing, or to a path on this machine.
+ * @property {string} [earlier] The earlier run's screenshot comment, linked rather than re-posted.
  */
 
 /** @param {import('../cli.mjs').Ctx} ctx */
@@ -302,19 +307,41 @@ function shotsReport(cwd, slug, shots, number) {
 /**
  * Post the attachment comment and report what came of it.
  *
- * One comment per PR, not per run: the same images reuse the comment already posted,
- * different images replace it once the new one is up.
+ * One comment per run. The same images reuse the comment already posted. An earlier run's
+ * comment is linked and kept, and the new one carries the latest run's shots alone; every
+ * run is merged only when no earlier comment exists. A comment covering the latest run with
+ * different images is replaced once the new one is up.
  * @param {string} cwd @param {{owner: string, repo: string} | null} slug
  * @param {import('../lib/shots.mjs').Attached} shots
- * @param {import('../lib/shots.mjs').ShotsComment} plan @param {number | null} number
+ * @param {import('../lib/shots.mjs').ShotsComment} latest @param {number | null} number
  * @returns {{screenshots?: Screenshots, shotsWarning?: string}}
  */
-function commentReport(cwd, slug, shots, plan, number) {
+function commentReport(cwd, slug, shots, latest, number) {
   if (number === null) return { shotsWarning: 'no PR number to attach the screenshot comment to' };
 
-  const previous = slug ? findShotsComment(cwd, slug, number) : null;
-  const posted = previous?.digest === plan.digest ? { url: previous.url } : postShotsComment(cwd, number, plan);
-  if (posted.url && previous && previous.url !== posted.url && slug) deleteShotsComment(cwd, slug, previous.id);
+  const ours = slug ? findShotsComments(cwd, slug, number) : [];
+  const newest = (/** @type {typeof ours} */ list) => list[list.length - 1] ?? null;
+  const plans = shots.merged ? [latest, shots.merged] : [latest];
+
+  /** @type {import('../lib/shots.mjs').ShotsComment} */
+  let plan = latest;
+  /** @type {string | undefined} */
+  let earlier;
+  /** @type {{url?: string, warning?: string}} */
+  let posted;
+  const reused = newest(ours.filter((c) => plans.some((p) => p.digest === c.digest)));
+  if (reused) {
+    plan = plans.find((p) => p.digest === reused.digest) ?? latest;
+    posted = { url: reused.url };
+  } else {
+    // A comment naming no runs predates the marker's `runs=`, so it is kept as an earlier one.
+    const covers = (/** @type {(typeof ours)[number]} */ c) => c.runs?.some((run) => latest.runs.includes(run));
+    const same = newest(ours.filter(covers));
+    earlier = newest(ours.filter((c) => !covers(c)))?.url;
+    plan = earlier || !shots.merged ? latest : shots.merged;
+    posted = postShotsComment(cwd, number, plan, earlier);
+    if (posted.url && same && same.url !== posted.url && slug) deleteShotsComment(cwd, slug, same.id);
+  }
 
   const check = posted.url ? renderCheck(cwd, slug, posted.url, plan) : null;
 
@@ -330,6 +357,7 @@ function commentReport(cwd, slug, shots, plan, number) {
       rendered: check?.rendered ?? 0,
       failed: check?.failed ?? 0,
     };
+    if (earlier) report.screenshots.earlier = earlier;
   }
   const warnings = [posted.warning, check?.warning, plan.warning].filter(Boolean);
   if (warnings.length) report.shotsWarning = warnings.join('; ');

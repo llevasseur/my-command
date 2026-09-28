@@ -106,6 +106,7 @@ with `subagent_type: "mycommand-verifier"`. Hand it, and nothing else:
   Hand it over as one line per shot, `<absolute path> | <label> | <sentence>`, and say it is
   the newest prior run rather than the branch's whole history. `baseline: null` means nobody
   has verified this branch before: pass nothing and say nothing.
+  <!-- include: shared/baseline-comparison-only.md -->**Say the baseline is for comparison only.** The verifier describes what changed in its `saw:` sentences, and never copies a baseline image into this run's `shotsDir` or passes one to `shots record`: that image was published with its own run, and a copy is posted a second time. A before/after pair is captured in this run, the before on the base branch, or it is omitted.<!-- /include -->
 - the round ceiling.
 
 **Spawn it once.** Every later round is a `SendMessage` to the same agent, so the boot, the

@@ -214,9 +214,13 @@ CDN, which serves under the reader's own credential and so renders on a private 
 too. The body and `--attach` carry the same absolute path deliberately: `gh` rewrites an
 `![alt](<path>)` reference in place only where the string matches byte for byte, and
 otherwise appends the images to the end of the comment and leaves the reference broken.
-Re-runs are idempotent through the `<!-- my-command-shots <digest> -->` marker, which is
-looked up before posting: the same digest reuses the comment, a different one replaces it.
-`screenshots.via` is always `comment`, reported with the comment's URL.
+Re-runs are idempotent through the `<!-- my-command-shots <digest> runs=<run,...> -->` marker,
+which is looked up before posting: the same digest reuses the comment. Otherwise the comment
+carries the latest run's shots only, links the newest comment covering none of that run's
+shots as "Earlier captures: <url>" and keeps it, and replaces a comment that does cover it.
+Every run's shots are merged into one comment only when no earlier comment exists.
+`screenshots.via` is always `comment`, reported with the comment's URL and, when one was
+linked, the earlier comment's as `earlier`.
 
 A public repository used to embed the images in the body instead, from a `my-command-shots`
 side branch linked over `raw.githubusercontent.com`, on the premise that no `user-attachments`

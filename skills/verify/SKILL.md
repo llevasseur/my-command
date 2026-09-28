@@ -27,7 +27,11 @@ than clamping it. `--no-verify` reports `skipped` and changes nothing.
    the next run rather than by nobody. Then read that round's session name from the same helper —
    it is derived from the branch and the round number, so a later sweep recognises it — and spawn
    the verification agent once, handing it the intent, the changed files, the contract or
-   the detected boot, that session name with its closing command, and the round ceiling. Each
+   the detected boot, that session name with its closing command, and the round ceiling. When
+   the screenshot helper reports a baseline — the newest earlier run's shots — hand it over too,
+   stated as for comparison only: the agent describes what changed in its observation lines,
+   never copies a baseline image into this run's screenshot directory or records one, and
+   captures a before/after pair in this run, the before on the base branch, or omits it. Each
    later round carries its own name, and the agent closes the session it opened, by that exact
    name, before it replies, on every ending including the failed ones. Continue the same agent with a message each later
    round, so the boot, the driver, and its repository context are paid for once. It replies with
