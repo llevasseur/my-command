@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-10-02
+
+### Added
+
+- **`/standup` tells you what changed since your last commit.** It sorts the window into Set up, Read, Try and Watch out, checks your local branches for rebase risk, and ends in a What To Do Next list. `--since` opens the window at any git date instead. See `docs/features/standup.md`.
+
 ## 2026-09-24
 
 ### Fixed

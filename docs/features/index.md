@@ -33,6 +33,7 @@ Add one with `okq new feature "<title>"`.
 | read-tweet | [read-tweet.md](read-tweet.md) |
 | review | [review.md](review.md) |
 | revive | [revive.md](revive.md) |
+| standup | [standup.md](standup.md) |
 | sync | [sync.md](sync.md) |
 | task-bootstrap | [task-bootstrap.md](task-bootstrap.md) |
 | task | [task.md](task.md) |
