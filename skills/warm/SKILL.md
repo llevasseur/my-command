@@ -1,6 +1,6 @@
 ---
 name: warm
-description: Register the current session with the claude proxy's cache-warming endpoint and report the registration as pending rather than as warm.
+description: Register the current session with the claude proxy's cache-warming endpoint, armed by the run's own closing reply, without reporting the cache as already warm.
 ---
 
 # Warm this session's prompt cache
@@ -54,15 +54,22 @@ error, quote what the proxy said, and stop — re-sending it unchanged fails the
 same way, and re-sending it with a substituted number registers a window nobody
 asked for.
 
-## Report it as pending, never as warm
+## Report it as armed by this run's reply, never as warm
 
-A successful response means the proxy **recorded** the registration. It does not
-mean anything is being kept warm. The registration arms only when a real request
-from this session matches it, and the proxy discards it after 2 minutes if none
-arrives. Report exactly that: the registration is pending, it arms on the next
-matching request from this session, and it expires in 2 minutes unmatched. Quote
-the response body where it says something more specific; otherwise those three
-facts are the whole report.
+The response says `"state":"pending"` because nothing has matched the
+registration yet when the proxy answers. The match is the next model request this
+session sends: the one that returns the curl's output to the model, which is the
+turn this run closes in. The proxy arms the registration once the upstream
+answers that request with a 2xx. So the closing turn is the matching request and
+the user does not need to send another message. Report three things: the
+registration is made, this reply arms it, and how long it holds. Quote the
+response body where it says something more specific.
+
+Never tell the user to send another message to arm it. The proxy still discards
+a registration nothing matches within 2 minutes, but here that happens only when
+the closing request fails upstream, or when the session's model traffic does not
+pass through this proxy at all. A session whose model requests go elsewhere
+cannot arm a registration, so say so instead of reporting success.
 
 State the granted window as the response's `hours` says it, in hours. The body
 carries `requestedHours` beside it and the two agree — the proxy grants what it
@@ -70,9 +77,10 @@ is asked for — so no ceiling applies and nothing was clamped. Say what the
 registration is good for rather than narrating the arithmetic behind it.
 
 Never report "session kept warm", "cache warmed", or any phrasing that presents
-the work as finished. A pending registration that nothing matches expires in
-silence and no later message corrects the record, so that wording is wrong in the
-one case where the difference matters.
+the cache as already held. Arming schedules pings, and the first fires near the
+end of the cache's own TTL, so nothing has been kept warm when this run ends.
+Send no follow-up request to check whether it armed: the closing turn does the
+arming, so a check sent before it reads a state that is about to change.
 
 If the connection is refused, the proxy is not running. Say so in one line and
 stop. Do not retry, do not poll, do not sleep and try again, and do not try a

@@ -7,6 +7,10 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 ## 2026-10-02
 
+### Fixed
+
+- **`/warm` no longer asks you to send another message to arm it.** The run's own closing reply reaches the proxy after the registration, under the same session, and arms it. The command used to report "pending, arms on the next request", which made users wait at the keyboard for a step that had already happened. See `docs/features/warm.md`.
+
 ### Added
 
 - **`/standup` tells you what changed since your last commit.** It sorts the window into Set up, Read, Try and Watch out, checks your local branches for rebase risk, and ends in a What To Do Next list. `--since` opens the window at any git date instead. See `docs/features/standup.md`.

@@ -1,5 +1,5 @@
 ---
-description: Register this session with the claude proxy's cache-warming endpoint and report the registration as pending
+description: Register this session with the claude proxy's cache-warming endpoint, armed by this run's own closing reply
 argument-hint: "[--TTL <hours>]"
 allowed-tools: Bash(curl:*)
 ---
@@ -41,11 +41,13 @@ Your input is the text in the `<command-args>` block above: an optional `--TTL <
 
    Write the number the invocation gave, literally, in place of `12`. Both variables are read from the environment by the shell, so pass the rest of the line through unchanged: `CLAUDE_CODE_SESSION_ID` is set by Claude Code, and `CLAUDE_PROXY_PORT` falls back to `8787`, which is the proxy's own default. Never substitute a literal port or paste a session id in place of either.
 
-3. **Report the registration as pending, and claim nothing past it.** A successful response means the proxy **recorded** the registration, not that anything is being kept warm. The registration arms only when a real request from this session matches it, and the proxy drops it after 2 minutes if none does. So report three things and stop: it is pending, it arms on the next matching request from this session, and it expires in 2 minutes if no request matches.
+3. **Report the registration as armed by this run's own reply, with no further message needed.** The response says `"state":"pending"` because nothing has matched the registration at the instant the proxy answers. The match is the very next request this session sends: the one that carries this curl's output back to the model, which is the turn this run closes in. Claude Code sends it through the proxy as soon as the curl returns, under this session's id, and the proxy arms the registration once the upstream answers that request with a 2xx. So the closing turn is the matching request, by construction, and the user does not have to send another message. Report that: the registration is made, this reply arms it, and how long it holds.
+
+   **Never tell the user to send another message to arm it, and never report the registration as waiting on one.** That wording is what made people stay at the keyboard for a step that had already happened. The proxy still drops a registration that nothing matches within 2 minutes, but in this command that happens only when the closing request itself fails upstream or the session's traffic does not pass through this proxy at all. Neither is something to warn about on a success.
 
    **State the granted window as the response's `hours` says it, in hours, and leave it there.** The body carries `requestedHours` beside it, and the two agree — the proxy grants what it is asked for — so there is no ceiling to mention and nothing was clamped. Say what the registration is good for; do not narrate the arithmetic behind it.
 
-   **Never write "session kept warm", "cache warmed", or any other wording that reports the work as finished.** A pending registration nothing matches expires silently, with no second message to correct the record — so that wording is wrong in precisely the case where it matters, and right only by luck in the rest. Where the response body says something more specific than the three facts above, quote it; otherwise those three facts are the whole report.
+   **Never write "session kept warm", "cache warmed", or any other wording that reports the cache as already held.** Arming schedules pings; the first one fires near the end of the cache's own TTL, so nothing has been kept warm yet when this run ends. Where the response body says something more specific, quote it; otherwise the three facts above are the whole report.
 
 4. **Treat a `400` as a bad `--TTL`, and do not send a second request.** The proxy rejects a TTL that is not a positive number, so a `400` means the invocation asked for one — zero, a negative, or something that is not a number at all. Report it as a usage error, quote what the proxy said, and stop. Re-sending it unchanged fails identically, and re-sending it with a number nobody asked for registers a window the user did not choose.
 
@@ -54,7 +56,8 @@ Your input is the text in the `<command-args>` block above: an optional `--TTL <
 ## Notes
 
 - **Register when you are actually stepping away, rather than at session start.** The campaign that built this endpoint measured how often a session registered up front is ever resumed and found the rate below break-even: most such registrations expire unused. Reached as a `/task --add` entry it fires at the start of a run anyway, which one request is cheap enough to justify; invoked by hand, invoke it on the way out the door.
-- **One request is the entire behaviour.** No repository reading, no state file, no follow-up poll to see whether it armed, and no second call to confirm the first.
+- **One request is the entire behaviour.** No repository reading, no state file, no follow-up poll to see whether it armed, and no second call to confirm the first. The closing turn already does the arming, so a check sent before it could only report a state the next request is about to change.
+- **The run must end with a model request, and it always does.** The arming depends on one request reaching the proxy after the curl returns. An outermost run's text-only close is that request. A run nested in another command's pipeline hands back beside the parent's next tool call, and that request is also from this session, so it arms the registration the same way. Neither case needs anything extra from the user.
 - **A longer `--TTL` is not free.** An armed registration pings until its deadline whether or not anyone comes back, so the window is a bet on being resumed. Pass the flag when the user names how long they are stepping away for; otherwise let the proxy's default stand.
 - **The registration ends by itself, and it can also be ended early.** Its deadline is the ordinary ending, and the proxy's state is in memory only, so restarting the proxy clears every registration too — which is why a run that registers has no teardown step of its own. But early release exists and is a real option: the claude-proxy dashboard lists the live registrations and releases any of them, and the same endpoint takes a `DELETE`:
 
