@@ -18,6 +18,7 @@
 import { appendFileSync, closeSync, fstatSync, mkdirSync, openSync, readFileSync, readSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { asRecord, asText, text } from './parse.mjs';
 
 /**
  * @typedef {object} Rule
@@ -170,6 +171,7 @@ export function modelFromTranscript(path) {
  */
 export function recordFire(rule, extra = {}) {
   try {
+    /** @type {Record<string, unknown>} */
     const row = {
       v: 1,
       rule,
@@ -177,10 +179,11 @@ export function recordFire(rule, extra = {}) {
       model: extra.model === undefined ? modelFromTranscript(context.transcriptPath) : extra.model,
       session: extra.session ?? context.sessionId ?? '',
       origin: extra.origin ?? 'hook',
-      ...(extra.suggestion ? { suggestion: extra.suggestion } : {}),
-      ...(extra.bucket ? { bucket: extra.bucket } : {}),
-      ...(extra.thread ? { thread: extra.thread } : {}),
     };
+    // Where a /judge fire came from, kept only when given so a gate's row stays short.
+    if (extra.suggestion) row.suggestion = extra.suggestion;
+    if (extra.bucket) row.bucket = extra.bucket;
+    if (extra.thread) row.thread = extra.thread;
     const path = firesPath();
     mkdirSync(dirname(path), { recursive: true });
     appendFileSync(path, `${JSON.stringify(row)}\n`);
@@ -217,14 +220,16 @@ export function readFires(path = firesPath()) {
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue;
     try {
-      const row = JSON.parse(line);
-      if (typeof row?.rule !== 'string' || typeof row?.at !== 'string') continue;
+      const row = asRecord(JSON.parse(line));
+      const rule = asText(row.rule);
+      const at = asText(row.at);
+      if (rule === undefined || at === undefined) continue;
       out.push({
-        rule: row.rule,
-        at: row.at,
-        model: typeof row.model === 'string' && row.model ? row.model : null,
-        session: typeof row.session === 'string' ? row.session : '',
-        origin: typeof row.origin === 'string' ? row.origin : 'hook',
+        rule,
+        at,
+        model: asText(row.model) || null,
+        session: text(row.session),
+        origin: asText(row.origin) ?? 'hook',
       });
     } catch {
       // A torn final line.

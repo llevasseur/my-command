@@ -144,9 +144,10 @@ export function report({ rules, fires, now, days, models, max, all = false, path
     sessions,
     rules: rules.length,
     candidates,
-    ...(all ? { all: rows } : {}),
     unknownRules: [...new Set(fires.map((f) => f.rule).filter((id) => !known.has(id)))].sort(),
     notes,
+    // Undefined drops out of the printed JSON, so `all` appears only when asked for.
+    all: all ? rows : undefined,
   };
 }
 
