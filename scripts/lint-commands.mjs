@@ -1,21 +1,15 @@
 #!/usr/bin/env node
-// Lint the files that install onto a device: the built commands/*.md and agents/*.md.
+// Lint the files that install onto a device, commands/*.md and agents/*.md, which are read in
+// another repository with no MyCommand checkout beside them.
 //
-// Those files are read in somebody else's repository, by an agent that has no MyCommand
-// checkout beside it. Three things in them read fine here and badly there:
-//
-//   repo-path  a link or path that resolves only inside this repo — a relative markdown link
-//              out of its own directory, src/toolkit/…, src/hooks/…, src/shared/…, a named spec or a numbered ADR file.
-//              A full URL is fine. Cite an ADR by number ("ADR 0011") and a spec by what it says.
+//   repo-path  a link or path that resolves only here: a relative link out of its directory,
+//              src/toolkit|hooks|shared/…, a named spec, an ADR file. Full URLs pass.
 //   history    wording that narrates how a command changed ("used to", "now refuses",
-//              "before this flag existed", "recorded runs", "the old"). An installed command
-//              states what to do; its history belongs in the changelog and the ADRs.
-//   emphasis   more than EMPHASIS_CAP uppercase MUST/NEVER/CRITICAL in one file. The cap is the
-//              largest count any file carries today (dev.md, 5): it stops the count growing
-//              without forcing a rewrite of files that sit under it.
+//              "before this flag existed", "recorded runs", "the old <thing>").
+//   emphasis   more than EMPHASIS_CAP uppercase MUST/NEVER/CRITICAL in one file. The cap is
+//              today's maximum (dev.md, 5), so the count cannot grow.
 //
-// A line a rule flags on purpose — an example of the wording an agent is told to avoid — goes
-// in ALLOW with its reason. Keep that list short and reviewed; a new entry is a smell.
+// A line flagged on purpose, such as a quoted anti-example, goes in ALLOW with its reason.
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';

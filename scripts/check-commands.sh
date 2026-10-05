@@ -850,11 +850,8 @@ if ! grep -q '4) opencode commands' src/my-command.ts; then
   fail=1
 fi
 
-# 27. The installed files read cleanly outside this repo. commands/*.md and agents/*.md land on
-# a device with no MyCommand checkout beside them, so a relative link out of their directory, a
-# src/toolkit|hooks|shared path, a named spec or an ADR file path resolves to nothing there;
-# history wording ("used to", "now refuses", "recorded runs") narrates a change the reader never
-# saw; and uppercase MUST/NEVER/CRITICAL is capped at 5 per file, the largest count today.
+# 27. commands/*.md and agents/*.md install where no MyCommand checkout exists: no repo-only
+# link or path, no history wording, and at most 5 uppercase MUST/NEVER/CRITICAL per file.
 if ! node scripts/lint-commands.mjs; then
   fail=1
 fi
