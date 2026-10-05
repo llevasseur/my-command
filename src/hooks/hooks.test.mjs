@@ -1428,8 +1428,7 @@ test('stdin prose: the refusal names the path-taking flag, and once only', () =>
 });
 
 test('gate prose: a rule a gate enforces is stated in one line, and its refusal carries the reason', () => {
-  // The explanation lives in the refusal, shown at the moment the rule applies. These pin both
-  // halves: the shared prose stays short and defers to the gate, and the gate says why.
+  // The shared prose stays short and defers to the gate; the gate carries the reason.
   const shared = (/** @type {string} */ name) => readFileSync(join(HERE, '..', 'shared', name), 'utf8');
   const oneDiff = shared('one-diff-call.md').trim();
   assert.equal(oneDiff.split('\n').length, 1, 'src/shared/one-diff-call.md grew back past one line');

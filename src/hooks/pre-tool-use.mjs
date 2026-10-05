@@ -256,8 +256,7 @@ function handRolledBranchCleanup(command, session) {
  * writes its report atomically at exit, after the gates are done. There is no partial state to
  * catch, which is the fact that makes polling futile rather than merely wasteful.
  *
- * `src/shared/verify-wait.md` states the no-polling rule in one line and leaves this reason to
- * the refusal, so the refusal is what carries it (ADR 0025).
+ * `src/shared/verify-wait.md` leaves this reason to the refusal (ADR 0025).
  * @param {string} watched
  * @returns {string}
  */
@@ -396,8 +395,7 @@ function deniedByCommandAlone(event, session) {
   }
 
   // Before the heredoc gate, because the stdin flag is *why* the heredoc gets composed. The
-  // command prose names `--message-file`/`--body-file` in one line and leaves the reason to this
-  // refusal (ADR 0026).
+  // command prose leaves the reason to this refusal (ADR 0026).
   const stdin = stdinProseFlag(command);
   if (stdin && !alreadyDenied(session, 'stdin', stdin.verb)) {
     deny(
