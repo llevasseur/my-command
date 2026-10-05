@@ -528,9 +528,9 @@ if ! node scripts/check-doc-snippets.mjs; then
   fail=1
 fi
 
-# 18b. CHANGELOG.md bullets in the newest two dated sections stay under 80 words
-# (src/shared/changelog-entry-shape.md). /changelog reads existing entries first, so one
-# bloated entry would otherwise become the next one's template.
+# 18b. CHANGELOG.md bullets in the newest two dated sections stay under 80 words. A repo-local
+# gate: /changelog follows the newest entries as the repo's convention, so one bloated entry
+# would otherwise become the next one's template.
 if ! node scripts/check-changelog.mjs; then
   fail=1
 fi
