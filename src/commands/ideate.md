@@ -15,7 +15,7 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 
 `/improve` runs on a rule that is load-bearing rather than fussy: **never invent an improvement**, because padding a run with your own ideas breaks the trace from every change back to the sessions that justified it. That rule is not relaxed here and must not be reworded there. Invention gets its own command instead, which is what lets both standards stay honest at once.
 
-Two boundaries follow, and neither bends:
+Three boundaries follow, and none bends:
 
 - **Never write `suggestion-status.json`.** That store belongs to findings with source sessions behind them. An idea has a different evidence standard and gets its own store — a separate file in a separate namespace.
 - **An idea becomes actionable only when a human accepts it.** That sign-off *is* an accepted idea's trace, which is the amendment `/work` carries. A `proposed` or `rejected` idea is still invention, and `/work` never reads one. Where the accepting happens is a UI question; that it happened is not.
@@ -80,12 +80,12 @@ The `ideas` CLI is a **client** of that store rather than the owner of a file, s
 **claude-proxy is an _optional_ dependency of this command**, unlike [improve](improve.md) and [judge](judge.md) where its absence ends the run. Resolve it exactly as they do:
 
 <!-- include-block: shared/claude-proxy-checkout.md -->
-**This command cannot run without claude-proxy**, and its location is not hardcoded — it comes from the environment, exactly as [revive](revive.md) resolves the transcript store.
+**claude-proxy is required unless this command declares it optional at its own step** (the last bullet below), and its location is not hardcoded — it comes from the environment, exactly as [revive](revive.md) resolves the transcript store.
 
 - **`CLAUDE_PROXY_STORE` (required)** — the directory the proxy writes session transcripts into. Read it from the environment (`printenv CLAUDE_PROXY_STORE`); never guess a path and never derive one from a repo checkout or clone location.
 - **Probe an optional variable as `printenv <NAME> || true`, and never in the same call as the required one.** `printenv A; printenv B` exits on B's status, so one unset optional variable reports the whole probe as failed even though A resolved — a half-success read as a failure, and then re-run. One call per variable, with `|| true` on every optional one.
-- Derive the two paths the suggestion tooling needs from it: the **log directory** is its parent (the store is `<logDir>/sessions`), and the **claude-proxy checkout** is the directory above that. Confirm the checkout by looking for its `server/package.json`.
-- **If `CLAUDE_PROXY_STORE` is unset, or its path is missing, or the derived checkout has no `server/package.json`, stop.** Say which of the three failed, that this command has no suggestions to read without it, and that it must be exported in the shell environment — e.g. in `~/.zshrc`:
+- Derive the two paths the claude-proxy CLI needs from it: the **log directory** is its parent (the store is `<logDir>/sessions`), and the **claude-proxy checkout** is the directory above that. Confirm the checkout by looking for its `server/package.json`.
+- **If `CLAUDE_PROXY_STORE` is unset, or its path is missing, or the derived checkout has no `server/package.json`, stop.** Say which of the three failed, what this command reads through claude-proxy, and that it must be exported in the shell environment — e.g. in `~/.zshrc`:
 
   ```sh
   export CLAUDE_PROXY_STORE="$HOME/path/to/claude-proxy/logs/sessions"

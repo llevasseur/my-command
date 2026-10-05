@@ -21,11 +21,11 @@ Spell the flag exactly as the ideas store spells it, and give it no short alias:
 
 `$improve` runs on a rule that is load-bearing: never invent an improvement, because padding a run with your own ideas breaks the trace from every change back to the sessions that justified it. That rule is not relaxed here and must not be reworded there. Invention gets its own workflow, which is what lets both standards stay honest.
 
-Two boundaries, neither of which bends:
+Three boundaries, none of which bends:
 
 - Never write the suggestion status store. That store belongs to findings with source sessions behind them. An idea has a different evidence standard and gets its own store — a separate file in a separate namespace. The two never merge in either direction.
-- An idea becomes actionable only when a human accepts it. That sign-off is an accepted idea's trace. A proposed or rejected idea is still invention, and `$improve` reads neither. Where a person does the accepting is a user-interface question; that they did it is not.
-- Never accept your own proposal. This skill writes the proposed status and no other. An agent marking its own idea accepted manufactures the trace instead of earning it, and hands `$improve` a criterion nobody signed off on.
+- An idea becomes actionable only when a human accepts it. That sign-off is an accepted idea's trace. A proposed or rejected idea is still invention, and `$work` reads neither. Where a person does the accepting is a user-interface question; that they did it is not.
+- Never accept your own proposal. This skill writes the proposed status and no other. An agent marking its own idea accepted manufactures the trace instead of earning it, and hands `$work` a criterion nobody signed off on.
 
 ## Steps
 
