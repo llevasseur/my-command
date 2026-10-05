@@ -105,7 +105,7 @@ for (const name of names) {
 test('every store role names a command that touches that store', () => {
   for (const [key, store] of Object.entries(manifest.stores)) {
     for (const [field, value] of Object.entries(store)) {
-      if (!/By$/.test(field)) continue;
+      if (!field.endsWith('By')) continue;
       for (const name of [value].flat()) {
         assert.ok(manifest.commands[name]?.stores.includes(key), `${key}.${field}: ${name}`);
       }
@@ -138,8 +138,8 @@ test('a store reached without a variable never carries it', () => {
   for (const store of Object.values(manifest.stores)) {
     if (!store.cli) continue;
     for (const env of store.forbiddenEnv ?? []) {
-      const shape = new RegExp(`${reEscape(env)}=\\S*\\s+${reEscape(store.cli)}`);
-      for (const name of names) assert.doesNotMatch(source(name), shape, name);
+      const envOnCli = new RegExp(`${reEscape(env)}=\\S*\\s+${reEscape(store.cli)}`);
+      for (const name of names) assert.doesNotMatch(source(name), envOnCli, name);
     }
   }
 });
