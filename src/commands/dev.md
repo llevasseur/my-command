@@ -70,7 +70,7 @@ That applies to the grill's own reading: `docs/specs/index.md`, `docs/adrs/index
 
 **The griller asks ONE question at a time**, mirroring the `grilling` skill, which is explicit that multiple questions at once are bewildering. The reason is sharper than politeness: **batching questions lets a weak answer hide among strong ones**, and the weak answer is exactly the one that becomes an unrecorded decision. Tell the griller so in its spawn prompt, and hold it to one question per round.
 
-**Answer every question, and ground every answer in this repo.** An answer cites the okq spec or ADR it comes from **by path** — `docs/specs/adding-a-command.md`, `docs/adrs/0003-dirty-flag-for-doc-density.md` — and quotes or paraphrases what that document actually says. A fact the repo already holds is looked up, never guessed at and never asked about.
+**Answer every question, and ground every answer in this repo.** An answer cites the okq spec or ADR it comes from **by path** — `docs/specs/<name>.md`, `docs/adrs/<nnnn>-<slug>.md` — and quotes or paraphrases what that document actually says. A fact the repo already holds is looked up, never guessed at and never asked about.
 
 **The grill is ONE pass, on the IDEA ONLY.** It stress-tests what is being built and why — not the decomposition the idea later charts into, not a ticket's implementation, and not the plan `/wayfinder` writes. There is no second grill of the resulting tickets.
 
@@ -105,7 +105,7 @@ needs-human: true
 
 **This command NEVER blocks and NEVER asks me a question.** It decides, marks the ADR, and carries on. **The campaign PR body then LEADS with the list of `needs-human` decisions** (Step 7), so the human's review is the place those calls actually get made — which is what makes deciding-and-recording safe rather than presumptuous.
 
-**No tooling change is needed for any of these keys, and they are queryable.** ADR 0003 (`docs/adrs/0003-dirty-flag-for-doc-density.md`) established it for the `dirty` flag: `okq validate` accepts frontmatter keys beyond the OKF core, and `okq --bundle docs find --where <KEY=VALUE>` matches arbitrary keys, with an unset key matching nothing rather than erroring. So the convention rides on behaviour that already exists — `okq --bundle docs find --where ratified=false` lists everything this run decided, and `--where needs-human=true` narrows it to the calls a human still owes.
+**No tooling change is needed for any of these keys, and they are queryable.** MyCommand's ADR 0003 established it for the `dirty` flag: `okq validate` accepts frontmatter keys beyond the OKF core, and `okq --bundle docs find --where <KEY=VALUE>` matches arbitrary keys, with an unset key matching nothing rather than erroring. So the convention rides on behaviour that already exists — `okq --bundle docs find --where ratified=false` lists everything this run decided, and `--where needs-human=true` narrows it to the calls a human still owes.
 
 <!-- include-block: shared/rewrite-toward.md -->
 ### Rewrite toward

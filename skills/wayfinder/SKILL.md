@@ -61,8 +61,8 @@ matter of course, an unattended campaign that resumes attended never finishes. S
 start records the mode and generates the prompt to carry `--unattended` when it
 is set. The flag is still read off the invocation and nowhere else; what this
 adds is a prompt that tells the resuming agent to type it. The decision, and the
-escalation risk it accepts, are recorded in the repository's decision records at
-`docs/adrs/0006-unattended-campaigns-resume-unattended.md`.
+escalation risk it accepts, are recorded in MyCommand's decision record ADR
+0006.
 
 `--draft` is refused alongside `--unattended`: `$god` rejects a draft outright,
 because a draft cannot merge. Say to run the campaign without
@@ -557,8 +557,8 @@ exists because the prompt *is* the resume path: a campaign that stops at every
 pull request when it was started not to never finishes, and a resume is the
 ordinary event in a multi-week campaign rather than the exception. The flag is
 still read only from the invocation that acts — the map does not authorise
-anything, it decides which sentence gets written. The repository's decision
-record at `docs/adrs/0006-unattended-campaigns-resume-unattended.md` states the
+anything, it decides which sentence gets written. MyCommand's decision
+record ADR 0006 states the
 escalation risk that accepts: a map is a file in the repository, so whoever can
 edit it can put the flag in a later resume's hands.
 

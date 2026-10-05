@@ -51,7 +51,7 @@ Decide which field the description belongs to — domain modeling, UI motion, vi
 
 ## Step 1.5 — Check the corpus before you name anything
 
-**Run `/my-command:lookup` on the description, with `--field` set to the field Step 1 just placed it in.** The corpus already holds every term this command has ever settled, and until this step existed nothing read it back — so a run re-derived a term whether or not one was already stored. This step **replaces that unconditional re-derivation**, and it belongs here, before the naming step: after Step 2 the term has already been invented and the duplicate already exists.
+**Run `/my-command:lookup` on the description, with `--field` set to the field Step 1 just placed it in.** The corpus already holds every term this command has ever settled, and nothing else reads it back — so without this step a run re-derives a term whether or not one is already stored. This step **prevents that re-derivation**, and it belongs here, before the naming step: after Step 2 the term has already been invented and the duplicate already exists.
 
 The gate has three outcomes, and each one decides what the rest of the run does:
 
@@ -94,7 +94,7 @@ Write one sentence to the STE rules above, plus three that belong to the sentenc
 - **25 words maximum**, counted before you print it.
 - **The taught term is the only hard word in it.** It is the payload; every word around it is ordinary English.
 
-`/my-command:truncate` and `/my-command:docs` draw their **Rewrite toward** rules from the same standard and deliberately drop three of them — STE's word caps, its simple-tense restriction, and its closed dictionary — on the grounds that they serve a human reader with a limited vocabulary in the subject. That reader is exactly who `/my-command:teach` writes for, so `/my-command:teach` adopts them. Do not reconcile the two by loading `src/shared/rewrite-toward.md`; its exclusion clause is correct for a command file and wrong here.
+`/my-command:truncate` and `/my-command:docs` draw their **Rewrite toward** rules from the same standard and deliberately drop three of them — STE's word caps, its simple-tense restriction, and its closed dictionary — on the grounds that they serve a human reader with a limited vocabulary in the subject. That reader is exactly who `/my-command:teach` writes for, so `/my-command:teach` adopts them. Do not reconcile the two by loading their shared **Rewrite toward** snippet; its exclusion clause is correct for a command file and wrong here.
 
 ## Step 5 — Point at public skills
 

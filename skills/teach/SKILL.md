@@ -60,8 +60,8 @@ picked in one clause, so a wrong guess is correctable before the questions start
 
 **Run the lookup workflow on the description, with the field step 1 just placed
 it in.** The corpus already holds every term this workflow has ever settled, and
-until this step existed nothing read it back — so a run derived a term whether or
-not one was already stored. This step **replaces that unconditional
+nothing else reads it back — so without this step a run derives a term whether
+or not one is already stored. This step **prevents that
 re-derivation**, and it belongs here, before the naming step: after step 2 the
 term is already invented and the duplicate already exists.
 
