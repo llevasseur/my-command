@@ -13,6 +13,10 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 - **Command prompts state each rule without the story behind it.** Incident counts, old flags, and "used to" passages moved into ADRs 0021 to 0034, and each prompt cites its ADR by number. Agents read fewer tokens per run and no longer reason about behaviour that is gone. See `docs/adrs/0021-command-prompts-state-the-rule-and-adrs-keep-the-history.md`.
 
+### Fixed
+
+- **Commands no longer contradict each other on flags, ledgers, or branches.** `/learn` credits `/work` with idea claims, `/fb` stops naming `--no-verify`, `/docs` and `/task` branch off the reported default branch, and `/merge-deps` pulls in its own call. `src/manifest.json` records each command's flags, verbs, and stores, and `pnpm test` fails when the prose disagrees with it.
+
 ## 2026-10-02
 
 ### Fixed
