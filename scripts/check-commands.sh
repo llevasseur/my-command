@@ -47,6 +47,8 @@
 #  25. the skills choice is the one surface that installs skills, it says in the menu that it
 #      serves opencode as well as Codex, and it still reaches ~/.agents/skills — where opencode
 #      discovers them for every model it drives — when the environment redirects it elsewhere.
+#  27. the installed commands/*.md and agents/*.md carry no repo-only link or path, no history
+#      wording, and at most 5 uppercase MUST/NEVER/CRITICAL each (scripts/lint-commands.mjs).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -845,6 +847,15 @@ fi
 
 if ! grep -q '4) opencode commands' src/my-command.ts; then
   echo "::error::src/my-command.ts no longer offers the opencode commands choice in the menu; an option nobody can pick installs nothing."
+  fail=1
+fi
+
+# 27. The installed files read cleanly outside this repo. commands/*.md and agents/*.md land on
+# a device with no MyCommand checkout beside them, so a relative link out of their directory, a
+# src/toolkit|hooks|shared path, a named spec or an ADR file path resolves to nothing there;
+# history wording ("used to", "now refuses", "recorded runs") narrates a change the reader never
+# saw; and uppercase MUST/NEVER/CRITICAL is capped at 5 per file, the largest count today.
+if ! node scripts/lint-commands.mjs; then
   fail=1
 fi
 

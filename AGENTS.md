@@ -115,7 +115,12 @@ feature doc, generated Claude command, and Codex-native skill, every command car
 the closing-turn anchor and its terminal step (and every skill mirrors both), every
 file-sweeping command carries the batched-discovery step, every merging command carries the
 merge command forms, every command carries the step marker rules and the closing turn still
-states the return marker, and the wizard still globs both source directories. This is why the wizard "auto-updates" is safe to rely
+states the return marker, and the wizard still globs both source directories. It also runs
+`scripts/lint-commands.mjs` (`pnpm lint:commands`) over the files that install, `commands/*.md`
+and `agents/*.md`: no link or path that resolves only in this repo (a relative link out of the
+directory, `src/toolkit|hooks|shared/…`, a named spec, an ADR file path; cite ADRs as "ADR
+0011"), no history wording ("used to", "now refuses", "recorded runs"), and at most 5 uppercase
+MUST/NEVER/CRITICAL per file. Fix a hit in `src/commands/` or `src/shared/` and rebuild. This is why the wizard "auto-updates" is safe to rely
 on—if someone replaces a glob with a hardcoded list, the check fails. The `commands` job in
 `.github/workflows/ci-pr.yml` blocks the PR on it.
 
