@@ -41,9 +41,7 @@ for f in "$SRC_DIR"/*.md; do
   done
 done
 
-# A command reads its rarely used branches from ~/.claude/my-command/references/<file>, which the
-# installers fill from src/references/. A pointer naming a file that is not there would install a
-# command that reads nothing, so refuse to build one.
+# Refuse a command whose ~/.claude/my-command/references/<file> pointer has no src/references/<file>.
 REFS_DIR="$REPO_ROOT/src/references"
 missing=0
 for ref in $(grep -ohE '~/\.claude/my-command/references/[A-Za-z0-9._-]+\.md' "$OUT_DIR"/*.md | sort -u); do

@@ -434,10 +434,8 @@ interface ReferencesResult {
   reason?: string;
 }
 
-// The reference files a command reads on demand, placed at <config dir>/my-command/references so
-// the plugin and the bare commands resolve the same path. Not under commands/, where each file
-// would register as a slash command of its own. Installed on both Claude choices, like the
-// toolkit, and COPIED for the same reason installAgents() copies: npx's cache does not outlive it.
+// The on-demand reference files commands point at, at one path both Claude choices share. Not
+// under commands/, where each file would register as a slash command. COPIED, like installAgents().
 function installReferences(root = deviceRoot()): ReferencesResult {
   const dest = join(root, 'references');
   const base: ReferencesResult = { installed: false, dest };
