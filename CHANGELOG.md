@@ -15,6 +15,8 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 - **Installed commands no longer link to files only this repo has.** `/task`, `/trim`, `/wayfinder`, `/truncate`, `/dev`, `/teach` and `/work` cite ADRs by number instead of by relative path. `pnpm run check:commands` now lints `commands/` and `agents/` for repo-only paths, history wording, and more than 5 uppercase MUST/NEVER/CRITICAL per file.
 
+- **`/teach`, `/wayfinder` and `/fb` load their rare branches only when needed.** The `/teach` rollout steps, the reasons behind `/wayfinder`'s `--unattended` and `--integration`, and `/fb`'s `--target` edge cases moved to `~/.claude/my-command/references/<command>.md`, with the Codex copies in each skill's `references/`. See `docs/specs/commands-as-skills.md`.
+
 ### Fixed
 
 - **Commands no longer contradict each other on flags, ledgers, or branches.** `/learn` credits `/work` with idea claims, `/fb` stops naming `--no-verify`, `/docs` and `/task` branch off the reported default branch, and `/merge-deps` pulls in its own call. `src/manifest.json` records each command's flags, verbs, and stores, and `pnpm test` fails when the prose disagrees with it.
