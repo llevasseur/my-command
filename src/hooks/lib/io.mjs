@@ -3,6 +3,7 @@
 // before any work happens.
 import { readFileSync } from 'node:fs';
 import { asRecord, asText, isRecord } from './parse.mjs';
+import { setFireContext } from './rules.mjs';
 
 /** Values of MY_COMMAND_HOOKS that turn the gates off. Anything else leaves them on. */
 const OFF = new Set(['0', 'off', 'false', 'no']);
@@ -48,6 +49,10 @@ export function readEvent() {
   if (!isRecord(event)) return null;
 
   const input = asRecord(event.tool_input);
+  const sessionId = String(event.session_id ?? '');
+  const transcriptPath = String(event.transcript_path ?? '');
+  // Whose run a rule fire belongs to, so `recordFire` can stamp the session and the model.
+  setFireContext({ sessionId, transcriptPath });
   return {
     toolName: String(event.tool_name ?? ''),
     input,
@@ -55,8 +60,8 @@ export function readEvent() {
     filePath: asText(input.file_path),
     background: input.run_in_background === true,
     cwd: asText(event.cwd) ?? process.cwd(),
-    sessionId: String(event.session_id ?? ''),
-    transcriptPath: String(event.transcript_path ?? ''),
+    sessionId,
+    transcriptPath,
     stopHookActive: event.stop_hook_active === true,
   };
 }
