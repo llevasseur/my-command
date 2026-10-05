@@ -4,7 +4,7 @@ title: judge
 description: Judge claude-proxy's fired suggestions against the raw transcripts they came from — confirm what the sessions support with context written from the transcript, dismiss what the rule misread, and record both verdicts per bucket in one call.
 tags: [command, workflow, agents]
 timestamp: 2026-08-05
-updated: 2026-08-05
+updated: 2026-10-05
 dirty: true
 ---
 
@@ -37,6 +37,9 @@ permanent rule in someone's `AGENTS.md`.
 - `--dry-run` / `-n` — report the dirty buckets in the range, the fired
   suggestions in each, and the transcripts that would be read, then stop. Nothing
   is read in full and no verdict is recorded.
+- `--report` — skip judging and list rules that have stopped firing on current
+  models, as retirement candidates. Needs no claude-proxy checkout.
+- `--days <n>` — the `--report` window in days. Default 30.
 - There is no free-text argument. Anything else is reported rather than
   interpreted.
 
@@ -137,6 +140,61 @@ bucket whose call reports fewer verdicts than it had fired suggestions is a fail
 bucket to be re-judged, not a partial success. Buckets are judged one at a time so
 a failure names one bucket rather than an unknown subset.
 
+**Confirmations also count prose rules.** After a bucket's verdicts land, each
+CONFIRMED suggestion whose slow shape is exactly what a prose rule forbids
+records one fire per source session, with the model, session id and start time
+from that transcript's header:
+
+```sh
+my-command-tools rules fire --rule prose/<name> --model <model> --at <started> --session <session> --suggestion <id> --bucket <bucket> --thread <threadId>
+```
+
+## Rule usage and retirement candidates
+
+Every counted rule has a stable id, listed by `my-command-tools rules list`:
+
+- **`gate/<name>`** — one per workflow gate, named by the key the gate already
+  passes to `alreadyDenied` (`gate/serial`, `gate/reread`, `gate/outcome`, …).
+  A gate fires when it refuses a call for the first time; the once-per-subject
+  rule means a repeat is neither refused nor counted. `src/hooks/lib/state.mjs`
+  records the fire, and the one refusal not keyed that way (`gate/cd`) records
+  its own. `src/hooks/rules.test.mjs` fails if a gate key and the registry drift.
+- **`prose/<snippet>`** — one per shared rule in `src/shared/<snippet>.md` that a
+  claude-proxy suggestion can show being broken. It has no code to observe it,
+  so it fires only when `/judge` confirms such a suggestion.
+
+**Where fires are recorded.** The claude-proxy store has no place for them: its
+sessions directory and SQLite database are the proxy's own, with no rule-fire
+table, and this repo writes into neither. So fires go **beside** it, one JSONL
+row each, in `rule-fires.jsonl` in the proxy's log directory (the parent of
+`CLAUDE_PROXY_STORE`). Without `CLAUDE_PROXY_STORE`, the file sits beside the
+gates' `hooks.log`. `MY_COMMAND_RULE_FIRES` overrides both. A row carries
+`rule`, `at`, `model` (from the tail of the session transcript for a gate, from
+the proxy transcript header for a prose fire), `session` (the Claude Code
+session id, which the proxy's `session.session_id` column also holds), and
+`origin` (`hook` or `judge`).
+
+**Recording fails open.** An unwritable file or an unreadable transcript costs
+a row, never a refusal: `recordFire` swallows its own errors, and a gate's
+answer is decided before it runs.
+
+**`--report` runs `my-command-tools rules report`.** It lists rules with at most
+`--max` fires (default 1) in the last `--days` (default 30) on current models,
+which are the `--model` values given or else every model that fired in the
+window. Each candidate carries its last fire on any model, so a rule that only
+fires on older models is visible. Its `notes` flag thin evidence: sessions
+where nothing fired leave no row, and gates switched off with
+`MY_COMMAND_HOOKS=0` record nothing. The report is read-only toward the
+commands; retiring a rule is a separate change.
+
+**What claude-proxy would need to own this.** Nothing on the proxy side reads
+`rule-fires.jsonl` yet. To take it into the store, the proxy needs a
+`rule_fire` table (`rule`, `at`, `model`, `session_id`, `origin`, `suggestion`,
+`bucket`, `thread_id`), an ingest of `<logDir>/rule-fires.jsonl` with a byte
+watermark like its other file ingests, and a fill of a null `model` from
+`session.model` by `session_id`. The toolkit's report would then read from the
+proxy instead of the file.
+
 ## Rules
 
 - **A dismissal is not a regression.** `regressed` means a dated fix did not hold;
@@ -149,12 +207,14 @@ a failure names one bucket rather than an unknown subset.
   criterion and then a standing rule for every future session.
 - **Never dismiss to be quick.** The transcripts are the only thing that can
   separate the two, and reading them is the entire cost of this command.
-- **Judging writes to claude-proxy's store, not to any repo.** No branch, no edit,
-  no commit. A verdict implying a code change is `/improve`'s dispatch to make.
+- **Judging writes to claude-proxy's store and the rule-fire record beside it,
+  not to any repo.** No branch, no edit, no commit. A verdict implying a code change is `/improve`'s dispatch to make.
 
 ## Related
 
 - Command source: `src/commands/judge.md`
+- Rule registry and fire record: `src/hooks/lib/rules.mjs`; report verb:
+  `src/toolkit/verbs/rules.mjs`
 - Orchestrated by: [improve](improve.md), which judges every dirty bucket in its
   range before composing criteria and stops when judging fails
 - Shares the `CLAUDE_PROXY_STORE` dependency pattern with: [improve](improve.md),
