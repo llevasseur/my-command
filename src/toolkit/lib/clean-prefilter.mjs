@@ -27,29 +27,29 @@
 
 /**
  * The four mandatory keeps, in the order they are tested. ADR 0011 states them as four bullets;
- * `clean-comment.json` merges the first two into one entry because both sit on clean.md:65.
+ * `clean-comment.json` merges the first two into one entry because both sit on clean.md:58.
  * @type {PreFilterRule[]}
  */
 export const RULES = [
   {
     id: 'license-header',
     summary: 'a license or copyright header at the top of a file',
-    source: 'src/commands/clean.md:65',
+    source: 'src/commands/clean.md:58',
   },
   {
     id: 'linter-directive',
     summary: 'a linter directive (biome-ignore, eslint-disable) or a doc/JSDoc annotation tag',
-    source: 'src/commands/clean.md:65',
+    source: 'src/commands/clean.md:58',
   },
   {
     id: 'jsx-section-header',
     summary: 'a JSX section header labelling a structural region of markup',
-    source: 'src/commands/clean.md:66',
+    source: 'src/commands/clean.md:59',
   },
   {
     id: 'empty-block-sole-comment',
     summary: 'the sole comment inside an intentionally empty block',
-    source: 'src/commands/clean.md:67',
+    source: 'src/commands/clean.md:60',
   },
 ];
 
