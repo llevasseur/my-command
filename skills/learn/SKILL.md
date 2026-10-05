@@ -101,9 +101,8 @@ Take the first source that produces a candidate:
 
 0. **The named skill**, when one was given. It skips this step outright.
 1. **The stored record's `surfacedSkills`.** These are the skills the teach
-   workflow **discovered** and pointedly did not install — the list that exists
-   because those names used to be dropped on the floor. A lease is the reader
-   that list never had, so read it before searching for anything.
+   workflow **discovered** and pointedly did not install. A lease is that list's
+   reader, so read it before searching for anything (ADR 0029).
 2. **The stored record's `skills`.** The skills a teach run applied to name the
    concept. A skill good enough to name the thing is usually good enough to work
    on it.

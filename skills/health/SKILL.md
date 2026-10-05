@@ -48,10 +48,8 @@ process under something a person could act on: the application, the vendor, the
 session manager, the repository it was started from. Sum processes, live CPU,
 resident memory, and cumulative CPU time per owner.
 
-The reason is arithmetic. One recorded run found 393 operating-system processes
-summing to 187% CPU and 15 security-suite processes summing to 141%. Read per
-process, the top of the list was system noise and the finding was invisible; read
-per owner, the security suite was the largest consumer by a factor of eight.
+Ranked per process, hundreds of small system processes bury one vendor's handful
+of heavy ones; ranked per owner, the real consumer surfaces (ADR 0030).
 
 A `node` or `python` process is not an owner. Walk the command line to the
 repository or package it runs, and walk the parent chain up to the session that
@@ -66,17 +64,17 @@ one twice.
 
 - **CPU now** — summed CPU percentage. A spot reading; label it as one.
 - **Memory** — summed resident memory read against pressure. On a machine under
-  pressure the honest headline is the compressor, not free pages: one run showed
-  58 MB free and 7.4 GB compressed, where free memory implied a crisis and the
-  compressor figure explained the real cost. Report free percentage and
+  pressure the honest headline is the compressor, not free pages, because a
+  near-zero free figure implies a crisis the compressor figure explains
+  (ADR 0030). Report free percentage and
   compressed bytes together.
 - **Energy** — summed cumulative CPU time per owner. This is a proxy and the
   report must say so. A per-process energy score is not available to an ordinary
   process, and the tool that measures power needs root. Never escalate to root
   for it, and never present the proxy as the operating system's own energy
   number. Cumulative CPU time since process start is the honest available signal
-  and is usually enough: in the same run the security scanner held 44 CPU-hours
-  against 425 minutes for the next owner.
+  and is usually enough to separate the heaviest owner from the rest
+  (ADR 0030).
 - **Churn** — file watchers and indexers. The indexer is almost never the cause;
   it is the symptom of something recursively watching a large tree. Count the
   watchers before blaming it.
@@ -130,11 +128,9 @@ Skip this entirely without `--fix`. With it, act on safe rows, and on confirm
 rows the user approves one at a time.
 
 Re-measure immediately before every signal, because the first snapshot is already
-stale. This is the recorded failure the rule exists for: in one run the live
-server changed process id three times inside twenty minutes as its watcher
-respawned, and port ownership flipped between two duplicate stacks, so a kill
-list written from the first reading would have killed the working server and
-spared the dead one.
+stale. A respawning watcher can change a server's process id and hand its port
+to a duplicate stack between two readings, so a kill list from the first reading
+can kill the working server (ADR 0030).
 
 Guard every kill by the command line rather than the process id alone, because
 ids get recycled: read the process's command, match the substring expected, and
@@ -156,9 +152,8 @@ supervised service, because that is a persistent change to login state rather
 than a process kill and the service may exist for a reason the process list
 cannot show — report it, quote the command that would disable it, and let the
 user decide. Never close anything holding unsaved state, and ask the application
-rather than the filesystem: one run cleared an editor as clean because its backup
-directory was empty, then found an unsaved-changes marker in the editor's own
-window listing a step later, so where an application has a window list, read it,
+rather than the filesystem, since an empty backup directory does not mean the
+editor's windows are clean (ADR 0030): where an application has a window list, read it,
 and where it does not, treat the window as dirty. Never kill a process bound to a
 listening port unless the user named it, because the binding is evidence
 something is using it. Never escalate to root and never prompt for a password; a

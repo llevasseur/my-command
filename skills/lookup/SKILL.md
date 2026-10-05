@@ -5,9 +5,9 @@ description: Read the hosted concept store before a term is named, so a concept 
 
 # Look it up before you name it
 
-The corpus holds every term the teach workflow has ever settled, and nothing read
-it back. So a concept settled in March is settled again in August under a second
-wording, and the two sentences disagree. This workflow is the **gate** that stops
+The corpus holds every term the teach workflow has ever settled. Unread, it lets
+a concept be settled twice under two wordings whose sentences disagree
+(ADR 0029). This workflow is the **gate** that stops
 that. It reads the store, and its answer decides whether a teach run may start.
 
 The arguments are the term or the description to look up. Parse leading flags off

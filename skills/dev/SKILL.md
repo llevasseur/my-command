@@ -26,8 +26,7 @@ Parse leading flags off the front; the rest is the idea.
 - `--into <branch>` / `-i <branch>` — the campaign's **integration branch**: what
   the campaign base branch is cut from, and what the planning pull request and the
   campaign pull request merge into. Absent the flag, that branch is the default
-  branch the repository helper reports, which is how every run before this flag
-  behaved. Neither path hardcodes a branch name. Step 1 resolves it once, and every
+  branch the repository helper reports. Neither path hardcodes a branch name. Step 1 resolves it once, and every
   later step names the resolved branch rather than re-deriving it.
   **It is not a cut point.** A merge target and a cut point are independent, and
   that distinction is unchanged: each ticket still names the campaign base branch
@@ -323,8 +322,7 @@ This workflow, the orchestrator, the campaign workflow, the merge-through
 workflow, the task workflow, and the cleanup, review, and pull-request workflows
 under it are **six levels of nesting**, and the closing-turn contract holds at
 every level. A nested run that spends a text-only turn ends the whole assistant
-turn and strands every step its invoker still owes — a recorded failure in this
-repository, not a hypothetical. Being deep in a stack changes nothing about which
+turn and strands every step its invoker still owes (ADR 0022). Being deep in a stack changes nothing about which
 case applies; each level tells its own case apart from how it was invoked.
 
 A subagent can itself spawn a subagent and then continue that subagent with a

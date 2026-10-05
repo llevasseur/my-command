@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-10-05
+
+### Changed
+
+- **Command prompts state each rule without the story behind it.** Incident counts, old flags, and "used to" passages moved into ADRs 0021 to 0034, and each prompt cites its ADR by number. Agents read fewer tokens per run and no longer reason about behaviour that is gone. See `docs/adrs/0021-command-prompts-state-the-rule-and-adrs-keep-the-history.md`.
+
 ## 2026-10-02
 
 ### Fixed
