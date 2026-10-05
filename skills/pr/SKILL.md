@@ -9,15 +9,22 @@ Parse `--draft` / `-d`; treat remaining text as optional title or context.
 
 1. Refuse the default branch. Derive an accurate title and a bulleted body from
    commits and the full branch diff.
-2. Write the body to a file, and hold it to a shape rather than to the word
-   "concise". Bullets only: a line that is neither a `-` bullet nor a `##` header
-   does not belong. The first line is a header, never prose. One idea per bullet,
-   one to two sentences; a bullet past about 40 words is a paragraph wearing a
-   dash, so split it or cut it. Headers only past about 6 bullets and 4 at most,
-   sentence case, 2 to 4 words. Target under 400 words; past 600 the body is
-   being written for the author rather than the reviewer.
-   - The body is for the reviewer, and it is not a record of the author's work.
-     Requirement-by-requirement compliance notes, verification and gate output,
+2. Write the body to a file. The repository's own convention decides its shape:
+   follow the first of written guidance in `CLAUDE.md`, `AGENTS.md`, or
+   `CONTRIBUTING.md`; a PR template (`.github/pull_request_template.md` or
+   `.github/PULL_REQUEST_TEMPLATE/`) or a PR skill or command the repository
+   ships, whose sections you fill rather than replace; then the last few merged
+   PR bodies (`gh pr list --state merged --limit 5 --json body`), matching their
+   sections, headers, and length. Only when the repository states none, use this
+   fallback: bullets only, so a line that is neither a `-` bullet nor a `##`
+   header does not belong; the first line is a header, never prose; one idea per
+   bullet, one to two sentences, splitting or cutting a bullet that reads as a
+   paragraph; headers only when the bullets need grouping, in sentence case and
+   a few words each. Size is measured by `my-command-tools pr`, which returns
+   `bodyWarnings` when the body runs long or carries no bullet; read a warning
+   as a cut to make, then update the PR.
+   - Whatever the shape, the body is for the reviewer, and it is not a record
+     of the author's work. Requirement-by-requirement compliance notes, verification and gate output,
      docs inventories, and "what I checked" material each earn one terse bullet
      or none. Any section that exists to prove the task was done belongs in the
      run's closing turn instead. The test for a line: would a reviewer who never

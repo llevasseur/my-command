@@ -138,15 +138,18 @@ Issue the batched calls as separate tool calls in one turn, never chained with `
 <!-- include-block: shared/changelog-entry-shape.md -->
 ### The entry's shape
 
-**"Concise" is a measurement here, not a mood.** These are the numbers that decide it.
+**The repo's own convention decides the shape.** Look for it in this order and follow the first source that states one:
+
+1. **Written guidance:** `CLAUDE.md`, `AGENTS.md`, or `CONTRIBUTING.md` on how entries are written.
+2. **A changelog skill or command the repo ships** (`.claude/commands/`, `.claude/skills/`, `.agents/skills/`). Its instructions are the repo's shape.
+3. **The newest entries in `CHANGELOG.md`.** Match their heading format, grouping, length, and voice.
+
+**Only when the repo states none, use this shape:**
 
 - **One bullet per user-visible change.** Not one per file, and not one per decision made along the way.
-- **A bold lead of 12 words or fewer, naming the change.** What a reader sees, gets, or can stop doing once it ships.
-- **A body of 2 to 3 sentences, under 60 words.** `scripts/check-changelog.mjs` fails any bullet over 80 words.
-- **At most one "because" clause.** A second reason is a design note, not a change.
-- **No nested lists.** A bullet that needs sub-bullets is carrying two changes: split it, or cut the one nobody sees.
-- **Internal wiring stays out** unless it changes behavior someone sees. Helper reuse, which call pipes into which, and where a function moved are the diff's business, not the entry's.
-- **The why lives in `docs/features/<cmd>.md`.** Link it; do not restate it. An entry that explains a rationale is a design doc growing in the wrong file.
+- **A short bold lead naming the change**, then a sentence or two on what a reader sees, gets, or can stop doing once it ships.
+- **At most one "because" clause, and no nested lists.** A bullet that needs sub-bullets is carrying two changes: split it, or cut the one nobody sees.
+- **Internal wiring stays out** unless it changes behavior someone sees.
 <!-- /include-block -->
 
 <!-- include-block: shared/verify-wait.md -->
