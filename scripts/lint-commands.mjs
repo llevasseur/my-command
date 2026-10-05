@@ -26,7 +26,7 @@ export const MYCOMMAND_SCRIPTS = readdirSync(join(ROOT, 'scripts'))
   .sort();
 
 /** @param {string} s */
-const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Uppercase MUST/NEVER/CRITICAL allowed per file: the current maximum (dev.md). */
 export const EMPHASIS_CAP = 5;
@@ -59,7 +59,7 @@ const LINE_RULES = [
     rule: 'repo-path',
     // `$REPO/scripts/…` and an absolute path into a MyCommand checkout name where it lives; a bare
     // `scripts/…` reads as the current repo's, which is not this one.
-    pattern: new RegExp(`(?<![\\w/.$-])scripts/(?:${MYCOMMAND_SCRIPTS.map(escape).join('|')})(?![\\w.-])`),
+    pattern: new RegExp(`(?<![\\w/.$-])scripts/(?:${MYCOMMAND_SCRIPTS.map(escapeRegExp).join('|')})(?![\\w.-])`),
     message: "MyCommand's own script; the repo a command runs in does not have it",
   },
   {
@@ -113,7 +113,7 @@ export const ALLOW = [
     file: 'commands/sync.md',
     rule: 'repo-path',
     contains: 'run `scripts/build-plugin.sh`',
-    reason: "names the maintainer flow, which runs inside a MyCommand checkout",
+    reason: 'names the maintainer flow, which runs inside a MyCommand checkout',
   },
 ];
 
