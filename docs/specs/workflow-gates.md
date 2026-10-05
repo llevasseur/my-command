@@ -4,7 +4,7 @@ title: Workflow gates
 description: The PreToolUse and Stop hooks, and the toolkit recoveries, that enforce the workflow rules mechanically instead of relying on an agent recalling them.
 tags: [process, hooks, toolkit, install, guardrails]
 timestamp: 2026-08-04
-updated: 2026-08-18
+updated: 2026-10-05
 dirty: true
 ---
 
@@ -524,6 +524,42 @@ three times in a row in one session and in five others — that answer is beside
 no directory to change into, the `cd` is a no-op the shell nonetheless aborts on, and the fix is to
 drop it. The denial now recognizes that case and hands back the command with the leading `cd`
 removed, plus where to read the cwd from instead.
+
+### Where a gate enforces a rule, the reason lives in the refusal
+
+A rule stated in a command's prose is read on every run, and most runs never break it. Its
+refusal is read once, by the run that just did. So where a `PreToolUse` gate already enforces a
+rule, the command prose states the rule in one line and says a gate refuses the shape; the
+explanation of *why* moves into that gate's refusal, so it shows up at the moment the rule
+applies.
+
+| Rule | Prose | Gate that enforces it, and the reason it now carries |
+|---|---|---|
+| One diff call (`src/shared/one-diff-call.md`) | one line | the second-diff gate: the `<sign><line number>` annotation, `gh pr diff` narrowed to a file, `diff.omitted`, and "a hunk not enough is a batched `Read`, never a diff" |
+| Batched discovery, items 1–4 (`src/shared/batched-discovery.md`) | one line | the serial-discovery gate (the enumeration search, "not a dependency", a complete file list is the enumeration), the redundant-read gate (what licenses a re-read), the repeat-probe gate (every `Read` as one block) |
+| `--message-file` / `--body-file` (`/task`, `/pr`) | one clause | the stdin-prose gate (why the heredoc fails mid-commit and mid-PR, and `$CLAUDE_JOB_DIR/tmp` as the file's home), backed by the shell-composed-write gate |
+| Not polling a verify report (`src/shared/verify-wait.md`) | one line | the watched-condition gates, through `verifyWaitOffer()`: the report is written atomically at exit, and a polling loop can outlast the session |
+
+**Prose stays wherever no gate enforces the rule**, because a shortened rule with nothing to
+refuse the shape would not be stated anywhere:
+
+- **Read-before-write after a compaction** (batched discovery item 2, formerly 5). `Edit` and
+  `Write` enforce the precondition themselves, and "The read-before-edit gate could not be right"
+  explains why no gate here does. The batched-`Read` fix is in nobody's refusal, so it keeps its
+  full paragraph.
+- **How to wait on verify** — `wait.blocking`, `wait.blockingCall`, `wait.input`, and one wait per
+  run. These prescribe which call to make. No gate can refuse an absent call, and nothing refuses
+  a second `Monitor` over the same file.
+- **Polling with no watch armed.** The watched-condition gates fire only while a `Monitor` or
+  backgrounded command follows the file. A bare `Read` of a report that does not exist yet is not
+  refused, so the one line keeps its reason ("written at exit, so every early read returns
+  nothing") instead of deferring the reason entirely.
+- **The Codex skills.** The Codex install registers no hooks (see "Install and off switch"), so no
+  gate exists there to carry the reason. `skills/<name>/SKILL.md` keeps the full explanation.
+
+Both properties still hold: each refusal is still keyed by `alreadyDenied`, so it is still shown
+once per subject, and the longer text changes nothing about when a gate fires. A hook test pins
+each moved reason to its refusal, plus the one-line length of `one-diff-call.md`.
 
 ### Two criteria have no mechanism in this repository
 

@@ -9,6 +9,8 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 ### Changed
 
+- **Gate refusals now explain what the command prompts no longer spell out.** The one-diff-call, batched-discovery, `--body-file`/`--message-file` and verify-polling rules each take one line in the commands. The reason shows up in the refusal when a run breaks the rule. See `docs/specs/workflow-gates.md`.
+
 - **Command prompts state each rule without the story behind it.** Incident counts, old flags, and "used to" passages moved into ADRs 0021 to 0034, and each prompt cites its ADR by number. Agents read fewer tokens per run and no longer reason about behaviour that is gone. See `docs/adrs/0021-command-prompts-state-the-rule-and-adrs-keep-the-history.md`.
 
 ## 2026-10-02
