@@ -1,6 +1,5 @@
-// Holds the command prose to src/manifest.json: which flags each command accepts, which
-// my-command-tools verbs and stores it touches, who claims an idea, and how claude-proxy and
-// the default branch are stated. A sentence that drifts from the manifest fails here.
+// Fails when command prose drifts from src/manifest.json: flags, verbs, stores, the idea
+// claimant, the claude-proxy dependency, and the default branch.
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
