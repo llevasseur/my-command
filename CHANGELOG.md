@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-10-05
+
+### Changed
+
+- **Subagents now close on what the report must deliver.** The delegate, doc-auditor, finisher and reviewer definitions say the final report goes to the dispatching run, must read without the subagent's tool output, and opens with a line that reads alone. They no longer describe how the harness ends a turn. See `docs/specs/subagent-definitions.md`.
+
 ## 2026-10-02
 
 ### Fixed
