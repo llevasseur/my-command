@@ -4,6 +4,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { recordFire } from './rules.mjs';
 
 /** Scratch, not configuration: under the OS temp dir so it clears itself between boots. */
 function stateDir() {
@@ -48,6 +49,8 @@ export function alreadyDenied(sessionId, gate, subject) {
   if (state[key]) return true;
   state[key] = Date.now();
   save(sessionId, state);
+  // A first refusal is the rule firing. Recording it cannot throw, so it cannot change the answer.
+  recordFire(`gate/${gate}`);
   return false;
 }
 

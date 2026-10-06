@@ -50,6 +50,7 @@ import {
 } from './lib/bash-shapes.mjs';
 import { deny, guard, readEvent } from './lib/io.mjs';
 import { isReadOnly } from './lib/read-only.mjs';
+import { recordFire } from './lib/rules.mjs';
 import { alreadyDenied, clearGate } from './lib/state.mjs';
 import {
   entries,
@@ -605,6 +606,8 @@ function relativeCd(event, session) {
 
     const found = nearbyPath(from, target);
 
+    // The one refusal not keyed through `alreadyDenied`, so it records its own fire.
+    recordFire('gate/cd');
     deny(
       `\`cd ${target}\` does not resolve from ${from}, so this command would fail with ` +
         `"no such file or directory" before doing anything.\n\n` +

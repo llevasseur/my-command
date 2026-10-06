@@ -4,7 +4,7 @@ title: fb
 description: Implement a feedback request — a thin wrapper around task, current branch by default or a worktree of an existing branch.
 tags: [command, workflow, git]
 timestamp: 2026-07-15
-updated: 2026-09-14
+updated: 2026-10-05
 ---
 
 # fb
@@ -47,6 +47,13 @@ with `worktree end --branch <branch>`. Cross-repo runs never enter it — a new 
 the target repo is preferred, and otherwise all work goes through absolute paths under
 the reported `path` and teardown runs from outside. Either way `worktree end` re-verifies
 the branch reached origin first.
+
+The edge cases in this paragraph (a missing branch, a branch another worktree holds, a
+cross-repo target, a refused teardown) are not in the command body. `/fb` reads them from
+`~/.claude/my-command/references/fb.md` (source `src/references/fb.md`; Codex
+`skills/fb/references/edge-cases.md`) only when one of them happens, so a clean `--target` run
+loads none of it. See
+[Commands as skills](../specs/commands-as-skills.md#reference-files-give-commands-the-same-gain).
 
 `--no-implement` lives on `fb` rather than `task` because `task` can only cut a new branch
 or stay on the current one, and verifying existing work means checking an existing branch

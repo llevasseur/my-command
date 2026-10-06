@@ -226,7 +226,7 @@ The store is append-only. Re-teaching a term adds a version rather than replacin
 
 **Why the hosted store and not a local file.** A file on one laptop strands the corpus on that laptop, gives an agent nothing to query, and cannot be reached at all from a cloud box that keeps no copy of your files. The Worker answers all three. claude-proxy's [ADR 0005](https://github.com/llevasseur/claude-proxy/blob/main/docs/adrs/0005-host-the-concept-store.md) records the decision, the D1 choice, and the nightly git backup that pays for it.
 
-**Post to the hosted store only, and never write `logs/concepts.jsonl` as well.** There is no dual-write, because two stores that each look complete is the failure the rollout order avoids. claude-proxy retires that file **only after every device runs this version of `/my-command:teach`** — see "Rolling this out to every device" below and ADR 0029.
+**Post to the hosted store only, and never write `logs/concepts.jsonl` as well.** There is no dual-write, because two stores that each look complete is the failure the rollout order avoids. **Read `~/.claude/my-command/references/teach.md` only when the user asks how to move a device onto the hosted store or when that file can be retired.**
 
 ## Step 8 — Close the run in a text-only turn
 
@@ -255,25 +255,6 @@ Two or three lines: the term, the field, whether the concept was saved. Never re
 - **Resolve the anchor before the message is composed, never as a call after it.** Mark the anchor todo item completed in the same tool-call turn as the run's last piece of real work, so nothing is left scheduled when that turn returns and the run's next action is the message itself. A standalone final mark lands and the message never follows, so the run records no outcome (ADR 0022). Handing back with it still open reads as abandoned, so close it — alongside a call you were already making, never as a turn of its own.
 - **Do not tack the report onto the tool call before it — in the two closing cases.** `ExitWorktree`, `worktree end`, `verify`, and a closing `gh` call are exactly the calls that sit at the end of an outermost or subagent run and swallow the outcome. The nested handback is the deliberate exception and the only one: there the report rides the parent's **next** call, which is what keeps the parent's turn alive.
 <!-- /include-block -->
-
-## Rolling this out to every device
-
-**Do this by hand on each machine. Nothing here is automated, and no command does it for you.** claude-proxy cannot retire `logs/concepts.jsonl` until every machine you teach from has finished both steps.
-
-On each device, in order:
-
-1. **Set both variables in the shell profile** (`~/.zshrc` or the equivalent), then open a new shell:
-
-   ```sh
-   export CONCEPTS_URL="https://<your-worker>.workers.dev"
-   export CONCEPTS_TOKEN="<the token from the Worker's secret store>"
-   ```
-
-   Read the token out of the Worker's secret store or your password manager. Never commit it, and never paste it into a repo file, a note, or a prompt.
-
-2. **Pull this version of the command** — run **`/my-command:sync`** in a session on that device, or `git pull` in the clone the commands are symlinked from. A device that has not pulled this version keeps writing to its own local file, and those concepts never reach the store.
-
-Confirm a device is done by teaching one throwaway concept and checking that the reply says `saved: 201`. When every device reports that, step 3 of the rollout is safe to start in claude-proxy.
 
 ## Notes
 
