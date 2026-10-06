@@ -19,6 +19,7 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 - **Installed commands no longer link to files only this repo has.** `/task`, `/trim`, `/wayfinder`, `/truncate`, `/dev`, `/teach` and `/work` cite ADRs by number instead of by relative path. `pnpm run check:commands` now lints `commands/` and `agents/` for repo-only paths, history wording, and more than 5 uppercase MUST/NEVER/CRITICAL per file.
 
+- **`/teach`, `/wayfinder` and `/fb` load their rare branches only when needed.** The `/teach` rollout steps, the reasons behind `/wayfinder`'s `--unattended` and `--integration`, and `/fb`'s `--target` edge cases moved to `~/.claude/my-command/references/<command>.md`, with the Codex copies in each skill's `references/`. See `docs/specs/commands-as-skills.md`.
 - **`/changelog`, `/pr` and `/task` follow the target repo's own convention first.** They read its `CLAUDE.md`/`AGENTS.md`, a changelog or PR skill it ships, and its existing entries or recent PR bodies, and fall back to MyCommand's shape only when the repo states none. The fallback drops its word and header counts, since `my-command-tools pr` already warns on body size. The command lint also flags this repo's own `scripts/` and `docs/features/<cmd>.md` placeholders.
 
 ### Fixed

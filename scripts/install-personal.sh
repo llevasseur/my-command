@@ -76,6 +76,24 @@ if [ -d "$AGENTS_SRC" ]; then
   echo "Linked $agents_linked subagent definition(s) into $AGENTS_DEST (skipped $agents_skipped)."
 fi
 
+# The reference files a command reads on demand, at the one path every Claude surface shares:
+# a commands/ subdirectory would register each file as a slash command of its own. Symlinked so
+# `git pull` updates them with the commands that point at them.
+REFS_SRC="$REPO_ROOT/src/references"
+if [ -d "$REFS_SRC" ]; then
+  REFS_DEST="$CLAUDE_DIR/my-command/references"
+  mkdir -p "$CLAUDE_DIR/my-command"
+  # A prior npx run leaves a real directory of copies here; `ln -sfn` would nest inside it.
+  rm -rf "$REFS_DEST"
+  ln -s "$REFS_SRC" "$REFS_DEST"
+  if [ "$(readlink "$REFS_DEST")" = "$REFS_SRC" ]; then
+    echo "Linked the command reference files into $REFS_DEST."
+  else
+    echo "failed to point $REFS_DEST at $REFS_SRC" >&2
+    exit 1
+  fi
+fi
+
 # Point the device-wide toolkit at this clone too, so the shared CLI tracks `git pull`
 # the same way the commands do. Symlinked rather than copied for exactly that reason.
 TOOLKIT_SRC="$REPO_ROOT/src/toolkit"
