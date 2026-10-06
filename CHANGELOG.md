@@ -10,6 +10,7 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 ### Changed
 
 - **Command prompts state each rule without the story behind it.** Incident counts, old flags, and "used to" passages moved into ADRs 0021 to 0034, and each prompt cites its ADR by number. Agents read fewer tokens per run and no longer reason about behaviour that is gone. See `docs/adrs/0021-command-prompts-state-the-rule-and-adrs-keep-the-history.md`.
+- **Subagents now close on what the report must deliver.** The delegate, doc-auditor, finisher and reviewer definitions say the final report goes to the dispatching run, must read without the subagent's tool output, and opens with a line that reads alone. They no longer describe how the harness ends a turn. See `docs/specs/subagent-definitions.md`.
 
 ## 2026-10-02
 

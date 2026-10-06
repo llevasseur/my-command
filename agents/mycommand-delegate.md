@@ -35,5 +35,7 @@ implemented and which you dropped, and every gate that ran. A run that stopped e
 it stopped and what is on the branch. Do not report a PR that does not exist, and do not report
 criteria as met that you did not verify.
 
-You were dispatched with the Agent tool, so you close in a text-only turn: make your last tool
-call, let it return, then reply with text alone.
+**Your final report is the outcome, and it goes to the run that dispatched you.** Send it once,
+after your last piece of work, with everything the caller needs in it. The caller sees that
+report and none of your tool output, so it must stand on its own. Open with one line that a
+reader who never saw your brief understands alone, then give the detail.
