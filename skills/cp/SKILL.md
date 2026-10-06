@@ -61,11 +61,9 @@ possible.
    backslash, and newline escaped correctly. The file-writing tool takes the
    content literally and the verb copies the bytes.
 
-   **The rotation belongs to the verb because a loop cannot be allowlisted.** The
-   ring used to be a `for i in 3 2 1` loop over `$((i + 1))` paths pasted into this
-   prompt. Every path in it was under `~/.claude`, so it carried no repository
-   write — and it was refused every time anyway, because an isolated session cannot
-   resolve a loop-computed path by reading it.
+   **The rotation belongs to the verb because a loop cannot be allowlisted.** An
+   isolated session refuses a loop-computed path even under `~/.claude`, and a
+   snippet that differs on every run can never be allowlisted (ADR 0026).
 
    The stash write happens on every platform; only the clipboard call is
    platform-detected, and the verb does that itself — `pbcopy`, `wl-copy`,

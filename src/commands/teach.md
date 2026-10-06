@@ -20,7 +20,7 @@ Input is the text in the `<command-args>` block above — your description, howe
 - **Take `<n>` from the heading, not from a count of the steps you have finished.** `## Step 1.5 — …` writes `1.5` and keeps the fraction. A command whose headings start at `## Step 0 — …` writes `0` for its first step. `<N>` is the number of `## Step …` headings in this command, counting a `Step 0` and a `Step 1.5` like any other.
 - **A command with no `## Step …` headings has no marker to write.** A single `## Steps` list declares nothing to anchor against, so open those runs in prose alone.
 - **Write the marker on entry, once.** Continuing inside a step you already opened writes nothing. Re-entering a step after a correction writes it again, because that is an entry.
-- **Keep naming the step in prose as well.** Every run recorded before this marker existed is read from that prose, and the prose is still the only reading for any message the marker is missing from. Dropping it to save a line costs the fallback and buys nothing.
+- **Keep naming the step in prose as well.** The prose is the only reading for any message the marker is missing from (ADR 0024). Dropping it to save a line costs the fallback and buys nothing.
 <!-- /include-block -->
 
 ## Flags
@@ -147,7 +147,7 @@ The write path is `POST <CONCEPTS_URL>/api/concepts`, and `my-command-tools conc
 
 **An unreachable store is not fatal.** `/improve` cannot run without the proxy because the suggestions *are* the input; `/teach`'s input is the user. Step 6 already printed the sentence and copied it, and that stands whatever this step does. So when `CONCEPTS_URL` or `CONCEPTS_TOKEN` is unset, or the POST fails, keep the sentence, keep the clipboard, skip only the save, and never stop the run over it.
 
-**Say why the save failed, in one short line.** The old behaviour skipped the save silently, which turned a broken store into quiet loss. One line, in the reply, naming the cause:
+**Say why the save failed, in one short line.** A silent skip turns a broken store into quiet loss (ADR 0029). One line, in the reply, naming the cause:
 
 - A variable is unset → name which one, and say the concept was not saved.
 - The store answered with an error → give the status code and the short reason it returned.
@@ -226,7 +226,7 @@ The store is append-only. Re-teaching a term adds a version rather than replacin
 
 **Why the hosted store and not a local file.** A file on one laptop strands the corpus on that laptop, gives an agent nothing to query, and cannot be reached at all from a cloud box that keeps no copy of your files. The Worker answers all three. claude-proxy's [ADR 0005](https://github.com/llevasseur/claude-proxy/blob/main/docs/adrs/0005-host-the-concept-store.md) records the decision, the D1 choice, and the nightly git backup that pays for it.
 
-**This is step 2 of a three-step rollout, and the order is a correctness requirement.** The service shipped first. `/teach` posts to it now. claude-proxy retires `logs/concepts.jsonl` and its schema **only after every device runs this version of `/teach`** — see "Rolling this out to every device" below. Deleting the file earlier would silently drop concepts written by a device still on the old command. Do not write the file here as well: there is no dual-write, and two stores that each look complete is the failure this ordering avoids.
+**Post to the hosted store only, and never write `logs/concepts.jsonl` as well.** There is no dual-write, because two stores that each look complete is the failure the rollout order avoids. claude-proxy retires that file **only after every device runs this version of `/teach`** — see "Rolling this out to every device" below and ADR 0029.
 
 ## Step 8 — Close the run in a text-only turn
 
@@ -243,7 +243,7 @@ Two or three lines: the term, the field, whether the concept was saved. Never re
 
 **Outermost and subagent: close in a text-only turn. Never skipped, never delegated.** The run is over when this session sends **one message carrying text and zero tool calls** — not when the work lands. That is the mechanic, not a style preference: a run's outcome is recorded only from a message with no tool call in it, so a message carrying the report *and* a tool call is recorded as a decision mid-run, and a run whose last message is a tool call records no outcome at all. Make the last tool call, let it return, then reply with text alone.
 
-**Nested inline: hand back without spending a text-only turn.** Emit the report and the return marker as **text in the same assistant message that carries the parent's next tool call**, so the turn continues into the parent's next step instead of ending and returning control to the user. A nested run that closes in a text-only turn strands every step its parent still owes — the recorded failure is a `/clean` and a `/pr` nested in one pipeline, where each child's text-only close handed control back before the parent could invoke the next child, run its teardown, or record its own outcome, leaving a live run reading as abandoned. So do not compose a message of text alone here, and do not stop to let the parent speak: say what this run did, write the marker, and make the parent's next call in that same message. The parent's own closing turn is the one that records the outcome for both.
+**Nested inline: hand back without spending a text-only turn.** Emit the report and the return marker as **text in the same assistant message that carries the parent's next tool call**, so the turn continues into the parent's next step instead of ending and returning control to the user. A nested run that closes in a text-only turn strands every step its parent still owes, including the next child, the teardown, and the parent's own outcome, so a live run reads as abandoned (ADR 0022). So do not compose a message of text alone here, and do not stop to let the parent speak: say what this run did, write the marker, and make the parent's next call in that same message. The parent's own closing turn is the one that records the outcome for both.
 
 - **Every exit routes here, not just the shipped one.** Finished; nothing to do; a gate still failing; a step blocked, refused, or awaiting my answer; the request abandoned as wrong. The wording changes; which of the three cases applies does not. A run that stopped early says where it stopped and what is on the branch, and leaves `/revive <thread id>` as the recovery path when the proxy thread id is available. A nested run that stopped early still hands back in the parent's turn — it reports the stop as text beside the parent's next call, and the parent decides whether to carry on.
 - **Say it in one self-contained line first**, then any detail. Someone who never saw the request should be able to read that line alone.
@@ -252,7 +252,7 @@ Two or three lines: the term, the field, whether the concept was saved. Never re
 - **Every prompt from me opens a task, and only a text-only reply closes it.** The transcript starts a new `## Task:` at each of my messages — a mid-run question, a correction, a recap prompt, a change of direction — and writes `- done:` only when a reply carries text and no tool call. So answer my message in text alone *before* returning to tool calls. That is true even inside a nested run: my message is addressed to the session, not to whichever command currently holds it. A run that reads the message and keeps working straight through leaves that task, and every task before it, with no outcome line. There is no `- done:` marker to type: that line is written for you from any text-only turn, and skipped entirely from a turn that carries a tool call.
 - **A reply to another session is not this turn either.** `SendMessage` is a tool call, so a run whose whole job was answering another agent records no outcome when that reply is the last thing it sends. Send the reply, let it return, then close in text alone — even when the closing message says much what the reply already said.
 - **A subagent's report is never the dispatching run's turn.** The outcome belongs to the session the run started in, so after an `Agent` call returns, close that run in a message of your own.
-- **Resolve the anchor before the message is composed, never as a call after it.** Mark the anchor todo item completed in the same tool-call turn as the run's last piece of real work, so nothing is left scheduled when that turn returns and the run's next action is the message itself. Marking it as a standalone final call is the recorded way this step fails: the mark lands every time, the message does not, and the run records no outcome. Handing back with it still open reads as abandoned, so close it — alongside a call you were already making, never as a turn of its own.
+- **Resolve the anchor before the message is composed, never as a call after it.** Mark the anchor todo item completed in the same tool-call turn as the run's last piece of real work, so nothing is left scheduled when that turn returns and the run's next action is the message itself. A standalone final mark lands and the message never follows, so the run records no outcome (ADR 0022). Handing back with it still open reads as abandoned, so close it — alongside a call you were already making, never as a turn of its own.
 - **Do not tack the report onto the tool call before it — in the two closing cases.** `ExitWorktree`, `worktree end`, `verify`, and a closing `gh` call are exactly the calls that sit at the end of an outermost or subagent run and swallow the outcome. The nested handback is the deliberate exception and the only one: there the report rides the parent's **next** call, which is what keeps the parent's turn alive.
 <!-- /include-block -->
 
@@ -271,7 +271,7 @@ On each device, in order:
 
    Read the token out of the Worker's secret store or your password manager. Never commit it, and never paste it into a repo file, a note, or a prompt.
 
-2. **Pull this version of the command** — run **`/sync`** in a session on that device, or `git pull` in the clone the commands are symlinked from. A device still on the old `/teach` keeps writing to its own local file, and those concepts never reach the store.
+2. **Pull this version of the command** — run **`/sync`** in a session on that device, or `git pull` in the clone the commands are symlinked from. A device that has not pulled this version keeps writing to its own local file, and those concepts never reach the store.
 
 Confirm a device is done by teaching one throwaway concept and checking that the reply says `saved: 201`. When every device reports that, step 3 of the rollout is safe to start in claude-proxy.
 

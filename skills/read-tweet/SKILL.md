@@ -14,15 +14,15 @@ Read the public X/Twitter post the user named and report its text.
    its own address and returns readability-extracted text. Try in order, using
    whatever web-fetch capability the session has, and stop at the first that
    returns the post:
-   1. `https://r.jina.ai/<full x.com URL>` — verified working 2026-08-15.
-   2. `https://xcancel.com/<user>/status/<id>` — returned a bot-check
-      interstitial on 2026-08-15.
+   1. `https://r.jina.ai/<full x.com URL>`.
+   2. `https://xcancel.com/<user>/status/<id>`.
    3. Any other Nitter-style mirror or reader available.
 3. Fall through to the next prefix whenever the response is a bot-check page, a
    login wall, or an empty body. That is the proxy failing, not the post
    missing: reachability depends on the proxy operator holding a live X session,
    so the working prefix changes over time and this order is a starting point,
-   not a guarantee. Promote a lower prefix here when it wins repeatedly.
+   not a guarantee. Promote a lower prefix here when it wins repeatedly, and add a dated row
+   to ADR 0034, which holds the observations behind the order.
 4. Report the handle, the post text verbatim, its date, the URL fetched, and
    which prefix worked.
 

@@ -233,8 +233,8 @@ step does. So when `CONCEPTS_URL` or `CONCEPTS_TOKEN` is unset, or the POST
 fails, keep the sentence, keep the clipboard, skip only the save, and never stop
 the run over it.
 
-**Say why the save failed, in one short line.** The old behaviour skipped the
-save silently, which turned a broken store into quiet loss. One line, in the
+**Say why the save failed, in one short line.** A silent skip turns a
+broken store into quiet loss (ADR 0029). One line, in the
 reply, naming the cause:
 
 - A variable is unset → name which one, and say the concept was not saved.
@@ -355,13 +355,11 @@ all from a cloud box that keeps no copy of the user's files. The Worker answers
 all three. claude-proxy's ADR 0005 records the decision, the database choice, and
 the nightly git backup that pays for it.
 
-**This is step 2 of a three-step rollout, and the order is a correctness
-requirement.** The service shipped first. This workflow posts to it now.
-claude-proxy retires its local `concepts.jsonl` and schema **only after every
-device runs this version** — see "Rolling this out to every device" below.
-Deleting the file earlier would silently drop concepts written by a device still
-on the old workflow. Do not write the file here as well: there is no dual-write,
-and two stores that each look complete is the failure this ordering avoids.
+**Post to the hosted store only, and never write the local `concepts.jsonl` as
+well.** There is no dual-write, because two stores that each look complete is
+the failure the rollout order avoids. claude-proxy retires that file **only after
+every device runs this version** — see "Rolling this out to every device" below
+and ADR 0029.
 
 ## Rolling this out to every device
 
@@ -385,8 +383,8 @@ On each device, in order:
 
 2. **Pull this version of the workflow** — the sync workflow in a session on that
    device, or `git pull` in the clone the skills are symlinked from. A device
-   still on the old version keeps writing to its own local file, and those
-   concepts never reach the store.
+   that has not pulled this version keeps writing to its own local file, and
+   those concepts never reach the store.
 
 Confirm a device is done by teaching one throwaway concept and checking that the
 reply says `saved: 201`. When every device reports that, step 3 of the rollout is

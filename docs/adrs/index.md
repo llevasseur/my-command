@@ -31,4 +31,18 @@ Add one with `okq new adr "<title>"`.
 | /task records Jev answers against the outcomes it already watches, and acts on none of them | [0018-task-records-jev-answers-against-its-own-outcomes.md](0018-task-records-jev-answers-against-its-own-outcomes.md) |
 | The first wired Jev site sheds work rather than adding it, so it is the last one that may ever be promoted | [0019-the-load-shedding-site-is-promoted-last.md](0019-the-load-shedding-site-is-promoted-last.md) |
 | The site whose wrong answer only wastes work is promoted first, even though its labels are the worse ones | [0020-the-adding-work-site-is-promoted-first.md](0020-the-adding-work-site-is-promoted-first.md) |
+| Command prompts state the current rule, and ADRs keep the history behind it | [0021-command-prompts-state-the-rule-and-adrs-keep-the-history.md](0021-command-prompts-state-the-rule-and-adrs-keep-the-history.md) |
+| A nested run hands back in its parent's turn, and the closing anchor resolves with the last real work | [0022-a-nested-run-hands-back-in-its-parents-turn.md](0022-a-nested-run-hands-back-in-its-parents-turn.md) |
+| Dispatched units work by absolute path in a worktree the dispatcher made | [0023-dispatched-units-work-by-absolute-path-in-a-worktree-the-dispatcher-made.md](0023-dispatched-units-work-by-absolute-path-in-a-worktree-the-dispatcher-made.md) |
+| STEP markers supplement prose step naming rather than replacing it | [0024-step-markers-supplement-prose-step-naming.md](0024-step-markers-supplement-prose-step-naming.md) |
+| A wait is one blocking call and a read sweep is one batched turn | [0025-waits-and-reads-are-one-call.md](0025-waits-and-reads-are-one-call.md) |
+| Shell shapes the harness refuses become toolkit flags and verbs | [0026-shell-shapes-the-harness-refuses-become-toolkit-flags.md](0026-shell-shapes-the-harness-refuses-become-toolkit-flags.md) |
+| Worktree teardown stops the processes rooted in the worktree first | [0027-worktree-teardown-stops-its-processes-first.md](0027-worktree-teardown-stops-its-processes-first.md) |
+| The ideas ledger is hosted, adjudicated on the dashboard, and claimed before dispatch | [0028-the-ideas-ledger-is-hosted-and-claimed-before-dispatch.md](0028-the-ideas-ledger-is-hosted-and-claimed-before-dispatch.md) |
+| Concepts live in a hosted store that /teach writes and /lookup and /learn read | [0029-concepts-live-in-a-hosted-store-that-lookup-and-learn-read.md](0029-concepts-live-in-a-hosted-store-that-lookup-and-learn-read.md) |
+| /health rolls up by owner, reads memory through the compressor, and re-measures before every signal | [0030-health-rolls-up-by-owner-and-re-measures-before-acting.md](0030-health-rolls-up-by-owner-and-re-measures-before-acting.md) |
+| The anti-slop lint runs in /task, where code can still change, not in /clean | [0031-the-anti-slop-lint-runs-in-task-not-clean.md](0031-the-anti-slop-lint-runs-in-task-not-clean.md) |
+| /improve routes a systematically wrong suggestion rule to a fix in its rule code | [0032-improve-routes-a-defective-rule-to-its-fix.md](0032-improve-routes-a-defective-rule-to-its-fix.md) |
+| /mc merges each branch with its own PR base and takes no base flag | [0033-mc-merges-each-branchs-own-pr-base.md](0033-mc-merges-each-branchs-own-pr-base.md) |
+| /read-tweet's reader-proxy order follows observed reachability, recorded here with dates | [0034-read-tweet-prefix-order-follows-observed-reachability.md](0034-read-tweet-prefix-order-follows-observed-reachability.md) |
 <!-- okq:index:end -->

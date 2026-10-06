@@ -61,9 +61,9 @@ Parse `--draft` / `-d`; treat remaining text as optional title or context.
      same way. A failed count above zero means the images are up but dead — name
      it in the report and do not re-post the comment by hand.
    - **Hand the body over as a file, never on stdin.** Write the description to a
-     path and pass `--body-file <absolute path>`. A description is multi-line by
-     nature, so `--body -` means composing a heredoc, and a heredoc is refused
-     wholesale inside an isolated worktree — which is exactly where this runs.
+     path and pass `--body-file <absolute path>`. A description is multi-line, and
+     a heredoc is refused wholesale inside an isolated worktree, which is where
+     this runs (ADR 0026).
    - A `must be a collaborator` GraphQL error is the wrong identity, not a
      permission to request. `gh`'s GraphQL-backed writes (`gh pr create`,
      `gh pr edit`) authenticate as whichever account is active, and this device is

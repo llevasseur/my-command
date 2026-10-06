@@ -23,8 +23,7 @@ the campaign's own pull requests target. It is read on the **start** operation
 only — that is where the base branch is cut and the map is written — and every
 later operation reads the resolved branch **out of the map** rather than
 re-deriving it. Absent the flag, the integration branch is the repository default
-branch reported by the repository helper's state verb, which is what every
-campaign started before this flag existed already used. Neither branch name is
+branch reported by the repository helper's state verb. Neither branch name is
 hardcoded: not `main`, and not whatever branch one campaign happens to name.
 
 It governs exactly three things and nothing else — the cut point for
@@ -231,7 +230,7 @@ note or in the plan.
    exactly as the integration branch is resolved once here: a campaign's mode is
    a property of how it was started, not of whoever resumes it. It governs one
    thing, which closing block the kickoff prompt is generated with, and a map
-   written before this line existed reads as `no`.
+   with no `Unattended` line reads as `no`.
 5. Create the plans you can specify now with the add-task operation, so the
    tickets land alongside the map.
 6. Create the campaign's final ticket here, alongside the rest: a real ticket,
