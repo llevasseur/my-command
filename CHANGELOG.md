@@ -7,6 +7,10 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 ## 2026-10-05
 
+### Added
+
+- **`/judge --report` lists rules that have stopped firing on current models.** Gate refusals and confirmed prose-rule suggestions record a fire per rule id, with model and date, beside the claude-proxy store. The report names zero- and one-fire rules as retirement candidates and changes nothing. See `docs/features/judge.md`.
+
 ### Changed
 
 - **Gate refusals now explain what the command prompts no longer spell out.** The one-diff-call, batched-discovery, `--body-file`/`--message-file` and verify-polling rules each take one line in the commands. The reason shows up in the refusal when a run breaks the rule. See `docs/specs/workflow-gates.md`.

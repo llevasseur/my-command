@@ -62,6 +62,8 @@ function hook(script, event, state = scratch()) {
       // `hooks.log`. And the outcome gate stands down in a non-interactive session, so a suite
       // run from inside a background job would exempt every case below from the gate it asserts.
       CLAUDE_CONFIG_DIR: state,
+      // A refusal records a rule fire, and these fixtures must not land in the real record.
+      MY_COMMAND_RULE_FIRES: join(state, 'rule-fires.jsonl'),
       CLAUDE_JOB_DIR: '',
       MY_COMMAND_NON_INTERACTIVE: '',
       CI: '',
@@ -2079,6 +2081,8 @@ function stopWithEnv(session, line, extra) {
       MY_COMMAND_HOOK_STATE: state,
       MY_COMMAND_HOOKS: '1',
       CLAUDE_CONFIG_DIR: state,
+      // A refusal records a rule fire, and these fixtures must not land in the real record.
+      MY_COMMAND_RULE_FIRES: join(state, 'rule-fires.jsonl'),
       CLAUDE_JOB_DIR: '',
       MY_COMMAND_NON_INTERACTIVE: '',
       CI: '',
