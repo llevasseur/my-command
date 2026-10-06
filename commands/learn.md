@@ -34,7 +34,7 @@ Input is the text in the `<command-args>` block above. Parse leading flags off t
 
 ## A lease is three rules, and they are the whole design
 
-1. **The install is temporary by default.** The run records the skill, the concept it came from, and the task it was installed for, then removes it at the exit. The removal **rides the closing-turn anchor above**, which is what makes it happen on the exits nobody plans for — a run that gives up, is refused, or hits a failing gate returns the skill instead of leaving it behind. `/my-command:improve` settled that release path for an idea claim; this reuses it rather than inventing a second one.
+1. **The install is temporary by default.** The run records the skill, the concept it came from, and the task it was installed for, then removes it at the exit. The removal **rides the closing-turn anchor above**, which is what makes it happen on the exits nobody plans for — a run that gives up, is refused, or hits a failing gate returns the skill instead of leaving it behind. `/my-command:work` settled that release path for an idea claim; this reuses it rather than inventing a second one.
 2. **The removal is conditional on this lease having done the installing.** A skill the user already had is **never** removed, whatever else happens. That is why the lease records whether the install was real or a no-op, and why the probe in Step 3 runs **before** the install rather than after it.
 3. **There is no download counter, and building one is the mistake to avoid.** An install is counted by writing the concept record `/my-command:teach` writes anyway, so "how often did we download this" is a group-by on the read side rather than a number this command maintains. See Step 4.
 
@@ -91,7 +91,7 @@ Then write the lease into the harness todo/task list, as its own item, immediate
 - `return <skill> — leased for <task id>, concept <term>` when this run installed it.
 - `keep <skill> — already installed before this run, never remove` when it did not.
 
-**The task id is the branch when there is one.** Read it from `my-command-tools state` (`|| true` — this command runs outside a repo just as happily), and fall back to the first few words of the task text. The branch is the same holder string `/my-command:improve` picks for an idea claim, and for the same reason: it is the one identifier a later reader can check for themselves.
+**The task id is the branch when there is one.** Read it from `my-command-tools state` (`|| true` — this command runs outside a repo just as happily), and fall back to the first few words of the task text. The branch is the same holder string `/my-command:work` picks for an idea claim, and for the same reason: it is the one identifier a later reader can check for themselves.
 
 **A failed install is a stated skip, not a stop.** Say the package and what the CLI returned, record no lease, and carry on to the task unaided. There is nothing to remove and nothing to count.
 

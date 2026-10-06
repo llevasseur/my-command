@@ -56,7 +56,7 @@ Parse leading flags off `$ARGUMENTS`:
    in-progress merge (`.git/MERGE_HEAD`) before stopping — do **not** stash, reset, or
    abort the user's work. Tell them to commit or stash and stop.
 4. Update and fast-forward local main: `git fetch --all --prune`, then
-   `git checkout main && git pull --ff-only origin main`. If the fast-forward fails, stop
+   `git checkout main`, then `git pull --ff-only origin main` as its own call. If the fast-forward fails, stop
    and report — local `main` diverged and needs a human.
 
 ## Select the PRs
@@ -146,7 +146,7 @@ For each PR (number `N`, branch `B`):
    these never do.
 
 5. **Refresh local main** before the next PR so its `/my-command:mc` resolves against the just-merged
-   result: `git checkout main && git pull --ff-only origin main`. (Skip the pull effect for
+   result: `git checkout main`, then `git pull --ff-only origin main` as its own call. (Skip the pull effect for
    queued/auto PRs whose merge hasn't landed yet — `/my-command:mc` fetches main itself regardless.)
 
 ## Finish

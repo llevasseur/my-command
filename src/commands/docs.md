@@ -5,7 +5,7 @@ argument-hint: "[--here|-h] [--base <branch>] [--bundle|-b <dir>] [--refresh|-r]
 
 Bring this repo's doc bundle back in line with the code it describes, then make the result lean. Three kinds of rot, all handled here: a doc that no longer matches the code (**stale**), a feature with no doc at all (**missing**), and a doc for something that was removed (**obsolete**). A final phase applies [truncate](truncate.md)'s claim-preserving density rules to the dirty queue, so a successful run never knowingly ships noisy docs.
 
-Both phases run inside one `/task` workflow (Step 0). Like `/task`, it defaults to a fresh worktree off the latest `main`. Never invoke `/truncate` as a nested command; run its density rules inline before `/task` commits.
+Both phases run inside one `/task` workflow (Step 0). Like `/task`, it defaults to a fresh worktree off the latest default branch (`defaultBranch` from `my-command-tools state`). Never invoke `/truncate` as a nested command; run its density rules inline before `/task` commits.
 
 The bundle is an [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) collection of Markdown-with-frontmatter docs, queried with [okq](https://github.com/mikevalstar/okq). Use `okq` to explore, write, and check it — not `grep`. The `okq-reference`, `okq-explore`, `okq-write-okf`, and `okq-maintain` skills are the contract; load them via the `Skill` tool as each step needs them.
 
@@ -29,8 +29,8 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 **Workspace** — where the reconciliation happens. Passed through to `/task` in Step 0; they mean exactly what they mean there.
 
 - `--here` / `-h` — do NOT create a worktree. Reconcile on the **current branch** as it is now.
-- `--base <branch>` — branch off `<branch>` instead of `main`. Ignored when `--here` is set.
-- With neither, the default is a fresh worktree off the latest `main`.
+- `--base <branch>` — branch off `<branch>` instead of the default branch. Ignored when `--here` is set.
+- With neither, the default is a fresh worktree off the latest default branch (`defaultBranch` from `my-command-tools state`).
 
 **Passes and scope** — what gets reconciled. These stay here; they are not `/task` flags.
 
@@ -50,7 +50,7 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 This command does no branching, committing, or PR work of its own. It resolves **where** the reconciliation happens, then delegates to `/task`, which owns workspace setup, commits, `/clean`, `/pr`, and worktree teardown. Do this **before** Step 1 — the bundle you audit must be the one inside the workspace `/task` set up, not the checkout you started in.
 
 1. Map the workspace flag to the `/task` invocation:
-   - **Default (neither flag):** `/task <criteria>` — a fresh worktree off the latest `main`, exactly like `/task`'s own default. The branch type is always `docs` (this command only ever changes docs), so: `docs/<kebab-summary>` — e.g. `docs/reconcile-bundle`, or scope-specific like `docs/refresh-pr-command`.
+   - **Default (neither flag):** `/task <criteria>` — a fresh worktree off the latest default branch (`defaultBranch` from `my-command-tools state`), exactly like `/task`'s own default. The branch type is always `docs` (this command only ever changes docs), so: `docs/<kebab-summary>` — e.g. `docs/reconcile-bundle`, or scope-specific like `docs/refresh-pr-command`.
    - **`--here` / `-h`:** `/task --here <criteria>` — reconcile on the current branch, no worktree. If that branch is `main`, `/task` creates a feature branch in place; let it.
    - **`--base <branch>`:** `/task --base <branch> <criteria>` — worktree branched off `<branch>`.
 2. The `<criteria>` you hand `/task` is **this command's Steps 1–7 with the passes and scope already resolved** — state them in plain language rather than as flags (e.g. "reconcile the doc bundle per `/docs` Steps 1–7: refresh pass only, scoped to `features/pr`, then run the integrated density phase over the resulting dirty queue"). `/task`'s Step 2 *is* this pipeline.
