@@ -69,15 +69,15 @@ The ideas ledger is a hosted store behind claude-proxy's `operator` Worker. **A 
 
 ### The CLI still runs out of the claude-proxy checkout
 
-The `ideas` CLI is a script in claude-proxy, so the checkout has to resolve as well — the hosted store changed where the data lives, not where the command lives.
+The `ideas` CLI is a script in claude-proxy, so the checkout resolves as well — the hosted store changed where the data lives, not where the command lives. **claude-proxy is an _optional_ dependency of this command**: when the checkout does not resolve, the MCP tools below are the fallback.
 
 <!-- include-block: shared/claude-proxy-checkout.md -->
-**This command cannot run without claude-proxy**, and its location is not hardcoded — it comes from the environment, exactly as [revive](revive.md) resolves the transcript store.
+**claude-proxy is required unless this command declares it optional at its own step** (the last bullet below), and its location is not hardcoded — it comes from the environment, exactly as [revive](revive.md) resolves the transcript store.
 
 - **`CLAUDE_PROXY_STORE` (required)** — the directory the proxy writes session transcripts into. Read it from the environment (`printenv CLAUDE_PROXY_STORE`); never guess a path and never derive one from a repo checkout or clone location.
 - **Probe an optional variable as `printenv <NAME> || true`, and never in the same call as the required one.** `printenv A; printenv B` exits on B's status, so one unset optional variable reports the whole probe as failed even though A resolved — a half-success read as a failure, and then re-run. One call per variable, with `|| true` on every optional one.
-- Derive the two paths the suggestion tooling needs from it: the **log directory** is its parent (the store is `<logDir>/sessions`), and the **claude-proxy checkout** is the directory above that. Confirm the checkout by looking for its `server/package.json`.
-- **If `CLAUDE_PROXY_STORE` is unset, or its path is missing, or the derived checkout has no `server/package.json`, stop.** Say which of the three failed, that this command has no suggestions to read without it, and that it must be exported in the shell environment — e.g. in `~/.zshrc`:
+- Derive the two paths the claude-proxy CLI needs from it: the **log directory** is its parent (the store is `<logDir>/sessions`), and the **claude-proxy checkout** is the directory above that. Confirm the checkout by looking for its `server/package.json`.
+- **If `CLAUDE_PROXY_STORE` is unset, or its path is missing, or the derived checkout has no `server/package.json`, stop.** Say which of the three failed, what this command reads through claude-proxy, and that it must be exported in the shell environment — e.g. in `~/.zshrc`:
 
   ```sh
   export CLAUDE_PROXY_STORE="$HOME/path/to/claude-proxy/logs/sessions"
@@ -172,7 +172,7 @@ Every selected idea becomes one criterion group of its own. **One idea is one gr
 **Compose each idea's brief with the CLI rather than assembling it yourself:**
 
 ```sh
-LOG_DIR="<logDir>" pnpm --filter server ideas prompt --slug <slug>
+pnpm --filter server ideas prompt --slug <slug>
 ```
 
 `ideaTaskPrompt` in claude-proxy's `packages/core/src/ideas.ts` already assembles the title, the rationale in `/ideate`'s fixed bullet order, every citation, the claim lines, and — the part hand-assembly always loses — the human's `comment`, quoted verbatim as **build criteria that override the rationale where the two disagree**. Re-deriving a brief per subagent is how two briefs for one idea drift apart, and reading `comment` is the only way a signer's build instruction reaches the subagent at all.

@@ -68,7 +68,6 @@ If the target repo is not the repo this session started in, prefer starting a ne
 
 - Either path ends by delegating to `/my-command:task`, so `/my-command:task`'s own rules apply.
 - If the feedback request is too vague to act on, ask me one focused clarifying question before setting anything up. Under `--no-implement` an empty request is not vague — it means the verifier infers intent from the diff and the PR body.
-- `--no-implement` together with `--no-verify` leaves `/my-command:task` nothing to do but `/my-command:clean` and `/my-command:pr`. That is legal — it re-cleans a branch and refreshes its PR — but name it in the report so nobody expects a verdict.
 - Report the branch name up front and the PR number/URL at the end (from `/my-command:task`/`/my-command:pr`). <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
 
 ## Close the run in a text-only turn

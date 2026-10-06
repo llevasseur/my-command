@@ -1,0 +1,303 @@
+{
+  "$comment": "Cross-command facts, one place. src/manifest.test.mjs holds every src/commands/<name>.md, its skill and src/shared/ to what this file says.",
+  "stores": {
+    "ideas": {
+      "description": "The hosted ideas ledger behind the operator Worker.",
+      "proposedBy": ["ideate"],
+      "claimedBy": "work",
+      "markedBy": ["work"],
+      "claimTerm": "idea claim",
+      "env": ["IDEAS_URL", "IDEAS_TOKEN"],
+      "forbiddenEnv": ["LOG_DIR"],
+      "cli": "pnpm --filter server ideas",
+      "mcpTools": ["ideas_list", "ideas_claim", "ideas_mark"]
+    },
+    "suggestions": {
+      "description": "claude-proxy suggestion buckets and suggestion-status.json, read from the proxy logs.",
+      "judgedBy": "judge",
+      "markedBy": ["improve", "judge"],
+      "env": ["LOG_DIR"],
+      "cli": "pnpm --filter server suggestions"
+    },
+    "concepts": {
+      "description": "The hosted concept store.",
+      "writtenBy": ["teach"],
+      "countedBy": ["learn"],
+      "readBy": ["lookup"],
+      "env": ["CONCEPTS_URL", "CONCEPTS_TOKEN"],
+      "verb": "concepts"
+    },
+    "shots": {
+      "description": "Per-run screenshot records under ~/.my-command/shots/<repo>/<branch>/.",
+      "recordedBy": ["task", "verify"],
+      "readBy": ["task", "verify", "ticket"],
+      "verb": "shots"
+    }
+  },
+  "commands": {
+    "changelog": {
+      "flags": [],
+      "verbs": ["state"],
+      "stores": [],
+      "claudeProxy": "none"
+    },
+    "clean": {
+      "flags": [],
+      "verbs": ["scope"],
+      "stores": [],
+      "claudeProxy": "none"
+    },
+    "cp": {
+      "flags": ["--again", "--verbatim"],
+      "verbs": ["stash"],
+      "stores": [],
+      "claudeProxy": "none"
+    },
+    "dev": {
+      "flags": ["--dry-run", "--into", "--no-grill", "--parallel", "--resume", "--rounds", "--sequential", "--slug"],
+      "verbs": ["cleanup", "prs", "state", "verify", "worktree"],
+      "stores": [],
+      "claudeProxy": "none",
+      "baseBranch": "defaultBranch"
+    },
+    "diagram": {
+      "flags": ["--comment", "--dry-run", "--kind", "--out", "--target"],
+      "verbs": ["identity", "pr", "state"],
+      "stores": [],
+      "claudeProxy": "none"
+    },
+    "docs": {
+      "flags": ["--add", "--base", "--bundle", "--dry-run", "--here", "--prune", "--refresh", "--yes"],
+      "verbs": ["state"],
+      "stores": [],
+      "claudeProxy": "none",
+      "baseBranch": "defaultBranch"
+    },
+    "fb": {
+      "flags": ["--no-implement", "--target", "--worktree"],
+      "verbs": ["scope", "worktree"],
+      "stores": [],
+      "claudeProxy": "none"
+    },
+    "god": {
+      "flags": [
+        "--add",
+        "--auto",
+        "--base",
+        "--draft",
+        "--fix",
+        "--here",
+        "--into",
+        "--merge",
+        "--no-review",
+        "--rebase",
+        "--squash"
+      ],
+      "verbs": ["cleanup", "doctor", "prs", "state", "verify", "worktree"],
+      "stores": [],
+      "claudeProxy": "none",
+      "baseBranch": "defaultBranch"
+    },
+    "health": {
+      "flags": ["--fix", "--top", "--yes"],
+      "verbs": [],
+      "stores": [],
+      "claudeProxy": "none"
+    },
+    "ideate": {
+      "flags": ["--area", "--dry-run", "--range"],
+      "verbs": ["concepts", "doctor"],
+      "stores": ["ideas"],
+      "claudeProxy": "optional",
+      "claudeProxyFallback": "the ideas service MCP tools"
+    },
+    "improve": {
+      "flags": ["--add", "--base", "--draft", "--dry-run", "--here", "--range", "--regressed"],
+      "verbs": [],
+      "stores": ["suggestions"],
+      "claudeProxy": "required"
+    },
+    "judge": {
+      "flags": ["--dry-run", "--range"],
+      "verbs": [],
+      "stores": ["suggestions"],
+      "claudeProxy": "required"
+    },
+    "learn": {
+      "flags": ["--concept", "--dry-run", "--field", "--keep", "--skill"],
+      "verbs": ["concepts", "state"],
+      "stores": ["concepts"],
+      "claudeProxy": "none"
+    },
+    "lookup": {
+      "flags": ["--field", "--limit"],
+      "verbs": ["concepts"],
+      "stores": ["concepts"],
+      "claudeProxy": "none"
+    },
+    "manage": {
+      "flags": [
+        "--add",
+        "--base",
+        "--delegate",
+        "--draft",
+        "--dry-run",
+        "--here",
+        "--idea",
+        "--into",
+        "--max",
+        "--mesh",
+        "--parallel",
+        "--sequential",
+        "--sub"
+      ],
+      "verbs": ["state", "worktree"],
+      "stores": [],
+      "claudeProxy": "none"
+    },
+    "mc": {
+      "flags": ["--here", "--target"],
+      "verbs": ["cleanup", "prs", "state", "verify", "worktree"],
+      "stores": [],
+      "claudeProxy": "none"
+    },
+    "merge-deps": {
+      "flags": ["--auto", "--dry-run", "--label", "--merge", "--rebase", "--squash"],
+      "verbs": ["cleanup", "doctor", "prs", "state", "verify", "worktree"],
+      "stores": [],
+      "claudeProxy": "none"
+    },
+    "pr": {
+      "flags": ["--draft"],
+      "verbs": ["identity", "pr", "state", "worktree"],
+      "stores": [],
+      "claudeProxy": "none"
+    },
+    "read-tweet": {
+      "flags": [],
+      "verbs": [],
+      "stores": [],
+      "claudeProxy": "none"
+    },
+    "review": {
+      "flags": ["--here", "--target"],
+      "verbs": ["prs", "scope", "state", "verify", "worktree"],
+      "stores": [],
+      "claudeProxy": "none"
+    },
+    "revive": {
+      "flags": ["--dry-run", "--source"],
+      "verbs": ["state", "verify", "worktree"],
+      "stores": [],
+      "claudeProxy": "none"
+    },
+    "standup": {
+      "flags": ["--since"],
+      "verbs": ["state"],
+      "stores": [],
+      "claudeProxy": "none"
+    },
+    "sync": {
+      "flags": ["--check"],
+      "verbs": ["doctor", "state"],
+      "stores": [],
+      "claudeProxy": "none"
+    },
+    "task-bootstrap": {
+      "flags": ["--base", "--draft", "--here"],
+      "verbs": ["commit", "doctor", "state", "worktree"],
+      "stores": [],
+      "claudeProxy": "none"
+    },
+    "task": {
+      "flags": [
+        "--add",
+        "--base",
+        "--draft",
+        "--here",
+        "--jev",
+        "--no-implement",
+        "--no-verify",
+        "--sub",
+        "--worktree"
+      ],
+      "verbs": [
+        "app",
+        "browser",
+        "commit",
+        "doctor",
+        "identity",
+        "jev-record",
+        "pr",
+        "shots",
+        "state",
+        "verify",
+        "worktree"
+      ],
+      "stores": ["shots"],
+      "claudeProxy": "none",
+      "baseBranch": "defaultBranch"
+    },
+    "teach": {
+      "flags": ["--here"],
+      "verbs": ["concepts"],
+      "stores": ["concepts"],
+      "claudeProxy": "none"
+    },
+    "ticket": {
+      "flags": ["--template", "--yes"],
+      "verbs": ["prs", "scope", "shots", "state"],
+      "stores": ["shots"],
+      "claudeProxy": "none"
+    },
+    "trim": {
+      "flags": [],
+      "verbs": ["trim"],
+      "stores": [],
+      "claudeProxy": "none"
+    },
+    "truncate": {
+      "flags": ["--all", "--base", "--bundle", "--dry-run", "--here", "--yes"],
+      "verbs": [],
+      "stores": [],
+      "claudeProxy": "none"
+    },
+    "verify": {
+      "flags": ["--no-verify", "--rounds", "--smoke"],
+      "verbs": ["app", "browser", "doctor", "prs", "scope", "shots", "state"],
+      "stores": ["shots"],
+      "claudeProxy": "none"
+    },
+    "warm": {
+      "flags": ["--TTL"],
+      "verbs": [],
+      "stores": [],
+      "claudeProxy": "none"
+    },
+    "wayfinder": {
+      "flags": ["--add", "--base", "--draft", "--here", "--integration", "--unattended"],
+      "verbs": ["cleanup", "identity", "pr", "prs", "state", "verify", "worktree"],
+      "stores": [],
+      "claudeProxy": "none"
+    },
+    "work": {
+      "flags": [
+        "--add",
+        "--area",
+        "--base",
+        "--delegate",
+        "--draft",
+        "--dry-run",
+        "--here",
+        "--idea",
+        "--into",
+        "--max",
+        "--repo"
+      ],
+      "verbs": ["concepts", "doctor", "worktree"],
+      "stores": ["ideas"],
+      "claudeProxy": "optional",
+      "claudeProxyFallback": "the ideas_list, ideas_claim and ideas_mark MCP tools"
+    }
+  }
+}
