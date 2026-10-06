@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { test } from 'node:test';
-import { EMPHASIS_CAP, lint, sources } from './lint-commands.mjs';
+import { EMPHASIS_CAP, lint, MYCOMMAND_SCRIPTS, sources } from './lint-commands.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 
@@ -23,6 +23,24 @@ test('sibling links, full URLs, placeholders and index paths pass', () => {
   assert.deepEqual(rules('cites `docs/specs/<name>.md` and `docs/adrs/<nnnn>-<slug>.md`'), []);
   assert.deepEqual(rules('handed `docs/specs/index.md` and `docs/adrs/index.md`'), []);
   assert.deepEqual(rules('ADR 0011 gives a pre-filtered comment'), []);
+});
+
+test("this repo's own scripts and the feature-doc placeholder are flagged", () => {
+  assert.deepEqual(rules('`scripts/check-changelog.mjs` fails any bullet over 80 words.'), ['repo-path']);
+  assert.deepEqual(rules('run `scripts/build-plugin.sh` after an edit'), ['repo-path']);
+  assert.deepEqual(rules('The why lives in `docs/features/<cmd>.md`.'), ['repo-path']);
+  assert.deepEqual(rules('see docs/features/<name>.md'), ['repo-path']);
+});
+
+test('per-repo scripts, located paths and concrete feature docs pass', () => {
+  assert.ok(MYCOMMAND_SCRIPTS.includes('check-commands.sh'));
+  assert.ok(!MYCOMMAND_SCRIPTS.includes('bootstrap-worktree.sh'));
+  assert.ok(!MYCOMMAND_SCRIPTS.some((f) => f.endsWith('.test.mjs')));
+  assert.deepEqual(rules('run `scripts/bootstrap-worktree.sh --print-verify-contract`'), []);
+  assert.deepEqual(rules('`bash "$REPO/scripts/install-personal.sh"`'), []);
+  assert.deepEqual(rules('`~/.claude/plugins/marketplaces/my-command/scripts/install-marketplace-personal.sh`'), []);
+  assert.deepEqual(rules('a script gating docs (`scripts/check-*.sh`)'), []);
+  assert.deepEqual(rules('add the missing docs/features/review.md entry'), []);
 });
 
 test('history wording is flagged', () => {

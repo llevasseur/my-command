@@ -3,7 +3,8 @@
 // another repository with no MyCommand checkout beside them.
 //
 //   repo-path  a link or path that resolves only here: a relative link out of its directory,
-//              src/toolkit|hooks|shared/…, a named spec, an ADR file. Full URLs pass.
+//              src/toolkit|hooks|shared/…, a named spec, an ADR file, one of this repo's own
+//              scripts/, a docs/features/<cmd>.md placeholder. Full URLs pass.
 //   history    wording that narrates how a command changed ("used to", "now refuses",
 //              "before this flag existed", "recorded runs", "the old <thing>").
 //   emphasis   more than EMPHASIS_CAP uppercase MUST/NEVER/CRITICAL in one file. The cap is
@@ -15,6 +16,17 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+/** Scripts every repo may carry: /task-bootstrap writes this one into the repo it runs in. */
+const PER_REPO_SCRIPTS = new Set(['bootstrap-worktree.sh']);
+
+/** This repo's own scripts/, which no repo a command is installed into carries. */
+export const MYCOMMAND_SCRIPTS = readdirSync(join(ROOT, 'scripts'))
+  .filter((f) => !f.endsWith('.test.mjs') && !PER_REPO_SCRIPTS.has(f))
+  .sort();
+
+/** @param {string} s */
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Uppercase MUST/NEVER/CRITICAL allowed per file: the current maximum (dev.md). */
 export const EMPHASIS_CAP = 5;
@@ -42,6 +54,18 @@ const LINE_RULES = [
     rule: 'repo-path',
     pattern: /(?<![\w/.-])docs\/adrs\/\d{4}-/,
     message: 'ADR file path; cite it by number ("ADR 0011")',
+  },
+  {
+    rule: 'repo-path',
+    // `$REPO/scripts/…` and an absolute path into a MyCommand checkout name where it lives; a bare
+    // `scripts/…` reads as the current repo's, which is not this one.
+    pattern: new RegExp(`(?<![\\w/.$-])scripts/(?:${MYCOMMAND_SCRIPTS.map(escapeRegExp).join('|')})(?![\\w.-])`),
+    message: "MyCommand's own script; the repo a command runs in does not have it",
+  },
+  {
+    rule: 'repo-path',
+    pattern: /(?<![\w/.-])docs\/features\/<[^>\s]*>\.md/,
+    message: "MyCommand's per-command feature doc layout; another repo has no docs/features/<cmd>.md",
   },
   {
     rule: 'history',
@@ -84,6 +108,12 @@ export const ALLOW = [
     rule: 'history',
     contains: 'but the code now uses 40000',
     reason: 'quotes the then/now phrasing the auditor is told never to write',
+  },
+  {
+    file: 'commands/sync.md',
+    rule: 'repo-path',
+    contains: 'run `scripts/build-plugin.sh`',
+    reason: 'names the maintainer flow, which runs inside a MyCommand checkout',
   },
 ];
 
