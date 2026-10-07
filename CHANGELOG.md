@@ -17,7 +17,7 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 ### Changed
 
-- **`/pr` is now five lines of intent instead of 143.** Experimental: it keeps the goal and the rules a model would otherwise break, and drops the step mechanics and shared includes. The `pr` verb still does the pushing, assets, screenshots and body warnings. See `docs/features/pr.md`.
+- **`/pr` is now five lines of intent instead of 143.** It keeps the goal and the rules a model would otherwise break, and drops the step mechanics and shared includes. The `pr` verb still does the pushing, assets, screenshots and body warnings. See `docs/features/pr.md`.
 
 ### Fixed
 

@@ -119,8 +119,8 @@ states the return marker, and the wizard still globs both source directories. Th
 on—if someone replaces a glob with a hardcoded list, the check fails. The `commands` job in
 `.github/workflows/ci-pr.yml` blocks the PR on it.
 
-Commands named in the gate's `MINIMAL` list (currently `/pr`) are an experiment in
-intent-only prompts: they skip the closing-turn and step-marker includes and must instead
+Commands named in the gate's `MINIMAL` list (currently `/pr`) are intent-only
+prompts: they skip the closing-turn and step-marker includes and must instead
 name the nested handback and `RETURN /<command>` in their own words. See
 [`docs/features/pr.md`](docs/features/pr.md).
 

@@ -34,12 +34,11 @@ existing draft stays a draft, flag or not, and `/pr` never promotes one — the 
 `gh pr ready --undo` only to move a non-draft PR *into* draft. Only
 `/god` promotes a draft, deliberately, right before merging.
 
-### The prompt states intent only (experimental)
+### The prompt states intent only
 
 `src/commands/pr.md` is a minimal command: five lines of intent and none of the shared
-includes. The bet is that a current frontier model needs the goal and the few rules it would
-otherwise get wrong, not the step-by-step mechanics and incident history the other commands
-carry. If `/pr` runs as well as it did at 143 lines, other commands can follow.
+includes. It carries the goal and the few rules a model would otherwise get wrong, not
+step-by-step mechanics or incident history.
 
 What the five lines keep:
 
@@ -60,16 +59,14 @@ What the five lines keep:
   beside the invoking command's next tool call, a direct run closes in a message with no tool
   call, and every run ends with `RETURN /pr`.
 
-What it drops: the numeric self-check before publishing, the `STEP <n>/<N>` markers, the
-closing-turn and anchor includes, and the shared `pr-body-shape.md` rule. The `pr` verb
-still measures the body and returns `bodyWarnings` when it is over budget or has no bullets,
-and the prompt tells the run to act on it.
+It has no numeric self-check before publishing, no `STEP <n>/<N>` markers, and no
+closing-turn or anchor includes. The `pr` verb measures the body and returns `bodyWarnings`
+when it is over budget or has no bullets, and the prompt tells the run to act on it.
 
-`scripts/check-commands.sh` lists `/pr` in `MINIMAL`. That exempts it from invariants 6, 15
-and 19 and from the `pr-body-shape` include check. Instead the gate requires the close, the
-nested handback, the exact `RETURN /pr` marker, and the kept rules: default-branch stop, ship
-what's committed, ask about uncommitted changes, never out of draft, `--body-file`, and `bodyWarnings`. Revert the experiment by restoring the
-previous `src/commands/pr.md` and emptying `MINIMAL`.
+`scripts/check-commands.sh` lists `/pr` in `MINIMAL`, which exempts it from invariants 6, 15
+and 19. Instead the gate requires the close, the nested handback, the exact `RETURN /pr`
+marker, and the kept rules: default-branch stop, ship what's committed, ask about uncommitted
+changes, never out of draft, `--body-file`, and `bodyWarnings`.
 
 ### Assets in the description are never dropped
 
