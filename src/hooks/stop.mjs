@@ -39,15 +39,15 @@ import { alreadyDenied, logPath, timesDenied } from './lib/state.mjs';
 import { entries, nestedRunOpen, returnMarker, timeline, turns } from './lib/transcript.mjs';
 
 /**
- * How close to the stop the last turn's timestamp must be for the transcript to be suspect.
- * The records are appended live, so a closing message written moments before the hook ran may
- * not be on disk yet — and judging from a transcript missing its last turn refuses the very
- * message the gate asked for.
+ * How long to keep re-reading a transcript whose closing message has not landed. The hook can run
+ * before the harness has written that message, and judging the turn before it refuses the very
+ * message the gate asked for. Past this the message is late rather than missing, and the gate
+ * lets the stop through.
  */
-const FLUSH_WINDOW_MS = 2000;
+const FLUSH_LIMIT_MS = 1500;
 
-/** How long to wait before the one re-read. Long enough for a flush, short enough to vanish. */
-const FLUSH_PAUSE_MS = 250;
+/** The pause between re-reads. */
+const FLUSH_STEP_MS = 100;
 
 /** Tools that hand control back by design, so a turn ending on one is a pause, not an ending. */
 const YIELDS = new Set(['AskUserQuestion', 'ExitPlanMode', 'Monitor']);
@@ -107,12 +107,16 @@ guard(() => {
   // dispatched anything and says nothing about whose transcript this is. It stood the gate down
   // for exactly the delegated runs the misses were recorded in.
   if (nonInteractive()) return;
-  let call = judge(timeline(entries(path)));
+  // The final message's text, from the harness's memory: it spoke, whatever the file holds yet.
+  if (event.lastAssistantMessage?.trim()) return;
+  let call = judge(entries(path));
   // Only re-read when about to say something, so the pause is paid on the rare stop rather
-  // than on every one. Once: if the record still is not there, it is not arriving.
-  if (call.verdict !== 'silent' && Date.now() - call.last.at < FLUSH_WINDOW_MS) {
-    pause(FLUSH_PAUSE_MS);
-    call = judge(timeline(entries(path)));
+  // than on every one. Bounded: a closing message that never lands is let through, not refused.
+  const deadline = Date.now() + FLUSH_LIMIT_MS;
+  while (call.verdict !== 'silent' && unflushed(call.last)) {
+    if (Date.now() >= deadline) return;
+    pause(FLUSH_STEP_MS);
+    call = judge(entries(path));
   }
   if (call.verdict === 'silent') return;
 
@@ -196,10 +200,11 @@ guard(() => {
 /**
  * What this transcript says about how the run stopped. Every exemption lives here rather than
  * at the call site, so the re-read below judges by exactly the same rules as the first pass.
- * @param {(import('./lib/transcript.mjs').Turn | null)[]} line
+ * @param {Record<string, any>[]} records
  * @returns {any}
  */
-function judge(line) {
+function judge(records) {
+  const line = timeline(records);
   const all = turns(line);
   const last = all[all.length - 1];
   if (!last) return { verdict: 'silent' };
@@ -212,7 +217,7 @@ function judge(line) {
 
   // Nothing is owed. A text-only turn already closed the current prompt, so whatever this
   // stop is, it is not a run ending without an outcome.
-  const owed = unclosedPrompts(line);
+  const owed = unclosedPrompts(timeline(records, { typedOnly: true }));
   if (owed === 0) return { ...seen, owed, verdict: 'silent' };
 
   // A nested inline run hands back by putting its report and `RETURN /<command>` in the same
@@ -241,6 +246,20 @@ function judge(line) {
   if (nestedRunOpen(line)) return { ...seen, owed, verdict: 'silent' };
 
   return { ...seen, owed, verdict: saidNothing ? 'block' : 'warn' };
+}
+
+/**
+ * Whether the turn the transcript ends on cannot be the message a stop follows, so the real one
+ * has not been written yet. A stop follows a message that called nothing, and the harness writes
+ * that message after the stop hooks may already be running. Two shapes give it away: a turn of
+ * tool calls whose results have all come back, which the model always answers with another
+ * message, and a turn of thinking alone, whose text block is the next record of the same message.
+ * @param {import('./lib/transcript.mjs').Turn | undefined} turn
+ * @returns {boolean}
+ */
+function unflushed(turn) {
+  if (!turn || turn.hasText) return false;
+  return turn.toolUses.every((u) => u.answered);
 }
 
 /**
@@ -323,8 +342,8 @@ function nonInteractive() {
 }
 
 /**
- * Block this process for `ms`, which a hook may do and an agent may not. Used once, to let a
- * transcript record finish landing before it is read a second time.
+ * Block this process for `ms`, which a hook may do and an agent may not. Used to let the closing
+ * message finish landing before the transcript is read again.
  * @param {number} ms
  */
 function pause(ms) {
@@ -336,21 +355,28 @@ function pause(ms) {
 }
 
 /**
- * How many user prompts in this session were never answered by a text-only turn. Each
+ * How many typed prompts in this session were never answered by a text-only turn. Each
  * prompt opens a task and only a text-only reply closes it. Counted for the record; only
  * the current one can still be closed, so 0 means this run owes nothing.
+ *
+ * Read from a `typedOnly` timeline, so the command bodies a nested pipeline loads, and the
+ * feedback a blocked stop writes, are part of the prompt they follow rather than prompts of
+ * their own. Prompts with no turn between them are one task too: one reply answers them both.
  * @param {(import('./lib/transcript.mjs').Turn | null)[]} line
  * @returns {number}
  */
 function unclosedPrompts(line) {
   let unclosed = 0;
   let open = false;
+  let worked = false;
   for (const item of line) {
     if (item === null) {
-      if (open) unclosed += 1;
+      if (open && worked) unclosed += 1;
       open = true;
+      worked = false;
       continue;
     }
+    worked = true;
     if (open && item.hasText && item.toolUses.length === 0) open = false;
   }
   return unclosed + (open ? 1 : 0);

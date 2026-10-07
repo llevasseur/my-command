@@ -17,6 +17,8 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 ### Fixed
 
+- **The Stop hook no longer refuses a closing message that is still being written.** It could run before the harness wrote the final message to the transcript, and then blocked with "carries no text at all" or "called nothing but Bash, TaskUpdate". It now waits up to 1.5s for that message, uses the `last_assistant_message` field when the harness sends it, and lets the stop through if the message never lands.
+- **The Stop hook counts only typed prompts.** Command bodies loaded by a typed `/command` or by `Skill`, and the hook's own feedback, were each counted as a prompt, so a nested `/fb` > `/task` > `/clean` > `/pr` run was reported as leaving 7 prompts without an outcome when it had answered all of them.
 - **The closing-turn anchor can be written with `TaskCreate` again.** On harnesses where the task list is `TaskCreate`, the gate refused the "close the run in a text-only turn" item every command writes before its first call, and told the run to drop it. The gate now lets that item through until the run has done real work, and still refuses it after.
 - **A prompt typed after earlier work no longer counts that work against the new run.** The hooks skipped a typed prompt because the transcript stores it as plain text, and they read a `/task` body that mentions `<task-notification>` as a background-task notice. So a `/task` started mid-conversation had its closing-turn anchor refused over edits made for an earlier prompt. Both now mark the start of a new run.
 
