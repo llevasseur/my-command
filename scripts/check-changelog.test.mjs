@@ -72,7 +72,7 @@ test("the repo's own CHANGELOG.md passes the gate", () => {
   assert.deepEqual(
     over.map((b) => `line ${b.line}: ${b.words} words`),
     [],
-    'a bullet in the newest two dated sections is over the limit; cut it (src/shared/changelog-entry-shape.md)',
+    'a bullet in the newest two dated sections is over the limit; cut it (docs/features/changelog.md)',
   );
 
   const out = execFileSync(process.execPath, [join(ROOT, 'scripts', 'check-changelog.mjs')], { encoding: 'utf8' });

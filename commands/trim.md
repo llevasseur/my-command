@@ -35,7 +35,7 @@ Trimming is safe only when `C1=Y`, `C2=Y`, `C3=Y`, `N1=N`, `N2=N`, and `N3=Y`. B
 
 ## Start with the facts
 
-Four of those gates are computable from this session's transcript, so do not argue them from memory — **run `my-command-tools trim` first** and read the fields. It answers C1's returned-calls half, C3, N1's repeat arithmetic, and N2, from the same `src/hooks/lib/` machinery the workflow gates use. No key, no network call, no fail-open path: a computation that cannot be wrong has nothing to fail open from. [ADR 0007](../../docs/adrs/0007-deterministic-trim-gates-stay-a-facts-verb.md) is why these never reach a classifier.
+Four of those gates are computable from this session's transcript, so do not argue them from memory — **run `my-command-tools trim` first** and read the fields. It answers C1's returned-calls half, C3, N1's repeat arithmetic, and N2, from the same library the workflow gates use. No key, no network call, no fail-open path: a computation that cannot be wrong has nothing to fail open from. MyCommand's ADR 0007 is why these never reach a classifier.
 
 - `gates.<id>.answer` is `Y`, `N`, or `unknown`, and `gates.<id>.evidence` is the sentence to carry into your own evidence line.
 - **`unknown` is an answer, not a failure.** C2 RECOVERABLE and N3 VERIFIED come back `unknown` always — they are judgements about meaning and sufficiency, and yours to make. So are the clauses marked `residual` inside C1 and N1: whether the session is mid-tool-sequence, and whether compressing would hide useful negative evidence. A gate the verb marks `partial` is half-answered, and you owe the other half.

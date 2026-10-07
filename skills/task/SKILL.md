@@ -161,12 +161,12 @@ lands every time, and the message meant to follow it never arrives.
    agent which started it, so it is closed by the round that opened it and swept
    by the next run; nothing ever closes every session on the device, which would
    take a browser a person is driving.
-7. Add changelog work when the repository tracks it, and hold each entry to a
-   measured shape: one bullet per user-visible change, a bold lead of at most
-   12 words naming it, then 2 to 3 sentences under 60 words, with at most one
-   "because" clause and no nested lists. Leave out internal wiring unless it
-   changes what someone sees, and link the feature doc for the reasoning rather
-   than restating it. Commit logical scoped
+7. Add changelog work when the repository tracks it, in the repository's own
+   convention: its written guidance, then a changelog skill or command it ships,
+   then the shape of its newest entries. Only when it states none, write one
+   bullet per user-visible change with a short bold lead and a sentence or two,
+   at most one "because" clause, no nested lists, and no internal wiring that
+   changes nothing someone sees. Commit logical scoped
    changes with explicit paths through `my-command-tools commit` when available;
    never sweep in unrelated work. For a multi-line message, write it to a file and
    pass `--message-file <absolute path>` rather than piping a heredoc on stdin — a

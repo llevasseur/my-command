@@ -20,6 +20,7 @@ import * as jevRecord from './verbs/jev-record.mjs';
 import * as judge from './verbs/judge.mjs';
 import * as pr from './verbs/pr.mjs';
 import * as prs from './verbs/prs.mjs';
+import * as rules from './verbs/rules.mjs';
 import * as scope from './verbs/scope.mjs';
 import * as shots from './verbs/shots.mjs';
 import * as stash from './verbs/stash.mjs';
@@ -47,6 +48,7 @@ const VERBS = {
   scope,
   trim,
   judge,
+  rules,
   'jev-record': jevRecord,
   verify,
   app,

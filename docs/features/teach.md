@@ -4,7 +4,7 @@ title: teach
 description: Learn the real name for something you can only describe, and leave with one Simplified Technical English sentence you can say back to any agent.
 tags: [command, vocabulary, learning]
 timestamp: 2026-08-02
-updated: 2026-08-09
+updated: 2026-10-05
 dirty: true
 ---
 
@@ -176,6 +176,12 @@ missing the optional fields still reads, and a newer record carrying them still
 writes.
 
 ### Rolling this out to every device
+
+The command does not carry these steps. They live in a reference file it reads only when you
+ask how to move a device onto the store or when the local file can be retired:
+`src/references/teach.md`, installed at `~/.claude/my-command/references/teach.md`, and
+`skills/teach/references/rollout.md` for Codex. See
+[Commands as skills](../specs/commands-as-skills.md#reference-files-give-commands-the-same-gain).
 
 This is **step 2 of a three-step rollout** and the ordering is a correctness
 requirement, not a convenience. The Worker shipped first; `/teach` posts to it

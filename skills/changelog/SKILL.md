@@ -10,16 +10,17 @@ diff and commits since the task base; never guess.
 
 ## Entry shape
 
-Write to these numbers, not to a feeling of brevity. One bullet per change a
-user can see. Open each bullet with a bold lead of at most 12 words that names
-the change. Follow it with 2 to 3 sentences totalling under 60 words; a bullet
-over 80 words fails the repository's `scripts/check-changelog.mjs` gate. Give at
-most one "because" clause and no nested lists. Leave out internal wiring such as
-helper reuse or how one call pipes into another unless it changes visible
-behavior. Put the reasoning in `docs/features/<cmd>.md` and link that file
-instead of repeating it.
+The repository's own convention decides the shape. Look for it in this order
+and follow the first source that states one: written guidance in `CLAUDE.md`,
+`AGENTS.md`, or `CONTRIBUTING.md`; a changelog skill or command the repository
+ships; then the newest entries in `CHANGELOG.md`, matching their heading
+format, grouping, area tags, PR references, length, and voice. Only when the
+repository states none, use this fallback: one bullet per change a user can
+see, a short bold lead naming the change, then a sentence or two on what a
+reader sees or gets. Give at most one "because" clause and no nested lists, and
+leave out internal wiring unless it changes visible behavior.
 
-1. Find the root `CHANGELOG.md` and read repository guidance. Match only the heading format (dated or versioned), the grouping (Added / Changed / Fixed / Removed), and any area tags or PR references. Do not copy the length or prose style of existing entries; the shape above decides that.
+1. Find the root `CHANGELOG.md` and settle the convention in the order above. Fall back to Keep a Changelog (`## [Unreleased]` or `## YYYY-MM-DD`, grouped under Added / Changed / Fixed / Removed) only when the repository sets no precedent.
 2. Add one factual entry to that shape in the appropriate newest-first location. Group related work into one bullet and do not invent PR or issue numbers.
 3. Edit directly. Do not commit unless the surrounding workflow authorizes it.
 4. Report the exact entry and location.

@@ -30,6 +30,7 @@ const SKILLS_DIR = join(PKG_ROOT, 'skills');
 const AGENTS_DIR = join(PKG_ROOT, 'agents');
 const TOOLKIT_SRC = join(PKG_ROOT, 'src', 'toolkit');
 const HOOKS_SRC = join(PKG_ROOT, 'src', 'hooks');
+const REFERENCES_SRC = join(PKG_ROOT, 'src', 'references');
 const TOOLKIT_BIN = 'my-command-tools';
 const REPO = 'llevasseur/my-command';
 const MARKETPLACE = 'my-command';
@@ -369,6 +370,9 @@ function installOpencodeSkills(dest = agentsSkillsDir(), { skipExisting = false 
       if (skipExisting && existsSync(join(skillDir, 'SKILL.md'))) continue;
       mkdirSync(skillDir, { recursive: true });
       copyFileSync(join(SKILLS_DIR, skill, 'SKILL.md'), join(skillDir, 'SKILL.md'));
+      // A skill's on-demand reference files sit beside it, and its SKILL.md points at them there.
+      const refs = join(SKILLS_DIR, skill, 'references');
+      if (existsSync(refs)) cpSync(refs, join(skillDir, 'references'), { recursive: true, force: true });
       copied++;
     }
     return { ...base, installed: true, copied, symlinked: symlinked > 0 };
@@ -419,6 +423,44 @@ function installAgents(root = deviceRoot()): AgentsResult {
   } catch (err) {
     return { ...base, reason: err instanceof Error ? err.message : String(err) };
   }
+}
+
+interface ReferencesResult {
+  installed: boolean;
+  dest: string;
+  copied?: number;
+  /** The directory is a symlink into a checkout, so it was left alone. */
+  symlinked?: boolean;
+  reason?: string;
+}
+
+// The on-demand reference files commands point at, at one path both Claude choices share. Not
+// under commands/, where each file would register as a slash command. COPIED, like installAgents().
+function installReferences(root = deviceRoot()): ReferencesResult {
+  const dest = join(root, 'references');
+  const base: ReferencesResult = { installed: false, dest };
+  if (!existsSync(REFERENCES_SRC)) return { ...base, reason: `no references in ${REFERENCES_SRC}` };
+  try {
+    // A dev install links this directory back into its clone; replacing it would cut that link.
+    if (lstatSync(dest, { throwIfNoEntry: false })?.isSymbolicLink())
+      return { ...base, installed: true, symlinked: true };
+    // Replace wholesale, so a reference deleted upstream does not linger.
+    rmSync(dest, { recursive: true, force: true });
+    cpSync(REFERENCES_SRC, dest, { recursive: true });
+    const copied = readdirSync(dest).filter((f) => f.endsWith('.md')).length;
+    return { ...base, installed: true, copied };
+  } catch (err) {
+    return { ...base, reason: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+function reportReferences(result: ReferencesResult) {
+  if (!result.installed) {
+    console.log(`\nCommand reference files not installed (${result.reason}).`);
+    return;
+  }
+  if (result.symlinked) console.log(`\nCommand reference files: ${result.dest} links into a checkout, left alone.`);
+  else console.log(`\nInstalled ${result.copied} command reference file(s) into ${result.dest}.`);
 }
 
 interface ToolkitResult {
@@ -735,12 +777,14 @@ async function main() {
   if (choice === '1') {
     await installPlugin();
     reportToolkit(installToolkit());
+    reportReferences(installReferences());
     reportAgents(installAgents());
     reportConceptStore();
     reportHooks(await installHooks());
   } else if (choice === '2') {
     await installPersonal();
     reportToolkit(installToolkit());
+    reportReferences(installReferences());
     reportAgents(installAgents());
     reportConceptStore();
     reportHooks(await installHooks());
@@ -791,6 +835,7 @@ export {
   installOpencodeCommands,
   installOpencodeSkills,
   installPersonal,
+  installReferences,
   installToolkit,
   linkOnPath,
 };

@@ -320,6 +320,12 @@ act for a campaign started unattended. It stays per-invocation, and the
 escalation still needs either a `start` a human gave the flag to or a commit to
 the map — both of which land in a diff.
 
+The command body states the rules for `--unattended` and `--integration` and leaves out the
+reasons above. It reads them from `~/.claude/my-command/references/wayfinder.md` (source
+`src/references/wayfinder.md`; Codex `skills/wayfinder/references/flag-rationale.md`) only when
+a run has to justify how either flag behaves. See
+[Commands as skills](../specs/commands-as-skills.md#reference-files-give-commands-the-same-gain).
+
 ## Related
 
 - Command source: `src/commands/wayfinder.md`
