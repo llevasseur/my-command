@@ -967,18 +967,80 @@ test('EnterWorktree: a cwd that is not a repository root is left alone', () => {
   assert.equal(denied(answer), false);
 });
 
+/** A run that has already changed a file since the prompt. */
+const workedRun = () =>
+  transcript([
+    'prompt',
+    [{ name: 'Bash', input: { command: 'my-command-tools state' } }],
+    [{ name: 'Edit', input: { file_path: '/repo/src/a.ts', old_string: 'a', new_string: 'b' } }],
+  ]);
+
 test('closing turn: a TaskCreate that schedules the run-s own final message is refused', () => {
   // One recorded run created exactly this task — "Deliver the final report as a message with text
   // and zero tool calls" — and then sent nothing, because creating it was itself the last call.
   const answer = hook(PRE_TOOL_USE, {
     session_id: 'ct1',
-    transcript_path: transcript(['prompt']),
+    transcript_path: workedRun(),
     cwd: scratch(),
     tool_name: 'TaskCreate',
     tool_input: { subject: 'Deliver the final report as a message with text and zero tool calls' },
   });
   assert.equal(denied(answer), true);
   assert.match(answer.hookSpecificOutput.permissionDecisionReason, /text alone/);
+});
+
+test('closing turn: the start-of-run anchor written with TaskCreate is allowed', () => {
+  // `shared/closing-turn-anchor.md` asks for this item before the first tool call.
+  for (const spec of [
+    ['prompt'],
+    [
+      'prompt',
+      [{ name: 'Skill', input: { skill: 'task' } }],
+      [
+        { name: 'TaskCreate', input: { subject: 'Fix the gate' } },
+        { name: 'Bash', input: { command: 'my-command-tools state' } },
+        { name: 'Read', input: { file_path: '/repo/AGENTS.md' } },
+      ],
+    ],
+  ]) {
+    const answer = hook(PRE_TOOL_USE, {
+      session_id: 'ct3',
+      transcript_path: transcript(/** @type {any} */ (spec)),
+      cwd: scratch(),
+      tool_name: 'TaskCreate',
+      tool_input: { subject: 'Close the run in a text-only turn' },
+    });
+    assert.equal(denied(answer), false);
+  }
+});
+
+test('closing turn: work done for an earlier prompt does not make this run-s anchor an ending', () => {
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'ct4',
+    transcript_path: transcript([
+      'prompt',
+      [{ name: 'Edit', input: { file_path: '/repo/src/a.ts', old_string: 'a', new_string: 'b' } }],
+      'text',
+      'prompt',
+    ]),
+    cwd: scratch(),
+    tool_name: 'TaskCreate',
+    tool_input: { subject: 'Close the run in a text-only turn' },
+  });
+  assert.equal(denied(answer), false);
+});
+
+test('closing turn: the anchor wording after real work is refused once, then let through', () => {
+  const state = scratch();
+  const event = {
+    session_id: 'ct5',
+    transcript_path: workedRun(),
+    cwd: scratch(),
+    tool_name: 'TaskCreate',
+    tool_input: { subject: 'Close the run in a text-only turn' },
+  };
+  assert.equal(denied(hook(PRE_TOOL_USE, event, state)), true);
+  assert.equal(denied(hook(PRE_TOOL_USE, event, state)), false);
 });
 
 test('closing turn: an ordinary TaskCreate is untouched', () => {
@@ -990,6 +1052,72 @@ test('closing turn: an ordinary TaskCreate is untouched', () => {
     tool_input: { subject: 'Add the changelog entry for the new gate' },
   });
   assert.equal(denied(answer), false);
+});
+
+test('closing turn: a typed prompt and a command body that names a notice both start the run', () => {
+  // The harness writes a typed prompt with `content` as a bare string, and a `/task` body loaded
+  // by `Skill` mentions `<task-notification>`. Neither may be skipped as a boundary, or the walk
+  // back reaches the previous conversation's edits and refuses this run's anchor.
+  const path = join(scratch(), 'transcript.jsonl');
+  /** @param {number} i */
+  const at = (i) => new Date(Date.now() - 600_000 + i * 1000).toISOString();
+  /** @param {number} i @param {unknown} content @param {Record<string, unknown>} [extra] */
+  const user = (i, content, extra = {}) => ({
+    type: 'user',
+    uuid: `u${i}`,
+    timestamp: at(i),
+    message: { role: 'user', content },
+    ...extra,
+  });
+  /** @param {number} i @param {string} name @param {Record<string, unknown>} input */
+  const turn = (i, name, input) => ({
+    type: 'assistant',
+    uuid: `a${i}`,
+    timestamp: at(i),
+    message: { id: `m${i}`, role: 'assistant', content: [{ type: 'tool_use', id: `t${i}`, name, input }] },
+  });
+  const records = [
+    user(0, 'fix the thing'),
+    turn(1, 'Edit', { file_path: '/repo/src/a.ts', old_string: 'a', new_string: 'b' }),
+    user(2, '<task-notification><tool-use-id>bg</tool-use-id> exited 0</task-notification>'),
+    user(3, 'yes please, using /task'),
+    turn(4, 'Skill', { skill: 'task' }),
+    user(5, [{ type: 'text', text: 'Take a task to a PR. Wait for each `<task-notification>`.' }], { isMeta: true }),
+  ];
+  writeFileSync(path, `${records.map((r) => JSON.stringify(r)).join('\n')}\n`);
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'ct7',
+    transcript_path: path,
+    cwd: scratch(),
+    tool_name: 'TaskCreate',
+    tool_input: { subject: 'Close the run in a text-only turn' },
+  });
+  assert.equal(denied(answer), false);
+});
+
+test('timeline: a notice written as a bare string is still not a prompt', () => {
+  const at = new Date().toISOString();
+  const line = timeline([
+    {
+      type: 'assistant',
+      uuid: 'a0',
+      timestamp: at,
+      message: { id: 'm0', role: 'assistant', content: [{ type: 'text', text: 'waiting' }] },
+    },
+    {
+      type: 'user',
+      uuid: 'u1',
+      timestamp: at,
+      message: { role: 'user', content: '<task-notification>done</task-notification>' },
+    },
+    {
+      type: 'user',
+      uuid: 'u2',
+      timestamp: at,
+      message: { role: 'user', content: '<system-reminder>\n[SYSTEM NOTIFICATION - NOT USER INPUT]\nx' },
+    },
+  ]);
+  assert.equal(line.includes(null), false);
 });
 
 test('oversized read: a whole-file Read that cannot fit the token cap is refused, a slice is not', () => {

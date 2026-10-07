@@ -11,6 +11,7 @@ Add one with `okq new feature "<title>"`.
 
 | Title | File |
 |-------|------|
+| ab | [ab.md](ab.md) |
 | changelog | [changelog.md](changelog.md) |
 | clean | [clean.md](clean.md) |
 | cp | [cp.md](cp.md) |

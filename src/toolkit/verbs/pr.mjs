@@ -1,10 +1,13 @@
 // `pr` — push the branch and create or update its pull request.
 // The prose stays with the caller; this verb owns the mechanics that are identical
 // every time: push, detect an existing PR, pick create-vs-edit, report number and URL.
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { bool, str } from '../lib/flags.mjs';
 import { ghWrite, originSlug } from '../lib/gh.mjs';
 import { run as exec, ToolkitError, UsageError } from '../lib/proc.mjs';
 import { commitsSince, currentBranch, defaultBranch, repoRoot, resolveBase } from '../lib/repo.mjs';
+import { inSandbox } from '../lib/sandbox-root.mjs';
 import {
   attachShots,
   commentId,
@@ -20,7 +23,20 @@ import { textArg } from '../lib/text-arg.mjs';
 const WORD_BUDGET = 400;
 const WORD_LIMIT = 600;
 
-export const usage = `pr [--title <text>] --body-file <path> [--draft] [--base <branch>] [--retitle] [--no-shots]
+// `/ab` worktree mode runs each command version on a throwaway branch under this prefix. Such
+// a branch is always previewed, so a version that forgets `--dry-run` still publishes nothing.
+export const AB_BRANCH_PREFIX = 'ab/';
+
+/**
+ * Whether the `ab/` preview guard holds: an `ab/` branch outside a sandbox clone, where
+ * `/ab --scenario` arms publish for real.
+ * @param {string} cwd @param {string} branch
+ */
+export function abGuard(cwd, branch) {
+  return branch.startsWith(AB_BRANCH_PREFIX) && !inSandbox(cwd);
+}
+
+export const usage = `pr [--title <text>] --body-file <path> [--draft] [--base <branch>] [--retitle] [--no-shots] [--dry-run]
 
 Push the current branch and create or update its PR.
 
@@ -37,6 +53,15 @@ Push the current branch and create or update its PR.
   --base <branch>     Target branch (default: the repo's default branch).
   --retitle           Also update the title of an existing PR.
   --no-shots          Do not embed the branch's screenshots, whatever the diff touched.
+  --dry-run           Push nothing and write nothing to GitHub. Print the title, the body
+                      exactly as it would be published, and whether it would create or
+                      update, and save that preview to \`pr-dry-run.json\` in the worktree's
+                      own git directory. \`gh\` is consulted only to tell create from update,
+                      and only when origin already has the branch: a branch never pushed
+                      cannot have a PR, so it reads as \`create\` with no call at all. A branch
+                      under \`${AB_BRANCH_PREFIX}\` is always previewed, flag or not, except in a
+                      repo under the sandbox root ($MY_COMMAND_SANDBOX_ROOT, then "root" in
+                      ~/.my-command/ab/config.json, then ~/.my-command/ab/sandboxes), where /ab --scenario arms publish for real.
 
 \`--body -\` reads the description from stdin, and the \`PreToolUse\` gate refuses that
 form on sight — the only way to put multi-line prose on stdin is a heredoc, and a
@@ -144,15 +169,21 @@ function restCall(cwd, method, path, body) {
 }
 
 /**
- * What the verb reports back — one shape for both paths. `assetsPreserved` is an update's
- * count; `bodyWarnings` appears only when the description's shape is worth flagging.
+ * What the verb reports back — one shape for every path. `assetsPreserved` is an update's
+ * count; `bodyWarnings` appears only when the description's shape is worth flagging. A dry
+ * run reports `create` or `update` in the present tense, carries the `title` and `body` it
+ * would have published and the `preview` path, and has no `identity`, since nothing wrote.
  * @typedef {object} PrResult
- * @property {'created' | 'updated'} action
+ * @property {'created' | 'updated' | 'create' | 'update'} action
  * @property {number | null} number
  * @property {string | null} url
  * @property {string} branch
  * @property {boolean} draft
- * @property {string} identity
+ * @property {string} [identity]
+ * @property {boolean} [dryRun]
+ * @property {string} [title]
+ * @property {string} [body]
+ * @property {string} [preview]
  * @property {string} [base]
  * @property {number} [assetsPreserved]
  * @property {string[]} [bodyWarnings]
@@ -186,6 +217,10 @@ export function run(ctx) {
   const title = str(ctx.flags.title)?.trim() || firstCommitSubject(cwd, str(ctx.flags.base));
   // Measured on the prose the caller wrote, before the screenshot table is appended.
   const warnings = bodyWarnings(authored);
+
+  if (bool(ctx.flags['dry-run']) || abGuard(cwd, branch)) {
+    return dryRun(ctx, cwd, { branch, base, title, authored, draft, warnings });
+  }
 
   const push = exec('git', ['push', '-u', 'origin', 'HEAD'], { cwd });
   if (!push.ok) throw new ToolkitError('git push failed', { code: push.code, stderr: push.stderr });
@@ -277,6 +312,44 @@ export function run(ctx) {
 function numberIn(url) {
   const m = url?.match(/\/pull\/(\d+)(?:[/?#]|$)/);
   return m ? Number(m[1]) : null;
+}
+
+/**
+ * What `pr` would publish, published nowhere.
+ *
+ * The body is what an update would write, assets carried over. Screenshots are left out,
+ * since posting them is a write.
+ * @param {import('../cli.mjs').Ctx} ctx @param {string} cwd
+ * @param {{branch: string, base: string, title: string, authored: string, draft: boolean,
+ *   warnings: string[]}} plan
+ * @returns {PrResult}
+ */
+function dryRun(ctx, cwd, { branch, base, title, authored, draft, warnings }) {
+  const pushed = exec('git', ['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`], { cwd }).ok;
+  const existing = pushed ? findExisting(cwd) : null;
+  const retitle = bool(ctx.flags.retitle);
+
+  /** @type {PrResult} */
+  const preview = existing
+    ? {
+        dryRun: true,
+        action: 'update',
+        number: existing.number,
+        url: existing.url,
+        branch,
+        title: retitle ? title : existing.title,
+        body: preserveAssets(authored, existing.body ?? '').body,
+        draft: draft || existing.isDraft,
+      }
+    : { dryRun: true, action: 'create', number: null, url: null, branch, base, title, body: authored, draft };
+  if (warnings.length) preview.bodyWarnings = warnings;
+
+  const gitDir = exec('git', ['rev-parse', '--absolute-git-dir'], { cwd }).stdout.trim();
+  const dir = join(gitDir, 'my-command');
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, 'pr-dry-run.json');
+  writeFileSync(path, `${JSON.stringify(preview, null, 2)}\n`);
+  return { ...preview, preview: path };
 }
 
 /**

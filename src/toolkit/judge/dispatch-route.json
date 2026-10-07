@@ -1,6 +1,6 @@
 {
   "set": "dispatch-route",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "kind": "choice",
   "title": "Which subagent shape a dispatch belongs to",
   "description": "A choice over the closed set of mycommand-* agent shapes in agents/. Each option's rubric is lifted from that definition's own declared role. This is the Intent Routing pattern: the decision is made once, at dispatch time, instead of by prose at the receiving end.",
@@ -11,6 +11,8 @@
   "closedSet": true,
   "closedSetNote": "The options are exactly the definitions in agents/. A shape that is not one of them is not a routable answer; adding one means adding a definition and bumping this set's version.",
   "sources": [
+    "agents/mycommand-ab-judge.md:3",
+    "agents/mycommand-ab-runner.md:3",
     "agents/mycommand-delegate.md:3",
     "agents/mycommand-doc-auditor.md:3",
     "agents/mycommand-finisher.md:3",
@@ -45,6 +47,18 @@
   },
   "question": "Which mycommand-* subagent shape should this dispatch use?",
   "options": [
+    {
+      "id": "mycommand-ab-judge",
+      "label": "mycommand-ab-judge",
+      "rubric": "Judges two outputs of the same command blind — labelled 1 and 2 in an order it does not know — and returns a verdict with reasons. Dispatched once per trial by /ab.",
+      "source": "agents/mycommand-ab-judge.md:3"
+    },
+    {
+      "id": "mycommand-ab-runner",
+      "label": "mycommand-ab-runner",
+      "rubric": "Runs one version of a MyCommand command, given as text, in a fixture workspace it does not own — a worktree where it publishes nothing, or a sandbox repo clone where it publishes only to that repo. Dispatched twice per trial by /ab, once per version.",
+      "source": "agents/mycommand-ab-runner.md:3"
+    },
     {
       "id": "mycommand-delegate",
       "label": "mycommand-delegate",

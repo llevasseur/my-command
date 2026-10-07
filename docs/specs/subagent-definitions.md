@@ -1,16 +1,18 @@
 ---
 type: spec
 title: Subagent definitions
-description: The six agent definitions in agents/, one per shape of delegation, that every dispatch site names by subagent_type — so a delegate's role is stated once in a file rather than restated in each dispatch prompt.
+description: The eight agent definitions in agents/, one per shape of delegation, that every dispatch site names by subagent_type — so a delegate's role is stated once in a file rather than restated in each dispatch prompt.
 tags: [process, commands, agents, install]
 timestamp: 2026-08-22
+updated: 2026-10-07
+dirty: true
 ---
 
 # Subagent definitions
 
 ## Summary
 
-MyCommand dispatches subagents from ten sites across eight commands, and until
+MyCommand dispatches subagents from twelve sites across nine commands, and until
 now every one of them took the **default agent**. Nothing named a type, so the
 role each delegate was supposed to play had to be restated in the dispatch prompt
 — once per site, in each site's own words, drifting per site. Measured on the
@@ -30,7 +32,7 @@ delegate is.
 A definition is written per shape of delegation, **not per command**. Two
 commands that delegate the same kind of work share one definition; that sharing is
 the point, because it is the restatement across those two sites that used to
-drift. Six shapes cover the ten sites:
+drift. Eight shapes cover the twelve sites:
 
 | Definition | Shape | Dispatched by |
 |---|---|---|
@@ -40,6 +42,8 @@ drift. Six shapes cover the ten sites:
 | `mycommand-doc-auditor` | Audit one document against the code it describes, or evaluate one for density | `/docs`, `/truncate` |
 | `mycommand-griller` | A long-lived read-only adversarial interlocutor, one question per round | `/dev` |
 | `mycommand-verifier` | A long-lived observer that runs the repo's app and reports whether a change is demonstrably true in it | `/verify`, `/task` Step 2.6 |
+| `mycommand-ab-runner` | Run one version of a command, given as text, against a fixture worktree it does not own, publishing nothing | `/ab`, twice per trial |
+| `mycommand-ab-judge` | Compare two outputs of one command blind and return a verdict with reasons | `/ab` |
 
 `/god` needs no dispatch site of its own: it always adds `--sub` to the `/task`
 invocation it makes, so its finisher dispatch happens inside `/task`, which names
@@ -79,14 +83,17 @@ Three rules decide it, and they are about the work rather than the command:
 - **Work that reshapes text under a rule takes the cheap tier.** The rule is
   already written; applying it is inventory rather than judgement.
 
-Applied to the six shapes: `mycommand-delegate` writes the implementation, and
+Applied to the eight shapes: `mycommand-delegate` writes the implementation, and
 `mycommand-reviewer`, `mycommand-griller` and `mycommand-verifier` judge, so all four take
 strong — a verdict on whether a change is true in the running app is worth exactly what the
 judgement behind it is worth, and a manufactured `green` is worse than no check.
 `mycommand-doc-auditor` inventories claims against source, and `mycommand-finisher`
 reshapes comments under `/clean`'s already-written rule and writes a description
 from what is on the branch — its commit is that reshaping, not the work — so both
-take cheap.
+take cheap. `mycommand-ab-judge` judges, so it takes strong. `mycommand-ab-runner`
+takes strong for a different reason: a trial measures a command as it normally runs,
+on the session's own model, and a cheaper arm would measure the model instead of the
+text.
 
 ## The tier table
 
@@ -105,6 +112,8 @@ runtime resolves it:
 | `mycommand-finisher` | cheap | `sonnet` | sonnet | `gpt-5.6-luna` |
 | `mycommand-verifier` | strong | `inherit` | opus | `gpt-5.6-sol` |
 | `mycommand-doc-auditor` | cheap | `sonnet` | sonnet | `gpt-5.6-luna` |
+| `mycommand-ab-runner` | strong | `inherit` | opus | `gpt-5.6-sol` |
+| `mycommand-ab-judge` | strong | `inherit` | opus | `gpt-5.6-sol` |
 
 The `model:` column is what the frontmatter carries, and **invariant 24 asserts
 the two match** — so the table is load-bearing rather than a description of the

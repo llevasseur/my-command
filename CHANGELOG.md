@@ -7,9 +7,22 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 ## 2026-10-07
 
+### Added
+
+- **`/ab` compares two versions of a command on the same branch.** Each version runs in its own isolated worktree and publishes nothing. A blind judge picks the better output, and your own pick is saved as a label in the `jev-record` keep. See `docs/features/ab.md`.
+- **`my-command-tools pr --dry-run` shows the PR it would open, without opening it.** It prints the title, the body, and whether it would create or update, and it never pushes. A branch under `ab/` is always previewed, except in a repo under the sandbox root.
+- **`my-command-tools sandbox` gives each `/ab` arm its own GitHub repo.** `init` generates two private repos from your own template and clones them, `reset --scenario <name>` puts both into one scenario, `status` reports them, and `destroy --yes` deletes them. Template and owner come from flags, env vars, or `~/.my-command/ab/config.json`; the owner falls back to your gh login unless two github.com accounts are logged in. See `docs/specs/command-toolkit.md`.
+- **`/ab --scenario <name>` runs each arm in its own sandbox GitHub repo.** The arms open and merge real PRs, each in its own repo, so two `/god` runs never collide. The report links both arms' PRs and CI side by side, and the sandboxes are reset after your pick. Without the flag, `/ab` works in worktrees as before, and the fixture may be the default branch.
+- **The `/ab` judge reads each arm's full diff.** `my-command-tools ab-diff` writes it without `a/` and `b/` prefixes, and with every name that would reveal the arm redacted.
+
 ### Changed
 
 - **`/pr` is now five lines of intent instead of 143.** Experimental: it keeps the goal and the rules a model would otherwise break, and drops the step mechanics and shared includes. The `pr` verb still does the pushing, assets, screenshots and body warnings. See `docs/features/pr.md`.
+
+### Fixed
+
+- **The closing-turn anchor can be written with `TaskCreate` again.** On harnesses where the task list is `TaskCreate`, the gate refused the "close the run in a text-only turn" item every command writes before its first call, and told the run to drop it. The gate now lets that item through until the run has done real work, and still refuses it after.
+- **A prompt typed after earlier work no longer counts that work against the new run.** The hooks skipped a typed prompt because the transcript stores it as plain text, and they read a `/task` body that mentions `<task-notification>` as a background-task notice. So a `/task` started mid-conversation had its closing-turn anchor refused over edits made for an earlier prompt. Both now mark the start of a new run.
 
 ## 2026-10-05
 

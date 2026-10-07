@@ -98,8 +98,18 @@ function entry(raw) {
     uuid: text(rec.uuid),
     msgId: text(message.id),
     at: epoch(rec.timestamp),
-    content: Array.isArray(message.content) ? message.content.map(block) : null,
+    content: contentOf(message.content),
   };
+}
+
+/**
+ * A typed prompt is written with `content` as a bare string rather than an array of blocks, so
+ * a string is read as the one text block it is. Dropping it would erase the prompt as a boundary.
+ * @param {unknown} raw @returns {Block[] | null}
+ */
+function contentOf(raw) {
+  if (typeof raw === 'string') return [{ kind: 'text', text: raw }];
+  return Array.isArray(raw) ? raw.map(block) : null;
 }
 
 /** @param {unknown} value @returns {number} */
@@ -214,14 +224,18 @@ function isText(b) {
  * rather than a person giving new instructions. A backgrounded task's completion and a system
  * notification both arrive as `user` records carrying text, and each says outright that it is
  * not user input — so each is taken at its word instead of being read as a prompt.
+ *
+ * The marker has to open the text. A command body loaded by `Skill` is a `user` record too, and
+ * one that merely mentions `<task-notification>` is still the instructions the run is following.
  * @param {Block[]} content
  * @returns {boolean}
  */
 function harnessNotice(content) {
   for (const b of content) {
     if (b.kind !== 'text') continue;
-    if (b.text.includes('<task-notification>')) return true;
-    if (b.text.includes('[SYSTEM NOTIFICATION - NOT USER INPUT]')) return true;
+    const head = b.text.replace(/^\s*(<system-reminder>\s*)?/, '');
+    if (head.startsWith('<task-notification>')) return true;
+    if (head.startsWith('[SYSTEM NOTIFICATION')) return true;
   }
   return false;
 }

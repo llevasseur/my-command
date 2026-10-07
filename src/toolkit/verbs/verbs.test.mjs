@@ -12,10 +12,11 @@ import { fileURLToPath } from 'node:url';
 import { flagsFrom } from '../lib/flags.mjs';
 import { porcelain } from '../lib/repo.mjs';
 import { noteFor, shotCell } from '../lib/shots.mjs';
+import { run as abDiff } from './ab-diff.mjs';
 import { run as cleanup } from './cleanup.mjs';
 import { run as commit, usage as commitUsage } from './commit.mjs';
 import { run as concepts, line as conceptsLine } from './concepts.mjs';
-import { bodyWarnings, run as pr, usage as prUsage } from './pr.mjs';
+import { abGuard, bodyWarnings, run as pr, usage as prUsage } from './pr.mjs';
 import { run as scope } from './scope.mjs';
 import { usage as shotsUsage, run as shotsVerb } from './shots.mjs';
 import { run as state } from './state.mjs';
@@ -1387,6 +1388,124 @@ test('pr reports bodyWarnings on the created path too', () => {
   } finally {
     restore();
   }
+});
+
+test('pr --dry-run on a branch never pushed previews a create and calls neither push nor gh', () => {
+  const { dir, git, restore } = repoWithFakeGh(openPr({}));
+  try {
+    const r = pr(ctx(dir, [], { title: 'T', body: '- one change\n', 'dry-run': true }));
+    assert.equal(r.dryRun, true);
+    assert.equal(r.action, 'create');
+    assert.equal(r.body, '- one change\n');
+    assert.equal(existsSync(join(dir, 'gh.log')), false);
+    assert.equal(git(['ls-remote', '--heads', 'origin', 'feat/x']).trim(), '');
+    const saved = JSON.parse(readFileSync(String(r.preview), 'utf8'));
+    assert.equal(saved.title, 'T');
+  } finally {
+    restore();
+  }
+});
+
+test('pr --dry-run on a pushed branch previews the update it would write, assets kept', () => {
+  const { dir, git, calls, restore } = repoWithFakeGh(
+    openPr({ body: 'old\n\n![shot](https://github.com/user-attachments/assets/abc)\n' }),
+  );
+  try {
+    git(['push', '-q', '-u', 'origin', 'HEAD']);
+    const r = pr(ctx(dir, [], { title: 'T', body: '- new\n', 'dry-run': true }));
+    assert.equal(r.action, 'update');
+    assert.match(String(r.body), /user-attachments\/assets\/abc/);
+    assert.doesNotMatch(calls(), /pr (edit|create|comment)/);
+  } finally {
+    restore();
+  }
+});
+
+test('pr previews an ab/ branch even without --dry-run', () => {
+  const { dir, git, restore } = repoWithFakeGh(openPr({}));
+  try {
+    git(['checkout', '-qb', 'ab/trial-a']);
+    const r = pr(ctx(dir, [], { title: 'T', body: '- x\n' }));
+    assert.equal(r.dryRun, true);
+    assert.equal(git(['ls-remote', '--heads', 'origin', 'ab/trial-a']).trim(), '');
+  } finally {
+    restore();
+  }
+});
+
+test('pr publishes an ab/ branch in a repo under the sandbox root', () => {
+  const { dir, git, calls, restore } = repoWithFakeGh(openPr({ state: 'CLOSED' }), {
+    createUrl: 'https://github.test/o/r/pull/3',
+  });
+  const saved = process.env.MY_COMMAND_SANDBOX_ROOT;
+  // The repo's own parent stands in for ~/.my-command/ab/sandboxes.
+  process.env.MY_COMMAND_SANDBOX_ROOT = join(dir, '..');
+  try {
+    git(['checkout', '-qb', 'ab/trial-a']);
+    const r = pr(ctx(dir, [], { title: 'T', body: '- x\n' }));
+    assert.equal(r.dryRun, undefined);
+    assert.equal(r.action, 'created');
+    assert.notEqual(git(['ls-remote', '--heads', 'origin', 'ab/trial-a']).trim(), '');
+    assert.match(calls(), /pr create/);
+  } finally {
+    if (saved === undefined) delete process.env.MY_COMMAND_SANDBOX_ROOT;
+    else process.env.MY_COMMAND_SANDBOX_ROOT = saved;
+    restore();
+  }
+});
+
+test('abGuard holds outside the sandbox root, and --dry-run still previews inside it', () => {
+  const { dir, git, restore } = repoWithFakeGh(openPr({}));
+  const saved = process.env.MY_COMMAND_SANDBOX_ROOT;
+  try {
+    git(['checkout', '-qb', 'ab/trial-b']);
+    process.env.MY_COMMAND_SANDBOX_ROOT = mkdtempSync(join(tmpdir(), 'mct-sandbox-root-'));
+    made.push(process.env.MY_COMMAND_SANDBOX_ROOT);
+    assert.equal(abGuard(dir, 'ab/trial-b'), true);
+    assert.equal(abGuard(dir, 'feat/x'), false);
+    process.env.MY_COMMAND_SANDBOX_ROOT = join(dir, '..');
+    assert.equal(abGuard(dir, 'ab/trial-b'), false);
+    const r = pr(ctx(dir, [], { title: 'T', body: '- x\n', 'dry-run': true }));
+    assert.equal(r.dryRun, true);
+    assert.equal(git(['ls-remote', '--heads', 'origin', 'ab/trial-b']).trim(), '');
+  } finally {
+    if (saved === undefined) delete process.env.MY_COMMAND_SANDBOX_ROOT;
+    else process.env.MY_COMMAND_SANDBOX_ROOT = saved;
+    restore();
+  }
+});
+
+test('ab-diff joins ranges without a/ b/ prefixes and redacts the names it is given', () => {
+  const { dir, git } = repo();
+  const base = git(['rev-parse', 'HEAD']).trim();
+  git(['checkout', '-qb', 'ab/trial-a']);
+  writeFileSync(join(dir, 'note.md'), 'made in my-command-ab-a by ab/trial-a\n');
+  git(['add', 'note.md']);
+  git(['commit', '-qm', 'note']);
+  const r = /** @type {any} */ (
+    abDiff(ctx(dir, [], { range: [`${base}...HEAD`, `${base}...HEAD`], redact: ['my-command-ab-a', 'ab/trial-a'] }))
+  );
+  assert.match(r.diff, /^# part 1 of 2/m);
+  assert.match(r.diff, /^\+\+\+ note\.md$/m);
+  assert.doesNotMatch(r.diff, /^\+\+\+ b\//m);
+  assert.doesNotMatch(r.diff, /my-command-ab-a|ab\/trial-a/);
+  assert.equal(r.redactions, 4);
+  assert.equal(r.files.length, 2);
+  assert.throws(() => abDiff(ctx(dir, [], { range: 'HEAD..main' })), /<from>\.\.\.<to>/);
+});
+
+test('ab-diff --out writes the diff and reports its path', () => {
+  const { dir, git } = repo();
+  const base = git(['rev-parse', 'HEAD']).trim();
+  writeFileSync(join(dir, 'x.md'), 'x\n');
+  git(['add', 'x.md']);
+  git(['commit', '-qm', 'x']);
+  const out = join(dir, '..', `${basename(dir)}-output-1.diff`);
+  made.push(out);
+  const r = /** @type {any} */ (abDiff(ctx(dir, [], { range: `${base}...HEAD`, out })));
+  assert.equal(r.path, out);
+  assert.equal(r.diff, undefined);
+  assert.match(readFileSync(out, 'utf8'), /\+\+\+ x\.md/);
 });
 
 test('worktree begin --existing refuses a branch that does not exist', () => {
