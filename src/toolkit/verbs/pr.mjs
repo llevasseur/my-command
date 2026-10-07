@@ -7,6 +7,7 @@ import { bool, str } from '../lib/flags.mjs';
 import { ghWrite, originSlug } from '../lib/gh.mjs';
 import { run as exec, ToolkitError, UsageError } from '../lib/proc.mjs';
 import { commitsSince, currentBranch, defaultBranch, repoRoot, resolveBase } from '../lib/repo.mjs';
+import { inSandbox } from '../lib/sandbox-root.mjs';
 import {
   attachShots,
   commentId,
@@ -22,9 +23,19 @@ import { textArg } from '../lib/text-arg.mjs';
 const WORD_BUDGET = 400;
 const WORD_LIMIT = 600;
 
-// `/ab` runs each command version on a throwaway branch under this prefix. Such a branch is
-// always previewed, so a version that forgets `--dry-run` still publishes nothing.
+// `/ab` worktree mode runs each command version on a throwaway branch under this prefix. Such
+// a branch is always previewed, so a version that forgets `--dry-run` still publishes nothing.
 export const AB_BRANCH_PREFIX = 'ab/';
+
+/**
+ * Whether the `ab/` preview guard holds for this checkout. It never holds inside a sandbox
+ * clone: `/ab --scenario` arms publish there for real, and a branch name in the fixture
+ * repo must not silently turn that into a preview.
+ * @param {string} cwd @param {string} branch
+ */
+export function abGuard(cwd, branch) {
+  return branch.startsWith(AB_BRANCH_PREFIX) && !inSandbox(cwd);
+}
 
 export const usage = `pr [--title <text>] --body-file <path> [--draft] [--base <branch>] [--retitle] [--no-shots] [--dry-run]
 
@@ -49,7 +60,9 @@ Push the current branch and create or update its PR.
                       own git directory. \`gh\` is consulted only to tell create from update,
                       and only when origin already has the branch: a branch never pushed
                       cannot have a PR, so it reads as \`create\` with no call at all. A branch
-                      under \`${AB_BRANCH_PREFIX}\` is always previewed, flag or not.
+                      under \`${AB_BRANCH_PREFIX}\` is always previewed, flag or not, except in a
+                      repo under the sandbox root ($MY_COMMAND_SANDBOX_ROOT, then
+                      ~/.my-command/ab/sandboxes), where /ab --scenario arms publish for real.
 
 \`--body -\` reads the description from stdin, and the \`PreToolUse\` gate refuses that
 form on sight — the only way to put multi-line prose on stdin is a heredoc, and a
@@ -206,7 +219,7 @@ export function run(ctx) {
   // Measured on the prose the caller wrote, before the screenshot table is appended.
   const warnings = bodyWarnings(authored);
 
-  if (bool(ctx.flags['dry-run']) || branch.startsWith(AB_BRANCH_PREFIX)) {
+  if (bool(ctx.flags['dry-run']) || abGuard(cwd, branch)) {
     return dryRun(ctx, cwd, { branch, base, title, authored, draft, warnings });
   }
 
