@@ -157,15 +157,21 @@ function restCall(cwd, method, path, body) {
 }
 
 /**
- * What the verb reports back — one shape for both paths. `assetsPreserved` is an update's
- * count; `bodyWarnings` appears only when the description's shape is worth flagging.
+ * What the verb reports back — one shape for every path. `assetsPreserved` is an update's
+ * count; `bodyWarnings` appears only when the description's shape is worth flagging. A dry
+ * run reports `create` or `update` in the present tense, carries the `title` and `body` it
+ * would have published and the `preview` path, and has no `identity`, since nothing wrote.
  * @typedef {object} PrResult
- * @property {'created' | 'updated'} action
+ * @property {'created' | 'updated' | 'create' | 'update'} action
  * @property {number | null} number
  * @property {string | null} url
  * @property {string} branch
  * @property {boolean} draft
- * @property {string} identity
+ * @property {string} [identity]
+ * @property {boolean} [dryRun]
+ * @property {string} [title]
+ * @property {string} [body]
+ * @property {string} [preview]
  * @property {string} [base]
  * @property {number} [assetsPreserved]
  * @property {string[]} [bodyWarnings]
@@ -305,13 +311,14 @@ function numberIn(url) {
  * @param {import('../cli.mjs').Ctx} ctx @param {string} cwd
  * @param {{branch: string, base: string, title: string, authored: string, draft: boolean,
  *   warnings: string[]}} plan
+ * @returns {PrResult}
  */
 function dryRun(ctx, cwd, { branch, base, title, authored, draft, warnings }) {
   const pushed = exec('git', ['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`], { cwd }).ok;
   const existing = pushed ? findExisting(cwd) : null;
   const retitle = bool(ctx.flags.retitle);
 
-  /** @type {Record<string, unknown>} */
+  /** @type {PrResult} */
   const preview = existing
     ? {
         dryRun: true,
