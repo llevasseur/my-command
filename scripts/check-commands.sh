@@ -667,7 +667,7 @@ if ! grep -Fq 'verify --wait' src/commands/review.md; then
 fi
 # Losing the include takes the whole description rule out of /pr with nothing failing.
 if is_minimal pr; then
-  for needle in 'default branch' 'never commit' 'out of draft' '--body-file' 'bodyWarnings'; do
+  for needle in 'default branch' "ship what's committed" 'uncommitted changes' 'out of draft' '--body-file' 'bodyWarnings'; do
     if ! grep -Fq -- "$needle" src/commands/pr.md; then
       echo "::error::src/commands/pr.md is minimal but no longer says '$needle'; that is one of the few rules it keeps (docs/features/pr.md)."
       fail=1

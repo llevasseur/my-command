@@ -3,7 +3,7 @@ name: pr
 description: Create or update the current branch's pull request with a concise, accurate description.
 ---
 
-Open or update the PR for this branch. Push and write PR metadata only: never commit, and stop if `my-command-tools state` says you're on the default branch. `--draft` / `-d` makes it a draft; leftover text is a title or extra context.
+Open or update the PR for this branch. Push and write PR metadata only: ship what's committed, and stop if `my-command-tools state` says you're on the default branch. If it shows uncommitted changes and no workflow invoked you, ask the user whether they belong in this PR before publishing; under a workflow, never commit. `--draft` / `-d` makes it a draft; leftover text is a title or extra context.
 
 - Write the body to a file outside the repo, for a reviewer who never saw the request, with no log of what you checked. Follow the repository's own convention first: guidance in `CLAUDE.md`, `AGENTS.md`, or `CONTRIBUTING.md`, then a PR template, skill, or command it ships, then the last few merged PR bodies. Only when it states none, write bullets only.
 - Publish with `my-command-tools pr --title "<title>" --body-file <path> [--draft]`, adding `--retitle` when the user gave a title or the existing one is stale. It pushes, creates or updates, and keeps existing assets and screenshots. Never take a PR out of draft.

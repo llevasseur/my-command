@@ -43,9 +43,12 @@ carry. If `/pr` runs as well as it did at 143 lines, other commands can follow.
 
 What the five lines keep:
 
-- **Push and write metadata only.** Never commit, and stop on the default branch.
+- **Push and write metadata only.** Ship what's committed, and stop on the default branch.
+  A direct run that finds uncommitted changes asks whether they belong in this PR before
+  publishing; a run nested under `/task` or `/fb` never commits.
 - **The body is for a reviewer who never saw the request.** Bullets only, under 400 words,
-  and no log of what the author checked. `unslop` runs over it when installed.
+  and no log of what the author checked. Tone is left to the user's own `CLAUDE.md` or
+  `AGENTS.md`, not named in the prompt.
 - **One publish call.** `my-command-tools pr --body-file` pushes, creates or updates, and
   carries assets and screenshots, so none of that needs explaining in the prompt. `--retitle`
   goes on when the user gave a title or the existing one is stale.
@@ -64,8 +67,8 @@ and the prompt tells the run to act on it.
 
 `scripts/check-commands.sh` lists `/pr` in `MINIMAL`. That exempts it from invariants 6, 15
 and 19 and from the `pr-body-shape` include check. Instead the gate requires the close, the
-nested handback, the exact `RETURN /pr` marker, and the kept rules: default-branch stop, never
-commit, never out of draft, `--body-file`, and `bodyWarnings`. Revert the experiment by restoring the
+nested handback, the exact `RETURN /pr` marker, and the kept rules: default-branch stop, ship
+what's committed, ask about uncommitted changes, never out of draft, `--body-file`, and `bodyWarnings`. Revert the experiment by restoring the
 previous `src/commands/pr.md` and emptying `MINIMAL`.
 
 ### Assets in the description are never dropped
