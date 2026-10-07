@@ -454,9 +454,8 @@ const CHOICES = ['a', 'b', 'tie'];
 /**
  * Record one A/B trial with its human label, as a session holding a single record.
  *
- * A trial is not an exchange — nothing crossed the wire — so its record carries
- * `kind: 'ab'` and a shape of its own, documented beside the exchange format. It lands in
- * this keep rather than a new one because the point of a label is the corpus it joins.
+ * A trial is not an exchange, so its record carries `kind: 'ab'` and its own shape,
+ * documented beside the exchange format.
  * @param {import('../cli.mjs').Ctx} ctx
  * @returns {Record<string, unknown>}
  */

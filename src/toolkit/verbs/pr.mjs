@@ -305,9 +305,8 @@ function numberIn(url) {
 /**
  * What `pr` would publish, published nowhere.
  *
- * The body is the one an update would actually write, assets carried over, so a preview
- * compared against another is compared on what a reviewer would have read. Screenshots are
- * left out: posting them is a write, and they belong to the branch rather than the prose.
+ * The body is what an update would write, assets carried over. Screenshots are left out,
+ * since posting them is a write.
  * @param {import('../cli.mjs').Ctx} ctx @param {string} cwd
  * @param {{branch: string, base: string, title: string, authored: string, draft: boolean,
  *   warnings: string[]}} plan
