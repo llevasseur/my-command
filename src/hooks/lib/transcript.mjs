@@ -54,6 +54,8 @@ export function entries(path) {
  * @property {string} uuid
  * @property {string} msgId  The id every block of one assistant message shares.
  * @property {number} at     Epoch ms, 0 when the record carried no readable timestamp.
+ * @property {boolean} meta  The harness wrote the record, not the person: a command body loaded
+ *   for a typed `/command` or by `Skill`, Stop hook feedback, a message from another session.
  * @property {Block[] | null} content
  */
 
@@ -98,6 +100,7 @@ function entry(raw) {
     uuid: text(rec.uuid),
     msgId: text(message.id),
     at: epoch(rec.timestamp),
+    meta: rec.isMeta === true,
     content: contentOf(message.content),
   };
 }
@@ -127,10 +130,17 @@ function epoch(value) {
  * handing back what the assistant just asked for, so it is dropped rather than treated as
  * a boundary. A harness notice is dropped for the same reason and is the same thing wearing
  * text: a background task's completion arrives as a `user` record carrying prose.
+ *
+ * A command body is a boundary by default, because the gates that walk back to the last prompt
+ * are asking where the current instructions began. `typedOnly` drops every record the harness
+ * marks `isMeta` instead, for the one reading that asks how many times a person spoke: a typed
+ * `/task` writes its command record and then its body, a nested `Skill` writes another body, and
+ * a blocked stop writes its feedback, none of which is a person asking for anything new.
  * @param {Record<string, any>[]} records
+ * @param {{typedOnly?: boolean}} [options]
  * @returns {(Turn | null)[]}
  */
-export function timeline(records) {
+export function timeline(records, options = {}) {
   const decoded = records.map(entry);
 
   // A denied `Read` returned no content, so it is not a read. Collected first: a tool_result
@@ -163,6 +173,7 @@ export function timeline(records) {
     if (content === null) continue;
 
     if (rec.role === 'user') {
+      if (options.typedOnly && rec.meta) continue;
       const isPrompt = content.some((b) => b.kind !== 'toolResult') && !harnessNotice(content);
       if (isPrompt) out.push(null);
       continue;

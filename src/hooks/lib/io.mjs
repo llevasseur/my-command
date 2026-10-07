@@ -29,6 +29,9 @@ export function disabled() {
  * @property {string} sessionId
  * @property {string} transcriptPath
  * @property {boolean} stopHookActive The harness is re-running a stop a hook already blocked.
+ * @property {string | undefined} lastAssistantMessage A stop's final message text, read from the
+ *   harness's memory rather than the transcript. Absent when that message carried no text, and on
+ *   a harness too old to send it.
  */
 
 /**
@@ -63,6 +66,7 @@ export function readEvent() {
     sessionId,
     transcriptPath,
     stopHookActive: event.stop_hook_active === true,
+    lastAssistantMessage: asText(event.last_assistant_message),
   };
 }
 

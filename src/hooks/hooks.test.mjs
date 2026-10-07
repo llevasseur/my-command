@@ -2234,13 +2234,106 @@ test('stop: a background job still owes an outcome, so CLAUDE_JOB_DIR exempts no
   assert.equal(JSON.parse(out).decision, 'block');
 });
 
-test('stop: a transcript whose last turn just landed is re-read before it is judged', () => {
-  // The records are appended live, so a closing message written moments earlier may not be
-  // on disk yet — and a transcript missing its last turn refuses the very message it asked for.
-  const line = transcript(['prompt', wordless(read('Bash', { command: 'ls' }))], Date.now() - 1000);
+/**
+ * A transcript written from raw records, timestamped one second apart from five seconds before the
+ * last one, for the cases whose subject is the exact record shape the harness writes.
+ * @param {Record<string, any>[]} records
+ * @returns {string}
+ */
+function rawTranscript(records) {
+  const path = join(scratch(), 'transcript.jsonl');
+  const start = Date.now() - 5000 - records.length * 1000;
+  const lines = records.map((r, i) =>
+    JSON.stringify({ uuid: `r${i}`, timestamp: new Date(start + i * 1000).toISOString(), ...r }),
+  );
+  writeFileSync(path, `${lines.join('\n')}\n`);
+  return path;
+}
+
+/** @param {unknown} content @param {boolean} [isMeta] */
+const userRecord = (content, isMeta = false) => ({ type: 'user', isMeta, message: { role: 'user', content } });
+
+/** @param {string} id @param {Record<string, unknown>} block */
+const assistantRecord = (id, block) => ({ type: 'assistant', message: { id, role: 'assistant', content: [block] } });
+
+/** @param {string} id @param {string} name @param {Record<string, unknown>} input */
+const callRecord = (id, name, input) => assistantRecord(id.split('/')[0], { type: 'tool_use', id, name, input });
+
+/** @param {...string} ids */
+const resultsRecord = (...ids) =>
+  userRecord(ids.map((id) => ({ type: 'tool_result', tool_use_id: id, content: 'ok' })));
+
+/** The recorded flush race: a chore turn whose results are back, and nothing after it on disk. */
+const choresAnswered = () => [
+  userRecord('finish the PR'),
+  assistantRecord('m1', { type: 'thinking', thinking: 'tearing down' }),
+  callRecord('m1/0', 'Bash', { command: 'my-command-tools worktree end --branch fix/x' }),
+  callRecord('m1/1', 'TaskUpdate', { taskId: '1', status: 'completed' }),
+  resultsRecord('m1/0', 'm1/1'),
+];
+
+test('stop: a closing message not yet on disk is waited for, and let through if it never lands', () => {
+  // The hook ran before the harness wrote the closing thinking and text records. The turn on disk
+  // is five seconds old, so an age test never re-read, and the gate refused the chore turn before
+  // the message that followed it. Results that have all come back are always answered by another
+  // message, so this shape means the stop's own message is still being written.
   const started = Date.now();
-  assert.equal(hook(STOP, { session_id: 'fl1', transcript_path: line }).decision, 'block');
-  assert.ok(Date.now() - started >= 200, 'the gate paused and read the transcript a second time');
+  const answer = hook(STOP, { session_id: 'fl1', transcript_path: rawTranscript(choresAnswered()) });
+  assert.deepEqual(answer, {});
+  assert.ok(Date.now() - started >= 1000, 'the gate waited for the closing message before letting the stop through');
+});
+
+test('stop: once the closing message lands after the chore turn, the stop is silent at once', () => {
+  const records = [
+    ...choresAnswered(),
+    assistantRecord('m2', { type: 'thinking', thinking: 'report' }),
+    assistantRecord('m2', { type: 'text', text: 'Shipped PR #190; worktree removed.' }),
+  ];
+  assert.deepEqual(hook(STOP, { session_id: 'fl2', transcript_path: rawTranscript(records) }), {});
+});
+
+test('stop: the final message text the harness hands over settles it without the transcript', () => {
+  // A wordless turn with no results back is still refused from the transcript alone, so the only
+  // difference between the two calls is the event field.
+  const line = transcript(['prompt', wordless(read('Edit', { file_path: '/w/src/a.ts' }))]);
+  assert.equal(hook(STOP, { session_id: 'fl3', transcript_path: line }).decision, 'block');
+  const answer = hook(STOP, {
+    session_id: 'fl4',
+    transcript_path: line,
+    last_assistant_message: 'Shipped PR #190; worktree removed.',
+  });
+  assert.deepEqual(answer, {});
+});
+
+test('stop: command bodies and Stop hook feedback are not prompts of their own', () => {
+  // The recorded over-count: a typed `/fb` wrote its command record and its body, each nested
+  // `Skill` wrote another body, and each blocked stop wrote its feedback — all read as prompts, so
+  // one text-only reply closed only the last of them and the gate reported 7 earlier prompts left
+  // open when every typed prompt had been answered.
+  const records = [
+    userRecord('<command-message>fb</command-message>\n<command-name>/fb</command-name>'),
+    userRecord([{ type: 'text', text: 'Implement a feedback request.' }], true),
+    callRecord('s1/0', 'Skill', { skill: 'task' }),
+    resultsRecord('s1/0'),
+    userRecord([{ type: 'text', text: 'Take a task to a PR.' }], true),
+    callRecord('s2/0', 'Skill', { skill: 'clean' }),
+    resultsRecord('s2/0'),
+    userRecord([{ type: 'text', text: 'Clean up the comments.' }], true),
+    callRecord('s3/0', 'Skill', { skill: 'pr' }),
+    resultsRecord('s3/0'),
+    userRecord([{ type: 'text', text: 'Write the PR description.' }], true),
+    assistantRecord('t1', { type: 'text', text: 'Shipped PR #190.\n\nRETURN /fb' }),
+    userRecord('Stop hook feedback:\nThis run has not recorded its outcome.', true),
+    assistantRecord('t2', { type: 'text', text: 'Shipped PR #190.' }),
+    userRecord('two things: copy an /ab invocation'),
+    callRecord('s4/0', 'Skill', { skill: 'cp' }),
+    resultsRecord('s4/0'),
+    userRecord([{ type: 'text', text: 'Put an invocation on the clipboard.' }], true),
+    callRecord('e1/0', 'Edit', { file_path: '/w/src/a.ts' }),
+  ];
+  const answer = hook(STOP, { session_id: 'oc1', transcript_path: rawTranscript(records) });
+  assert.equal(answer.decision, 'block');
+  assert.doesNotMatch(answer.reason, /earlier prompts/);
 });
 
 // ── the outcome gate: why the loop stopped, not only what was last ──────────────────

@@ -374,11 +374,15 @@ Two further changes follow from the same evidence:
   with it gets a `systemMessage` warning and the log line, which is where the durable value
   was all along. The log line keeps its existing shape, so the record stays comparable across
   the change.
-- **The transcript is re-read once when its last turn is fresh.** The records are appended
-  live, and a text-only closing message was observed being blocked anyway — written moments
-  before the hook read the file and not yet flushed. When the last turn's timestamp is within
-  2s of the stop *and* the gate is about to speak, it pauses 250ms and judges a second time.
-  Only then, so the pause is paid on the rare stop rather than on every one.
+- **The transcript is re-read when the closing message has not landed yet.** The hook can run
+  before the harness writes the closing thinking and text records, and the gate then judged the
+  tool-call turn before them. The turn's age says nothing here: in the recorded misses it was
+  several seconds old. Its shape does. A stop follows a message that called nothing, so a last
+  turn without text whose tool results have all come back, or one of thinking alone, means the
+  closing message is still being written. On that shape, and only when the gate is about to
+  speak, it re-reads every 100ms for up to 1.5s and lets the stop through if the message never
+  lands. When the Stop event carries `last_assistant_message`, which the harness reads from
+  memory rather than from the file, a non-empty value settles it without reading the transcript.
 
 One shared correction came with it. `timeline()` now drops a `user` record that is a **harness
 notice** — one carrying `<task-notification>` or the `[SYSTEM NOTIFICATION - NOT USER INPUT]`
@@ -387,6 +391,14 @@ identical reason given there: it is the harness handing back work the assistant 
 a person giving new instructions. Read as a prompt it restarted a discovery run nobody
 restarted and opened a task nothing could close, which is why `unclosed` climbed in every
 backgrounded session.
+
+The prompt count reads only what a person typed. The harness marks the records it writes with
+`isMeta`: the body of a typed `/command`, every body a nested `Skill` loads, Stop hook feedback,
+and a message from another session. Counted as prompts, a `/fb` > `/task` > `/clean` > `/pr`
+chain whose one text-only reply answered everything was reported as 7 earlier prompts left open.
+`unclosedPrompts()` reads a `timeline(records, {typedOnly: true})` that drops them, and counts
+prompts with no turn between them as one task. The default timeline still treats a command body
+as a boundary, because the PreToolUse gates ask where the current instructions began.
 
 ### The outcome gate was armed and exempting itself
 
@@ -980,8 +992,9 @@ cannot contradict each other again.
       command, or a dispatch.
 - [x] An `Agent` dispatch and a `claude -p` shell out are open nested runs; a refused `Skill`
       call is not, so the gate cannot be wedged permanently silent.
-- [x] A transcript whose last turn landed within 2s of the stop is read a second time before
-      the gate speaks.
+- [x] A transcript whose closing message has not landed is re-read for up to 1.5s before the
+      gate speaks, and the stop is let through if it never lands.
+- [x] Command bodies, Stop hook feedback, and other `isMeta` records are not counted as prompts.
 - [x] A background task notification is not counted as a user prompt.
 - [x] The suite writes no line into the human's real `hooks.log`.
 - [x] No gate refuses the same subject twice, and a malformed event allows the call.
