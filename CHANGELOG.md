@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-10-07
+
+### Changed
+
+- **`/pr` is now five lines of intent instead of 143.** Experimental: it keeps the goal and the rules a model would otherwise break, and drops the step mechanics and shared includes. The `pr` verb still does the pushing, assets, screenshots and body warnings. See `docs/features/pr.md`.
+
 ## 2026-10-05
 
 ### Changed
