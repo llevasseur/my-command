@@ -55,6 +55,11 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 fail=0
 
+# Intent-only commands (docs/features/pr.md): exempt from the includes invariants 6, 15 and 19
+# require, and held to stating the nested handback and return marker themselves.
+MINIMAL="pr"
+is_minimal() { [[ " $MINIMAL " == *" $1 "* ]]; }
+
 # 0. src/commands/ matches src/shared/. Must run before 1, whose build expands them in place
 # and would otherwise repair a hand-edit before the sync check ever saw it.
 if ! node scripts/expand-includes.mjs --check; then
@@ -178,6 +183,14 @@ fi
 # carried while every other command kept it as a tail sentence.
 for f in src/commands/*.md; do
   name="$(basename "$f")"
+  if is_minimal "${name%.md}"; then
+    if ! grep -Fq "RETURN /${name%.md}\`" "$f" || ! grep -Fq "beside the invoking command's next tool call" "$f" ||
+      ! grep -Fq 'text and no tool call' "$f"; then
+      echo "::error::$name is minimal but no longer states its close, nested handback and RETURN /${name%.md} marker; a nested run would strand its parent (docs/specs/run-markers.md)."
+      fail=1
+    fi
+    continue
+  fi
   if ! grep -Fq 'include: shared/closing-turn-anchor.md' "$f"; then
     echo "::error::$name dropped the shared/closing-turn-anchor.md include; nothing would survive a compaction to say an outcome is owed."
     fail=1
@@ -466,6 +479,7 @@ fi
 # include in every command, including a stepless one, so a command that gains a step is marked
 # without an edit.
 for f in src/commands/*.md; do
+  is_minimal "$(basename "$f" .md)" && continue
   if ! grep -Fq 'include-block: shared/step-marker.md' "$f"; then
     echo "::error::$(basename "$f") dropped the shared/step-marker.md include; its steps would be anchored by guessing at its prose instead of by the marker (docs/specs/run-markers.md)."
     fail=1
@@ -554,6 +568,7 @@ for needle in 'Skill` tool' 'Agent` tool'; do
   fi
 done
 for f in commands/*.md; do
+  is_minimal "$(basename "$f" .md)" && continue
   if ! grep -Fq "$NESTED" "$f"; then
     echo "::error::$f does not carry the expanded nested-handback rule; the include never reached the copy the plugin ships, so the command states nothing about it (docs/specs/run-markers.md)."
     fail=1
@@ -650,11 +665,13 @@ if ! grep -Fq 'verify --wait' src/commands/review.md; then
   echo "::error::src/commands/review.md no longer names 'verify --wait'; its verification step would leave the run polling a report that does not exist until the run is over."
   fail=1
 fi
-# Losing the include takes the whole description rule out of /pr with nothing failing.
-if ! grep -Fq 'include-block: shared/pr-body-shape.md' src/commands/pr.md; then
-  echo "::error::src/commands/pr.md dropped the shared/pr-body-shape.md include; its description step would go back to one adjective, which is what a 1244-word PR body already beat."
-  fail=1
-fi
+# /pr keeps only a few rules, so losing one would otherwise fail nothing.
+for needle in 'default branch' "ship what's committed" 'uncommitted changes' 'out of draft' '--body-file' 'bodyWarnings'; do
+  if ! grep -Fq -- "$needle" src/commands/pr.md; then
+    echo "::error::src/commands/pr.md no longer says '$needle'; that is one of the few rules it keeps (docs/features/pr.md)."
+    fail=1
+  fi
+done
 
 # 23b. A dispatched run's working directory is a repository root, which is exactly where
 # EnterWorktree refuses — so a command that tells one to call it prescribes a certain refusal.

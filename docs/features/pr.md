@@ -4,7 +4,7 @@ title: pr
 description: Create or update the PR for the current branch with a concise bulleted description, written straight to GitHub.
 tags: [command, git, github]
 timestamp: 2026-07-15
-updated: 2026-09-09
+updated: 2026-10-07
 ---
 
 # pr
@@ -34,34 +34,48 @@ existing draft stays a draft, flag or not, and `/pr` never promotes one — the 
 `gh pr ready --undo` only to move a non-draft PR *into* draft. Only
 `/god` promotes a draft, deliberately, right before merging.
 
-### The description's shape is stated, checked, and measured
+### The prompt states intent only
 
-"Concise bullet-point form" was one sentence at the head of a step that then spent about
-350 words on transport mechanics, plus one Notes bullet at the foot of the file that a run
-only reached after the body was already written. It lost: a recorded run produced a
-1244-word body with 9 headers and 10 standalone prose paragraphs with that rule in place.
+`src/commands/pr.md` is a minimal command: a few lines of intent and none of the shared
+includes. It carries the goal and the few rules a model would otherwise get wrong, not
+step-by-step mechanics or incident history.
 
-The rule now owns its own step and states numbers instead of adjectives, in
-`src/shared/pr-body-shape.md` so it travels with any command that reaches `/pr`. Bullets
-only — a line that is neither a `-` bullet nor a `##` header does not belong; the first
-line is a header, never prose; one idea per bullet at one to two sentences, and a bullet
-past about 40 words is split or cut; headers only past about 6 bullets and 4 at most,
-sentence case, 2 to 4 words; under 400 words, hard stop at 600. The named failure mode is
-writing the body as a record of the author's work — compliance notes, gate output, docs
-inventories, "what I checked" — each of which earns one terse bullet or none, and belongs
-in the run's closing turn instead. The test for any line is whether a reviewer who never
-saw the request would act differently for having read it.
+What those lines keep:
 
-Three things hold the rule up rather than one. The `unslop` skill runs over the body file
-before publishing, conditional on it being installed device-locally at
-`~/.claude/skills/unslop` — it is a skill, so its absence from `ls ~/.claude/commands/`
-proves nothing, and a run that genuinely cannot find it says so in its report. A numeric
-self-check runs immediately before the `my-command-tools pr` call — word count, em dashes,
-bold runs, non-bullet lines — with the four numbers stated in the report, mirroring
-`/task` Step 2.5's anti-slop lint. And the verb itself measures what it is handed:
-`my-command-tools pr` computes the word count and bullet count from the `--body-file` and
-returns `bodyWarnings` when the body is over budget or carries no bullets. That last one
-warns and never blocks, and it is the only one a model cannot skim past.
+- **Push and write metadata only.** Ship what's committed, and stop on the default branch.
+  A direct run that finds uncommitted changes asks whether they belong in this PR before
+  publishing; a run nested under `/task` or `/fb` never commits.
+- **Title from the net change.** The title and opening bullets come from
+  `git diff origin/<base> HEAD`, not from commit subjects, and the body says when GitHub's
+  diff will show more than that, as on a branch with no merge base.
+- **A plain Title Case title.** No conventional-commit `<type>:` prefix: "Turn Setup-Node's
+  pnpm Cache Back On in the Scripts Job", not "ci: turn setup-node's pnpm cache back on in the
+  scripts job".
+- **Write the body without tripping a gate.** The `Write` tool under `$CLAUDE_JOB_DIR/tmp/`,
+  never a heredoc or bare `/tmp`, and a quoted glob when probing for a PR template.
+- **The body is for a reviewer who never saw the request.** Bullets only, under 400 words,
+  each one line of about 15 words that reads at a glance, and no log of what the author
+  checked. Tone is left to the user's own `CLAUDE.md` or
+  `AGENTS.md`, not named in the prompt.
+- **One publish call.** `my-command-tools pr --body-file` pushes, creates or updates, and
+  carries assets and screenshots, so none of that needs explaining in the prompt. `--retitle`
+  goes on when the user gave a title or the existing one is stale.
+- **Read the verb's warnings.** A `bodyWarnings` means cut and republish; a `shotsWarning` or
+  failed screenshot goes in the report.
+- **Never take a PR out of draft.** Only `/god` promotes one.
+- **Teardown and handback.** Remove a worktree only this session created and nothing invoked
+  `/pr` into, falling back to `worktree end` when `ExitWorktree` refuses. A nested run reports
+  beside the invoking command's next tool call, a direct run closes in a message with no tool
+  call, and every run ends with `RETURN /pr`.
+
+It has no numeric self-check before publishing, no `STEP <n>/<N>` markers, and no
+closing-turn or anchor includes. The `pr` verb measures the body and returns `bodyWarnings`
+when it is over budget or has no bullets, and the prompt tells the run to act on it.
+
+`scripts/check-commands.sh` lists `/pr` in `MINIMAL`, which exempts it from invariants 6, 15
+and 19. Instead the gate requires the close, the nested handback, the exact `RETURN /pr`
+marker, and the kept rules: default-branch stop, ship what's committed, ask about uncommitted
+changes, never out of draft, `--body-file`, and `bodyWarnings`.
 
 ### Assets in the description are never dropped
 
@@ -325,24 +339,12 @@ own URL rather than being skipped as already-proven work.
 
 ### Worktree teardown is ownership-scoped
 
-Teardown happens only when **this session created the worktree and no command that
-invoked `/pr` owns its teardown**. Then it force-removes
-at the end (`ExitWorktree` with `discard_changes: true`), expecting the task's commits to
-live on the worktree — they were pushed to origin, so only the redundant local copy is
-discarded.
+Teardown happens only when **this session created the worktree and no command invoked
+`/pr`**. The branch is pushed by then, so removing the worktree discards only the local copy.
 
-When `/pr` runs as someone else's subagent — `/task --sub` Step 3 dispatches `/clean` +
-`/pr` into a fresh one — it does not own the worktree, so it skips teardown entirely and
-the dispatching command removes the workspace after it returns. It skips teardown in the
-inline case too (`/task` without `--sub`, where `/pr` runs in the very session that created
-the worktree): that command's own Step 3 removes it immediately afterwards, and has a push
-check to run first. Attempting removal there is
-what produced the recurring `not the owner of the worktree` refusal: `ExitWorktree`
-refuses, and `git worktree remove` refuses too while the owning session's liveness lock is
-held. If `ExitWorktree` refuses anyway, `/pr` steps out with `action: "keep"` and tries
-`my-command-tools worktree end`, which re-checks the work is on origin; if git still
-refuses because a live session holds the worktree, it leaves the path in place and says so
-rather than forcing past the lock.
+When `/pr` runs as someone else's subagent (`/task --sub`) or inline inside `/task`, the
+invoking command owns the worktree and removes it after `/pr` returns. Removing it from
+inside `/pr` is what produced the recurring `not the owner of the worktree` refusal.
 
 Commands that set a worktree up and then delegate — [fb](fb.md) `--target`,
 [review](review.md), [task-bootstrap](task-bootstrap.md), [revive](revive.md) — tear their

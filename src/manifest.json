@@ -181,7 +181,7 @@
     },
     "pr": {
       "flags": ["--draft"],
-      "verbs": ["identity", "pr", "state", "worktree"],
+      "verbs": ["pr", "state", "worktree"],
       "stores": [],
       "claudeProxy": "none"
     },

@@ -15,6 +15,12 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 - **`/ab --scenario <name>` runs each arm in its own sandbox GitHub repo.** The arms open and merge real PRs, each in its own repo, so two `/god` runs never collide. The report links both arms' PRs and CI side by side, and the sandboxes are reset after your pick. Without the flag, `/ab` works in worktrees as before, and the fixture may be the default branch.
 - **The `/ab` judge reads each arm's full diff.** `my-command-tools ab-diff` writes it without `a/` and `b/` prefixes, and with every name that would reveal the arm redacted.
 
+### Changed
+
+- **`/pr` is now five lines of intent instead of 143.** It keeps the goal and the rules a model would otherwise break, and drops the step mechanics and shared includes. The `pr` verb still does the pushing, assets, screenshots and body warnings. See `docs/features/pr.md`.
+- **`/pr` titles a PR after its net change, not its tip commit.** The title and opening bullets come from the diff against the base, and the body says when GitHub's diff will show more, such as a branch with no merge base. It also writes the body with `Write` and quotes its template glob, so no gate refuses either.
+- **`/pr` titles read as plain Title Case, and its bullets fit on one line.** No `ci:`-style prefix on the title, and each bullet runs about 15 words so a reviewer takes it in at a glance.
+
 ### Fixed
 
 - **The Stop hook no longer refuses a closing message that is still being written.** It could run before the harness wrote the final message to the transcript, and then blocked with "carries no text at all" or "called nothing but Bash, TaskUpdate". It now waits up to 1.5s for that message, uses the `last_assistant_message` field when the harness sends it, and lets the stop through if the message never lands.
