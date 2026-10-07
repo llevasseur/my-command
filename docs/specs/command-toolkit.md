@@ -40,6 +40,8 @@ noise, what a PR description should say, or whether a failure is worth fixing.
 | `trim` | which of `/trim`'s six gates are facts about the session, and which are left for the agent |
 | `judge` | what one versioned question set says about one state file — printed, and acted on by nothing |
 | `jev-record start\|stop\|serve\|read\|label` | a loopback proxy between a caller and the System One endpoint, the whole of each exchange written down outside the Jev client, and `/ab`'s labelled trials in the same keep |
+| `sandbox init\|reset\|status\|destroy` | the two private GitHub repos `/ab` arms run against, generated from the fixture template, cloned, and reset to a named scenario |
+| `ab-diff` | one `/ab` arm's full diff for the blind judge: three-dot ranges joined in order, `--no-prefix`, and every name that would reveal the arm redacted |
 | `doctor` | where the toolkit resolved from, what's on PATH, which clone it tracks, and which external tools this device has |
 
 `app` is the one verb that starts something and leaves it running. `verify` runs the
@@ -428,6 +430,105 @@ The verb refuses a trial that names no `versions.a.ref` or `versions.b.ref`, or 
 `pick` or `judge.verdict` is not `a`, `b` or `tie`. `read` summarises a trial as
 `{id, kind, recordedAt, command, pick, judge}`.
 
+### `sandbox`
+
+`sandbox` gives each [/ab](../features/ab.md) arm a real GitHub repo of its own, so a
+command that opens PRs, merges, or edits docs acts on GitHub state the other arm cannot see.
+Arm `a` gets `<owner>/my-command-ab-a` and arm `b` gets `<owner>/my-command-ab-b`. Both are
+private repos generated from a template repo you supply, and each is cloned to
+`~/.my-command/ab/sandboxes/<arm>/`. `--name-a` and `--name-b` override the repo names.
+
+**Each setting resolves from a flag, then an env var, then `~/.my-command/ab/config.json`,
+then a built-in fallback:**
+
+| Setting | Flag | Env var | Config key | Fallback |
+|---|---|---|---|---|
+| Template | `--template <owner/name>` | `MY_COMMAND_AB_TEMPLATE` | `template` | none |
+| Owner | `--owner <login>` | `MY_COMMAND_AB_OWNER` | `owner` | the active gh login (`gh api user --jq .login`) |
+| Clone root | `--root <dir>` | `MY_COMMAND_SANDBOX_ROOT` | `root` | `~/.my-command/ab/sandboxes` |
+| SSH host | `--git-host <host>` | `MY_COMMAND_GIT_HOST` | `gitHost` | `github.com` |
+
+The config file is optional and holds any of those four keys, each a non-empty string:
+
+```json
+{ "template": "<owner>/<template-repo>", "owner": "<owner>", "gitHost": "github-personal", "root": "/Users/<you>/ab-sandboxes" }
+```
+
+`root` is used as written, so give an absolute path; `~` is not expanded. A missing file is the same as an empty one. A file that is not a JSON object, or sets a key
+to anything but a non-empty string, fails the verb and names the file. `/ab-bootstrap` writes
+this file.
+
+There is no default template. `init`, and `reset` without a fixture remote, fail with a usage
+error naming the flag, the env var and the config file when none sets one. `status` and
+`destroy` never read it.
+
+The owner fallback is refused when `gh auth status --hostname github.com` lists more than one
+account. With two logins, the active one is whichever was switched to last, so the
+sandboxes could land under the wrong account. Pass `--owner` or set `owner` in the config
+file instead. The report carries `owner` and `ownerSource`, which is `flag`, `env`, `config`
+or `gh-login`.
+
+**A template must carry `scripts/reset-scenario.sh`.** `reset` calls it with `--scenario
+<name> --repo <owner/name> --clone <path> --fixture-remote <url>`, plus `--dry-run` when
+given, and reads one JSON object from its stdout:
+`{scenario, repo, mainSha, dryRun, source, prs: [{number, url, head, base}]}`. The script in
+your template is the source of truth for what each scenario does. A template may also
+carry the synthetic claude-proxy store at `fixtures/claude-proxy-store/`; see `env` below.
+
+| Subcommand | Does |
+|---|---|
+| `init` | `gh repo create <owner>/<name> --template <template> --private --include-all-branches` for a repo `gh repo view` cannot find, then `git clone` for a clone path that is empty. An existing repo or clone is reused. A clone path holding something else, or a clone of another repo, is refused. |
+| `reset --scenario <name> [--dry-run]` | `git fetch` in each clone, then that clone's own `scripts/reset-scenario.sh --scenario <name> --repo <owner/name> --clone <path> --fixture-remote <url>`. Each arm's report carries the script's JSON under `reset`. |
+| `status` | Both sandboxes as they stand. Calls `gh repo view` and reads the clone; creates, fetches, and deletes nothing. |
+| `destroy --yes` | `gh repo delete` for each repo that exists, then removes its clone. Refused without `--yes` before any call is made. |
+
+Every `gh` call, and the reset script, runs under the owner's token when the device is
+logged in as the owner (`gh auth token --user <owner>`), so another active account cannot
+misread a private sandbox as absent. The report names which identity was used.
+
+**Clone URLs go over SSH through a configurable host:** `git@<host>:<owner>/<name>.git`,
+where `<host>` resolves as the table above shows. On a device
+where plain `github.com` authenticates as a different account, set it to the `~/.ssh/config`
+alias for the owner's key, for example `MY_COMMAND_GIT_HOST=github-personal`. The reset's
+fixture remote is `--fixture-remote`, then `FIXTURE_REMOTE`, then the template over the same
+host.
+
+`gh repo delete` needs the `delete_repo` scope. When the owner's login lacks it, `destroy`
+fails with `missingScope: "delete_repo"` and names the `gh auth refresh` command for the user
+to run. It never runs that command itself, and it keeps the clone of a repo it could not
+delete.
+
+Each sandbox reports `arm`, `nameWithOwner`, `url`, `clone`, `cloneUrl`, `defaultBranch`,
+`repo` (`present`/`absent`), `local` (the clone's state, origin and branch), and `env`, the
+variables an arm exports:
+
+- `CLAUDE_PROXY_STORE`: `<clone>/fixtures/claude-proxy-store/logs/sessions`, the template's
+  synthetic store.
+- `LOG_DIR`: that store's parent, which the claude-proxy `suggestions` CLI reads.
+
+Both are set only when `<clone>/fixtures/claude-proxy-store/` exists. A clone from a
+template without that directory reports `env: {}` and a `warning` saying the template has
+no synthetic store, so an arm never exports a path that does not exist.
+
+`/ab --scenario <name>` is the caller. It runs `status`, then `init` when either sandbox is
+missing, then `reset --scenario <name>` before dispatch and again after the user's pick, and
+hands each arm its sandbox's `clone`, `env` and `nameWithOwner`. It never calls `destroy`.
+
+### `ab-diff`
+
+`ab-diff --range <from>...<to> [--range …] [--redact <text>]… [--out <file>]` writes one
+`/ab` arm's full diff for the blind judge. Each range is a three-dot range, so it reads what
+`<to>` changed since its merge base with `<from>`. A worktree-mode arm has one range,
+`<fixture sha>...HEAD`. A scenario-mode arm has what it merged,
+`<start sha>...origin/<default>`, plus one range per PR it left open. Parts are joined in
+order under a `# part <i> of <n>` line when there is more than one.
+
+The diff runs with `--no-prefix`, so the `a/` and `b/` path prefixes git writes by default
+never reach a judge comparing arm A with arm B. Every `--redact` string, longest first, is
+replaced with `<redacted>` in the diff and in the reported paths. The report carries `files`
+(`path`, `added`, `deleted`), `bytes`, `redactions`, and either `diff` or, under `--out`,
+`path`. A range that is not `<from>...<to>` is a usage error.
+
 ## Guards
 
 These are the reason the plumbing is worth centralizing — each one encodes a
@@ -447,8 +548,16 @@ failure a workflow run has actually hit:
   the body as it would be published, and `create` or `update`, and saves that
   preview as `pr-dry-run.json` in the worktree's own git directory. It reads `gh`
   only when origin already has the branch. A branch under `ab/` is always
-  previewed, flag or not, so an `/ab` arm whose text forgets the flag still
-  publishes nothing.
+  previewed, flag or not, so an `/ab` worktree-mode arm whose text forgets the flag
+  still publishes nothing. The guard is scoped by where the repo lives: it never
+  fires in a repo whose common git directory sits under the sandbox root
+  (`MY_COMMAND_SANDBOX_ROOT`, then `root` in `~/.my-command/ab/config.json`, else
+  `~/.my-command/ab/sandboxes`), because an
+  `/ab --scenario` arm publishes into its sandbox repo for real. Repo identity by
+  location covers a worktree an arm cuts from its clone, wherever that worktree
+  sits, and needs no list of sandbox names. A sandbox made with `sandbox --root
+  <dir>` is recognised only when that directory is exported as
+  `MY_COMMAND_SANDBOX_ROOT` or set as the config file's `root`. `--dry-run` still previews inside a sandbox.
 - `verify` returns no log at all for a passing gate and a bounded tail for a
   failing one, so callers stop hand-rolling `2>&1 | tail -12` and stop re-running a
   whole build because they guessed the window too small.

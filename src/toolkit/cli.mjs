@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { bool, flag, str } from './lib/flags.mjs';
 import { ToolkitError } from './lib/proc.mjs';
 import { GATED_VERBS, requireArmed } from './lib/require-armed.mjs';
+import * as abDiff from './verbs/ab-diff.mjs';
 import * as app from './verbs/app.mjs';
 import * as browser from './verbs/browser.mjs';
 import * as cleanup from './verbs/cleanup.mjs';
@@ -21,6 +22,7 @@ import * as judge from './verbs/judge.mjs';
 import * as pr from './verbs/pr.mjs';
 import * as prs from './verbs/prs.mjs';
 import * as rules from './verbs/rules.mjs';
+import * as sandbox from './verbs/sandbox.mjs';
 import * as scope from './verbs/scope.mjs';
 import * as shots from './verbs/shots.mjs';
 import * as stash from './verbs/stash.mjs';
@@ -57,6 +59,8 @@ const VERBS = {
   pr,
   prs,
   worktree,
+  sandbox,
+  'ab-diff': abDiff,
   shots,
   cleanup,
   identity,
@@ -92,6 +96,7 @@ const SWITCHES = new Set([
   'all',
   'keep-remote',
   'keep-local',
+  'yes',
 ]);
 
 /**

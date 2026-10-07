@@ -10,7 +10,10 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 ### Added
 
 - **`/ab` compares two versions of a command on the same branch.** Each version runs in its own isolated worktree and publishes nothing. A blind judge picks the better output, and your own pick is saved as a label in the `jev-record` keep. See `docs/features/ab.md`.
-- **`my-command-tools pr --dry-run` shows the PR it would open, without opening it.** It prints the title, the body, and whether it would create or update, and it never pushes. A branch under `ab/` is always previewed.
+- **`my-command-tools pr --dry-run` shows the PR it would open, without opening it.** It prints the title, the body, and whether it would create or update, and it never pushes. A branch under `ab/` is always previewed, except in a repo under the sandbox root.
+- **`my-command-tools sandbox` gives each `/ab` arm its own GitHub repo.** `init` generates two private repos from your own template and clones them, `reset --scenario <name>` puts both into one scenario, `status` reports them, and `destroy --yes` deletes them. Template and owner come from flags, env vars, or `~/.my-command/ab/config.json`; the owner falls back to your gh login unless two github.com accounts are logged in. See `docs/specs/command-toolkit.md`.
+- **`/ab --scenario <name>` runs each arm in its own sandbox GitHub repo.** The arms open and merge real PRs, each in its own repo, so two `/god` runs never collide. The report links both arms' PRs and CI side by side, and the sandboxes are reset after your pick. Without the flag, `/ab` works in worktrees as before, and the fixture may be the default branch.
+- **The `/ab` judge reads each arm's full diff.** `my-command-tools ab-diff` writes it without `a/` and `b/` prefixes, and with every name that would reveal the arm redacted.
 
 ### Fixed
 

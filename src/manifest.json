@@ -42,8 +42,8 @@
   },
   "commands": {
     "ab": {
-      "flags": ["--command", "--fixture", "--rubric"],
-      "verbs": ["jev-record", "pr", "state", "worktree"],
+      "flags": ["--command", "--fixture", "--rubric", "--scenario"],
+      "verbs": ["ab-diff", "identity", "jev-record", "pr", "sandbox", "state", "worktree"],
       "stores": [],
       "claudeProxy": "none"
     },
