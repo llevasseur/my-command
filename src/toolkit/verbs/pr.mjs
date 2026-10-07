@@ -60,8 +60,8 @@ Push the current branch and create or update its PR.
                       and only when origin already has the branch: a branch never pushed
                       cannot have a PR, so it reads as \`create\` with no call at all. A branch
                       under \`${AB_BRANCH_PREFIX}\` is always previewed, flag or not, except in a
-                      repo under the sandbox root ($MY_COMMAND_SANDBOX_ROOT, then
-                      ~/.my-command/ab/sandboxes), where /ab --scenario arms publish for real.
+                      repo under the sandbox root ($MY_COMMAND_SANDBOX_ROOT, then "root" in
+                      ~/.my-command/ab/config.json, then ~/.my-command/ab/sandboxes), where /ab --scenario arms publish for real.
 
 \`--body -\` reads the description from stdin, and the \`PreToolUse\` gate refuses that
 form on sight — the only way to put multi-line prose on stdin is a heredoc, and a

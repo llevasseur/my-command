@@ -190,8 +190,8 @@ and leave the sandbox as it stands. Never destroy the sandboxes from here.
 Worktree mode publishes nothing, and scenario mode publishes only into its two
 sandbox repos; neither writes to a hosted store, ticket tracker, chat, or any
 other repo. `my-command-tools pr` previews an `ab/` branch except in a repo under
-the sandbox root (`$MY_COMMAND_SANDBOX_ROOT`, else
-`~/.my-command/ab/sandboxes`), so a scenario arm's PR is real whatever its
+the sandbox root (`$MY_COMMAND_SANDBOX_ROOT`, then `root` in
+`~/.my-command/ab/config.json`, else `~/.my-command/ab/sandboxes`), so a scenario arm's PR is real whatever its
 branch is called. One trial is one sample, so say so when the outputs are close.
 
 ## Closing turn

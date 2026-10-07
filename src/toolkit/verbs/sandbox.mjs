@@ -1,17 +1,17 @@
-// `sandbox` — one private GitHub repo per `/ab` arm, generated from the fixture template and
-// cloned under `~/.my-command/ab/sandboxes/<arm>/`. The template's
+// `sandbox` — one private GitHub repo per `/ab` arm, generated from a template the user
+// names and cloned under `~/.my-command/ab/sandboxes/<arm>/`. The template's
 // `scripts/reset-scenario.sh` puts both into one named scenario.
-import { existsSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { bool, str } from '../lib/flags.mjs';
-import { ownerToken } from '../lib/gh.mjs';
+import { ownerToken, parseAccounts } from '../lib/gh.mjs';
 import { run as exec, ToolkitError, UsageError } from '../lib/proc.mjs';
 
 export const usage = `sandbox init|reset|status|destroy [options]
 
 The two private GitHub repos /ab arms run against, one per arm (a and b), each generated
-from the fixture template and cloned under <root>/<arm>/.
+from a template repo you own and cloned under <root>/<arm>/.
 
   init                  Create each repo from the template if it is absent, and clone it
                         if the clone is absent. An existing repo or clone is reused.
@@ -21,28 +21,94 @@ from the fixture template and cloned under <root>/<arm>/.
   destroy --yes         Delete both repos and both clones. Needs the delete_repo scope on
                         the owner's gh login; a missing scope is reported, never requested.
 
-Options:
-  --owner <login>          Owner of both sandbox repos. Default llevasseur.
-  --template <owner/name>  Template repo. Default llevasseur/my-command-fixture.
+Options (each falls back to an env var, then ~/.my-command/ab/config.json):
+  --owner <login>          Owner of both sandbox repos. Then $MY_COMMAND_AB_OWNER, then
+                           config "owner", then the active gh login. The gh-login fallback is
+                           refused when more than one account is logged in to github.com.
+  --template <owner/name>  Template repo. Then $MY_COMMAND_AB_TEMPLATE, then config
+                           "template". No default: init and reset fail without one.
   --name-a <name>          Arm a's repo name. Default my-command-ab-a.
   --name-b <name>          Arm b's repo name. Default my-command-ab-b.
-  --root <dir>             Where the clones live. Default $MY_COMMAND_SANDBOX_ROOT, then
-                           ~/.my-command/ab/sandboxes.
-  --git-host <host>        SSH host clones use: git@<host>:<owner>/<name>.git. Default
-                           $MY_COMMAND_GIT_HOST, then github.com. Set it to an ~/.ssh/config
-                           alias (github-personal) where plain github.com is another account.
+  --root <dir>             Where the clones live. Then $MY_COMMAND_SANDBOX_ROOT, then config
+                           "root", then ~/.my-command/ab/sandboxes.
+  --git-host <host>        SSH host clones use: git@<host>:<owner>/<name>.git. Then
+                           $MY_COMMAND_GIT_HOST, then config "gitHost", then github.com. Set it
+                           to an ~/.ssh/config alias where plain github.com is another account.
   --fixture-remote <url>   reset: where the scenario refs come from. Default $FIXTURE_REMOTE,
                            then the template over --git-host.
 
 Each sandbox reports arm, nameWithOwner, url, clone, cloneUrl, defaultBranch, and env:
-CLAUDE_PROXY_STORE and LOG_DIR pointing at the clone's synthetic claude-proxy store.`;
+CLAUDE_PROXY_STORE and LOG_DIR pointing at the clone's synthetic claude-proxy store, or
+nothing plus a warning when the template carries no such store.`;
 
 const DEFAULTS = {
-  owner: 'llevasseur',
-  template: 'llevasseur/my-command-fixture',
   'name-a': 'my-command-ab-a',
   'name-b': 'my-command-ab-b',
 };
+
+/** The keys `~/.my-command/ab/config.json` may set. */
+const CONFIG_KEYS = ['template', 'owner', 'gitHost', 'root'];
+
+/**
+ * `~/.my-command/ab/config.json`, or `{}` when there is none. A file that does not parse, or
+ * sets a key to anything but a non-empty string, is refused.
+ * @returns {{path: string, values: Partial<Record<'template' | 'owner' | 'gitHost' | 'root', string>>}}
+ */
+function readConfigFile() {
+  const path = join(homedir(), '.my-command', 'ab', 'config.json');
+  if (!existsSync(path)) return { path, values: {} };
+  /** @type {unknown} */
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(path, 'utf8'));
+  } catch (err) {
+    throw new ToolkitError(`${path} is not valid JSON: ${/** @type {Error} */ (err).message}`, { configPath: path });
+  }
+  // JSON.parse builds plain objects and primitive strings, so the constructor names the JSON type.
+  if (/** @type {{constructor?: unknown} | null} */ (parsed)?.constructor !== Object) {
+    throw new ToolkitError(`${path} must hold a JSON object with ${CONFIG_KEYS.join(', ')}`, { configPath: path });
+  }
+  /** @type {Record<string, string>} */
+  const values = {};
+  for (const key of CONFIG_KEYS) {
+    const v = /** @type {Record<string, unknown>} */ (parsed)[key];
+    if (v === undefined) continue;
+    if (/** @type {{constructor?: unknown} | null} */ (v)?.constructor !== String || String(v).trim() === '') {
+      throw new ToolkitError(`${path}: "${key}" must be a non-empty string`, { configPath: path, key });
+    }
+    values[key] = String(v);
+  }
+  return { path, values };
+}
+
+/**
+ * The owner when no flag, env var or config names one: the active gh login, but only when it
+ * is the only github.com login. With two, the active one is whichever was switched to last,
+ * and the sandboxes would land under it silently.
+ * @returns {string}
+ */
+function ghLogin() {
+  const status = exec('gh', ['auth', 'status', '--hostname', 'github.com']);
+  if (status.missing) throw new ToolkitError('`gh` is not on PATH');
+  const logins = parseAccounts(`${status.stdout}\n${status.stderr}`).map((a) => a.login);
+  if (logins.length > 1) {
+    throw new UsageError(
+      `more than one gh account is logged in to github.com (${logins.join(', ')}), so the sandbox owner ` +
+        'cannot be taken from the active login. Pass --owner <login>, set MY_COMMAND_AB_OWNER, or set "owner" ' +
+        'in ~/.my-command/ab/config.json.',
+      { accounts: logins },
+    );
+  }
+  const r = exec('gh', ['api', 'user', '--jq', '.login']);
+  if (!r.ok || !r.stdout) {
+    throw new UsageError(
+      'no sandbox owner: pass --owner <login>, set MY_COMMAND_AB_OWNER, set "owner" in ' +
+        '~/.my-command/ab/config.json, or log in with `gh auth login`.',
+      { stderr: r.stderr },
+    );
+  }
+  return r.stdout;
+}
 
 /** `gh repo view` on a repo that does not exist, or one this token cannot see. */
 const ABSENT = /Could not resolve to a Repository|HTTP 404|not found/i;
@@ -53,7 +119,8 @@ const NO_DELETE_SCOPE = /delete_repo/i;
 /**
  * @typedef {object} Config
  * @property {string} owner
- * @property {string} template
+ * @property {'flag' | 'env' | 'config' | 'gh-login'} ownerSource
+ * @property {string | null} template  Null when nothing names one; init and reset refuse that.
  * @property {string} root
  * @property {string} gitHost
  * @property {Record<string, string>} env  gh's environment: the owner's token when the device has it.
@@ -61,18 +128,49 @@ const NO_DELETE_SCOPE = /delete_repo/i;
  * @property {{arm: 'a' | 'b', name: string}[]} arms
  */
 
-/** @param {import('../cli.mjs').Ctx} ctx @returns {Config} */
-function config(ctx) {
+/**
+ * Flags, then env, then the config file, then the built-in fallback, for every setting.
+ * @param {import('../cli.mjs').Ctx} ctx
+ * @param {boolean} needsTemplate  Checked before the owner, so a missing template costs no gh call.
+ * @returns {Config}
+ */
+function config(ctx, needsTemplate) {
   const f = ctx.flags;
-  const owner = str(f.owner) ?? DEFAULTS.owner;
-  const template = str(f.template) ?? DEFAULTS.template;
-  if (!/^[^/\s]+\/[^/\s]+$/.test(template)) throw new UsageError(`--template must be <owner/name>, got '${template}'`);
-  const root = str(f.root) || process.env.MY_COMMAND_SANDBOX_ROOT || join(homedir(), '.my-command', 'ab', 'sandboxes');
-  const gitHost = str(f['git-host']) || process.env.MY_COMMAND_GIT_HOST || 'github.com';
+  const file = readConfigFile().values;
+
+  const template = str(f.template) || process.env.MY_COMMAND_AB_TEMPLATE || file.template || null;
+  if (template === null && needsTemplate) {
+    throw new UsageError(
+      'no sandbox template: pass --template <owner/name>, set MY_COMMAND_AB_TEMPLATE, or set "template" in ' +
+        '~/.my-command/ab/config.json. /ab-bootstrap will write that config file.',
+    );
+  }
+  if (template !== null && !/^[^/\s]+\/[^/\s]+$/.test(template)) {
+    throw new UsageError(`the template must be <owner/name>, got '${template}'`);
+  }
+  const root =
+    str(f.root) ||
+    process.env.MY_COMMAND_SANDBOX_ROOT ||
+    file.root ||
+    join(homedir(), '.my-command', 'ab', 'sandboxes');
+  const gitHost = str(f['git-host']) || process.env.MY_COMMAND_GIT_HOST || file.gitHost || 'github.com';
+
+  /** @type {[string | undefined, Config['ownerSource']][]} */
+  const named = [
+    [str(f.owner), 'flag'],
+    [process.env.MY_COMMAND_AB_OWNER, 'env'],
+    [file.owner, 'config'],
+  ];
+  const hit = named.find(([v]) => v);
+  const [owner, ownerSource] = hit
+    ? [/** @type {string} */ (hit[0]), hit[1]]
+    : [ghLogin(), /** @type {const} */ ('gh-login')];
+
   // Every gh call runs as the owner: another active account cannot see the private sandboxes.
   const token = ownerToken(owner);
   return {
     owner,
+    ownerSource,
     template,
     root,
     gitHost,
@@ -141,9 +239,11 @@ const pointsAt = (url, slug) =>
 function describe(c, a, repo) {
   const slug = `${c.owner}/${a.name}`;
   const clone = join(c.root, a.arm);
-  const store = join(clone, 'fixtures', 'claude-proxy-store', 'logs', 'sessions');
+  const storeRoot = join(clone, 'fixtures', 'claude-proxy-store');
   const local = inspectClone(clone);
-  return {
+  const hasStore = existsSync(storeRoot);
+  /** @type {Record<string, unknown>} */
+  const report = {
     arm: a.arm,
     nameWithOwner: repo?.nameWithOwner ?? slug,
     url: repo?.url ?? null,
@@ -153,8 +253,15 @@ function describe(c, a, repo) {
     repo: repo ? 'present' : 'absent',
     local: { state: local.state, origin: local.origin, branch: local.branch },
     // The claude-proxy readers take the log dir as the store's parent and pin LOG_DIR to it.
-    env: { CLAUDE_PROXY_STORE: store, LOG_DIR: join(clone, 'fixtures', 'claude-proxy-store', 'logs') },
+    // Only when the store is on disk.
+    env: hasStore ? { CLAUDE_PROXY_STORE: join(storeRoot, 'logs', 'sessions'), LOG_DIR: join(storeRoot, 'logs') } : {},
   };
+  if (local.state === 'clone' && !hasStore) {
+    report.warning =
+      'the template has no synthetic store (fixtures/claude-proxy-store/), so this arm exports no ' +
+      'CLAUDE_PROXY_STORE or LOG_DIR';
+  }
+  return report;
 }
 
 /** @param {Config} c @param {{arm: 'a' | 'b', name: string}} a */
@@ -163,7 +270,9 @@ function initOne(c, a) {
   let repo = view(c, slug);
   let created = false;
   if (!repo) {
-    const r = gh(c, ['repo', 'create', slug, '--template', c.template, '--private', '--include-all-branches']);
+    // config() refused init without a template.
+    const template = /** @type {string} */ (c.template);
+    const r = gh(c, ['repo', 'create', slug, '--template', template, '--private', '--include-all-branches']);
     if (!r.ok) throw new ToolkitError(`gh repo create ${slug} failed`, { arm: a.arm, stderr: r.stderr });
     created = true;
     repo = view(c, slug);
@@ -257,8 +366,17 @@ export function run(ctx) {
   const scenario = str(ctx.flags.scenario);
   if (sub === 'reset' && !scenario) throw new UsageError('reset needs --scenario <name>');
 
-  const c = config(ctx);
-  const common = { action: sub, owner: c.owner, template: c.template, root: c.root, identity: c.identity };
+  // reset reads the template only as the default fixture remote.
+  const explicitRemote = str(ctx.flags['fixture-remote']) || process.env.FIXTURE_REMOTE;
+  const c = config(ctx, sub === 'init' || (sub === 'reset' && !explicitRemote));
+  const common = {
+    action: sub,
+    owner: c.owner,
+    ownerSource: c.ownerSource,
+    template: c.template,
+    root: c.root,
+    identity: c.identity,
+  };
 
   if (sub === 'status') {
     return { ...common, sandboxes: c.arms.map((a) => describe(c, a, view(c, `${c.owner}/${a.name}`))) };
@@ -266,7 +384,7 @@ export function run(ctx) {
   if (sub === 'init') return { ...common, sandboxes: c.arms.map((a) => initOne(c, a)) };
   if (sub === 'destroy') return { ...common, sandboxes: c.arms.map((a) => destroyOne(c, a)) };
 
-  const fixtureRemote = str(ctx.flags['fixture-remote']) || process.env.FIXTURE_REMOTE || sshUrl(c, c.template);
+  const fixtureRemote = explicitRemote || sshUrl(c, /** @type {string} */ (c.template));
   const dryRun = bool(ctx.flags['dry-run']);
   return {
     ...common,

@@ -80,7 +80,8 @@ tracker, or a chat.
 
 **The `ab/` guard stays out of the sandboxes.** `pr` previews an `ab/` branch
 only when the repo's common git directory is outside the sandbox root,
-`$MY_COMMAND_SANDBOX_ROOT` or else `~/.my-command/ab/sandboxes`. A scenario
+`$MY_COMMAND_SANDBOX_ROOT`, then `root` in `~/.my-command/ab/config.json`, else
+`~/.my-command/ab/sandboxes`. A scenario
 arm's PR is real whatever its branch is called, including from a worktree the
 arm cut from its clone.
 
