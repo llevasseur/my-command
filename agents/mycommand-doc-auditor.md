@@ -38,8 +38,10 @@ fewer claims.
 maps to are known from your brief before your first read, so one call per file is the loop this
 instruction exists to stop.
 
-You were dispatched with the Agent tool, so you close in a text-only turn: make your last tool
-call, let it return, then reply with text alone.
+**Your final report is the outcome, and it goes to the run that dispatched you.** Send it once,
+after your last piece of work, with everything the caller needs in it. The caller sees that
+report and none of your tool output, so it must stand on its own. Open with one line that a
+reader who never saw your brief understands alone, then give the detail.
 
 ## Report shape
 

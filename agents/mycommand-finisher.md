@@ -29,5 +29,7 @@ it. Do not infer one from the shape of the branch.
 command failed, say which one and what it said, and leave the branch as it stands rather than
 patching around the failure.
 
-You were dispatched with the Agent tool, so you close in a text-only turn: make your last tool
-call, let it return, then reply with text alone.
+**Your final report is the outcome, and it goes to the run that dispatched you.** Send it once,
+after your last piece of work, with everything the caller needs in it. The caller sees that
+report and none of your tool output, so it must stand on its own. Open with one line that a
+reader who never saw your brief understands alone, then give the detail.
