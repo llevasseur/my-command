@@ -19,6 +19,7 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 - **`/pr` is now five lines of intent instead of 143.** Experimental: it keeps the goal and the rules a model would otherwise break, and drops the step mechanics and shared includes. The `pr` verb still does the pushing, assets, screenshots and body warnings. See `docs/features/pr.md`.
 - **`/pr` titles a PR after its net change, not its tip commit.** The title and opening bullets come from the diff against the base, and the body says when GitHub's diff will show more, such as a branch with no merge base. It also writes the body with `Write` and quotes its template glob, so no gate refuses either.
+- **`/pr` titles read as plain Title Case, and its bullets fit on one line.** No `ci:`-style prefix on the title, and each bullet runs about 15 words so a reviewer takes it in at a glance.
 
 ### Fixed
 

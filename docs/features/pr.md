@@ -49,10 +49,14 @@ What those lines keep:
 - **Title from the net change.** The title and opening bullets come from
   `git diff origin/<base> HEAD`, not from commit subjects, and the body says when GitHub's
   diff will show more than that, as on a branch with no merge base.
+- **A plain Title Case title.** No conventional-commit `<type>:` prefix: "Turn Setup-Node's
+  pnpm Cache Back On in the Scripts Job", not "ci: turn setup-node's pnpm cache back on in the
+  scripts job".
 - **Write the body without tripping a gate.** The `Write` tool under `$CLAUDE_JOB_DIR/tmp/`,
   never a heredoc or bare `/tmp`, and a quoted glob when probing for a PR template.
 - **The body is for a reviewer who never saw the request.** Bullets only, under 400 words,
-  and no log of what the author checked. Tone is left to the user's own `CLAUDE.md` or
+  each one line of about 15 words that reads at a glance, and no log of what the author
+  checked. Tone is left to the user's own `CLAUDE.md` or
   `AGENTS.md`, not named in the prompt.
 - **One publish call.** `my-command-tools pr --body-file` pushes, creates or updates, and
   carries assets and screenshots, so none of that needs explaining in the prompt. `--retitle`
