@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { bool, flag, str } from './lib/flags.mjs';
 import { ToolkitError } from './lib/proc.mjs';
 import { GATED_VERBS, requireArmed } from './lib/require-armed.mjs';
+import * as abDiff from './verbs/ab-diff.mjs';
 import * as app from './verbs/app.mjs';
 import * as browser from './verbs/browser.mjs';
 import * as cleanup from './verbs/cleanup.mjs';
@@ -59,6 +60,7 @@ const VERBS = {
   prs,
   worktree,
   sandbox,
+  'ab-diff': abDiff,
   shots,
   cleanup,
   identity,
