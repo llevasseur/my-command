@@ -16,8 +16,7 @@ const realGit = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' 
 let h;
 
 /**
- * Every call names a template unless the test passes `template: undefined`, since most tests
- * are about something else.
+ * Every call names a template unless the test passes `template: undefined`.
  * @param {string[]} positionals @param {Record<string, string | true | undefined>} [flags]
  * @returns {{sandboxes: any[], [field: string]: any}}
  */

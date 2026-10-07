@@ -50,9 +50,8 @@ const DEFAULTS = {
 const CONFIG_KEYS = ['template', 'owner', 'gitHost', 'root'];
 
 /**
- * `~/.my-command/ab/config.json`, or `{}` when there is none. A file that exists and does
- * not parse, or sets a key to something other than a non-empty string, is refused rather than
- * read around.
+ * `~/.my-command/ab/config.json`, or `{}` when there is none. A file that does not parse, or
+ * sets a key to anything but a non-empty string, is refused.
  * @returns {{path: string, values: Partial<Record<'template' | 'owner' | 'gitHost' | 'root', string>>}}
  */
 function readConfigFile() {
@@ -254,7 +253,7 @@ function describe(c, a, repo) {
     repo: repo ? 'present' : 'absent',
     local: { state: local.state, origin: local.origin, branch: local.branch },
     // The claude-proxy readers take the log dir as the store's parent and pin LOG_DIR to it.
-    // Exported only when the store is on disk: a path that does not exist reads as an empty store.
+    // Only when the store is on disk.
     env: hasStore ? { CLAUDE_PROXY_STORE: join(storeRoot, 'logs', 'sessions'), LOG_DIR: join(storeRoot, 'logs') } : {},
   };
   if (local.state === 'clone' && !hasStore) {
