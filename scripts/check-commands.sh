@@ -53,9 +53,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 fail=0
 
-# Minimal commands state intent only and carry none of the shared includes. This is an
-# experiment (docs/features/pr.md): each one says in a line what invariants 6, 15 and 19
-# enforce through the includes, and the gate holds it to that line instead.
+# Intent-only commands (docs/features/pr.md): exempt from the includes invariants 6, 15 and 19
+# require, and held to stating the nested handback and return marker themselves.
 MINIMAL="pr"
 is_minimal() { [[ " $MINIMAL " == *" $1 "* ]]; }
 
