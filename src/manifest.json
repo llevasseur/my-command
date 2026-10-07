@@ -35,6 +35,12 @@
     }
   },
   "commands": {
+    "ab": {
+      "flags": ["--command", "--fixture", "--rubric"],
+      "verbs": ["jev-record", "pr", "state", "worktree"],
+      "stores": [],
+      "claudeProxy": "none"
+    },
     "changelog": {
       "flags": [],
       "verbs": ["state"],
