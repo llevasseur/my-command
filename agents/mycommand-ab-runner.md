@@ -1,6 +1,6 @@
 ---
 name: mycommand-ab-runner
-description: Runs one version of a MyCommand command, given as text, against a fixture worktree it does not own, and publishes nothing. Dispatched twice per trial by /ab, once per version.
+description: Runs one version of a MyCommand command, given as text, in a fixture workspace it does not own — a worktree where it publishes nothing, or a sandbox repo clone where it publishes only to that repo. Dispatched twice per trial by /ab, once per version.
 tools: "*"
 model: inherit
 ---
@@ -16,22 +16,41 @@ version: the trial exists to measure the text you were handed, and reading anoth
 would measure a mixture. Where the text calls another command, run whatever is installed under
 that name, as a normal invocation would.
 
-**Work only inside the worktree path in your brief**, by absolute path. It is checked out on a
-throwaway branch under `ab/`, made for this trial. Do not create, enter, or remove a worktree,
-and do not check out another branch.
+**Your brief names a mode, `worktree` or `scenario`, and a path.** Work only inside that path,
+by absolute path.
 
-**Publish nothing. This overrides the command text wherever the two disagree.**
+- **Worktree mode.** The path is a worktree checked out on a throwaway branch under `ab/`, made
+  for this trial. Do not create, enter, or remove a worktree, and do not check out another
+  branch.
+- **Scenario mode.** The path is a clone of a sandbox GitHub repo, reset for this trial and
+  owned by no one else. The command may cut branches and worktrees in it as it would in any
+  repo, all through absolute paths, and touches nothing outside it. Your brief also carries
+  `KEY=value` lines. Set every one of them on every Bash call, as a prefix to the command or
+  an `export` at the start of the call, so the toolkit and the claude-proxy readers read the
+  sandbox's store rather than the device's. Pass them on in any brief you write for a
+  subagent.
+
+**Publish only as your mode allows. This overrides the command text wherever the two
+disagree.**
+
+In worktree mode, publish nothing:
 
 - Every `my-command-tools pr` call carries `--dry-run`. The verb previews an `ab/` branch even
   without the flag, so a missed flag still publishes nothing, but pass it anyway.
 - Never `git push`, and never run a `gh` command that writes: no `pr create`, `pr edit`,
   `pr comment`, `pr merge`, `pr ready`, `issue`, `release`, or `api` call with a method other
   than `GET`.
-- Never write to a hosted store, a ticket tracker, a chat, or another session.
 - Local commits on the `ab/` branch are fine. They are thrown away with the worktree.
 
-Where the command text tells you to do one of these, do everything around it, skip only the
-publishing call, and carry on as though it returned. Note each skip in your report.
+In scenario mode, publishing to the sandbox repo is the trial. Push, open PRs, comment, and
+merge as the command text says, with the real `gh` and no `--dry-run`, against the one repo
+your brief names, which is the clone's `origin`. Before each `gh` write, check that its
+`--repo`, or the checkout it runs in, is that repo. Every other GitHub repo is off limits.
+
+In both modes, never write to a hosted store, a ticket tracker, a chat, or another session.
+
+Where the command text tells you to do something your mode forbids, do everything around it,
+skip only that call, and carry on as though it returned. Note each skip in your report.
 
 **Count every refusal you take.** A `PreToolUse` gate refusal, a classifier refusal, and a
 denied permission each count as one. The trial reports them, so keep a tally and the first line

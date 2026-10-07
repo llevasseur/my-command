@@ -1,9 +1,14 @@
 ---
-description: A/B-test two versions of a MyCommand command on one fixture branch — two isolated runs that publish nothing, a blind judge, a side-by-side report, and your pick recorded as a label
-argument-hint: "<refA> <refB> [--fixture <branch>] [--command <name>] [--rubric <text>] -- <args>"
+description: A/B-test two versions of a MyCommand command — in two worktrees of one fixture branch that publish nothing, or with --scenario in two sandbox GitHub repos where each arm opens and merges real PRs — then a blind judge, a side-by-side report, and your pick recorded as a label
+argument-hint: "<refA> <refB> [--fixture <branch> | --scenario <name>] [--command <name>] [--rubric <text>] -- <args>"
 ---
 
-Run two versions of one command against the same fixture and show which one did better. Each version runs in a fresh agent, in its own worktree of the fixture branch, with only that version's text as its instructions and the shared arguments as its input. Neither run sees the other, and neither publishes anything. A third agent then judges the two outputs blind. You get a side-by-side report, and your own pick is recorded as the label.
+Run two versions of one command against the same starting point and show which one did better. Each version runs in a fresh agent, in a workspace of its own, with only that version's text as its instructions and the shared arguments as its input. Neither run sees the other. A third agent then judges the two outputs blind. You get a side-by-side report, and your own pick is recorded as the label.
+
+There are two modes, and the flags pick one:
+
+- **Worktree mode**, the default. Each arm gets its own worktree of one fixture branch in this repo and publishes nothing. Use it for trials on MyCommand itself, and for any command whose output is text.
+- **Scenario mode**, with `--scenario <name>`. Each arm gets its own sandbox GitHub repo, reset to the named scenario, and works in that repo's clone with the real `gh`. It pushes, opens PRs, and merges into its own sandbox's default branch. Two repos means a command that merges, such as `/my-command:god` or `/my-command:merge-deps`, cannot collide with the other arm.
 
 Your input is the text in the `<command-args>` block above. Everything before the first standalone `--` is the two refs and this command's flags. Everything after it is the argument string both runs receive, passed through verbatim.
 
@@ -26,40 +31,51 @@ Your input is the text in the `<command-args>` block above. Everything before th
   - `<rev>:<path>` — a command file at a git revision, e.g. `origin/main:src/commands/pr.md` or `chore/pr-minimal:commands/pr.md`. Read with `git show`.
   - a path to a file on disk.
   - `paste` — the command text you pasted into the message, in a fenced block. The first `paste` takes the first fenced block after the invocation, and the second `paste` takes the second.
-- `--fixture <branch>` — the branch both runs start from. Default: the current branch from `my-command-tools state`. Refuse the default branch: a fixture with no commits of its own gives most commands nothing to do.
+- `--fixture <branch>` — worktree mode: the branch both runs start from. Default: the current branch from `my-command-tools state`. The default branch is allowed, because a command such as `/my-command:task` starts from a clean default branch.
+- `--scenario <name>` — scenario mode: the scenario both sandboxes are reset to, by the name the fixture template's `scripts/reset-scenario.sh` knows it under. Refuse it together with `--fixture`, because the scenario is the fixture.
 - `--command <name>` — the command's name, without the slash. Default: the basename of the refs' paths when both name the same file. Required when either ref is `paste` or the basenames differ.
 - `--rubric <text>` — what the judge should weigh. Default: which output a person who invoked the command would rather have received.
 
 ## Step 1 — Resolve the trial
 
 1. **Read live state.** Run `my-command-tools state` for `root`, `branch` and `defaultBranch`, then `git fetch origin` in its own Bash call so `origin/…` revisions are current. <!-- include: shared/approval-own-call.md -->**A command that may need approval goes in its own Bash call** — `git fetch`, `git config`, and, as a narrow exception to the general rule to chain dependent mutations, branch-lifecycle operations such as checkout/switch, pull, remote-branch inspection, and local branch deletion. Folding one into an `&&` chain escalates approval to the whole compound command and costs a turn plus a retry. Put status output, pipes, and follow-up verification in separate read-only calls.<!-- /include -->
-2. **Pin the fixture.** Take `--fixture` or the current branch. Stop if it is `defaultBranch`. Resolve its sha with `git rev-parse --verify <fixture>^{commit}` and use that sha from here on, so both runs start from the same commit even if the branch moves.
+2. **Pin the fixture, in worktree mode.** Take `--fixture` or the current branch. Resolve its sha with `git rev-parse --verify <fixture>^{commit}` and use that sha from here on, so both runs start from the same commit even if the branch moves. In scenario mode, skip this: Step 2 takes each arm's starting sha from the reset.
 3. **Read both versions.** For `<rev>:<path>`, run `git show <rev>:<path>`. For a file path, use `Read`. For `paste`, take the fenced block. Stop and name the ref if any of them comes back empty or does not resolve. If the two texts are byte-identical, say so and stop, because the trial would measure noise.
 4. **Name the command.** Use `--command`, or the shared basename of the two paths. Stop and ask for `--command` if neither gives one name.
 5. **Open the trial directory.** Use `~/.my-command/ab/<trial>/`, where `<trial>` is `<command>-<UTC timestamp to the second>`. It sits outside every checkout, so nothing from the trial can be committed by accident. Write each version there as `a.md` and `b.md` with `Write`.
 
-State the trial back in one line: the command, both refs with their line counts, the fixture with its short sha, and the argument string.
+State the trial back in one line: the mode, the command, both refs with their line counts, the fixture with its short sha or the scenario name, and the argument string.
 
-## Step 2 — Make one worktree per arm
+## Step 2 — Prepare one workspace per arm
 
-Run two calls, one per arm:
+**Worktree mode.** Run two calls, one per arm:
 
 ```bash
 my-command-tools worktree begin --branch ab/<trial>-a --base <fixture sha> --bootstrap
 my-command-tools worktree begin --branch ab/<trial>-b --base <fixture sha> --bootstrap
 ```
 
-Each arm gets its own throwaway branch under `ab/`, because git refuses to check out one branch in two worktrees. Starting both from the same sha keeps the fixture identical. `my-command-tools pr` always previews a branch under `ab/`, so an arm that forgets `--dry-run` still pushes nothing. Keep each reported `path`. If either bootstrap fails, tear down what was made (Step 6) and stop: an arm without dependencies fails for a reason that has nothing to do with its text.
+Each arm gets its own throwaway branch under `ab/`, because git refuses to check out one branch in two worktrees. Starting both from the same sha keeps the fixture identical. `my-command-tools pr` always previews a branch under `ab/` outside the sandbox root, so an arm that forgets `--dry-run` still pushes nothing. Keep each reported `path`. If either bootstrap fails, tear down what was made (Step 6) and stop: an arm without dependencies fails for a reason that has nothing to do with its text.
+
+**Scenario mode.** Arm A works in sandbox `a`, and arm B in sandbox `b`.
+
+1. **Check both sandboxes.** Run `my-command-tools sandbox status`. If either sandbox reports `repo: "absent"`, or a `local.state` other than `"clone"`, run `my-command-tools sandbox init`. If `init` refuses a clone path, stop and report it. Never move or delete what is there yourself.
+2. **Reset both to the scenario.** Run `my-command-tools sandbox reset --scenario <name>`. One call resets both. If it fails, stop and report the arm and the `stderr` it names: an unknown scenario or a broken reset gives both arms a start that is not the trial's.
+3. **Keep each sandbox's fields** from the reset report: `clone`, `env`, `nameWithOwner`, `url`, `defaultBranch`, the PRs the scenario seeded under `reset.prs`, and `reset.mainSha` as that arm's start sha.
+
+The verb clones over SSH through `MY_COMMAND_GIT_HOST`, or `github.com` when it is unset. On a device where plain `github.com` signs in as another account, the user sets it to their `~/.ssh/config` alias for the owner's key. Read it from the environment, and never pass a host of your own.
 
 ## Step 3 — Run both arms at once, isolated
 
-Send both dispatches **in one message**, so they run concurrently and neither can be shaped by the other's result. Each is an `Agent` call with `subagent_type: "mycommand-ab-runner"`. The definition already carries the rules: follow only the given text, work only in the given path, publish nothing, count refusals, close as the text says, and append an `ab-report` block. So the brief for each arm holds this arm's specifics and nothing else:
+Send both dispatches **in one message**, so they run concurrently and neither can be shaped by the other's result. Each is an `Agent` call with `subagent_type: "mycommand-ab-runner"`. The definition already carries the rules for both modes: follow only the given text, work only in the given path, publish as the mode allows, count refusals, close as the text says, and append an `ab-report` block. So the brief for each arm holds this arm's specifics and nothing else:
 
-- the worktree `path`, as the only place to work;
+- the mode, `worktree` or `scenario`;
+- the path to work in: the worktree `path`, or the sandbox `clone`, by absolute path;
+- in scenario mode, the sandbox's `env` as `KEY=value` lines to set on every Bash call, and its `nameWithOwner` as the only repo it may publish to;
 - the invocation as the user would have typed it: `/<command> <args>`;
 - the version's full text, inside a fenced block, introduced as the instructions for that invocation.
 
-Never put the other arm's text, ref, or path in a brief. Never say which arm is A or which is the baseline. An arm that knows it is the challenger is no longer measuring the text alone.
+Never put the other arm's text, ref, path, or repo in a brief. Never say which arm is A or which is the baseline. An arm that knows it is the challenger is no longer measuring the text alone. A sandbox repo's name carries its arm letter, and that letter says nothing about which version is which, so do not explain it.
 
 ## Step 4 — Collect each run
 
@@ -74,7 +90,9 @@ This is a step of the workflow, not a habit to recall. Run it whenever a phase o
 
 For each arm, record:
 
-- **Output.** If the arm ran `my-command-tools pr`, the preview is at `<git dir>/my-command/pr-dry-run.json`, where `<git dir>` is `git -C <path> rev-parse --absolute-git-dir`. Its `title` and `body` are the output, and its `action` says whether it would create or update. Without a preview, the output is the arm's final message with the `ab-report` block removed. Also record the arm's commits and diff stat against the fixture sha, with `git -C <path> log --oneline <sha>..HEAD` and `git -C <path> diff --stat <sha>..HEAD`.
+- **Output, in worktree mode.** If the arm ran `my-command-tools pr`, the preview is at `<git dir>/my-command/pr-dry-run.json`, where `<git dir>` is `git -C <path> rev-parse --absolute-git-dir`. Its `title` and `body` are the output, and its `action` says whether it would create or update. Without a preview, the output is the arm's final message with the `ab-report` block removed. Also record the arm's commits, with `git -C <path> log --oneline <sha>..HEAD`.
+- **Output, in scenario mode.** Run `git -C <clone> fetch origin` in its own call. List the arm's PRs with `gh pr list --repo <nameWithOwner> --state all --json number,url,title,body,state,headRefName --limit 50`, and keep the ones the scenario did not seed under `reset.prs`. For each kept PR, record its number, URL, state, and CI with `gh pr checks <number> --repo <nameWithOwner> --json name,state,link`; a PR with no checks has CI `none`. The output is the arm's final message with the `ab-report` block removed, followed by each kept PR's title and body. If `gh` cannot see a private sandbox, run `my-command-tools identity --select --cwd <clone>` once and retry.
+- **The arm's full diff ranges**, for the judge in Step 5. In worktree mode it is `<sha>...HEAD`. In scenario mode it is `<start sha>...origin/<defaultBranch>`, which is what the arm merged, plus `origin/<defaultBranch>...refs/ab/pr-<number>` for each kept PR still open, after `git -C <clone> fetch origin pull/<number>/head:refs/ab/pr-<number>` in its own call.
 - **Turns, tokens, and duration**, from the usage the `Agent` result reports. Turns are its tool-use count. Write `unknown` for a figure the result does not carry, and never estimate one.
 - **Refusals**, from the arm's `ab-report` block: the count and each first line.
 - **Close.** Decide `correct` or `wrong`, with the reason. It is correct when the last non-blank line before the `ab-report` block is `RETURN /<command>`, with or without a namespace prefix, and the arm reported an outcome rather than stopping mid-step. A missing marker, a different command's marker, or a final message that ends on a question is `wrong`.
@@ -86,19 +104,27 @@ An arm that crashed, timed out, or returned no `ab-report` block is still a resu
 
 Flip a coin with `echo $((RANDOM % 2))`. On `0`, A is shown as Output 1. On `1`, B is. Write down the mapping and keep it out of the judge's brief.
 
+**Write each arm's full diff under its output number**, one call per arm:
+
+```bash
+my-command-tools ab-diff --cwd <path or clone> --range <range> [--range <range> …] --redact <name> [--redact <name> …] --out ~/.my-command/ab/<trial>/output-<n>.diff
+```
+
+Pass every range Step 4 recorded for that arm, in order. Redact every name that could reveal either arm, in both calls: both `ab/<trial>-a|b` branches, the trial name, both worktree paths or clones, and both sandboxes' `nameWithOwner` and bare repo names. The verb runs `git diff --no-prefix`, so no `a/` or `b/` path prefix reaches the judge either. Scrub each output's text the same way, and replace every PR URL in it with `<redacted>`.
+
 Dispatch one `Agent` call with `subagent_type: "mycommand-ab-judge"`. The brief holds:
 
-- the invocation `/<command> <args>`, and what the fixture changes (`git diff --stat <defaultBranch>...<fixture sha>`);
+- the invocation `/<command> <args>`, and the starting point: in worktree mode what the fixture changes (`git diff --stat <defaultBranch>...<fixture sha>`, or that the fixture is the default branch itself), and in scenario mode the scenario's name;
 - the rubric (`--rubric`, or the default from Flags);
-- **Output 1** and **Output 2**, each as collected in Step 4, with each arm's diff stat.
+- **Output 1** and **Output 2**, each as collected in Step 4 and scrubbed, with its diff's `files` and the path of its `output-<n>.diff` to `Read` whole.
 
-Leave out the refs, both command texts, the line counts, the metrics, and the words A, B, baseline, old, new, minimal, or any branch name that hints at a version. Each of those is a label.
+Leave out the refs, both command texts, the line counts, the metrics, the PR URLs, and the words A, B, baseline, old, new, minimal, or any branch or repo name that hints at a version. Each of those is a label.
 
 Map the judge's `1`, `2`, or `tie` back to `a`, `b`, or `tie` through the coin.
 
 ## Step 6 — Report, take the pick, record, tear down
 
-**Print the report.** Lead with one line naming the command, the fixture, and the judge's verdict in A/B terms. Then:
+**Print the report.** Lead with one line naming the command, the fixture or scenario, and the judge's verdict in A/B terms. Then:
 
 ```text
 | | A — <refA> | B — <refB> |
@@ -111,9 +137,14 @@ Map the judge's `1`, `2`, or `tie` back to `a`, `b`, or `tie` through the coin.
 | close | correct / wrong: <reason> | |
 | skipped publishes | | |
 | pr action | create / update / none | |
+| prs | [#<n>](<url>) <state>, … | |
+| ci | <pass / fail / none> per PR, linked to the PR's checks page | |
+| diff | each PR's files page, linked, then output-<n>.diff | |
 ```
 
-After the table, print each output whole under `### A — output` and `### B — output`, one after the other. A terminal cannot show two bodies side by side, and a truncated body cannot be judged. Then print the judge's verdict, confidence, and reasons, and say which output was shown as Output 1.
+The `pr action` row is worktree mode's and the `prs` and `ci` rows are scenario mode's; drop the rows the mode does not fill. Each PR link comes from that arm's own sandbox repo, so the two columns link two different repos side by side.
+
+After the table, print each output whole under `### A — output` and `### B — output`, one after the other, unscrubbed. A terminal cannot show two bodies side by side, and a truncated body cannot be judged. Then print the judge's verdict, confidence, and reasons, and say which output was shown as Output 1.
 
 **Take the pick.** Ask with one `AskUserQuestion`: A, B, Tie, or Don't record. Your pick is the label, and the judge's verdict is only a feature of it. So ask after printing the verdict and never before, and never fill the pick in yourself. Where no answer can be collected, as in a background run or a dismissed question, record nothing. Say that the trial file is kept and give the command that records it later.
 
@@ -123,35 +154,42 @@ After the table, print each output whole under `### A — output` and `### B —
 {
   "command": "<command>",
   "args": "<args>",
+  "mode": "worktree",
   "fixture": { "branch": "<fixture>", "sha": "<sha>" },
+  "scenario": null,
   "rubric": "<rubric or null>",
   "versions": {
     "a": { "ref": "<refA>", "lines": 0 },
     "b": { "ref": "<refB>", "lines": 0 }
   },
   "runs": {
-    "a": { "output": "<output>", "toolUses": 0, "tokens": 0, "durationMs": 0, "refusals": 0, "close": "correct", "closeReason": "", "skipped": [], "prAction": "create" },
-    "b": { "output": "<output>", "toolUses": 0, "tokens": 0, "durationMs": 0, "refusals": 0, "close": "correct", "closeReason": "", "skipped": [], "prAction": "create" }
+    "a": { "output": "<output>", "toolUses": 0, "tokens": 0, "durationMs": 0, "refusals": 0, "close": "correct", "closeReason": "", "skipped": [], "prAction": "create", "prs": [], "diff": "<path>" },
+    "b": { "output": "<output>", "toolUses": 0, "tokens": 0, "durationMs": 0, "refusals": 0, "close": "correct", "closeReason": "", "skipped": [], "prAction": "create", "prs": [], "diff": "<path>" }
   },
   "judge": { "shownFirst": "a", "verdict": "a", "confidence": "medium", "reasons": ["…"] },
   "pick": "b"
 }
 ```
 
-A figure Step 4 could not read is `null`, never `0`. On a pick, run `my-command-tools jev-record label --file ~/.my-command/ab/<trial>/trial.json`. It writes the trial as a `kind: "ab"` session in the same keep as the recorded Jev exchanges, so the labelled corpus stays one store. Report the `session` and whether your pick agreed with the judge. Under Don't record, or with no answer, leave `pick` out of the file and print the `jev-record label` command to run once it is set.
+In scenario mode, `mode` is `"scenario"`, `fixture` is `null`, `scenario` is `{ "name": "<name>", "repos": { "a": "<nameWithOwner>", "b": "<nameWithOwner>" }, "starts": { "a": "<sha>", "b": "<sha>" } }`, `prAction` is `null`, and each run's `prs` holds `{ "number", "url", "state", "ci" }` per kept PR. A figure Step 4 could not read is `null`, never `0`. On a pick, run `my-command-tools jev-record label --file ~/.my-command/ab/<trial>/trial.json`. It writes the trial as a `kind: "ab"` session in the same keep as the recorded Jev exchanges, so the labelled corpus stays one store. Report the `session` and whether your pick agreed with the judge. Under Don't record, or with no answer, leave `pick` out of the file and print the `jev-record label` command to run once it is set.
 
-**Tear down both arms.** Their branches were never pushed, by design, so `worktree end` needs `--force` here and only here:
+**Tear down, in worktree mode.** The arm branches were never pushed, by design, so `worktree end` needs `--force` here and only here:
 
 ```bash
 my-command-tools worktree end --branch ab/<trial>-a --force --drop-shots
 my-command-tools worktree end --branch ab/<trial>-b --force --drop-shots
 ```
 
-Then delete each branch in its own call: `git branch -D ab/<trial>-a`, then `git branch -D ab/<trial>-b`. A worktree that refuses because a live session still holds it is reported as left in place, not forced. Everything Step 1 wrote stays in `~/.my-command/ab/<trial>/`. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
+Then delete each branch in its own call: `git branch -D ab/<trial>-a`, then `git branch -D ab/<trial>-b`. A worktree that refuses because a live session still holds it is reported as left in place, not forced.
+
+**Tear down, in scenario mode**, once the pick question has resolved, whatever the answer. Close each kept PR still open with `gh pr close <number> --repo <nameWithOwner> --delete-branch`, one call per PR. Then run `my-command-tools sandbox reset --scenario <name>`, which puts both sandboxes back. The closed and merged PRs stay readable at the URLs the report linked. A close or a reset that fails is reported with the sandbox left as it stands, and is never retried with a force. Never run `sandbox destroy` from here.
+
+Everything Step 1 wrote stays in `~/.my-command/ab/<trial>/`. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
 
 ## Notes
 
-- **Nothing leaves the device.** No push, no PR, no comment, and no hosted write, from either arm or from this run. The only record is the local keep.
+- **Worktree mode publishes nothing, and scenario mode publishes only into its two sandbox repos.** Neither arm, nor this run, writes to a hosted store, a ticket tracker, a chat, or any other repo. The only record is the local keep.
+- **`pr`'s `ab/` preview is scoped to worktree mode.** The verb previews a branch under `ab/` unless the repo lives under the sandbox root, `$MY_COMMAND_SANDBOX_ROOT` or else `~/.my-command/ab/sandboxes`. A scenario arm's PR is real whatever its branch is called. A sandbox kept under `sandbox --root <dir>` needs that directory exported as `MY_COMMAND_SANDBOX_ROOT` too.
 - **One trial is one sample.** A single run of an agent is noisy, so say so when the outputs are close, and suggest running the trial again before the pick is read as a trend.
 - **This is a CLI command.** The trial files and the `kind: "ab"` sessions are what a later UI would read. Nothing here builds one.
 - <!-- include: shared/classifier-refusal.md -->A classifier refusal is not evidence that repository protections should be weakened. Inspect the refused command first; when the intended operation is safe and the refusal looks incidental to the command's shape — an over-broad chain, pipe, or extra flag — retry only the smallest exact command, never an allowlisted Bash pattern or a permission-settings change. **The remedy is always the command's form, and the two common refused shapes each have one:** a chained read-only probe (`head <file>; ls -l <dir>`) is refused as one command and succeeds when reissued as the single bare command you actually needed, so drop the chain rather than the intent — and where the probe was reading a file, `Read` answers it with no shell to judge; a heredoc composing a file is refused wholesale inside an isolated worktree, which is exactly where these runs work, so compose it with `Write` and change it with `Edit` instead of reaching for a quoting trick. **One refusal in this family is correct and stays correct:** a probe that names a `.env` file is refused because of the file, not the shape, and no smaller form of it is the fix — never rewrite it, never allowlist it, and never work around it. If you need a value from `.env`, ask me to run the command myself with `! <command>`.<!-- /include -->

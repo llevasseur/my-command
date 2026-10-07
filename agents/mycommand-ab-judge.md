@@ -22,7 +22,9 @@ content is equal.
 
 **Use the supporting evidence only to check claims.** You may be handed each run's diff or
 metrics. Use them to check whether an output's claims hold, and not to score the effort behind
-the output. A run that took more turns is not worse for that alone. The dispatching run reports
+the output. A full diff arrives as a file path in your brief: `Read` it whole before you judge,
+since a claim about the change can only be checked against all of it. Names that would reveal a
+version are replaced with `<redacted>`. Do not guess at them. A run that took more turns is not worse for that alone. The dispatching run reports
 cost separately.
 
 Reply with exactly this shape and nothing before it:

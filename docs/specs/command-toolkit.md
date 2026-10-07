@@ -41,6 +41,7 @@ noise, what a PR description should say, or whether a failure is worth fixing.
 | `judge` | what one versioned question set says about one state file — printed, and acted on by nothing |
 | `jev-record start\|stop\|serve\|read\|label` | a loopback proxy between a caller and the System One endpoint, the whole of each exchange written down outside the Jev client, and `/ab`'s labelled trials in the same keep |
 | `sandbox init\|reset\|status\|destroy` | the two private GitHub repos `/ab` arms run against, generated from the fixture template, cloned, and reset to a named scenario |
+| `ab-diff` | one `/ab` arm's full diff for the blind judge: three-dot ranges joined in order, `--no-prefix`, and every name that would reveal the arm redacted |
 | `doctor` | where the toolkit resolved from, what's on PATH, which clone it tracks, and which external tools this device has |
 
 `app` is the one verb that starts something and leaves it running. `verify` runs the
@@ -469,6 +470,25 @@ variables an arm exports:
   synthetic store.
 - `LOG_DIR`: that store's parent, which the claude-proxy `suggestions` CLI reads.
 
+`/ab --scenario <name>` is the caller. It runs `status`, then `init` when either sandbox is
+missing, then `reset --scenario <name>` before dispatch and again after the user's pick, and
+hands each arm its sandbox's `clone`, `env` and `nameWithOwner`. It never calls `destroy`.
+
+### `ab-diff`
+
+`ab-diff --range <from>...<to> [--range …] [--redact <text>]… [--out <file>]` writes one
+`/ab` arm's full diff for the blind judge. Each range is a three-dot range, so it reads what
+`<to>` changed since its merge base with `<from>`. A worktree-mode arm has one range,
+`<fixture sha>...HEAD`. A scenario-mode arm has what it merged,
+`<start sha>...origin/<default>`, plus one range per PR it left open. Parts are joined in
+order under a `# part <i> of <n>` line when there is more than one.
+
+The diff runs with `--no-prefix`, so the `a/` and `b/` path prefixes git writes by default
+never reach a judge comparing arm A with arm B. Every `--redact` string, longest first, is
+replaced with `<redacted>` in the diff and in the reported paths. The report carries `files`
+(`path`, `added`, `deleted`), `bytes`, `redactions`, and either `diff` or, under `--out`,
+`path`. A range that is not `<from>...<to>` is a usage error.
+
 ## Guards
 
 These are the reason the plumbing is worth centralizing — each one encodes a
@@ -488,8 +508,15 @@ failure a workflow run has actually hit:
   the body as it would be published, and `create` or `update`, and saves that
   preview as `pr-dry-run.json` in the worktree's own git directory. It reads `gh`
   only when origin already has the branch. A branch under `ab/` is always
-  previewed, flag or not, so an `/ab` arm whose text forgets the flag still
-  publishes nothing.
+  previewed, flag or not, so an `/ab` worktree-mode arm whose text forgets the flag
+  still publishes nothing. The guard is scoped by where the repo lives: it never
+  fires in a repo whose common git directory sits under the sandbox root
+  (`MY_COMMAND_SANDBOX_ROOT`, else `~/.my-command/ab/sandboxes`), because an
+  `/ab --scenario` arm publishes into its sandbox repo for real. Repo identity by
+  location covers a worktree an arm cuts from its clone, wherever that worktree
+  sits, and needs no list of sandbox names. A sandbox made with `sandbox --root
+  <dir>` is recognised only when that directory is exported as
+  `MY_COMMAND_SANDBOX_ROOT`. `--dry-run` still previews inside a sandbox.
 - `verify` returns no log at all for a passing gate and a bounded tail for a
   failing one, so callers stop hand-rolling `2>&1 | tail -12` and stop re-running a
   whole build because they guessed the window too small.
