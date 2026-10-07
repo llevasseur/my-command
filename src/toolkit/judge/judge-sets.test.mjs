@@ -337,7 +337,7 @@ test('verify-surface lifts its noul from the skip condition it sits beside', () 
 
   // And the command still says, at that same site, that the answer is recorded and the glob
   // decides. If that sentence goes, this set is no longer describing what the run does.
-  const step = task.slice(218, 228).join('\n');
+  const step = task.slice(221, 231).join('\n');
   assert.match(step, /recorded beside what the glob decided/);
   assert.match(step, /The glob still\s+decides\./);
 
@@ -421,7 +421,7 @@ test('complexity-triage lifts its noul from the section it sits in', () => {
 
   // And the command still says, at that same site, that nothing reads the answers back. If
   // that sentence goes, this set is no longer describing what the run does.
-  const section = task.slice(177, 198).join('\n');
+  const section = task.slice(180, 201).join('\n');
   assert.match(section, /one `noul` per changed file/);
   assert.match(section, /nothing reads the answers back/);
   assert.match(section, /No rework pass\s+is scheduled and none is withheld\./);

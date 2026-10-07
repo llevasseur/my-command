@@ -47,6 +47,8 @@
 #  25. the skills choice is the one surface that installs skills, it says in the menu that it
 #      serves opencode as well as Codex, and it still reaches ~/.agents/skills — where opencode
 #      discovers them for every model it drives — when the environment redirects it elsewhere.
+#  27. the installed commands/*.md and agents/*.md carry no repo-only link or path, no history
+#      wording, and at most 5 uppercase MUST/NEVER/CRITICAL each (scripts/lint-commands.mjs).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -540,9 +542,9 @@ if ! node scripts/check-doc-snippets.mjs; then
   fail=1
 fi
 
-# 18b. CHANGELOG.md bullets in the newest two dated sections stay under 80 words
-# (src/shared/changelog-entry-shape.md). /changelog reads existing entries first, so one
-# bloated entry would otherwise become the next one's template.
+# 18b. CHANGELOG.md bullets in the newest two dated sections stay under 80 words. A repo-local
+# gate: /changelog follows the newest entries as the repo's convention, so one bloated entry
+# would otherwise become the next one's template.
 if ! node scripts/check-changelog.mjs; then
   fail=1
 fi
@@ -867,6 +869,12 @@ fi
 
 if ! grep -q '4) opencode commands' src/my-command.ts; then
   echo "::error::src/my-command.ts no longer offers the opencode commands choice in the menu; an option nobody can pick installs nothing."
+  fail=1
+fi
+
+# 27. commands/*.md and agents/*.md install where no MyCommand checkout exists: no repo-only
+# link or path, no history wording, and at most 5 uppercase MUST/NEVER/CRITICAL per file.
+if ! node scripts/lint-commands.mjs; then
   fail=1
 fi
 

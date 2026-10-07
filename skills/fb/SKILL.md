@@ -16,10 +16,9 @@ Parse `--target <branch>` / `-t <branch>`, `--worktree <path>`, and `--no-implem
   worktree at `.codex/worktrees/<safe-branch>` without creating a new branch.
   Work there and invoke `$task --here <feedback>`. Address that checkout by the
   absolute path the helper reported, copied byte for byte — an existing checkout
-  entered, never a new one requested by name. A refusal there describes how the
-  worktree was created, so do not retry it and do not reinvent a workaround;
-  work through absolute paths under the reported path, and tear down with the
-  repository helper from outside it.
+  entered, never a new one requested by name. **Read `references/edge-cases.md`
+  in this skill's directory only when the helper refuses the branch or the
+  teardown, or the target repository is not the one this session started in.**
 
 - With `--no-implement`, forward it: `$task --here --no-implement <feedback>` in
   either mode. The task workflow then implements nothing and runs its remaining

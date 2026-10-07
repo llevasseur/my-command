@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Fail any CHANGELOG.md bullet over 80 words in the newest two dated sections. The shape
-// (src/shared/changelog-entry-shape.md) targets 60; older sections are left as history.
-// Rationale in docs/features/changelog.md.
+// Fail any CHANGELOG.md bullet over 80 words in the newest two dated sections; older sections
+// are left as history. Repo-local: /changelog follows a repo's newest entries, so this gate is
+// what keeps this repo's own convention short. Rationale in docs/features/changelog.md.
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -88,7 +88,7 @@ function main() {
       `::error::CHANGELOG.md:${b.line} — ${b.words} words under ${b.section}; the limit is ${MAX_WORDS}.\n` +
         `    ${b.lead}…\n` +
         '  Cut it to one change, 2 to 3 sentences, and link docs/features/<cmd>.md for the why ' +
-        '(src/shared/changelog-entry-shape.md).\n',
+        '(docs/features/changelog.md).\n',
     );
   }
 

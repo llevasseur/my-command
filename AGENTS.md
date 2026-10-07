@@ -124,6 +124,13 @@ intent-only prompts: they skip the closing-turn and step-marker includes and mus
 name the nested handback and `RETURN /<command>` in their own words. See
 [`docs/features/pr.md`](docs/features/pr.md).
 
+It also runs `scripts/lint-commands.mjs` (`pnpm lint:commands`) over the files that install,
+`commands/*.md` and `agents/*.md`, and fails on: a link or path that resolves only in this repo
+(a relative link out of the directory, `src/toolkit|hooks|shared/…`, a named spec, an ADR file
+path; cite ADRs as "ADR 0011"); history wording ("used to", "now refuses", "recorded runs");
+and more than 5 uppercase MUST/NEVER/CRITICAL in one file. Fix a hit in `src/commands/` or
+`src/shared/`, then run `./scripts/build-plugin.sh`.
+
 Docs also validate: `okq --bundle docs validate` (and `okq --bundle docs index` to refresh
 the generated `docs/**/index.md` after adding a feature doc).
 

@@ -60,7 +60,7 @@ write is paid for that many times over in the run that collects you.
   requires is written `->` on a report line, carrying the two values and nothing else:
 
   ```text
-  src/toolkit/verbs/scope.mjs:88 drifted — --diff-limit default 20000 -> 40000
+  src/cli/scope.ts:88 drifted — --diff-limit default 20000 -> 40000
   ```
 
   Never "the document says the default is 20000, but the code now uses 40000".
