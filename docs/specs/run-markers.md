@@ -26,7 +26,9 @@ and cannot drift per command.
 ## The step marker
 
 `src/shared/step-marker.md`, pulled into every command with
-`<!-- include-block: shared/step-marker.md -->`.
+`<!-- include-block: shared/step-marker.md -->`. Commands in the gate's `MINIMAL` list (`/pr`)
+are the exception: they have no `## Step …` headings and carry no include
+([pr](../features/pr.md)).
 
 **Format:** the word `STEP` in capitals, the number written in the `## Step …`
 heading being entered, a slash, and the count of `## Step …` headings the
@@ -54,7 +56,8 @@ would anchor a step in every run that loaded the command.
 ## The return marker
 
 Carried by `src/shared/closing-turn.md`, which every command already includes as
-its terminal step. It needs no include of its own.
+its terminal step. It needs no include of its own. A `MINIMAL` command states its own
+`RETURN /<name>` in its prose, and the gate checks for that exact marker.
 
 **Format:** the word `RETURN` in capitals, a space, then the name the run was
 invoked under with its leading slash — `RETURN /task`, `RETURN /clean`, or

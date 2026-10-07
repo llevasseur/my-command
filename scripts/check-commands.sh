@@ -182,8 +182,9 @@ fi
 for f in src/commands/*.md; do
   name="$(basename "$f")"
   if is_minimal "${name%.md}"; then
-    if ! grep -Fq 'RETURN /' "$f" || ! grep -Fq 'beside its next tool call' "$f"; then
-      echo "::error::$name is minimal but no longer states its nested handback and return marker; a nested run would strand its parent (docs/specs/run-markers.md)."
+    if ! grep -Fq "RETURN /${name%.md}\`" "$f" || ! grep -Fq "beside the invoking command's next tool call" "$f" ||
+      ! grep -Fq 'text and no tool call' "$f"; then
+      echo "::error::$name is minimal but no longer states its close, nested handback and RETURN /${name%.md} marker; a nested run would strand its parent (docs/specs/run-markers.md)."
       fail=1
     fi
     continue
@@ -663,7 +664,14 @@ if ! grep -Fq 'verify --wait' src/commands/review.md; then
   fail=1
 fi
 # Losing the include takes the whole description rule out of /pr with nothing failing.
-if ! is_minimal pr && ! grep -Fq 'include-block: shared/pr-body-shape.md' src/commands/pr.md; then
+if is_minimal pr; then
+  for needle in 'default branch' 'never commit' 'out of draft' '--body-file' 'bodyWarnings'; do
+    if ! grep -Fq -- "$needle" src/commands/pr.md; then
+      echo "::error::src/commands/pr.md is minimal but no longer says '$needle'; that is one of the few rules it keeps (docs/features/pr.md)."
+      fail=1
+    fi
+  done
+elif ! grep -Fq 'include-block: shared/pr-body-shape.md' src/commands/pr.md; then
   echo "::error::src/commands/pr.md dropped the shared/pr-body-shape.md include; its description step would go back to one adjective, which is what a 1244-word PR body already beat."
   fail=1
 fi

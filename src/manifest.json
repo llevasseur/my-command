@@ -169,7 +169,7 @@
     },
     "pr": {
       "flags": ["--draft"],
-      "verbs": ["pr", "state"],
+      "verbs": ["pr", "state", "worktree"],
       "stores": [],
       "claudeProxy": "none"
     },

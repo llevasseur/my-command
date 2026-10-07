@@ -47,20 +47,25 @@ What the five lines keep:
 - **The body is for a reviewer who never saw the request.** Bullets only, under 400 words,
   and no log of what the author checked. `unslop` runs over it when installed.
 - **One publish call.** `my-command-tools pr --body-file` pushes, creates or updates, and
-  carries assets and screenshots, so none of that needs explaining in the prompt.
+  carries assets and screenshots, so none of that needs explaining in the prompt. `--retitle`
+  goes on when the user gave a title or the existing one is stale.
+- **Read the verb's warnings.** A `bodyWarnings` means cut and republish; a `shotsWarning` or
+  failed screenshot goes in the report.
 - **Never take a PR out of draft.** Only `/god` promotes one.
 - **Teardown and handback.** Remove a worktree only this session created and nothing invoked
-  `/pr` into. A nested run reports beside its parent's next tool call instead of ending the
-  turn, and every run ends with `RETURN /pr`.
+  `/pr` into, falling back to `worktree end` when `ExitWorktree` refuses. A nested run reports
+  beside the invoking command's next tool call, a direct run closes in a message with no tool
+  call, and every run ends with `RETURN /pr`.
 
 What it drops: the numeric self-check before publishing, the `STEP <n>/<N>` markers, the
 closing-turn and anchor includes, and the shared `pr-body-shape.md` rule. The `pr` verb
 still measures the body and returns `bodyWarnings` when it is over budget or has no bullets,
-so the shape keeps one check a model cannot skip.
+and the prompt tells the run to act on it.
 
 `scripts/check-commands.sh` lists `/pr` in `MINIMAL`. That exempts it from invariants 6, 15
-and 19 and from the `pr-body-shape` include check, and holds it instead to naming the nested
-handback and the return marker in its own words. Revert the experiment by restoring the
+and 19 and from the `pr-body-shape` include check. Instead the gate requires the close, the
+nested handback, the exact `RETURN /pr` marker, and the kept rules: default-branch stop, never
+commit, never out of draft, `--body-file`, and `bodyWarnings`. Revert the experiment by restoring the
 previous `src/commands/pr.md` and emptying `MINIMAL`.
 
 ### Assets in the description are never dropped

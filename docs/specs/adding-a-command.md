@@ -46,7 +46,10 @@ Match the shape of the existing commands:
     as a tail sentence.
 
   `check-commands.sh` fails any command missing either directive or the heading,
-  and the matching Codex skill MUST state both rules in its own words.
+  and the matching Codex skill MUST state both rules in its own words. The one
+  exception is a command in the gate's `MINIMAL` list (currently `/pr`, see
+  [pr](../features/pr.md)), which states its close, nested handback and
+  `RETURN /<name>` in its own prose and carries neither this nor the step marker.
 - the step marker, as `<!-- include-block: shared/step-marker.md -->` in its own
   paragraph before the first `## ` heading. It tells the run to open each step
   with `STEP <n>/<N>`, so a recorded run states the step it entered instead of
