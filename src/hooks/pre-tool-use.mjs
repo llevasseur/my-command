@@ -85,6 +85,13 @@ const FRONTMATTER_LINES = 12;
 const CLOSING_TURN = /close the run|text-only turn|text only turn|zero tool calls|final report as a message/i;
 
 /**
+ * Calls that set a run up without doing any of its work: the task list itself, and loading the
+ * command or a deferred tool. A run that has made only these, plus read-only probes, has not
+ * started its work yet.
+ */
+const SETUP_ONLY = new Set(['TodoWrite', 'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet', 'Skill', 'ToolSearch']);
+
+/**
  * Bytes above which a whole-file `Read` cannot come back. The tool's cap is 25,000 **tokens**,
  * which a hook cannot measure without a tokenizer — so this is a bound rather than a certainty,
  * set where the bound is safe: a file this size fits the cap only by averaging more than 3.6 bytes
@@ -847,13 +854,19 @@ function enteringFromRepoRoot(event, session) {
  * run ends on the call that was meant to remind it to speak. The closing turn is not work to
  * track; it is what the run does instead of a tool call.
  *
- * The todo-list anchor `/task` prescribes is untouched. That is a `TodoWrite`, written at the
- * *start* of a run, and only completing it as a turn's sole content is refused — below.
+ * The anchor every command writes before its first tool call carries the same words, and on a
+ * harness whose task list is `TaskCreate` rather than `TodoWrite` it arrives through this tool.
+ * Refusing it there tells the run to drop the one item that survives a compaction. So the subject
+ * alone does not decide: a run that has done no real work since the last prompt is writing the
+ * anchor, and only one that already has is scheduling its ending. A transcript that belongs to
+ * another run, or none at all, is no evidence that work happened, so the call goes through.
  * @param {import('./lib/io.mjs').HookEvent} event @param {string} session
  * @returns {boolean} true when the call was denied
  */
 function closingTurnAsTask(event, session) {
   if (!CLOSING_TURN.test(JSON.stringify(event.input))) return false;
+  if (foreignTranscript(event.transcriptPath)) return false;
+  if (!workSinceLastPrompt(event)) return false;
   if (alreadyDenied(session, 'closingtask', 'create')) return false;
 
   deny(
@@ -866,6 +879,24 @@ function closingTurnAsTask(event, session) {
       `there is nothing left to call.`,
   );
   return true;
+}
+
+/**
+ * Whether this run has done real work since the last prompt: any call that is neither setup nor a
+ * read-only probe. The turn issuing the call being judged is skipped, since work batched beside
+ * the task is not work that came before it.
+ * @param {import('./lib/io.mjs').HookEvent} event
+ * @returns {boolean}
+ */
+function workSinceLastPrompt(event) {
+  const line = timeline(entries(event.transcriptPath));
+  for (let i = line.length - 1; i >= 0; i--) {
+    const turn = line[i];
+    if (turn === null) return false;
+    if (i === line.length - 1 && issued(turn, event.toolName, event.input)) continue;
+    if (turn.toolUses.some((u) => !SETUP_ONLY.has(u.name) && !isReadOnly(u.name, u.input))) return true;
+  }
+  return false;
 }
 
 /**

@@ -967,18 +967,80 @@ test('EnterWorktree: a cwd that is not a repository root is left alone', () => {
   assert.equal(denied(answer), false);
 });
 
+/** A run that has already changed a file since the prompt. */
+const workedRun = () =>
+  transcript([
+    'prompt',
+    [{ name: 'Bash', input: { command: 'my-command-tools state' } }],
+    [{ name: 'Edit', input: { file_path: '/repo/src/a.ts', old_string: 'a', new_string: 'b' } }],
+  ]);
+
 test('closing turn: a TaskCreate that schedules the run-s own final message is refused', () => {
   // One recorded run created exactly this task — "Deliver the final report as a message with text
   // and zero tool calls" — and then sent nothing, because creating it was itself the last call.
   const answer = hook(PRE_TOOL_USE, {
     session_id: 'ct1',
-    transcript_path: transcript(['prompt']),
+    transcript_path: workedRun(),
     cwd: scratch(),
     tool_name: 'TaskCreate',
     tool_input: { subject: 'Deliver the final report as a message with text and zero tool calls' },
   });
   assert.equal(denied(answer), true);
   assert.match(answer.hookSpecificOutput.permissionDecisionReason, /text alone/);
+});
+
+test('closing turn: the start-of-run anchor written with TaskCreate is allowed', () => {
+  // `shared/closing-turn-anchor.md` asks for this item before the first tool call.
+  for (const spec of [
+    ['prompt'],
+    [
+      'prompt',
+      [{ name: 'Skill', input: { skill: 'task' } }],
+      [
+        { name: 'TaskCreate', input: { subject: 'Fix the gate' } },
+        { name: 'Bash', input: { command: 'my-command-tools state' } },
+        { name: 'Read', input: { file_path: '/repo/AGENTS.md' } },
+      ],
+    ],
+  ]) {
+    const answer = hook(PRE_TOOL_USE, {
+      session_id: 'ct3',
+      transcript_path: transcript(/** @type {any} */ (spec)),
+      cwd: scratch(),
+      tool_name: 'TaskCreate',
+      tool_input: { subject: 'Close the run in a text-only turn' },
+    });
+    assert.equal(denied(answer), false);
+  }
+});
+
+test('closing turn: work done for an earlier prompt does not make this run-s anchor an ending', () => {
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'ct4',
+    transcript_path: transcript([
+      'prompt',
+      [{ name: 'Edit', input: { file_path: '/repo/src/a.ts', old_string: 'a', new_string: 'b' } }],
+      'text',
+      'prompt',
+    ]),
+    cwd: scratch(),
+    tool_name: 'TaskCreate',
+    tool_input: { subject: 'Close the run in a text-only turn' },
+  });
+  assert.equal(denied(answer), false);
+});
+
+test('closing turn: the anchor wording after real work is refused once, then let through', () => {
+  const state = scratch();
+  const event = {
+    session_id: 'ct5',
+    transcript_path: workedRun(),
+    cwd: scratch(),
+    tool_name: 'TaskCreate',
+    tool_input: { subject: 'Close the run in a text-only turn' },
+  };
+  assert.equal(denied(hook(PRE_TOOL_USE, event, state)), true);
+  assert.equal(denied(hook(PRE_TOOL_USE, event, state)), false);
 });
 
 test('closing turn: an ordinary TaskCreate is untouched', () => {

@@ -13,6 +13,10 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 - **`my-command-tools pr --dry-run` shows the PR it would open, without opening it.** It prints the title, the body, and whether it would create or update, and it never pushes. A branch under `ab/` is always previewed.
 - **`my-command-tools sandbox` gives each `/ab` arm its own GitHub repo.** `init` generates two private repos from the fixture template and clones them, `reset --scenario <name>` puts both into one scenario, `status` reports them, and `destroy --yes` deletes them. Each sandbox prints the `CLAUDE_PROXY_STORE` and `LOG_DIR` its arm exports. Set `MY_COMMAND_GIT_HOST` to an SSH alias where plain github.com is another account. See `docs/specs/command-toolkit.md`.
 
+### Fixed
+
+- **The closing-turn anchor can be written with `TaskCreate` again.** On harnesses where the task list is `TaskCreate`, the gate refused the "close the run in a text-only turn" item every command writes before its first call, and told the run to drop it. The gate now lets that item through until the run has done real work, and still refuses it after.
+
 ## 2026-10-05
 
 ### Added

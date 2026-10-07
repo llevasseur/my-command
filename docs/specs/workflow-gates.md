@@ -71,7 +71,7 @@ is allowed to be another sentence.
 | Hand-composed probes the classifier refuses | 4 | named read-only verbs, plus an installed allowlist |
 | Turns lost to a shape-incidental refusal | 3 | `shared/classifier-refusal.md` names the form that works for each recorded shape — a chained probe reissued as the one bare command (or as `Read`), a heredoc composition written with `Write`/`Edit` — and states outright that a probe naming a `.env` file is refused for the *file*, so no smaller form of it is a fix and it is never allowlisted or worked around |
 | A run ending with no outcome | 3 | `Stop` refuses the stop — for the **outermost** run only, and now with the three exemptions that were swallowing it closed: a re-entered stop is judged again under a ceiling, a subagent transcript beside this one no longer stands it down, and a background job is no longer exempt |
-| The closing turn scheduled as a task | 4 | `PreToolUse` refuses a `TaskCreate` naming the run's own final message. Creating the task *is* a tool call, so scheduling that message is what loses it |
+| The closing turn scheduled as a task | 4 | `PreToolUse` refuses a `TaskCreate` naming the run's own final message once the run has done real work. Creating the task *is* a tool call, so scheduling that message is what loses it; the same wording before any work is the start-of-run anchor and passes |
 | A gate aimed at a tool the matcher omits | 4 | `check-commands.sh` fails when the `PreToolUse` matcher does not name every tool a gate judges. `TodoWrite` was missing, so the anchor gate had never fired |
 | `grep --include=<glob>` | 4 | `PreToolUse` refuses the flag whatever its quoting and hands back `rg -g '<glob>'`, with any stray trailing `;`/`,` stripped from the pattern |
 | A file composed in the shell | 3 | `PreToolUse` refuses `cat`/`printf`/`echo` redirected into a file, not only the heredoc form, keyed **per target** so the second composition in a session is refused too |
@@ -428,9 +428,12 @@ nobody executed, which is the same failure as "the gates not being armed at all"
 `TaskCreate` is now gated as well, and by subject rather than by shape, because its input carries
 one. One recorded run spent its last three calls creating tasks, one of them reading "Deliver the
 final report as a message with text and zero tool calls", and then sent nothing: creating the task
-is itself a tool call, so scheduling that message is the mechanism that loses it. The `TodoWrite`
-anchor `/task` prescribes is untouched — it is written at the *start* of a run, and only completing
-it as a turn's sole content is refused.
+is itself a tool call, so scheduling that message is the mechanism that loses it. The anchor every
+command writes at the *start* of a run carries the same words, and on a harness whose task list is
+`TaskCreate` it arrives through this tool — so the subject alone does not decide. A run with no real
+work since the last prompt (nothing but task-list calls, `Skill`, `ToolSearch`, and read-only probes)
+is writing the anchor and passes; only one that has already done work is refused. A `TodoWrite`
+anchor is untouched either way, and only completing it as a turn's sole content is refused.
 
 **What is still not caught, deliberately.** Two of the eight misses end on a turn that carried
 read-only probes *and* text (`7a47b8ff`, probes plus `TaskUpdate(1)`; `3885b75c`, `ps` and `lsof`
@@ -1074,7 +1077,9 @@ cannot contradict each other again.
       blocked again, and the session's blocks are capped so a run can always end.
 - [x] A subagent transcript newer than the one handed to `Stop` no longer stands it down; `CI` and
       `MY_COMMAND_NON_INTERACTIVE` still do, and `CLAUDE_JOB_DIR` no longer does.
-- [x] A `TaskCreate` naming the run's own closing message is refused; an ordinary one passes.
+- [x] A `TaskCreate` naming the run's own closing message is refused once the run has done real
+      work; the same wording before any real work is the start-of-run anchor and passes, and an
+      ordinary one passes.
 - [x] `grep --include=<glob>` / `--exclude=<glob>` is refused quoted or bare with `rg -g` named and
       any stray trailing separator stripped from the replacement; `rg -g` itself and a grep with no
       glob flag both pass.
