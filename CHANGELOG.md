@@ -11,7 +11,7 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 - **`/ab` compares two versions of a command on the same branch.** Each version runs in its own isolated worktree and publishes nothing. A blind judge picks the better output, and your own pick is saved as a label in the `jev-record` keep. See `docs/features/ab.md`.
 - **`my-command-tools pr --dry-run` shows the PR it would open, without opening it.** It prints the title, the body, and whether it would create or update, and it never pushes. A branch under `ab/` is always previewed.
-- **`my-command-tools sandbox` gives each `/ab` arm its own GitHub repo.** `init` generates two private repos from the fixture template and clones them, `reset --scenario <name>` puts both into one scenario, `status` reports them, and `destroy --yes` deletes them. Each sandbox prints the `CLAUDE_PROXY_STORE` and `LOG_DIR` its arm exports. Set `MY_COMMAND_GIT_HOST` to an SSH alias where plain github.com is another account. See `docs/specs/command-toolkit.md`.
+- **`my-command-tools sandbox` gives each `/ab` arm its own GitHub repo.** `init` generates two private repos from your own template and clones them, `reset --scenario <name>` puts both into one scenario, `status` reports them, and `destroy --yes` deletes them. Template and owner come from flags, env vars, or `~/.my-command/ab/config.json`; the owner falls back to your gh login unless two github.com accounts are logged in. See `docs/specs/command-toolkit.md`.
 
 ### Fixed
 
