@@ -1059,7 +1059,9 @@ test('closing turn: a typed prompt and a command body that names a notice both s
   // by `Skill` mentions `<task-notification>`. Neither may be skipped as a boundary, or the walk
   // back reaches the previous conversation's edits and refuses this run's anchor.
   const path = join(scratch(), 'transcript.jsonl');
+  /** @param {number} i */
   const at = (i) => new Date(Date.now() - 600_000 + i * 1000).toISOString();
+  /** @param {number} i @param {unknown} content @param {Record<string, unknown>} [extra] */
   const user = (i, content, extra = {}) => ({
     type: 'user',
     uuid: `u${i}`,
@@ -1067,6 +1069,7 @@ test('closing turn: a typed prompt and a command body that names a notice both s
     message: { role: 'user', content },
     ...extra,
   });
+  /** @param {number} i @param {string} name @param {Record<string, unknown>} input */
   const turn = (i, name, input) => ({
     type: 'assistant',
     uuid: `a${i}`,
