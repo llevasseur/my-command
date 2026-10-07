@@ -14,11 +14,20 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 ## 2026-10-05
 
+### Added
+
+- **`/judge --report` lists rules that have stopped firing on current models.** Gate refusals and confirmed prose-rule suggestions record a fire per rule id, with model and date, beside the claude-proxy store. The report names zero- and one-fire rules as retirement candidates and changes nothing. See `docs/features/judge.md`.
+
 ### Changed
 
 - **Gate refusals now explain what the command prompts no longer spell out.** The one-diff-call, batched-discovery, `--body-file`/`--message-file` and verify-polling rules each take one line in the commands. The reason shows up in the refusal when a run breaks the rule. See `docs/specs/workflow-gates.md`.
 
 - **Command prompts state each rule without the story behind it.** Incident counts, old flags, and "used to" passages moved into ADRs 0021 to 0034, and each prompt cites its ADR by number. Agents read fewer tokens per run and no longer reason about behaviour that is gone. See `docs/adrs/0021-command-prompts-state-the-rule-and-adrs-keep-the-history.md`.
+
+- **Installed commands no longer link to files only this repo has.** `/task`, `/trim`, `/wayfinder`, `/truncate`, `/dev`, `/teach` and `/work` cite ADRs by number instead of by relative path. `pnpm run check:commands` now lints `commands/` and `agents/` for repo-only paths, history wording, and more than 5 uppercase MUST/NEVER/CRITICAL per file.
+
+- **`/teach`, `/wayfinder` and `/fb` load their rare branches only when needed.** The `/teach` rollout steps, the reasons behind `/wayfinder`'s `--unattended` and `--integration`, and `/fb`'s `--target` edge cases moved to `~/.claude/my-command/references/<command>.md`, with the Codex copies in each skill's `references/`. See `docs/specs/commands-as-skills.md`.
+- **`/changelog`, `/pr` and `/task` follow the target repo's own convention first.** They read its `CLAUDE.md`/`AGENTS.md`, a changelog or PR skill it ships, and its existing entries or recent PR bodies, and fall back to MyCommand's shape only when the repo states none. The fallback drops its word and header counts, since `my-command-tools pr` already warns on body size. The command lint also flags this repo's own `scripts/` and `docs/features/<cmd>.md` placeholders.
 - **Subagents now close on what the report must deliver.** The delegate, doc-auditor, finisher and reviewer definitions say the final report goes to the dispatching run, must read without the subagent's tool output, and opens with a line that reads alone. They no longer describe how the harness ends a turn. See `docs/specs/subagent-definitions.md`.
 
 ### Fixed

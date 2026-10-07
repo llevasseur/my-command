@@ -53,7 +53,7 @@ Two things have to resolve before anything is read: **where the ledger lives**, 
 
 ### The ledger is hosted, and there is no local fallback
 
-The ideas ledger is a hosted store behind claude-proxy's `operator` Worker. **A device that cannot reach it does no ideas work** — it does not fall back to a file, and this command has no tier list to walk. That is by design: a local fallback would keep a second, divergent, complete-looking ledger that no other device or run can see, which is worse than refusing. See `docs/adrs/0006-host-the-ideas-ledger.md` in claude-proxy.
+The ideas ledger is a hosted store behind claude-proxy's `operator` Worker. **A device that cannot reach it does no ideas work** — it does not fall back to a file, and this command has no tier list to walk. That is by design: a local fallback would keep a second, divergent, complete-looking ledger that no other device or run can see, which is worse than refusing. claude-proxy's ADR 0006 records that decision.
 
 - **`IDEAS_TOKEN` (required)** — the bearer token for the Worker. **`CONCEPTS_TOKEN` is accepted as a fallback**, since ideas and concepts are one dataset behind one Worker and one token.
 - **`IDEAS_URL` (required)** — the Worker's address. **`CONCEPTS_URL` is accepted as a fallback**, for the same reason.

@@ -27,6 +27,12 @@
       "env": ["CONCEPTS_URL", "CONCEPTS_TOKEN"],
       "verb": "concepts"
     },
+    "rules": {
+      "description": "Rule fires, one JSONL row per fire, beside the claude-proxy store (the parent of CLAUDE_PROXY_STORE) or beside hooks.log.",
+      "recordedBy": ["judge"],
+      "readBy": ["judge"],
+      "verb": "rules"
+    },
     "shots": {
       "description": "Per-run screenshot records under ~/.my-command/shots/<repo>/<branch>/.",
       "recordedBy": ["task", "verify"],
@@ -124,9 +130,9 @@
       "claudeProxy": "required"
     },
     "judge": {
-      "flags": ["--dry-run", "--range"],
-      "verbs": [],
-      "stores": ["suggestions"],
+      "flags": ["--days", "--dry-run", "--range", "--report"],
+      "verbs": ["rules"],
+      "stores": ["rules", "suggestions"],
       "claudeProxy": "required"
     },
     "learn": {

@@ -1,6 +1,6 @@
 ---
 description: Judge claude-proxy's fired suggestions against the raw transcripts they came from — confirm the ones the sessions actually support with a note written from what the agent was doing, dismiss the ones the rule misread, and record both verdicts per bucket
-argument-hint: "[--range|-r <spec>] [--dry-run|-n]"
+argument-hint: "[--range|-r <spec>] [--dry-run|-n] [--report [--days <n>]]"
 ---
 
 Decide whether claude-proxy's suggestions are true. A rule fires from counts and node positions; it cannot see what the agent was doing, so it reports a real slowdown and a misread with equal confidence. This command reads the **raw transcripts** behind each fired suggestion and returns one verdict per suggestion: **CONFIRMED**, with the context the transcript actually shows, or **DISMISSED**, with the reason the rule misread it.
@@ -28,7 +28,21 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 
 - `--range <spec>` / `-r <spec>` — which session buckets to judge. One bucket (`9`), a list (`2,3,9`), a span (`2-9`), or a mix (`2-4,9`). **Default: every bucket.** The range selects candidates; Step 2 narrows them to the ones that are actually judgeable.
 - `--dry-run` / `-n` — report the dirty buckets in the range, the fired suggestions in each, and the transcripts that would be read, then stop. Nothing is read in full and no verdict is recorded.
+- `--report` — skip judging and list the rules that have stopped firing on current models, as retirement candidates. See [Report mode](#report-mode). It needs no claude-proxy checkout.
+- `--days <n>` — with `--report`, the window in days. Default 30.
 - Anything else is not a flag this command takes. Report it rather than interpreting it.
+
+## Report mode
+
+With `--report`, run this and nothing else — no step below applies:
+
+```sh
+my-command-tools rules report --days <n>
+```
+
+Every gate refusal records a fire for its rule id, and Step 6 records one for each prose rule a confirmed suggestion shows being broken. The report lists the rules with at most one fire in the window on the models that fired anything in it, each with its last fire on any model. Pass `--model <m>` or `--max <n>` to the verb for a different cut.
+
+**A candidate is evidence, not a verdict.** Read its `notes` before naming any: a window with few sessions, or with no gate fires at all because the gates were off, makes every zero weak. Report the candidates, their sources, and those notes. This mode edits no command and retires no rule — removing one is a separate change someone chooses to make.
 
 ## Step 1 — Resolve the claude-proxy dependency
 
@@ -137,6 +151,13 @@ LOG_DIR="<logDir>" pnpm --filter server suggestions judge -r <bucket> --confirm 
 - **Read `suggestions judge --help` before composing the call** to get the exact form for attaching a note to a confirmation and a reason to a dismissal. Do not guess the note syntax and do not send a call whose notes you are unsure landed — a verdict recorded without its note is the one failure this command cannot undo, because the bucket is now judged and will not be re-read.
 - Verify the call reported the counts you sent. A bucket whose judge call reports fewer verdicts than the bucket had fired suggestions is a failed run, not a partial success: say so and leave it to be re-judged rather than moving on to the next bucket.
 - Judge the buckets one at a time and confirm each call before starting the next, so a failure names one bucket rather than an unknown subset.
+- **Then count the prose rules the bucket's confirmations show.** `my-command-tools rules list` names every prose rule. For each CONFIRMED suggestion whose slow shape is exactly what one of those rules forbids, record one fire per source session:
+
+  ```sh
+  my-command-tools rules fire --rule prose/<name> --model <model> --at <started> --session <session> --suggestion <id> --bucket <bucket> --thread <threadId>
+  ```
+
+  Take `model`, `session` and `started` from that transcript's header lines. A confirmation that matches no prose rule records nothing, and a dismissal never records a fire. These counts are what `--report` reads to find rules that no longer fire.
 
 Report at the end: the range read, which buckets were dirty and judged, how many suggestions were confirmed and dismissed in each, and any bucket that failed to record. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include -->
 
@@ -146,7 +167,7 @@ Report at the end: the range read, which buckets were dirty and judged, how many
 - **A dismissal is not a `skipped` either.** `skipped` is a person deliberately passing over a real finding; `dismissed` is a verdict that the finding is false. Marking a misread as `skipped` leaves it counted as real work deferred.
 - **Never confirm to be safe.** A confirmation is what lets a suggestion become a criterion and then a change to how every future session works. Confirming something the transcript does not show is how a rule's arithmetic error turns into a permanent rule in a repo.
 - **Never dismiss to be quick.** The transcripts are the only thing that can tell these apart, and the whole cost of this command is reading them. A dismissal written without reading the nodes the rule pointed at is a guess with a verdict's authority.
-- **Judging writes to claude-proxy's store, not to any repo.** This command opens no branch, edits no file, and makes no commit. If a verdict implies a code change, that is `/my-command:improve`'s dispatch to make.
+- **Judging writes to claude-proxy's store and the rule-fire record beside it, not to any repo.** This command opens no branch, edits no file, and makes no commit. If a verdict implies a code change, that is `/my-command:improve`'s dispatch to make.
 - Buckets are fixed windows of ten sessions numbered oldest-first, so a bucket number means the same sessions tomorrow and a verdict stays attached to the evidence it was written from.
 
 ## Close the run in a text-only turn

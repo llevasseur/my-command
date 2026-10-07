@@ -41,4 +41,16 @@ for f in "$SRC_DIR"/*.md; do
   done
 done
 
+# Refuse a command whose ~/.claude/my-command/references/<file> pointer has no src/references/<file>.
+REFS_DIR="$REPO_ROOT/src/references"
+missing=0
+for ref in $(grep -ohE '~/\.claude/my-command/references/[A-Za-z0-9._-]+\.md' "$OUT_DIR"/*.md | sort -u); do
+  file="${ref##*/}"
+  if [ ! -f "$REFS_DIR/$file" ]; then
+    echo "a built command points at $ref, but src/references/$file does not exist" >&2
+    missing=1
+  fi
+done
+[ "$missing" -eq 0 ] || exit 1
+
 echo "Built $(ls "$OUT_DIR" | wc -l | tr -d ' ') command(s) into commands/ with namespace \"$NS:\""
