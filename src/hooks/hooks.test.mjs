@@ -264,6 +264,9 @@ test('serial discovery: three read-only turns pass, the fourth is refused', () =
   });
   assert.equal(denied(answer), true);
   assert.match(answer.hookSpecificOutput.permissionDecisionReason, /parallel tool calls in a single turn/);
+  // The enumeration guidance moved out of the shared prose and into this refusal.
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /its output \*is\* the enumeration/);
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /is not a dependency/);
 });
 
 test('serial discovery: a batch of parallel calls is one turn, so it is never refused', () => {
@@ -561,6 +564,8 @@ test('redundant read: a whole-file re-read of an unchanged file is refused', () 
   assert.equal(denied(answer), true);
   assert.match(answer.hookSpecificOutput.permissionDecisionReason, /rg -n 'firstSymbol\|secondSymbol'/);
   assert.match(answer.hookSpecificOutput.permissionDecisionReason, /offset/);
+  // The shared prose no longer lists what licenses a re-read, so the refusal has to.
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /a formatter, a generator/);
 });
 
 test('redundant read: a re-read after the file changed passes', () => {
@@ -1394,7 +1399,7 @@ test('one diff call: the batched form the shared prose prescribes is a shape the
   // the docs cannot check this — prose has to be able to name the shape it forbids — so the
   // agreement is asserted by running the gate over the line the prose actually prescribes.
   const prose = readFileSync(join(HERE, '..', 'shared', 'batched-discovery.md'), 'utf8');
-  const prescribed = prose.match(/Pass every path to a single `([^`]+)`/);
+  const prescribed = prose.match(/pass every path to a single `([^`]+)`/i);
   assert.ok(prescribed, 'src/shared/batched-discovery.md no longer prescribes one batched diff call');
   assert.equal(
     perPathDiff(prescribed[1]),
@@ -1416,7 +1421,22 @@ test('stdin prose: the refusal names the path-taking flag, and once only', () =>
   const answer = hook(PRE_TOOL_USE, event, state);
   assert.equal(denied(answer), true);
   assert.match(answer.hookSpecificOutput.permissionDecisionReason, /--body-file/);
+  // The commands name the flag in one line; why the heredoc fails is this refusal's to say.
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /refused wholesale inside an isolated worktree/);
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /\$CLAUDE_JOB_DIR\/tmp/);
   assert.equal(denied(hook(PRE_TOOL_USE, event, state)), false);
+});
+
+test('gate prose: a rule a gate enforces is stated in one line, and its refusal carries the reason', () => {
+  // The shared prose stays short and defers to the gate; the gate carries the reason.
+  const shared = (/** @type {string} */ name) => readFileSync(join(HERE, '..', 'shared', name), 'utf8');
+  const oneDiff = shared('one-diff-call.md').trim();
+  assert.equal(oneDiff.split('\n').length, 1, 'src/shared/one-diff-call.md grew back past one line');
+  assert.match(oneDiff, /explains why/);
+  assert.match(shared('batched-discovery.md'), /explain why when they do/);
+  assert.match(shared('verify-wait.md'), /explains why when it does/);
+  // The rule no gate enforces keeps its prose in full: nothing refuses an Edit after a compaction.
+  assert.match(shared('batched-discovery.md'), /Re-running the rejected `Edit` cannot clear the error/);
 });
 
 test('second diff: refused only once `scope --diff` has already returned the hunks', () => {
@@ -1435,6 +1455,8 @@ test('second diff: refused only once `scope --diff` has already returned the hun
   });
   assert.equal(denied(answer), true);
   assert.match(answer.hookSpecificOutput.permissionDecisionReason, /no second diff call/);
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /<sign><line number>/);
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /never a diff/);
 
   // With no prior scope --diff, the narrowed diff *is* the first call and is left alone.
   const first = hook(PRE_TOOL_USE, {
@@ -1680,6 +1702,9 @@ test('watched condition: the denial names the affordance that replaces the poll'
   });
   assert.equal(denied(answer), true);
   assert.match(answer.hookSpecificOutput.permissionDecisionReason, /verify --background/);
+  // verify-wait.md states the rule in one line; why polling is futile is this refusal's to say.
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /atomically at exit/);
+  assert.match(answer.hookSpecificOutput.permissionDecisionReason, /outlast the session/);
 });
 
 // ── post-merge branch cleanup composed as raw git ────────────────────────────────────

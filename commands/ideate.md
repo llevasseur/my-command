@@ -15,7 +15,7 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 
 `/my-command:improve` runs on a rule that is load-bearing rather than fussy: **never invent an improvement**, because padding a run with your own ideas breaks the trace from every change back to the sessions that justified it. That rule is not relaxed here and must not be reworded there. Invention gets its own command instead, which is what lets both standards stay honest at once.
 
-Two boundaries follow, and neither bends:
+Three boundaries follow, and none bends:
 
 - **Never write `suggestion-status.json`.** That store belongs to findings with source sessions behind them. An idea has a different evidence standard and gets its own store — a separate file in a separate namespace.
 - **An idea becomes actionable only when a human accepts it.** That sign-off *is* an accepted idea's trace, which is the amendment `/my-command:work` carries. A `proposed` or `rejected` idea is still invention, and `/my-command:work` never reads one. Where the accepting happens is a UI question; that it happened is not.
@@ -80,12 +80,12 @@ The `ideas` CLI is a **client** of that store rather than the owner of a file, s
 **claude-proxy is an _optional_ dependency of this command**, unlike [improve](improve.md) and [judge](judge.md) where its absence ends the run. Resolve it exactly as they do:
 
 <!-- include-block: shared/claude-proxy-checkout.md -->
-**This command cannot run without claude-proxy**, and its location is not hardcoded — it comes from the environment, exactly as [revive](revive.md) resolves the transcript store.
+**claude-proxy is required unless this command declares it optional at its own step** (the last bullet below), and its location is not hardcoded — it comes from the environment, exactly as [revive](revive.md) resolves the transcript store.
 
 - **`CLAUDE_PROXY_STORE` (required)** — the directory the proxy writes session transcripts into. Read it from the environment (`printenv CLAUDE_PROXY_STORE`); never guess a path and never derive one from a repo checkout or clone location.
 - **Probe an optional variable as `printenv <NAME> || true`, and never in the same call as the required one.** `printenv A; printenv B` exits on B's status, so one unset optional variable reports the whole probe as failed even though A resolved — a half-success read as a failure, and then re-run. One call per variable, with `|| true` on every optional one.
-- Derive the two paths the suggestion tooling needs from it: the **log directory** is its parent (the store is `<logDir>/sessions`), and the **claude-proxy checkout** is the directory above that. Confirm the checkout by looking for its `server/package.json`.
-- **If `CLAUDE_PROXY_STORE` is unset, or its path is missing, or the derived checkout has no `server/package.json`, stop.** Say which of the three failed, that this command has no suggestions to read without it, and that it must be exported in the shell environment — e.g. in `~/.zshrc`:
+- Derive the two paths the claude-proxy CLI needs from it: the **log directory** is its parent (the store is `<logDir>/sessions`), and the **claude-proxy checkout** is the directory above that. Confirm the checkout by looking for its `server/package.json`.
+- **If `CLAUDE_PROXY_STORE` is unset, or its path is missing, or the derived checkout has no `server/package.json`, stop.** Say which of the three failed, what this command reads through claude-proxy, and that it must be exported in the shell environment — e.g. in `~/.zshrc`:
 
   ```sh
   export CLAUDE_PROXY_STORE="$HOME/path/to/claude-proxy/logs/sessions"
@@ -147,11 +147,8 @@ That unnarrowed dedupe read is also where the run learns the area vocabulary alr
 
 This is a step of the workflow, not a habit to recall. Run it whenever a phase of this command has to look at more than one file.
 
-1. **Enumerate before reading.** Name every path, pattern, and read-only probe the phase needs. Where naming them takes a search — `rg --files`, `git diff --name-only`, a PR's file list — that search is the phase's first call, and its output *is* the enumeration.
-2. **Send the whole enumeration in one turn.** Every `Read`, `rg`, `ls`, and read-only `git` call on that list goes out as parallel tool calls in a single assistant turn. Only a call whose arguments depend on another call's result may wait for the next turn. "I will decide what to read after this one" is not a dependency when the path was already on the list, and four or more consecutive read-only calls with no decision between them means the enumeration was skipped.
-3. **Never loop per file.** One `Read` per entry of a list you already hold, or one `git diff <base> -- <path>` per path, is the shape this step exists to stop. Pass every path to a single `git diff <base>...HEAD -- <path> <path> …`, and send every `Read` as one block. Reviews and doc audits are where the loop is likeliest, because there the file list arrives complete and invites walking it (ADR 0025).
-4. **Read each file once.** A file already in this session's transcript is already in context, and wanting a *different* symbol from it is not a reason to read it again. Locate every symbol you want with one `rg -n 'foo|bar' <file>`, then pull only the range you still need with numeric `offset`/`limit`. The one legitimate re-read is after the file actually changed — your own `Edit`, a hook, a formatter, a generator, or another agent — and then only the changed range.
-5. **Re-establish the read-before-write precondition after a compaction.** `Edit` and `Write` reject a file this *session* has not read. Inherited context, a continuation summary, and shell output do not satisfy that precondition, even though the summary reads as though they do. So after any compaction boundary, session continuation, or hand-off into this command, treat the precondition as unmet: enumerate the files the next edit pass will write, `Read` them in one batch (a targeted `offset`/`limit` slice counts), and edit only once that batch returns. Re-running the rejected `Edit` cannot clear the error — the batched `Read` is the fix, and doing it for the whole pass at once is what stops the same rejection repeating file after file.
+1. **Enumerate every path, pattern, and probe, then send them as parallel calls in one turn.** Read each file once, and pass every path to a single `git diff <base>...HEAD -- <path> <path> …`. `PreToolUse` gates refuse the serial, re-read, and per-item shapes and explain why when they do.
+2. **Re-establish the read-before-write precondition after a compaction.** `Edit` and `Write` reject a file this *session* has not read. Inherited context, a continuation summary, and shell output do not satisfy that precondition, even though the summary reads as though they do. So after any compaction boundary, session continuation, or hand-off into this command, treat the precondition as unmet: enumerate the files the next edit pass will write, `Read` them in one batch (a targeted `offset`/`limit` slice counts), and edit only once that batch returns. Re-running the rejected `Edit` cannot clear the error — the batched `Read` is the fix, and doing it for the whole pass at once is what stops the same rejection repeating file after file.
 <!-- /include-block -->
 
 **Every proposal must cite at least one of the five sources below, and the first four carry file paths.** This is the constraint the whole command rests on: an agent asked "what would be useful?" produces plausible-sounding slop indefinitely, and the only thing that stops it is a rule that the evidence must already exist and must have been **written by a person**. "I noticed the code could use X" cites nothing and is not written down.

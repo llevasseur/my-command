@@ -255,6 +255,8 @@ function handRolledBranchCleanup(command, session) {
  * and says why the reads it is refusing could never have returned anything: a detached verify
  * writes its report atomically at exit, after the gates are done. There is no partial state to
  * catch, which is the fact that makes polling futile rather than merely wasteful.
+ *
+ * `src/shared/verify-wait.md` leaves this reason to the refusal (ADR 0025).
  * @param {string} watched
  * @returns {string}
  */
@@ -271,7 +273,9 @@ function verifyWaitOffer(watched) {
     `And there is provably nothing to see before then: the detached run writes its JSON report ` +
     `**atomically at exit**, before it writes the verdict file. Until the run is over that ` +
     `report does not exist, so every early read returns the same nothing. Polling cannot ` +
-    `surface progress here — it can only spend turns.`
+    `surface progress here — it can only spend turns, and a polling loop can outlast the session ` +
+    `and leave the work unreported. Recorded runs read one report twenty times, and two ended ` +
+    `still inside that loop.`
   );
 }
 
@@ -390,18 +394,20 @@ function deniedByCommandAlone(event, session) {
     return true;
   }
 
-  // Before the heredoc gate, because the stdin flag is *why* the heredoc gets composed.
+  // Before the heredoc gate, because the stdin flag is *why* the heredoc gets composed. The
+  // command prose leaves the reason to this refusal (ADR 0026).
   const stdin = stdinProseFlag(command);
   if (stdin && !alreadyDenied(session, 'stdin', stdin.verb)) {
     deny(
       `\`my-command-tools ${stdin.verb} ${stdin.flag} -\` reads its prose from stdin, and the only ` +
         `way to put multi-line prose there is a heredoc — which is refused wholesale inside an ` +
-        `isolated worktree, mid-commit, every time.\n\n` +
+        `isolated worktree, mid-commit and mid-PR, every time. A commit message or a PR ` +
+        `description is multi-line, and a worktree is where both are written.\n\n` +
         `The verb takes a path instead. Write the prose with the \`Write\` tool, then hand over ` +
-        `the file:\n` +
+        `the file — \`$CLAUDE_JOB_DIR/tmp\` is the natural home for it:\n` +
         `  Write({file_path: "<absolute path>", content: "…"})\n` +
         `  my-command-tools ${stdin.verb} ${stdin.replacement} <absolute path> …\n\n` +
-        `No shell quoting, no heredoc, and nothing to reissue a turn later.`,
+        `No shell quoting, no heredoc, and the shell never sees the prose.`,
     );
     return true;
   }
@@ -464,13 +470,17 @@ function staleProbe(event, line, session, readOnly) {
   if (narrowed && scopedDiff(line, currentUuid) && !alreadyDenied(session, 'perpath', 'diff')) {
     deny(
       `\`my-command-tools scope --diff\` already ran in this session, and it returns the branch's ` +
-        `whole diff — every file, hunk by hunk, each line annotated with its own line number. ` +
-        `That content is in your context, so this diff fetches bytes you already have.\n\n` +
+        `whole diff — every file, hunk by hunk, each line annotated \`<sign><line number>\\t<text>\`, ` +
+        `so a line's file *and* its number are known before anything is opened. That content is ` +
+        `in your context, so this diff fetches bytes you already have.\n\n` +
         `Read \`diff.committed\` and \`diff.workingTree\` from that result instead. There is no ` +
-        `second diff call: the hunk you are about to narrow to is already in the first one, and ` +
-        `walking the file list one call per path is exactly the loop \`scope --diff\` replaced.\n\n` +
+        `second diff call — not \`git diff -- <path>\`, not \`gh pr diff\` narrowed to a file: the ` +
+        `hunk you are about to narrow to is already in the first one, and walking the file list ` +
+        `one call per path is exactly the loop \`scope --diff\` replaced.\n\n` +
         `If a file came back under \`diff.omitted\`, it passed the size cap — re-run \`scope ` +
-        `--diff --diff-limit <chars>\` once, rather than diffing that path by hand.`,
+        `--diff --diff-limit <chars>\` once, rather than diffing that path by hand. If a hunk is ` +
+        `not enough to see a symbol, that is a \`Read\`, batched with every other file you already ` +
+        `know you need — never a diff.`,
     );
     return true;
   }
@@ -527,7 +537,8 @@ function staleProbe(event, line, session, readOnly) {
           `answer — no action, and no new instruction from me. Its output is in your context.\n\n` +
           `If this is one probe per item of a list you already hold, that list is the enumeration: ` +
           `ask for every item at once — one \`git diff <base>...HEAD -- <path> <path> …\`, one ` +
-          `\`git log --oneline <a>..<b>\`, one \`rg -n 'a|b|c'\` — instead of the same call per item.`,
+          `\`git log --oneline <a>..<b>\`, one \`rg -n 'a|b|c'\`, every \`Read\` sent as one block — ` +
+          `instead of the same call per item.`,
       );
       return true;
     }
@@ -942,7 +953,9 @@ function redundantRead(event, line, session) {
       `  rg -n 'firstSymbol|secondSymbol' ${path}\n` +
       `then read only the range you still need, with numeric offset/limit:\n` +
       `  Read({file_path: "${path}", offset: <line>, limit: <count>})\n\n` +
-      `A whole-file re-read is legitimate only after the file actually changes; this one has not.`,
+      `A whole-file re-read is legitimate only after the file actually changes — your own \`Edit\`, ` +
+      `a hook, a formatter, a generator, or another agent — and then only the changed range is ` +
+      `worth reading. This one has not changed.`,
   );
   return true;
 }
@@ -1006,7 +1019,12 @@ function serialDiscovery(name, input, line, session) {
       `Name every path, pattern, and probe the rest of this phase needs, then send them as ` +
       `parallel tool calls in a single turn — one block of Read/Grep/Glob calls, and one ` +
       `\`git diff <base>...HEAD -- <path> <path> …\` for every path at once rather than one call per path.\n` +
-      `Only a call whose arguments depend on another call's result has to wait for the next turn.\n\n` +
+      `Where naming them takes a search — \`rg --files\`, \`git diff --name-only\`, a PR's file list — ` +
+      `that search is the phase's first call, and its output *is* the enumeration.\n` +
+      `Only a call whose arguments depend on another call's result has to wait for the next turn. ` +
+      `"I will decide what to read after this one" is not a dependency when the path was already ` +
+      `on the list, and a file list that arrives complete — a review's, a doc audit's — is the ` +
+      `enumeration, not something to walk one call at a time.\n\n` +
       `Re-send this call together with the others you already know you need.`,
   );
 }

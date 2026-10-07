@@ -5,7 +5,7 @@ argument-hint: "[--here|-h] [--base <branch>] [--bundle|-b <dir>] [--refresh|-r]
 
 Bring this repo's doc bundle back in line with the code it describes, then make the result lean. Three kinds of rot, all handled here: a doc that no longer matches the code (**stale**), a feature with no doc at all (**missing**), and a doc for something that was removed (**obsolete**). A final phase applies [truncate](truncate.md)'s claim-preserving density rules to the dirty queue, so a successful run never knowingly ships noisy docs.
 
-Both phases run inside one `/task` workflow (Step 0). Like `/task`, it defaults to a fresh worktree off the latest `main`. Never invoke `/truncate` as a nested command; run its density rules inline before `/task` commits.
+Both phases run inside one `/task` workflow (Step 0). Like `/task`, it defaults to a fresh worktree off the latest default branch (`defaultBranch` from `my-command-tools state`). Never invoke `/truncate` as a nested command; run its density rules inline before `/task` commits.
 
 The bundle is an [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) collection of Markdown-with-frontmatter docs, queried with [okq](https://github.com/mikevalstar/okq). Use `okq` to explore, write, and check it — not `grep`. The `okq-reference`, `okq-explore`, `okq-write-okf`, and `okq-maintain` skills are the contract; load them via the `Skill` tool as each step needs them.
 
@@ -29,8 +29,8 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 **Workspace** — where the reconciliation happens. Passed through to `/task` in Step 0; they mean exactly what they mean there.
 
 - `--here` / `-h` — do NOT create a worktree. Reconcile on the **current branch** as it is now.
-- `--base <branch>` — branch off `<branch>` instead of `main`. Ignored when `--here` is set.
-- With neither, the default is a fresh worktree off the latest `main`.
+- `--base <branch>` — branch off `<branch>` instead of the default branch. Ignored when `--here` is set.
+- With neither, the default is a fresh worktree off the latest default branch (`defaultBranch` from `my-command-tools state`).
 
 **Passes and scope** — what gets reconciled. These stay here; they are not `/task` flags.
 
@@ -50,7 +50,7 @@ Your input is the text in the `<command-args>` block above. Parse leading flags 
 This command does no branching, committing, or PR work of its own. It resolves **where** the reconciliation happens, then delegates to `/task`, which owns workspace setup, commits, `/clean`, `/pr`, and worktree teardown. Do this **before** Step 1 — the bundle you audit must be the one inside the workspace `/task` set up, not the checkout you started in.
 
 1. Map the workspace flag to the `/task` invocation:
-   - **Default (neither flag):** `/task <criteria>` — a fresh worktree off the latest `main`, exactly like `/task`'s own default. The branch type is always `docs` (this command only ever changes docs), so: `docs/<kebab-summary>` — e.g. `docs/reconcile-bundle`, or scope-specific like `docs/refresh-pr-command`.
+   - **Default (neither flag):** `/task <criteria>` — a fresh worktree off the latest default branch (`defaultBranch` from `my-command-tools state`), exactly like `/task`'s own default. The branch type is always `docs` (this command only ever changes docs), so: `docs/<kebab-summary>` — e.g. `docs/reconcile-bundle`, or scope-specific like `docs/refresh-pr-command`.
    - **`--here` / `-h`:** `/task --here <criteria>` — reconcile on the current branch, no worktree. If that branch is `main`, `/task` creates a feature branch in place; let it.
    - **`--base <branch>`:** `/task --base <branch> <criteria>` — worktree branched off `<branch>`.
 2. The `<criteria>` you hand `/task` is **this command's Steps 1–7 with the passes and scope already resolved** — state them in plain language rather than as flags (e.g. "reconcile the doc bundle per `/docs` Steps 1–7: refresh pass only, scoped to `features/pr`, then run the integrated density phase over the resulting dirty queue"). `/task`'s Step 2 *is* this pipeline.
@@ -72,11 +72,8 @@ This command does no branching, committing, or PR work of its own. It resolves *
 
 This is a step of the workflow, not a habit to recall. Run it whenever a phase of this command has to look at more than one file.
 
-1. **Enumerate before reading.** Name every path, pattern, and read-only probe the phase needs. Where naming them takes a search — `rg --files`, `git diff --name-only`, a PR's file list — that search is the phase's first call, and its output *is* the enumeration.
-2. **Send the whole enumeration in one turn.** Every `Read`, `rg`, `ls`, and read-only `git` call on that list goes out as parallel tool calls in a single assistant turn. Only a call whose arguments depend on another call's result may wait for the next turn. "I will decide what to read after this one" is not a dependency when the path was already on the list, and four or more consecutive read-only calls with no decision between them means the enumeration was skipped.
-3. **Never loop per file.** One `Read` per entry of a list you already hold, or one `git diff <base> -- <path>` per path, is the shape this step exists to stop. Pass every path to a single `git diff <base>...HEAD -- <path> <path> …`, and send every `Read` as one block. Reviews and doc audits are where the loop is likeliest, because there the file list arrives complete and invites walking it (ADR 0025).
-4. **Read each file once.** A file already in this session's transcript is already in context, and wanting a *different* symbol from it is not a reason to read it again. Locate every symbol you want with one `rg -n 'foo|bar' <file>`, then pull only the range you still need with numeric `offset`/`limit`. The one legitimate re-read is after the file actually changed — your own `Edit`, a hook, a formatter, a generator, or another agent — and then only the changed range.
-5. **Re-establish the read-before-write precondition after a compaction.** `Edit` and `Write` reject a file this *session* has not read. Inherited context, a continuation summary, and shell output do not satisfy that precondition, even though the summary reads as though they do. So after any compaction boundary, session continuation, or hand-off into this command, treat the precondition as unmet: enumerate the files the next edit pass will write, `Read` them in one batch (a targeted `offset`/`limit` slice counts), and edit only once that batch returns. Re-running the rejected `Edit` cannot clear the error — the batched `Read` is the fix, and doing it for the whole pass at once is what stops the same rejection repeating file after file.
+1. **Enumerate every path, pattern, and probe, then send them as parallel calls in one turn.** Read each file once, and pass every path to a single `git diff <base>...HEAD -- <path> <path> …`. `PreToolUse` gates refuse the serial, re-read, and per-item shapes and explain why when they do.
+2. **Re-establish the read-before-write precondition after a compaction.** `Edit` and `Write` reject a file this *session* has not read. Inherited context, a continuation summary, and shell output do not satisfy that precondition, even though the summary reads as though they do. So after any compaction boundary, session continuation, or hand-off into this command, treat the precondition as unmet: enumerate the files the next edit pass will write, `Read` them in one batch (a targeted `offset`/`limit` slice counts), and edit only once that batch returns. Re-running the rejected `Edit` cannot clear the error — the batched `Read` is the fix, and doing it for the whole pass at once is what stops the same rejection repeating file after file.
 <!-- /include-block -->
 
 1. Structural health, from `okq-maintain`: `okq --bundle <dir> validate`, `deadlinks`, `orphans`, `stats`. Record what they report; these are inputs to the passes, not the passes themselves.

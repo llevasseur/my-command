@@ -8,10 +8,10 @@
   "actsNote": "Nothing acts on an answer from this set. Nothing-acting is the safety mechanism, not shadow mode. See docs/adrs/0008-no-question-set-acts-in-this-campaign.md.",
   "wiredInto": [],
   "sources": [
-    "src/commands/clean.md:61",
-    "src/commands/clean.md:63",
-    "src/commands/clean.md:64",
-    "src/commands/clean.md:65"
+    "src/commands/clean.md:54",
+    "src/commands/clean.md:56",
+    "src/commands/clean.md:57",
+    "src/commands/clean.md:58"
   ],
   "adrs": [
     "docs/adrs/0008-no-question-set-acts-in-this-campaign.md",
@@ -25,19 +25,19 @@
     "keptWithoutBeingJudged": [
       {
         "rule": "a license header, a linter directive (e.g. biome-ignore, eslint-disable), or a doc/JSDoc annotation tag",
-        "source": "src/commands/clean.md:65"
+        "source": "src/commands/clean.md:58"
       },
       {
         "rule": "a section-header comment inside JSX (e.g. {/* Header */}, {/* Sidebar */}) that labels a structural region of markup",
-        "source": "src/commands/clean.md:66"
+        "source": "src/commands/clean.md:59"
       },
       {
         "rule": "the sole comment inside an intentionally empty block (catch {}, else {}), load-bearing because Biome's noEmptyBlockStatements fails on an empty block with no comment",
-        "source": "src/commands/clean.md:67"
+        "source": "src/commands/clean.md:60"
       },
       {
         "rule": "never add a new comment — this command only removes and shortens, so Add is not an option this set can return",
-        "source": "src/commands/clean.md:68"
+        "source": "src/commands/clean.md:61"
       }
     ],
     "corpusNote": "The same exclusion applies to the recovered eval corpus. A comment the pre-filter would have kept is dropped from the corpus rather than scored, so the number the eval reports is the number the runtime path would have earned."
@@ -59,20 +59,20 @@
       "id": "delete",
       "label": "Delete",
       "rubric": "Delete comments that restate what the code plainly says, narrate steps (\"Now we loop over...\", \"This function does...\"), or add ceremony (obvious section banners, TODO-less filler).",
-      "source": "src/commands/clean.md:63"
+      "source": "src/commands/clean.md:56"
     },
     {
       "id": "tighten",
       "label": "Tighten",
       "rubric": "Tighten comments that carry real information but are verbose — cut them to the essential what, one line where possible.",
-      "source": "src/commands/clean.md:64"
+      "source": "src/commands/clean.md:57"
     },
     {
       "id": "keep",
       "label": "Keep",
       "rubric": "Keep comments that document something non-obvious the code can't express (edge cases, gotchas, external constraints).",
-      "source": "src/commands/clean.md:65",
-      "sourceNote": "The rest of clean.md:65 — leave license headers, linter directives and doc/JSDoc annotation tags intact — is a mandatory keep and is handled by the pre-filter above, not by this option."
+      "source": "src/commands/clean.md:58",
+      "sourceNote": "The rest of clean.md:58 — leave license headers, linter directives and doc/JSDoc annotation tags intact — is a mandatory keep and is handled by the pre-filter above, not by this option."
     }
   ]
 }

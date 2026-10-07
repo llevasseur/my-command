@@ -176,14 +176,14 @@ test('the rule list agrees with the question set ticket 03 landed', () => {
   assert.ok(Array.isArray(entries) && entries.length > 0, 'the set states no pre-filter entries');
 
   // Every source line the set cites for a *comment* keep is covered by a rule here. The set's
-  // fourth entry is clean.md:68, "never add a new comment" — a ban on an option rather than a
+  // fourth entry is clean.md:61, "never add a new comment" — a ban on an option rather than a
   // comment that gets kept, so it has no pre-filter rule and must not gain one.
   const ruleSources = new Set(RULES.map((r) => r.source));
-  const neverAdd = entries.filter((e) => e.source === 'src/commands/clean.md:68');
+  const neverAdd = entries.filter((e) => e.source === 'src/commands/clean.md:61');
   assert.equal(neverAdd.length, 1, 'the never-add entry moved; re-check what the pre-filter owns');
 
   for (const entry of entries) {
-    if (entry.source === 'src/commands/clean.md:68') continue;
+    if (entry.source === 'src/commands/clean.md:61') continue;
     assert.ok(ruleSources.has(entry.source), `no pre-filter rule covers ${entry.source}`);
   }
 

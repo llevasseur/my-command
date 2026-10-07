@@ -30,9 +30,8 @@ Parse `--target <branch>` / `-t <branch>`, `--worktree <path>`, and `--no-implem
   has-work check is the only guard: a branch with commits is cleaned and its
   pull request updated, which is what publishes the recorded screenshots, and a
   branch with none stops without opening an empty pull request. Teardown
-  ownership is unchanged — yours with a target, nobody's without. Combined with
-  `--no-verify`, the run does nothing but cleanup and pull request; say so in
-  the report. This flag lives here rather than on the task workflow because only
+  ownership is unchanged — yours with a target, nobody's without.
+  This flag lives here rather than on the task workflow because only
   this workflow checks an existing branch out into a worktree.
 
 Never create a missing target branch. The `$task` workflow owns implementation, verification, commits, `$clean`, `$pr`, and safe worktree teardown. Report the branch before work and the PR number and URL at completion.
