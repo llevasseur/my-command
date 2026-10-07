@@ -12,6 +12,10 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 - **`/ab` compares two versions of a command on the same branch.** Each version runs in its own isolated worktree and publishes nothing. A blind judge picks the better output, and your own pick is saved as a label in the `jev-record` keep. See `docs/features/ab.md`.
 - **`my-command-tools pr --dry-run` shows the PR it would open, without opening it.** It prints the title, the body, and whether it would create or update, and it never pushes. A branch under `ab/` is always previewed.
 
+### Fixed
+
+- **The closing-turn anchor can be written with `TaskCreate` again.** On harnesses where the task list is `TaskCreate`, the gate refused the "close the run in a text-only turn" item every command writes before its first call, and told the run to drop it. The gate now lets that item through until the run has done real work, and still refuses it after.
+
 ## 2026-10-05
 
 ### Added
