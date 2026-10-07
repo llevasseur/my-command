@@ -990,8 +990,7 @@ test('closing turn: a TaskCreate that schedules the run-s own final message is r
 });
 
 test('closing turn: the start-of-run anchor written with TaskCreate is allowed', () => {
-  // `shared/closing-turn-anchor.md` asks for this item before the first tool call. Refusing it
-  // here told the run to drop the anchor altogether.
+  // `shared/closing-turn-anchor.md` asks for this item before the first tool call.
   for (const spec of [
     ['prompt'],
     [
