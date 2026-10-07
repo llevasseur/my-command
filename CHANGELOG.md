@@ -15,6 +15,7 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 ### Fixed
 
 - **The closing-turn anchor can be written with `TaskCreate` again.** On harnesses where the task list is `TaskCreate`, the gate refused the "close the run in a text-only turn" item every command writes before its first call, and told the run to drop it. The gate now lets that item through until the run has done real work, and still refuses it after.
+- **A prompt typed after earlier work no longer counts that work against the new run.** The hooks skipped a typed prompt because the transcript stores it as plain text, and they read a `/task` body that mentions `<task-notification>` as a background-task notice. So a `/task` started mid-conversation had its closing-turn anchor refused over edits made for an earlier prompt. Both now mark the start of a new run.
 
 ## 2026-10-05
 
