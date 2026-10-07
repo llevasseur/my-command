@@ -5,6 +5,13 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-10-07
+
+### Added
+
+- **`/ab` compares two versions of a command on the same branch.** Each version runs in its own isolated worktree and publishes nothing. A blind judge picks the better output, and your own pick is saved as a label in the `jev-record` keep. See `docs/features/ab.md`.
+- **`my-command-tools pr --dry-run` shows the PR it would open, without opening it.** It prints the title, the body, and whether it would create or update, and it never pushes. A branch under `ab/` is always previewed.
+
 ## 2026-10-05
 
 ### Added

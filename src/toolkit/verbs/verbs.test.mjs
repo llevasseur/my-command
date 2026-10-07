@@ -1389,6 +1389,49 @@ test('pr reports bodyWarnings on the created path too', () => {
   }
 });
 
+test('pr --dry-run on a branch never pushed previews a create and calls neither push nor gh', () => {
+  const { dir, git, restore } = repoWithFakeGh(openPr({}));
+  try {
+    const r = pr(ctx(dir, [], { title: 'T', body: '- one change\n', 'dry-run': true }));
+    assert.equal(r.dryRun, true);
+    assert.equal(r.action, 'create');
+    assert.equal(r.body, '- one change\n');
+    assert.equal(existsSync(join(dir, 'gh.log')), false);
+    assert.equal(git(['ls-remote', '--heads', 'origin', 'feat/x']).trim(), '');
+    const saved = JSON.parse(readFileSync(String(r.preview), 'utf8'));
+    assert.equal(saved.title, 'T');
+  } finally {
+    restore();
+  }
+});
+
+test('pr --dry-run on a pushed branch previews the update it would write, assets kept', () => {
+  const { dir, git, calls, restore } = repoWithFakeGh(
+    openPr({ body: 'old\n\n![shot](https://github.com/user-attachments/assets/abc)\n' }),
+  );
+  try {
+    git(['push', '-q', '-u', 'origin', 'HEAD']);
+    const r = pr(ctx(dir, [], { title: 'T', body: '- new\n', 'dry-run': true }));
+    assert.equal(r.action, 'update');
+    assert.match(String(r.body), /user-attachments\/assets\/abc/);
+    assert.doesNotMatch(calls(), /pr (edit|create|comment)/);
+  } finally {
+    restore();
+  }
+});
+
+test('pr previews an ab/ branch even without --dry-run', () => {
+  const { dir, git, restore } = repoWithFakeGh(openPr({}));
+  try {
+    git(['checkout', '-qb', 'ab/trial-a']);
+    const r = pr(ctx(dir, [], { title: 'T', body: '- x\n' }));
+    assert.equal(r.dryRun, true);
+    assert.equal(git(['ls-remote', '--heads', 'origin', 'ab/trial-a']).trim(), '');
+  } finally {
+    restore();
+  }
+});
+
 test('worktree begin --existing refuses a branch that does not exist', () => {
   const { dir } = repo();
   assert.throws(() => worktree(ctx(dir, ['begin'], { branch: 'feat/nope', existing: true })), /does not exist/);
