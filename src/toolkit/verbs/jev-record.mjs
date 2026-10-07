@@ -26,7 +26,7 @@
 // no `MY_COMMAND_JUDGE=1`, because those two gates govern *asking Jev a question*
 // (`docs/adrs/0009-conversation-derived-state-leaves-the-device.md`), and this verb asks
 // nothing: it forwards what a caller already decided to send. Running it with no caller sends
-// nothing at all. No command calls it.
+// nothing at all. The one command that calls it is `/ab`, and only `label`, which sends nothing.
 
 import { spawn } from 'node:child_process';
 import { existsSync, openSync, readFileSync } from 'node:fs';
@@ -38,9 +38,11 @@ import {
   keepRoot,
   listSessions,
   openSession,
+  RECORD_VERSION,
   readSession,
   sessionDir,
   sessionName,
+  writeRecord,
   writeSession,
 } from '../lib/jev-record-store.mjs';
 import { asRecord } from '../lib/json.mjs';
@@ -50,6 +52,7 @@ export const usage = `jev-record start [--port <n>] [--endpoint <url>] [--timeou
 jev-record stop [--session <name>] [--all]
 jev-record serve [--port <n>] [--endpoint <url>] [--exchanges <n>] [--idle <s>]
 jev-record read [--session <name>] [--all] [--full]
+jev-record label --file <path>
 
 Record what actually crosses the wire between a caller and TypeSafe's System One
 endpoint, because the Jev client cannot: it never throws, and every failure mode
@@ -63,6 +66,10 @@ questions are the same observation at the call site.
           a signal arrives. This is what start spawns.
   read    Print a recorded session: one summary per exchange, or the records whole
           with --full.
+  label   Record one /ab trial and the human's pick as a session of its own, beside
+          the exchanges, so the labelled corpus lives in one keep. The file is the
+          trial as JSON; \`pick\` and \`judge.verdict\` must each be a, b or tie, and
+          \`versions.a.ref\` and \`versions.b.ref\` must be named.
 
   --port <n>        Bind this port instead of an ephemeral one.
   --endpoint <url>  Upstream. Default ${ENDPOINT}
@@ -72,6 +79,7 @@ questions are the same observation at the call site.
   --session <name>  Which session to stop or read. Default: the most recent.
   --all             stop: every running proxy. read: every session, as a list.
   --full            read: the records themselves, not a summary per exchange.
+  --file <path>     label: the trial to record.
 
 Records land outside any checkout, under
 ${keepRoot()}
@@ -84,9 +92,9 @@ It is forwarded upstream when the caller sent no Authorization of its own, and i
 redacted out of every record — by header name, and by scanning each body for it.
 No record ever contains it.
 
-This verb is wired into no command, asks Jev nothing of its own, and needs neither
---judge nor MY_COMMAND_JUDGE: those gate sending state to a third party, and this
-forwards only what a caller already chose to send.
+Only /ab calls this verb, and only label. It asks Jev nothing of its own, and needs
+neither --judge nor MY_COMMAND_JUDGE: those gate sending state to a third party, and
+this forwards only what a caller already chose to send.
 
 Exit codes: 0 success · 1 the verb failed · 2 bad usage.`;
 
@@ -372,6 +380,17 @@ async function stop(ctx) {
  * @returns {Record<string, unknown>}
  */
 function summarize(record) {
+  if (record.kind === 'ab') {
+    const trial = asRecord(record.trial) ?? {};
+    return {
+      id: record.id ?? null,
+      kind: 'ab',
+      recordedAt: record.recordedAt ?? null,
+      command: trial.command ?? null,
+      pick: asRecord(record.label)?.pick ?? null,
+      judge: asRecord(trial.judge)?.verdict ?? null,
+    };
+  }
   const request = asRecord(record.request) ?? {};
   const response = asRecord(record.response) ?? {};
   const unanswered = Array.isArray(response.unansweredIds) ? response.unansweredIds : [];
@@ -429,6 +448,58 @@ function read(ctx) {
   };
 }
 
+/** What a pick or a verdict may be. A tie is an answer, not a missing one. */
+const CHOICES = ['a', 'b', 'tie'];
+
+/**
+ * Record one A/B trial with its human label, as a session holding a single record.
+ *
+ * A trial is not an exchange — nothing crossed the wire — so its record carries
+ * `kind: 'ab'` and a shape of its own, documented beside the exchange format. It lands in
+ * this keep rather than a new one because the point of a label is the corpus it joins.
+ * @param {import('../cli.mjs').Ctx} ctx
+ * @returns {Record<string, unknown>}
+ */
+function label(ctx) {
+  const file = str(ctx.flags.file);
+  if (file === undefined) throw new UsageError('label needs --file <path>', { usage });
+
+  /** @type {Record<string, unknown> | null} */
+  let trial;
+  try {
+    trial = asRecord(JSON.parse(readFileSync(file, 'utf8')));
+  } catch (error) {
+    throw new UsageError(`could not read the trial at ${file}: ${/** @type {Error} */ (error).message}`, { usage });
+  }
+  if (trial === null) throw new UsageError('the trial file must hold a JSON object', { usage });
+
+  const versions = asRecord(trial.versions) ?? {};
+  const judge = asRecord(trial.judge) ?? {};
+  /** @type {string[]} */
+  const missing = [];
+  for (const side of ['a', 'b']) {
+    if (String(asRecord(versions[side])?.ref ?? '') === '') missing.push(`versions.${side}.ref`);
+  }
+  if (!CHOICES.includes(String(trial.pick))) missing.push('pick (a, b or tie)');
+  if (!CHOICES.includes(String(judge.verdict))) missing.push('judge.verdict (a, b or tie)');
+  if (missing.length) throw new UsageError(`the trial is missing ${missing.join(', ')}`, { usage });
+
+  const name = sessionName();
+  const recordedAt = new Date().toISOString();
+  const dir = openSession(name, { kind: 'ab', startedAt: recordedAt, endedAt: recordedAt, recorded: 1 });
+  const agrees = trial.pick === judge.verdict;
+  const path = writeRecord(dir, 1, {
+    v: RECORD_VERSION,
+    id: 1,
+    session: name,
+    kind: 'ab',
+    recordedAt,
+    trial,
+    label: { pick: trial.pick, by: 'human', agreesWithJudge: agrees },
+  });
+  return { session: name, dir, record: path, pick: trial.pick, judge: judge.verdict, agreesWithJudge: agrees };
+}
+
 /** @param {import('../cli.mjs').Ctx} ctx */
 export function run(ctx) {
   const sub = ctx.positionals[0];
@@ -436,5 +507,6 @@ export function run(ctx) {
   if (sub === 'stop') return stop(ctx);
   if (sub === 'serve') return serve(ctx);
   if (sub === 'read') return read(ctx);
-  throw new UsageError(`unknown subcommand \`${sub ?? ''}\` — expected start, stop, serve or read`, { usage });
+  if (sub === 'label') return label(ctx);
+  throw new UsageError(`unknown subcommand \`${sub ?? ''}\` — expected start, stop, serve, read or label`, { usage });
 }

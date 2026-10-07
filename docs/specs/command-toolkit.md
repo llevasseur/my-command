@@ -4,7 +4,7 @@ title: Command toolkit
 description: The device-wide `my-command-tools` CLI that commands call for the deterministic git/gh plumbing of a workflow run, and how it ships with every install mode.
 tags: [process, toolkit, install, cli]
 timestamp: 2026-07-25
-updated: 2026-09-17
+updated: 2026-10-07
 dirty: true
 ---
 
@@ -30,7 +30,7 @@ noise, what a PR description should say, or whether a failure is worth fixing.
 | `app start\|stop` | boot this repo's app on an ephemeral port and stop it again, by recorded pid |
 | `browser session\|sweep` | the session name a verification round opens its browser under, and the reaping of the daemons an abandoned round left behind |
 | `commit` | stage an explicit path list and commit, with guards |
-| `pr` | push, then create or update the branch's PR |
+| `pr` | push, then create or update the branch's PR; `--dry-run` prints what it would publish and publishes nothing |
 | `prs view\|list\|checks` | read-only pull-request lookups; never writes |
 | `worktree begin\|end\|reap\|list` | the isolated-workspace lifecycle, and which worktrees have outlived their branch |
 | `shots record\|read\|prune` | what a verification loop did — driver tier, verdict, rounds — written beside the screenshots it took, read back across every run that recorded one, and aged out of the keep after 7 days |
@@ -39,7 +39,7 @@ noise, what a PR description should say, or whether a failure is worth fixing.
 | `stash write\|restore\|list` | `/cp`'s five-deep clipboard ring under `~/.claude`, and the clipboard sink |
 | `trim` | which of `/trim`'s six gates are facts about the session, and which are left for the agent |
 | `judge` | what one versioned question set says about one state file — printed, and acted on by nothing |
-| `jev-record start\|stop\|serve\|read` | a loopback proxy between a caller and the System One endpoint, and the whole of each exchange written down outside the Jev client |
+| `jev-record start\|stop\|serve\|read\|label` | a loopback proxy between a caller and the System One endpoint, the whole of each exchange written down outside the Jev client, and `/ab`'s labelled trials in the same keep |
 | `doctor` | where the toolkit resolved from, what's on PATH, which clone it tracks, and which external tools this device has |
 
 `app` is the one verb that starts something and leaves it running. `verify` runs the
@@ -405,6 +405,29 @@ The counts are conveniences over the maps beside them rather than a replacement 
 them. `questions` and `answers` are written in full on every record, so a reader that
 distrusts the recorder's arithmetic can recount from the file.
 
+#### A labelled `/ab` trial
+
+`jev-record label --file <path>` writes one [/ab](../features/ab.md) trial into the
+same keep, as a session of its own. The labelled corpus then lives in one store rather
+than two. A trial is not an exchange, since nothing crossed the wire. So its
+`session.json` carries `kind: "ab"` with `startedAt`, `endedAt` and `recorded: 1`, and
+its one record, `000001.json`, has a shape of its own. A reader that only wants exchanges
+skips any record whose `kind` is `"ab"`.
+
+| Field | Type | What it is |
+|---|---|---|
+| `v` | number | Format version. `1`. |
+| `id` | number | Always `1`. |
+| `session` | string | The session this belongs to. |
+| `kind` | string | `"ab"`. |
+| `recordedAt` | string | ISO 8601 UTC. |
+| `trial` | object | The trial file verbatim: `command`, `args`, `fixture`, `rubric`, `versions.a\|b`, `runs.a\|b`, `judge`, `pick`. |
+| `label` | object | `{pick, by: "human", agreesWithJudge}`. `pick` is `a`, `b` or `tie`. |
+
+The verb refuses a trial that names no `versions.a.ref` or `versions.b.ref`, or whose
+`pick` or `judge.verdict` is not `a`, `b` or `tie`. `read` summarises a trial as
+`{id, kind, recordedAt, command, pick, judge}`.
+
 ## Guards
 
 These are the reason the plumbing is worth centralizing — each one encodes a
@@ -420,6 +443,12 @@ failure a workflow run has actually hit:
   the top of it.
 - `pr` only ever moves a PR *toward* draft — it never silently flips an existing
   draft to ready and puts it in front of reviewers early.
+- `pr --dry-run` pushes nothing and writes nothing to GitHub. It prints the title,
+  the body as it would be published, and `create` or `update`, and saves that
+  preview as `pr-dry-run.json` in the worktree's own git directory. It reads `gh`
+  only when origin already has the branch. A branch under `ab/` is always
+  previewed, flag or not, so an `/ab` arm whose text forgets the flag still
+  publishes nothing.
 - `verify` returns no log at all for a passing gate and a bounded tail for a
   failing one, so callers stop hand-rolling `2>&1 | tail -12` and stop re-running a
   whole build because they guessed the window too small.

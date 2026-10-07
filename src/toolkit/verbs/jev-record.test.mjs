@@ -6,7 +6,7 @@
 // write its closing session file, and that `read` reports the exchange without opening it.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -114,4 +114,39 @@ test('an unknown subcommand is a usage error', () => {
   const keep = mkdtempSync(join(tmpdir(), 'mct-jev-verb-'));
   made.push(keep);
   assert.throws(() => cli(keep, ['frobnicate']), /Command failed/);
+});
+
+test('label records an /ab trial as its own session, and read summarises it', () => {
+  const keep = mkdtempSync(join(tmpdir(), 'mct-jev-verb-'));
+  made.push(keep);
+  const file = join(keep, 'trial.json');
+  writeFileSync(
+    file,
+    JSON.stringify({
+      command: 'pr',
+      versions: { a: { ref: 'origin/main:src/commands/pr.md' }, b: { ref: 'chore/pr-minimal:src/commands/pr.md' } },
+      judge: { verdict: 'b', reasons: 'shorter, same facts' },
+      pick: 'a',
+    }),
+  );
+
+  const labelled = cli(keep, ['label', '--file', file]);
+  assert.equal(labelled.pick, 'a');
+  assert.equal(labelled.agreesWithJudge, false);
+
+  const read = cli(keep, ['read', '--session', String(labelled.session)]);
+  const [summary] = /** @type {Record<string, unknown>[]} */ (read.records);
+  assert.equal(read.recorded, 1);
+  assert.equal(summary.kind, 'ab');
+  assert.equal(summary.command, 'pr');
+  assert.equal(summary.pick, 'a');
+  assert.equal(summary.judge, 'b');
+});
+
+test('label refuses a trial with no pick', () => {
+  const keep = mkdtempSync(join(tmpdir(), 'mct-jev-verb-'));
+  made.push(keep);
+  const file = join(keep, 'trial.json');
+  writeFileSync(file, JSON.stringify({ versions: { a: { ref: 'x' }, b: { ref: 'y' } }, judge: { verdict: 'a' } }));
+  assert.throws(() => cli(keep, ['label', '--file', file]), /Command failed/);
 });
