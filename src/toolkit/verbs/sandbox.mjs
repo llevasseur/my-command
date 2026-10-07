@@ -1,9 +1,6 @@
-// `sandbox` — the two GitHub repos an `/ab` trial's arms run against, one per arm.
-//
-// Each arm gets its own private repo generated from the fixture template, and its own clone
-// under `~/.my-command/ab/sandboxes/<arm>/`, so a command that opens PRs, merges, or edits
-// docs acts on real GitHub state without the two arms seeing each other's work. The
-// template's own `scripts/reset-scenario.sh` puts both back into one named scenario.
+// `sandbox` — one private GitHub repo per `/ab` arm, generated from the fixture template and
+// cloned under `~/.my-command/ab/sandboxes/<arm>/`. The template's
+// `scripts/reset-scenario.sh` puts both into one named scenario.
 import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -72,8 +69,7 @@ function config(ctx) {
   if (!/^[^/\s]+\/[^/\s]+$/.test(template)) throw new UsageError(`--template must be <owner/name>, got '${template}'`);
   const root = str(f.root) || process.env.MY_COMMAND_SANDBOX_ROOT || join(homedir(), '.my-command', 'ab', 'sandboxes');
   const gitHost = str(f['git-host']) || process.env.MY_COMMAND_GIT_HOST || 'github.com';
-  // The sandboxes belong to `owner`, and a device logged in as more than one account may
-  // have another one active. Running every gh call as the owner settles it up front.
+  // Every gh call runs as the owner: another active account cannot see the private sandboxes.
   const token = ownerToken(owner);
   return {
     owner,
@@ -156,8 +152,7 @@ function describe(c, a, repo) {
     defaultBranch: repo?.defaultBranch ?? null,
     repo: repo ? 'present' : 'absent',
     local: { state: local.state, origin: local.origin, branch: local.branch },
-    // /judge, /improve and /ideate derive the log dir as the store's parent and pin LOG_DIR
-    // to it, so an arm needs both pointing into its own clone rather than the device's store.
+    // The claude-proxy readers take the log dir as the store's parent and pin LOG_DIR to it.
     env: { CLAUDE_PROXY_STORE: store, LOG_DIR: join(clone, 'fixtures', 'claude-proxy-store', 'logs') },
   };
 }

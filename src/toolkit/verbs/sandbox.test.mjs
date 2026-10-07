@@ -1,6 +1,5 @@
-// `sandbox` against a stub `gh` and a stub `git clone`, so every path is exercised with no
-// GitHub account and no network. The stub `gh` keeps the repos it "created" as files, which
-// is what lets init's idempotence and destroy's ordering be checked as state, not as calls.
+// `sandbox` against a stub `gh` and stub `git clone`/`fetch`: no GitHub, no network. The stub
+// `gh` keeps the repos it "created" as files, so idempotence is checked as state.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -17,7 +16,7 @@ let h;
 
 /**
  * @param {string[]} positionals @param {Record<string, string | true>} [flags]
- * @returns {{sandboxes: any[], [field: string]: any}} one subcommand's report; each test reads the fields its subcommand prints
+ * @returns {{sandboxes: any[], [field: string]: any}}
  */
 const call = (positionals, flags = {}) =>
   sandbox(
