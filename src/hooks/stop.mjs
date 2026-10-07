@@ -107,9 +107,7 @@ guard(() => {
   // dispatched anything and says nothing about whose transcript this is. It stood the gate down
   // for exactly the delegated runs the misses were recorded in.
   if (nonInteractive()) return;
-  // The harness hands over the final message's text from memory, so when it is there the
-  // transcript's flush state does not matter: that message spoke, and a stop follows only a
-  // message that called nothing.
+  // The final message's text, from the harness's memory: it spoke, whatever the file holds yet.
   if (event.lastAssistantMessage?.trim()) return;
   let call = judge(entries(path));
   // Only re-read when about to say something, so the pause is paid on the rare stop rather
