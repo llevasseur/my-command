@@ -40,6 +40,7 @@ noise, what a PR description should say, or whether a failure is worth fixing.
 | `trim` | which of `/trim`'s six gates are facts about the session, and which are left for the agent |
 | `judge` | what one versioned question set says about one state file — printed, and acted on by nothing |
 | `jev-record start\|stop\|serve\|read\|label` | a loopback proxy between a caller and the System One endpoint, the whole of each exchange written down outside the Jev client, and `/ab`'s labelled trials in the same keep |
+| `sandbox init\|reset\|status\|destroy` | the two private GitHub repos `/ab` arms run against, generated from the fixture template, cloned, and reset to a named scenario |
 | `doctor` | where the toolkit resolved from, what's on PATH, which clone it tracks, and which external tools this device has |
 
 `app` is the one verb that starts something and leaves it running. `verify` runs the
@@ -427,6 +428,46 @@ skips any record whose `kind` is `"ab"`.
 The verb refuses a trial that names no `versions.a.ref` or `versions.b.ref`, or whose
 `pick` or `judge.verdict` is not `a`, `b` or `tie`. `read` summarises a trial as
 `{id, kind, recordedAt, command, pick, judge}`.
+
+### `sandbox`
+
+`sandbox` gives each [/ab](../features/ab.md) arm a real GitHub repo of its own, so a
+command that opens PRs, merges, or edits docs acts on GitHub state the other arm cannot see.
+Arm `a` gets `llevasseur/my-command-ab-a` and arm `b` gets `llevasseur/my-command-ab-b`. Both
+are private repos generated from the template `llevasseur/my-command-fixture`, and each is
+cloned to `~/.my-command/ab/sandboxes/<arm>/`. `--owner`, `--name-a`, `--name-b`,
+`--template` and `--root` (or `MY_COMMAND_SANDBOX_ROOT`) override those defaults.
+
+| Subcommand | Does |
+|---|---|
+| `init` | `gh repo create <owner>/<name> --template <template> --private --include-all-branches` for a repo `gh repo view` cannot find, then `git clone` for a clone path that is empty. An existing repo or clone is reused. A clone path holding something else, or a clone of another repo, is refused. |
+| `reset --scenario <name> [--dry-run]` | `git fetch` in each clone, then that clone's own `scripts/reset-scenario.sh --scenario <name> --repo <owner/name> --clone <path> --fixture-remote <url>`. Each arm's report carries the script's JSON under `reset`. |
+| `status` | Both sandboxes as they stand. Calls `gh repo view` and reads the clone; creates, fetches, and deletes nothing. |
+| `destroy --yes` | `gh repo delete` for each repo that exists, then removes its clone. Refused without `--yes` before any call is made. |
+
+Every `gh` call, and the reset script, runs under the owner's token when the device is
+logged in as the owner (`gh auth token --user <owner>`), so another active account cannot
+misread a private sandbox as absent. The report names which identity was used.
+
+**Clone URLs go over SSH through a configurable host:** `git@<host>:<owner>/<name>.git`,
+where `<host>` is `--git-host`, then `MY_COMMAND_GIT_HOST`, then `github.com`. On a device
+where plain `github.com` authenticates as a different account, set it to the `~/.ssh/config`
+alias for the owner's key, for example `MY_COMMAND_GIT_HOST=github-personal`. The reset's
+fixture remote is `--fixture-remote`, then `FIXTURE_REMOTE`, then the template over the same
+host.
+
+`gh repo delete` needs the `delete_repo` scope. When the owner's login lacks it, `destroy`
+fails with `missingScope: "delete_repo"` and names the `gh auth refresh` command for the user
+to run. It never runs that command itself, and it keeps the clone of a repo it could not
+delete.
+
+Each sandbox reports `arm`, `nameWithOwner`, `url`, `clone`, `cloneUrl`, `defaultBranch`,
+`repo` (`present`/`absent`), `local` (the clone's state, origin and branch), and `env`, the
+variables an arm exports:
+
+- `CLAUDE_PROXY_STORE`: `<clone>/fixtures/claude-proxy-store/logs/sessions`, the template's
+  synthetic store.
+- `LOG_DIR`: that store's parent, which the claude-proxy `suggestions` CLI reads.
 
 ## Guards
 
