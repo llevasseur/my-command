@@ -28,9 +28,8 @@ const WORD_LIMIT = 600;
 export const AB_BRANCH_PREFIX = 'ab/';
 
 /**
- * Whether the `ab/` preview guard holds for this checkout. It never holds inside a sandbox
- * clone: `/ab --scenario` arms publish there for real, and a branch name in the fixture
- * repo must not silently turn that into a preview.
+ * Whether the `ab/` preview guard holds: an `ab/` branch outside a sandbox clone, where
+ * `/ab --scenario` arms publish for real.
  * @param {string} cwd @param {string} branch
  */
 export function abGuard(cwd, branch) {
