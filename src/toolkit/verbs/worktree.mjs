@@ -418,8 +418,7 @@ const STOP_TIMEOUT_MS = 120_000;
 /**
  * Run the `stop` command the worktree's own run contract declares, from inside it. Read
  * from the worktree rather than the main checkout, since the branch may add or change it.
- * A failure is reported and the removal goes ahead: the reap still runs after it, and
- * stranding the checkout over a teardown script helps nobody.
+ * A failure is reported, not thrown; the reap still runs after it.
  * @param {string} path
  * @returns {{command: string, ok: boolean, code: number, output?: string} | null}
  */
