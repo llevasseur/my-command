@@ -239,6 +239,18 @@ directory is gone there is nothing left to keep. It is also past `end`'s refusal
 so a worktree that survives an unpushed-HEAD refusal keeps its screenshots with it
 rather than having them relocated out from under live work.
 
+Ahead of the reap, `end` runs the repo's own teardown: the optional `stop` field of the
+worktree's run contract (`scripts/bootstrap-worktree.sh --print-verify-contract`), as
+`bash -c <stop>` from inside the worktree, with a 120-second ceiling. The reap only finds
+processes by argv path. It cannot release a port reservation, a service registration
+outside the checkout, or anything else the repo's own script knows about. The contract
+is read from the worktree rather than the main checkout, because the branch may add or
+change it. The result is reported as `stopped: {command, ok, code, output?}`, or `null`
+when the contract declares no `stop`. A failing `stop` is reported and does not block
+the removal, since the reap still runs after it. `--no-stop` skips it. `--no-reap` skips
+it too, because a caller keeping a survivor on purpose does not want the repo's script
+to stop it.
+
 `worktree list` reports each worktree as `root`, `path`, `branch`, `head`, and
 `reclaimable` — the last being `true` when that branch is already an ancestor of
 `origin/<default-branch>`, so removing the worktree loses nothing. Nothing previously
@@ -853,6 +865,9 @@ with `allowJs` + `checkJs` + `noEmit`, run as `pnpm run check:toolkit`.
 - [ ] `worktree begin --existing` checks a branch out at its own tip; without the flag an
       existing branch is refused.
 - [ ] `worktree end` refuses a worktree with unpushed commits absent `--force`.
+- [ ] `worktree end` runs the run contract's `stop` inside the worktree before the reap,
+      reports it as `stopped`, removes the worktree even when `stop` fails, and skips it
+      under `--no-stop` and `--no-reap`.
 - [ ] `worktree begin` reports `shotsDir` as `~/.my-command/shots/<repo>/<branch>/run-N/`
       and creates it, on the created-branch path and the `--existing` path alike, outside
       the checkout, and a second worktree on one branch gets its own run number.

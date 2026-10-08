@@ -15,7 +15,7 @@ import { spawnSync } from 'node:child_process';
 /**
  * @param {string} cmd
  * @param {string[]} args
- * @param {{cwd?: string, input?: string, raw?: boolean, env?: Record<string, string>}} [opts]
+ * @param {{cwd?: string, input?: string, raw?: boolean, env?: Record<string, string>, timeout?: number}} [opts]
  * @returns {RunResult}
  */
 export function run(cmd, args, opts = {}) {
@@ -25,6 +25,7 @@ export function run(cmd, args, opts = {}) {
     input: opts.input,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
+    timeout: opts.timeout,
   };
   // Merged rather than replaced: a verb overriding one variable (an owner-scoped
   // GH_TOKEN) still needs PATH, HOME, and the rest of the caller's environment. Left unset

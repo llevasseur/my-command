@@ -3,10 +3,19 @@
 // than assumed.
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { flagsFrom } from '../lib/flags.mjs';
@@ -331,6 +340,60 @@ test('worktree end reaps by default and --no-reap opts out', () => {
     [doomed],
   );
   assert.equal(alive(doomed), false);
+});
+
+/**
+ * A repo whose `branch` carries a bootstrap declaring `stop`. `stop` is given the path of a
+ * marker file outside the repo, so what it writes outlives the removed worktree.
+ * @param {string} branch @param {(marker: string) => string} stop
+ */
+function withStop(branch, stop) {
+  const { dir, git } = repo();
+  const marker = join(mkdtempSync(join(tmpdir(), 'mct-stop-')), 'stopped');
+  made.push(dirname(marker));
+  git(['checkout', '-qb', branch]);
+  mkdirSync(join(dir, 'scripts'));
+  writeFileSync(
+    join(dir, 'scripts', 'bootstrap-worktree.sh'),
+    `#!/usr/bin/env bash\n[ "\${1:-}" = "--print-verify-contract" ] && cat <<'JSON'\n${JSON.stringify({ boot: 'true', stop: stop(marker) })}\nJSON\nexit 0\n`,
+  );
+  git(['add', 'scripts']);
+  git(['commit', '-qm', 'contract']);
+  git(['checkout', '-q', 'main']);
+  return { dir, marker };
+}
+
+/** @param {unknown} r @returns {{stopped: {command: string, ok: boolean, code: number, output?: string} | null, removed: boolean}} */
+const stopResult = (r) => /** @type {never} */ (r);
+
+test('worktree end runs the contract’s stop inside the worktree before removing it', () => {
+  const { dir, marker } = withStop('feat/stops', (m) => `pwd -P > ${m}`);
+  const tree = /** @type {{ path: string }} */ (
+    worktree(ctx(dir, ['begin'], { branch: 'feat/stops', existing: true }))
+  );
+  const ranIn = realpathSync(tree.path);
+  const r = stopResult(worktree(ctx(dir, ['end'], { branch: 'feat/stops', force: true })));
+  assert.equal(r.stopped?.ok, true);
+  assert.equal(r.stopped?.command, `pwd -P > ${marker}`);
+  assert.equal(r.removed, true);
+  assert.equal(readFileSync(marker, 'utf8').trim(), ranIn);
+});
+
+test('worktree end skips stop under --no-stop and --no-reap, and removes past a failing one', () => {
+  for (const flag of ['no-stop', 'no-reap']) {
+    const { dir, marker } = withStop('feat/skip', (m) => `touch ${m}`);
+    worktree(ctx(dir, ['begin'], { branch: 'feat/skip', existing: true }));
+    const r = stopResult(worktree(ctx(dir, ['end'], { branch: 'feat/skip', force: true, [flag]: true })));
+    assert.equal(r.stopped, null, flag);
+    assert.equal(existsSync(marker), false, flag);
+  }
+
+  const { dir } = withStop('feat/fails', () => 'echo nope >&2; exit 3');
+  worktree(ctx(dir, ['begin'], { branch: 'feat/fails', existing: true }));
+  const r = stopResult(worktree(ctx(dir, ['end'], { branch: 'feat/fails', force: true })));
+  assert.ok(r.stopped);
+  assert.deepEqual([r.stopped.ok, r.stopped.code, r.removed], [false, 3, true]);
+  assert.match(r.stopped.output ?? '', /nope/);
 });
 
 /**

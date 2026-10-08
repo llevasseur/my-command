@@ -95,7 +95,7 @@ function scriptsOf(root) {
  * The repo's run contract, when its bootstrap script declares one. A bootstrap without the
  * flag, or no bootstrap at all, answers null and detection takes over.
  * @param {string} root
- * @returns {{boot?: string, health?: string, login?: unknown, routes?: unknown} | null}
+ * @returns {{boot?: string, stop?: string, health?: string, login?: unknown, routes?: unknown} | null}
  */
 export function runContract(root) {
   const script = join(root, 'scripts', 'bootstrap-worktree.sh');
