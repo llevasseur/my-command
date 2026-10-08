@@ -424,8 +424,8 @@ const STOP_TIMEOUT_MS = 120_000;
  * @returns {{command: string, ok: boolean, code: number, output?: string} | null}
  */
 function runStop(path) {
-  const command = runContract(path)?.stop;
-  if (typeof command !== 'string' || !command.trim()) return null;
+  const command = String(runContract(path)?.stop ?? '').trim();
+  if (!command) return null;
   const r = exec('bash', ['-c', command], { cwd: path, timeout: STOP_TIMEOUT_MS });
   return {
     command,
