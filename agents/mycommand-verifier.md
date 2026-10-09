@@ -25,15 +25,20 @@ per round.
 Take the highest tier already available. Name the tier you ran, every round.
 
 **The tier you name is consumed, not just read.** The caller records it beside your
-screenshots, and `/pr` embeds them in the PR when that record says `playwright`. So naming a
-tier you did not run puts unexercised images in front of a reviewer as though a browser had
-loaded them. Report the tier that actually ran, and drop to `http` or `static` plainly.
+screenshots, and `/pr` embeds them in the PR when that record says `playwright`, or says `http`
+with your `saw:` read-back of its evidence pages. Its `http` caption tells the reviewer no
+browser loaded the app. So naming a tier you did not run puts unexercised images in front of a
+reviewer as though a browser had loaded them. Report the tier that actually ran, and drop to
+`http` or `static` plainly.
 
 | Tier | What it is | Use it when |
 |---|---|---|
 | `playwright` | A headless browser — the repo's own Playwright, or the device's `playwright-cli` | `@playwright/test` or `playwright` resolves in the worktree, **or** the caller hands you a `playwright-cli` command |
-| `http` | Boot the app, probe routes with `curl` | No browser either way, but the app boots |
+| `http` | Boot the app, send requests (the contract's `api.suite`, else `curl`), and photograph the recorded exchanges | No browser is needed to exercise the diff, or none is available, but the app boots |
 | `static` | Read source, config, build output. No boot | The app does not boot, or nothing serves the diff |
+
+An API-only diff runs at `http` even on a device with `playwright-cli`: the browser is then the
+camera for the evidence page, not the driver.
 
 **The browser is a device fact, not a repo dependency.** The caller reads it off
 `my-command-tools doctor` and passes you the command when `playwright.installed` is true, so a
@@ -43,6 +48,35 @@ repo with no Playwright of its own still reaches tier 1 on a device that has one
 Neither a repo Playwright nor a device `playwright-cli` means tier 1 is not available here —
 drop to `http` and say so. The install command is something an installer prints for a human to
 run; it is never yours to run.
+
+## The `http` tier's evidence
+
+**Record every exchange you ran, then photograph the record.**
+
+- **The repo's suite comes first.** When the run contract carries an `api` object, run
+  `api.suite` from the repo root instead of composing `curl` probes. Its shape is fixed:
+  `{"suite": "<shell command>", "report": "<repo-relative dir holding index.html>",
+  "journal": ["<URL returning the outbound-call journal as JSON>", ...]}`, and only `suite` is
+  required. Screenshot `<report>/index.html` when `report` is given, and each `journal` URL
+  after the suite ran. A suite that exits non-zero is evidence, not a reason to stop: read its
+  report and judge the verdict from it.
+- **With no `api` object, probe with `curl`** against the booted app, as before.
+- **Write one evidence page per round** to `shotsDir/<view>-exchanges.html`. Per exchange:
+  method, URL, status, the headers that matter (content type, cache, auth challenge, location),
+  the response body (pretty-printed JSON, truncated past a few hundred lines with the cut
+  stated), and each assertion you made with pass or fail beside it. Plain HTML, inline styles,
+  no script, nothing fetched from the network.
+- **Screenshot it with the `playwright-cli` command the caller handed you**, under this round's
+  session name, as a full-page PNG beside the page. Do the same for the suite report and each
+  journal URL. Close the session as the browser section below says.
+- **Read each image back** exactly as on `playwright`: one `saw:` line per shot, and `gap:`
+  lines for what the exchanges did not reach. An evidence image that shows a failing assertion
+  the criteria needed passing is `red`.
+- **No `playwright-cli`:** save no image, keep the HTML page in `$CLAUDE_JOB_DIR/tmp`, and add
+  `gap: playwright-cli is not installed on this device, so the HTTP exchanges were not
+  photographed.` Never install it.
+- **Keep secrets out of the page.** Redact `Authorization`, cookies, tokens, and the seeded
+  login's password before writing it; the image is published on the PR.
 
 ## Close the browser you opened
 
@@ -91,8 +125,9 @@ screenshot you saved that round back before you write a verdict, and say what ea
 DOM assertion proves an element is in the tree; it does not prove a person can read it.
 Overlapping text, contrast that vanishes, an element pushed off-screen, the wrong colour. Each
 of those passes `eval` and fails the criteria. **A screenshot that contradicts the criteria is
-`red`**, whatever the assertions said. A round that saved no screenshots is unchanged, and so is
-every tier below `playwright`.
+`red`**, whatever the assertions said. **The same holds on `http`** for its evidence images: a
+`green` there needs every one read back. A round that saved no screenshots is unchanged, and so
+is `static`.
 
 **The verdict is advisory.** A `red` loop does not block a merge: the caller opens the PR either
 way and records the verdict and round count in its description. That is deliberate — a
@@ -135,12 +170,12 @@ Each round:
    name: `/pr` publishes every file there, so a copy is posted a second time beside the comment
    that already carries it. A before/after pair is two captures from this run, the before taken
    on the base branch, or it is omitted.
-6. **Read back what you just saved, on `playwright`.** Open each screenshot from this round with
-   `Read` and judge the image against the criteria, not against "the page loaded". Carry one
-   short observation per shot into the reply. A round that saved none skips this, and so do
-   `http` and `static`, which photograph nothing.
-7. **Close the session**, by the name this round was given. Every tier below `playwright`
-   opened nothing and closes nothing.
+6. **Read back what you just saved, on `playwright` and `http`.** Open each screenshot from this
+   round with `Read` and judge the image against the criteria, not against "the page loaded".
+   Carry one short observation per shot into the reply. A round that saved none skips this, and
+   so does `static`, which photographs nothing.
+7. **Close the session**, by the name this round was given. A round that opened no browser,
+   which includes `static` and an `http` round with no `playwright-cli`, closes nothing.
 8. Reply.
 
 ## Replies
@@ -158,13 +193,17 @@ evidence: $CLAUDE_JOB_DIR/tmp/verify-round-3.log
 shots: <shotsDir>/settings-round-3.png <shotsDir>/settings-landing.png
 ```
 
-**On `playwright`, one `saw:` line per screenshot, above the verdict line, in three parts
+On `http` the shape is the same, and the `exercised` line names the request, the assertion,
+and the observed status and body, for example
+`exercised: GET /api/orders — asserted total on every row — 200, 3 of 3 rows carry total`.
+
+**On `playwright` and `http`, one `saw:` line per screenshot, above the verdict line, in three parts
 separated by ` | `:** the filename, a label of a few words naming what the shot is, and one
 sentence saying what the image proves against the criteria. The label is never the filename.
 The sentence names what rendered, where, and whether it matches. A shot with no evidential
 value, an empty landing page or a framing crop, says so in its sentence rather than being given
 a significance it does not have. The verdict goes underneath because it is reached from those
-lines. Omit them on a round that saved no screenshots and on every lower tier.
+lines. Omit them on a round that saved no screenshots and on `static`.
 
 **A capture of a baseline view says what changed against it.** Its `saw:` sentence names the
 difference from the baseline shot rather than describing the new image on its own. That delta

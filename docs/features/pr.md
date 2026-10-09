@@ -99,10 +99,12 @@ author's machine.
 `my-command-tools pr` embeds them, gated on the **verdict `/verify` Step 6 records beside
 them**. That record — `verdict.json`, written by `my-command-tools shots record` — names
 the driver tier the loop ran and the verdict it reached, and `pr` publishes the
-screenshots when the tier is a browser (`playwright`). Three cases follow from that. A
-branch with no screenshots attaches nothing and says nothing. A branch verified at
-`http` or `static` photographed nothing worth showing, so it attaches nothing and says
-nothing too. Screenshots sitting beside no record at all produce a `shotsWarning`, since
+screenshots when the tier is a browser (`playwright`), or when it is `http` and the record
+carries at least one `saw:` read-back of the evidence pages that tier renders from its
+recorded exchanges ([ADR 0035](../adrs/0035-the-http-tier-publishes-rendered-exchange-evidence.md)).
+A branch with no screenshots attaches nothing and says nothing. A branch verified at
+`static`, or at `http` with no read-back, has nothing inspected to show, so it attaches
+nothing and says nothing too. Screenshots sitting beside no record at all produce a `shotsWarning`, since
 something is there to attach and nothing says whether it may be — in practice that means
 Step 6 was skipped.
 
@@ -110,9 +112,11 @@ Step 6 was skipped.
 most needs, and withholding them would hide the failure the loop found, so the verdict is
 reported alongside the count and tier and does nothing else.
 
-**The caption says captured *and inspected*, and means it.** The browser tier is the only
-one that publishes, and it is also the tier whose agent must read each screenshot back and
-state what the image showed before it may reach `green` — see [Looking at the
+**The caption says captured *and inspected*, and means it.** Every run that publishes is
+one whose agent must read each screenshot back and state what the image showed before it
+may reach `green`. An `http` caption opens by saying the images were rendered from recorded
+HTTP exchanges and were not loaded in a browser, so the tier label stays honest about what
+the image proves — see [Looking at the
 screenshots](verify.md#looking-at-the-screenshots). So an image in this comment is one that
 was looked at, not one that was merely taken, and the caption is the reviewer's only signal
 of that. The exception is a keep recorded before that rule existed: its `verdict.json` says

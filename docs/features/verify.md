@@ -46,7 +46,11 @@ tradeoff](#the-advisory-tradeoff).
    verdict is worth what the criteria behind it are worth, and an inferred
    criterion is weaker than a stated one.
 2. **Read the run contract.** `scripts/bootstrap-worktree.sh
-   --print-verify-contract` prints `{boot, health, login, routes}`. A repo whose
+   --print-verify-contract` prints `{boot, health, login, routes}`, plus an optional
+   `stop` and an optional `api` object: `{"suite": "<shell command run from repo
+   root>", "report": "<repo-relative dir holding the suite's HTML report
+   index.html>", "journal": ["<URL returning the outbound-call journal as JSON>",
+   ...]}`, where only `suite` is required. A repo whose
    bootstrap does not carry the flag falls through to **detection** — a `dev`,
    `start`, or `preview` script, with the real bound port read out of the startup
    log rather than assumed from `PORT`. `/task-bootstrap` is what writes a
@@ -90,7 +94,11 @@ Taken in order, highest available, and **always reported**:
 1. `playwright` — a headless browser: the repo's own installed Playwright, or a
    device-wide `playwright-cli` that `my-command-tools doctor` reports as
    installed.
-2. `http` — boot plus HTTP probes.
+2. `http` — boot plus HTTP requests: the contract's `api.suite` when it declares
+   one, else `curl` probes. Every exchange goes into an evidence HTML page that
+   `playwright-cli` photographs and the verifier reads back, as
+   [ADR 0035](../adrs/0035-the-http-tier-publishes-rendered-exchange-evidence.md)
+   records. With no `playwright-cli`, it records a `gap:` and saves no image.
 3. `static` — source, config, and build output only. Can never reach `green`.
 
 Tier 1 is **device-wide rather than repo-local**. The browser is a property of
@@ -220,8 +228,9 @@ each of them fails the criteria a person wrote. The run then hands those same
 unexamined images to `/pr`, which publishes them into the PR's before/after table as
 though a browser had confirmed them, and the reviewer reads evidence nobody looked at.
 
-Some things stay as they were. **Lower tiers are untouched**, because `http` probes and
-`static` reads photograph nothing. **A round that saved no screenshots is untouched**
+Some things stay as they were. **`static` is untouched**, because its reads photograph
+nothing. **`http` takes the same rule** for its evidence images: each is read back before
+`green`, and a run with no read-back is not published. **A round that saved no screenshots is untouched**
 for the same reason. And **the reply stays terse**: a stated observation is one line of
 the agent's own reading rather than a paste, and logs, markup, stack traces and image
 bytes are as banned from the reply as they ever were.

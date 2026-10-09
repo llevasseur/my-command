@@ -260,8 +260,9 @@ Step 2.5.
    screenshots back, one `saw:` line per shot above the verdict, as `<file> | <label> | <one
    sentence on what it proves>` — a `green` on that tier is not reachable without it, and a
    shot that contradicts the criteria makes the verdict `red`. It lists what the round could
-   not prove as `gap:` lines. Shots plus a `playwright` tier plus no `saw:` lines means it has
-   not looked at its own evidence; message it back for them.
+   not prove as `gap:` lines. Shots plus a `playwright` or `http` tier plus no `saw:` lines
+   means it has not looked at its own evidence; message it back for them.
+   <!-- include: shared/http-tier-evidence.md -->**The `http` tier photographs its exchanges, not the app.** It writes every HTTP exchange it ran (method, URL, status, key headers, body, and each assertion with pass or fail) into an evidence HTML page in the `shotsDir`, screenshots that page with the device's `playwright-cli`, and reads each image back as a `saw:` line plus `gap:` lines, exactly as `playwright` does. When the run contract declares an `api` object, it runs the repo's own `api.suite` instead of ad hoc `curl` and screenshots the `api.report` HTML and each `api.journal` URL. With no `playwright-cli` it records a `gap:` and saves no image, and it never installs one. `/pr` publishes an `http` run's screenshots only when they carry `saw:` lines, captioned as rendered from recorded HTTP exchanges and not loaded in a browser (ADR 0035).<!-- /include -->
 4. **Repair here.** This context holds the criteria; the verifier does not and never edits code.
    Fix, commit on this branch, then `SendMessage` the same verifier to re-check, carrying that
    round's own name from `my-command-tools browser session --round <n>`. One session per round,
@@ -277,8 +278,8 @@ Step 2.5.
 **`green` means the task criteria are demonstrably true in the running app.** Not that nothing
 crashed. A verifier that cannot name the route, the interaction, and the observed result must
 report `unverified`, and a `green` without a filled `exercised` field is not one. On
-`playwright`, neither is a `green` reached without the round's screenshots having been read
-back and described.
+`playwright` and on an `http` round that saved images, neither is a `green` reached without the
+round's screenshots having been read back and described.
 
 ### The verdict is advisory
 
@@ -299,7 +300,7 @@ loop's outcome when it ends** —
 `--shot "<file> | <label> | <sentence>"` per screenshot carrying the verifier's latest `saw:`
 payload for it and one `--gap "<text>"` per `gap:` line, whatever the verdict — because that
 record is what lets Step 3's `/pr` publish the screenshots: it does so when the recorded tier is
-a browser, and publishes nothing without it. A shot recorded with no `--shot` is published as
+a browser, or `http` with at least one `--shot` read-back, and publishes nothing without it. A shot recorded with no `--shot` is published as
 unlabelled. A pair captured as `<view>-before.png` and `<view>-after.png` becomes a
 before/after row rather than two loose cells.
 

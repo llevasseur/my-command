@@ -151,7 +151,14 @@ lands every time, and the message meant to follow it never arrives.
    the repository helper on every exit path, including a refusal or an early
    stop. Green means the criteria are demonstrably true in the running
    application, not that nothing crashed: an agent that cannot name the route,
-   the interaction, and the observed result reports `unverified` instead. The
+   the interaction, and the observed result reports `unverified` instead. An
+   API-only change runs at the HTTP tier: the agent runs the contract's `api`
+   suite when it declares one, else ad hoc requests, records every exchange into
+   an evidence HTML page, photographs it with the device's `playwright-cli`, and
+   reads each image back like a browser screenshot, recording a gap and no image
+   when that tool is absent. Record the loop's tier, verdict, rounds, read-backs
+   and gaps beside the screenshots; the pull-request workflow publishes them for
+   a browser tier, or for the HTTP tier when they carry read-backs. The
    verdict is advisory — the pull request opens either way, the verdict and round
    count go into its description, and no downstream workflow treats a red result
    as a reason not to merge, because a check that can block shipping is one people
