@@ -3,9 +3,9 @@
 // This verb does not move the caller's working directory: in Claude Code that is
 // EnterWorktree/ExitWorktree's job. `begin` prepares the checkout and hands back the
 // path to enter; `end` verifies the work is on origin before removing the local copy.
-// `end` also stops the processes still running out of the worktree; `reap` is that
-// step alone, for the teardowns ExitWorktree owns. `list` reports which of them have
-// outlived their branch.
+// `end` also runs the repo's own `stop` from its run contract, then stops the processes
+// still running out of the worktree; `reap` is that second step alone, for the teardowns
+// ExitWorktree owns. `list` reports which of them have outlived their branch.
 //
 // `begin` opens this run's screenshot directory — `<keep>/<repo>/<branch>/run-N/`, outside
 // the checkout, so the images outlive a teardown that never reaches `end`. `end` sweeps up
@@ -27,9 +27,10 @@ import {
   shotsIn,
   sweepInTree,
 } from '../lib/shots.mjs';
+import { runContract } from './app.mjs';
 
 export const usage = `worktree begin --branch <name> [--base <ref>] [--existing] [--bootstrap]
-worktree end --branch <name> [--force] [--no-reap] [--drop-shots]
+worktree end --branch <name> [--force] [--no-stop] [--no-reap] [--drop-shots]
 worktree reap [--branch <name> | --path <dir>]
 worktree list
 
@@ -46,9 +47,13 @@ worktree list
           Reports the branch's keep as \`shotsKept\`. Anything a tool still wrote to
           .my-command/shots/ in the checkout is swept into a run directory of its own
           first, reported as \`shotsMigrated\`. Then it ages the keep out and reports
-          that as \`shotsPruned\`. See \`shots prune\`.
+          that as \`shotsPruned\`. See \`shots prune\`. Before the reap it runs the
+          \`stop\` command the worktree's run contract declares, inside the worktree,
+          and reports it as \`stopped\` — null when the contract declares none.
           --force        Remove even with unpushed commits or a dirty tree.
-          --no-reap      Leave processes rooted in the worktree running.
+          --no-stop      Skip the run contract's \`stop\`.
+          --no-reap      Leave processes rooted in the worktree running. Skips
+                         \`stop\` too, since stopping them is what it is for.
           --drop-shots   Delete this worktree's screenshots instead of keeping them.
   reap    Stop processes rooted in a worktree without removing it — the step
           ExitWorktree does not take. Names it by --branch or by --path.
@@ -375,8 +380,13 @@ function end(ctx, cwd) {
     });
   }
 
+  const noReap = bool(ctx.flags['no-reap']);
+  // Ahead of the reap: the repo's own teardown shuts its processes down in order and
+  // releases what argv matching cannot see — ports, registrations, build output.
+  const stopped = noReap || bool(ctx.flags['no-stop']) ? null : runStop(tree.path);
+
   // Before the removal, not after — a survivor outlives the directory silently.
-  const reaped = bool(ctx.flags['no-reap']) ? [] : reapProcesses(tree.path);
+  const reaped = noReap ? [] : reapProcesses(tree.path);
 
   // After the reap and before the removal: a survivor would race the sweep, and a removed
   // directory has nothing left to sweep. Past the refusals too, so a worktree that survives
@@ -389,7 +399,39 @@ function end(ctx, cwd) {
   if (!removed.ok) throw new ToolkitError('git worktree remove failed', { code: removed.code, stderr: removed.stderr });
   exec('git', ['worktree', 'prune'], { cwd });
 
-  return { removed: true, branch, path: tree.path, pushed, wasDirty: dirty, reaped, ...shots, shotsPruned: sweep() };
+  return {
+    removed: true,
+    branch,
+    path: tree.path,
+    pushed,
+    wasDirty: dirty,
+    stopped,
+    reaped,
+    ...shots,
+    shotsPruned: sweep(),
+  };
+}
+
+/** A hung teardown script must not hold the removal hostage. */
+const STOP_TIMEOUT_MS = 120_000;
+
+/**
+ * Run the `stop` command the worktree's own run contract declares, from inside it. Read
+ * from the worktree rather than the main checkout, since the branch may add or change it.
+ * A failure is reported, not thrown; the reap still runs after it.
+ * @param {string} path
+ * @returns {{command: string, ok: boolean, code: number, output?: string} | null}
+ */
+function runStop(path) {
+  const command = String(runContract(path)?.stop ?? '').trim();
+  if (!command) return null;
+  const r = exec('bash', ['-c', command], { cwd: path, timeout: STOP_TIMEOUT_MS });
+  return {
+    command,
+    ok: r.ok,
+    code: r.code,
+    output: r.ok ? undefined : [r.stdout, r.stderr].join('\n').slice(-4000),
+  };
 }
 
 /**

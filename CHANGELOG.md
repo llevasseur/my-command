@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-10-08
+
+### Added
+
+- **`worktree end` runs the repo's own teardown before removing the worktree.** When the run contract declares a `stop` command, `end` runs it inside the worktree before the reap and reports the result as `stopped`, so ports, service registrations and build output that argv matching can't find are released too. A failing `stop` does not block the removal. `--no-stop` skips it, and so does `--no-reap`.
+
 ## 2026-10-07
 
 ### Added
