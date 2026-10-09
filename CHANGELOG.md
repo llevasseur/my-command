@@ -7,6 +7,10 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 
 ## 2026-10-09
 
+### Added
+
+- **API-only changes get inspected screenshot evidence on their PRs.** The `http` tier records each exchange and its assertions in an HTML page, photographs it with `playwright-cli`, and reads the image back, and `/pr` publishes it captioned as not loaded in a browser. A run contract's optional `api` object (`suite`, `report`, `journal`) makes the verifier run the repo's own suite instead. See [verify](docs/features/verify.md).
+
 ### Fixed
 
 - **A top-level session at a repository root can create a worktree again.** The `PreToolUse` gate on `EnterWorktree` blocked every creating call from a root, but the harness only refuses that call for a subagent, whose cwd is pinned there. The gate now fires only when the hook input carries `agent_id`, so `EnterWorktree({name})` from your own session goes through.

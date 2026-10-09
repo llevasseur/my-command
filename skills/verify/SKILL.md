@@ -15,7 +15,8 @@ than clamping it. `--no-verify` reports `skipped` and changes nothing.
    `skipped`.
 2. Read the run contract: the repository's bootstrap script invoked with
    `--print-verify-contract`, which prints boot command, health probe URL, seeded login, and a
-   map of source globs to routes. No script, no flag, or unparsable output falls through to
+   map of source globs to routes, and optionally an `api` object naming the repository's own API
+   suite command, its HTML report directory, and journal URLs. No script, no flag, or unparsable output falls through to
    detection — a dev, start, or preview script, and the real bound port taken from the startup
    log. Nothing to boot, or a diff matching no route and serving nothing, reports `skipped`.
 3. Boot the application through the repository helper, which selects an ephemeral port, waits on
@@ -45,8 +46,14 @@ than clamping it. `--no-verify` reports `skipped` and changes nothing.
      each. Green on that tier is not reachable without the read-back, and an image
      contradicting the intent makes the verdict red whatever the assertions against the page
      said. A reply that carries screenshots and a browser tier but no such lines has not
-     looked at its own evidence; ask for them rather than accepting the verdict. Lower tiers
-     and rounds that saved no screenshots are unchanged, and the observations stay one line
+     looked at its own evidence; ask for them rather than accepting the verdict.
+   - On the HTTP tier the agent records every exchange it ran — method, URL, status, key
+     headers, body, and each assertion with pass or fail — into an evidence HTML page in the
+     screenshot directory, photographs it with the device's `playwright-cli`, and reads each
+     image back the same way. With an `api` object in the contract it runs that suite instead of
+     ad hoc requests and photographs its report and each journal URL. With no `playwright-cli`
+     it records a gap and saves no image, and it never installs one. The static tier and rounds
+     that saved no screenshots are unchanged, and the observations stay one line
      each — logs, markup, stack traces and image bytes are still never pasted into a reply.
 5. Repair in this run's own context, which holds the intent; the agent never edits code. Green
    ends the loop. Unverified and skipped end it too — neither improves by repeating. Red is
@@ -61,7 +68,9 @@ than clamping it. `--no-verify` reports `skipped` and changes nothing.
    the `exercised` line or what stood in the way, whether the intent was given or inferred,
    whether the contract or detection was used, and the evidence path.
    - That record is what makes the screenshots publishable: the pull-request workflow publishes
-     them when it says a browser tier took them, and publishes nothing without it; a screenshot
+     them when it says a browser tier took them, or says HTTP and carries a read-back for at
+     least one image, captioned as rendered from recorded HTTP exchanges and not loaded in a
+     browser, and publishes nothing without it; a screenshot
      recorded without its read-back is published as unlabelled. Record every
      ending rather than only a green one, and name the tier actually run. Claiming a browser
      for a round that only probed over HTTP puts unexercised images in front of a reviewer as

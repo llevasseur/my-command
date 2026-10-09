@@ -74,6 +74,12 @@ four facts. Ask for them in one round; skip whatever Step 2 already settled.
   any other host.
 - **Routes** — a map of source glob to route. `src/settings/**` → `/settings`. Several entries
   is normal, and a diff matching none is what lets a verification round skip itself.
+- **API suite** — optional, and only for a repo with its own API tests. The command that runs
+  them from the repo root, the directory holding their HTML report's `index.html`, and any URL
+  that returns the app's outbound-call journal as JSON. It becomes the contract's `api` object,
+  and an API-only change is then verified by that suite and photographed from its report rather
+  than probed with ad hoc `curl`. Detect it first: a `test:api`, `test:e2e` or similar script, or
+  a report directory the test config names.
 
 Nothing to boot — a library, a CLI, a docs repo — is a real answer. Record it, emit no contract,
 and `/my-command:verify` skips. Never invent a boot command to fill the field.
@@ -202,7 +208,7 @@ Design the bootstrap around these, and explain each as you apply it:
 - **Regenerate lazily** by target; docs-only work can skip generation.
 - **Refuse to run from the main checkout** (guard: detected main == worktree root → exit non-zero).
 - **Commit it, don't gitignore it.** Only *tracked* files land in fresh worktrees (where `/my-command:task` looks for it), and teammates who share the `/my-command:task` command should get the bootstrap too. Keeping it free of machine-specific paths (via auto-detection) is what makes committing safe.
-- **Print the run contract behind `--print-verify-contract`.** It prints `{boot, health, login, routes}` as JSON on stdout, exits 0, and does nothing else — no install, no symlink, no codegen. Add an optional `stop` command when the repo has its own teardown, such as freeing ports or deleting build output: `my-command-tools worktree end` runs it inside the worktree before it reaps processes and removes the checkout. Handle it **first**, ahead of the main-checkout guard: a caller asking what the contract is has no worktree yet, and the guard would refuse it.
+- **Print the run contract behind `--print-verify-contract`.** It prints `{boot, health, login, routes}` as JSON on stdout, exits 0, and does nothing else — no install, no symlink, no codegen. Add an optional `stop` command when the repo has its own teardown, such as freeing ports or deleting build output: `my-command-tools worktree end` runs it inside the worktree before it reaps processes and removes the checkout. Add an optional `api` object when the repo has its own API test suite: `{"suite": "<shell command run from repo root>", "report": "<repo-relative dir holding the suite's HTML report index.html>", "journal": ["<URL returning the outbound-call journal as JSON>", ...]}`. Only `suite` is required. The verifier's `http` tier then runs that suite instead of ad hoc `curl`, and screenshots the report and each journal URL as the PR's evidence (ADR 0035). Handle it **first**, ahead of the main-checkout guard: a caller asking what the contract is has no worktree yet, and the guard would refuse it.
 - **Print the Jira contract behind `--print-jira-contract`**, on the same terms: JSON on stdout, exit 0, nothing else, handled first alongside `--print-verify-contract` and ahead of the main-checkout guard, since `/my-command:ticket` asks for it from wherever it is standing. It prints `{site, projectKey, board, sprint, defaultIssueType, issueTypes, lifecycle, never, linkType}` and **never a `cloudId`**. Emit the flag only where Step 3.6 got a yes; a repo with no Jira — and a repo that declined — omits it and `/my-command:ticket` skips. Where the answer was a decline, the `jira-contract: declined` comment goes in the flag's place so the next run of this command reads it instead of re-asking.
 - **Omitting the contract is allowed.** A bootstrap without the flag makes `/my-command:verify` fall through to detection — the `dev`/`start`/`preview` script, and the real bound port read out of the startup log. Emit the flag when the answers are worth pinning; leave it out for a repo with no app.
 - Match repo conventions: shebang + `set -euo pipefail`, `chmod +x`.
@@ -223,7 +229,12 @@ if [ "${1:-}" = "--print-verify-contract" ]; then
   "boot": "pnpm dev",
   "health": "http://localhost:3000/api/health",
   "login": {"email": "dev@example.com", "password": "dev-only"},
-  "routes": {"src/settings/**": "/settings", "src/api/**": "/api/health"}
+  "routes": {"src/settings/**": "/settings", "src/api/**": "/api/health"},
+  "api": {
+    "suite": "pnpm test:api",
+    "report": "reports/api",
+    "journal": ["http://localhost:3000/__journal"]
+  }
 }
 JSON
   exit 0

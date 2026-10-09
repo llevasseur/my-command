@@ -37,7 +37,10 @@ Parse `--draft` / `-d`; treat remaining text as optional title or context.
    without embedding credentials. Preserve existing body assets. Convert to
    draft only when requested; never silently mark a draft ready.
    - A branch whose screenshots were taken by a browser gets them published
-     under a `## Screenshots` heading. Every image sits in a table cell, even a
+     under a `## Screenshots` heading, and so does an `http` run whose
+     recorded evidence images the verifier read back. That caption says the
+     images were rendered from recorded HTTP exchanges and were not loaded in a
+     browser; an `http` run with no read-back publishes nothing. Every image sits in a table cell, even a
      lone one: a bold label naming the shot, the image, then one sentence on
      what it proves. Before/after pairs share a row per view, the rest fill a
      two-column grid, and the comment closes with "What these shots do not

@@ -93,9 +93,10 @@ function scriptsOf(root) {
 
 /**
  * The repo's run contract, when its bootstrap script declares one. A bootstrap without the
- * flag, or no bootstrap at all, answers null and detection takes over.
+ * flag, or no bootstrap at all, answers null and detection takes over. `api` is read by the
+ * verifier's `http` tier, not here: `{suite, report?, journal?}`, ADR 0035.
  * @param {string} root
- * @returns {{boot?: string, stop?: string, health?: string, login?: unknown, routes?: unknown} | null}
+ * @returns {{boot?: string, stop?: string, health?: string, login?: unknown, routes?: unknown, api?: {suite: string, report?: string, journal?: string[]}} | null}
  */
 export function runContract(root) {
   const script = join(root, 'scripts', 'bootstrap-worktree.sh');

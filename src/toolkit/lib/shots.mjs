@@ -15,7 +15,8 @@
 // keep had to rename the second image to store it, and the note still named the first.
 //
 // What makes a branch's screenshots publishable is the verdict `/verify` records beside
-// them: a browser tier ran, or it did not. `docs/features/pr.md` covers why the shape of
+// them: a browser tier ran, or the `http` tier rendered its recorded exchanges to an
+// evidence page and read each image back. `docs/features/pr.md` covers why the shape of
 // the diff cannot answer that.
 //
 // There is one way in, whatever the repository's visibility: an attachment comment.
@@ -59,7 +60,7 @@ const RUN_DIR = /^run-(\d+)$/;
 /** Where `/verify` records what it did, inside its run directory. */
 export const VERDICT_FILE = 'verdict.json';
 
-/** The driver tiers `mycommand-verifier` reports, and the one that takes screenshots. */
+/** The driver tiers `mycommand-verifier` reports, and the one that drives a browser. */
 export const TIERS = ['playwright', 'http', 'static'];
 const BROWSER_TIERS = new Set(['playwright']);
 
@@ -936,6 +937,22 @@ export function isBrowserTier(tier) {
 }
 
 /**
+ * Whether `pr` publishes a recorded run's screenshots: always for a browser tier, and for
+ * `http` only when the verifier read its evidence pages back as `saw:` notes.
+ * @param {Verdict} record
+ */
+export function isPublishable(record) {
+  if (isBrowserTier(record.tier)) return true;
+  return record.tier === 'http' && (record.shots?.length ?? 0) > 0;
+}
+
+/** The caption's opening, which says how the images were made. @param {string} tier */
+function provenanceOf(tier) {
+  if (isBrowserTier(tier)) return `Captured and inspected by the \`${tier}\` tier`;
+  return `These images were rendered from recorded HTTP exchanges and were not loaded in a browser. Captured and inspected by the \`${tier}\` tier`;
+}
+
+/**
  * The view a before/after filename names, and which side of the comparison it is.
  * `home-before.png` and `after_home.png` both resolve; anything with no marker is not
  * half of a pair and returns null.
@@ -1151,7 +1168,7 @@ function commentPlan(shots, record) {
   const notes = record.shots ?? [];
   const gaps = record.gaps ?? [];
   const rounds = record.rounds ? ` after ${record.rounds} round${record.rounds === 1 ? '' : 's'}` : '';
-  const caption = `Captured and inspected by the \`${record.tier}\` tier; verification ended \`${record.verdict}\`${rounds}.`;
+  const caption = `${provenanceOf(record.tier)}; verification ended \`${record.verdict}\`${rounds}.`;
   // The digest covers the words as well as the images, so a re-recorded read-back over the
   // same shots replaces the comment instead of reusing it.
   const hash = createHash('sha256');
@@ -1483,8 +1500,8 @@ export function deleteShotsComment(cwd, slug, id) {
  * How this branch's screenshots reach its pull request.
  *
  * The gate is the recorded tier, never the verdict: a `red` loop's screenshots are the
- * ones a reviewer most needs. A non-browser tier photographed nothing and a branch nobody
- * verified has nothing to show, so both are silent. Screenshots with no record beside them
+ * ones a reviewer most needs. A tier that photographed nothing, an `http` run nobody read
+ * back, and a branch nobody verified have nothing to show, so all three are silent. Screenshots with no record beside them
  * are the one case that warns.
  *
  * What comes back is a `comment` plan, which the caller posts once the PR has a number.
@@ -1507,7 +1524,7 @@ export function attachShots(cwd, branch) {
   if (!record) {
     return { ...none, warning: `${shots.length} screenshot(s) with no recorded verdict — run \`shots record\`` };
   }
-  if (!isBrowserTier(record.tier)) return none;
+  if (!isPublishable(record)) return none;
 
   const found = { ...none, tier: record.tier, verdict: record.verdict };
   const latest = records[0];

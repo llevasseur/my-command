@@ -51,7 +51,12 @@ This is a step of the workflow, not a habit to recall. Run it whenever a phase o
 
 ## Step 2 — Read the run contract
 
-`bash scripts/bootstrap-worktree.sh --print-verify-contract` → `{boot, health, login, routes}`.
+`bash scripts/bootstrap-worktree.sh --print-verify-contract` → `{boot, health, login, routes}`,
+plus an optional `stop` and an optional `api`:
+`{"suite": "<shell command run from repo root>", "report": "<repo-relative dir holding the
+suite's HTML report index.html>", "journal": ["<URL returning the outbound-call journal as
+JSON>", ...]}`. Only `api.suite` is required inside `api`. When it is there the verifier runs
+that suite on the `http` tier instead of ad hoc `curl`.
 
 - No script, no flag, or unparsable output → **detect**: a `dev`, `start`, or `preview` script in
   `package.json`, and the real bound port read out of the startup log.
@@ -91,7 +96,8 @@ with `subagent_type: "mycommand-verifier"`. Hand it, and nothing else:
 - the changed-file list,
 - the run contract, or the detected boot and port,
 - **the `playwright-cli` command, when `doctor` reports `playwright.installed`** — that is what
-  makes the browser tier reachable in a repo with no Playwright of its own,
+  makes the browser tier reachable in a repo with no Playwright of its own, and what the `http`
+  tier photographs its evidence pages with,
 - **the session name and the close command `browser session` printed**, and that the round
   closes that session by name before it replies, on every exit path. The name carries the branch
   and the round, so a sweep can recognise it after the run that opened it is gone,
@@ -117,9 +123,11 @@ of those screenshots back, one `saw:` line per shot above the verdict, in three 
 makes the verdict `red` however the DOM assertions read. A reply with shots, a `playwright`
 tier, and no `saw:` lines has not looked at its own evidence — message it back for them rather
 than accepting the verdict; so has one whose `saw:` lines carry a filename and nothing else. It
-also lists what the round could not prove, one `gap:` line each. Lower tiers and rounds that
-saved no screenshots carry neither and are unchanged. **Read the evidence path only when you
-need it.** Do not ask for logs in the reply.
+also lists what the round could not prove, one `gap:` line each. **The `http` tier reads its
+screenshots back the same way**, and the same rule sends a reply with `http` shots and no `saw:`
+lines back for them. <!-- include: shared/http-tier-evidence.md -->**The `http` tier photographs its exchanges, not the app.** It writes every HTTP exchange it ran (method, URL, status, key headers, body, and each assertion with pass or fail) into an evidence HTML page in the `shotsDir`, screenshots that page with the device's `playwright-cli`, and reads each image back as a `saw:` line plus `gap:` lines, exactly as `playwright` does. When the run contract declares an `api` object, it runs the repo's own `api.suite` instead of ad hoc `curl` and screenshots the `api.report` HTML and each `api.journal` URL. With no `playwright-cli` it records a `gap:` and saves no image, and it never installs one. `/my-command:pr` publishes an `http` run's screenshots only when they carry `saw:` lines, captioned as rendered from recorded HTTP exchanges and not loaded in a browser (ADR 0035).<!-- /include --> `static`
+and rounds that saved no screenshots carry neither. **Read the evidence path only when you need
+it.** Do not ask for logs in the reply.
 
 ## Step 5 — Repair, then re-check
 
@@ -158,7 +166,8 @@ my-command-tools shots record --tier <tier> --verdict <verdict> --rounds <n> \
 
 That writes `verdict.json` beside the screenshots, and it is the **only** thing that makes them
 publishable: `/my-command:pr` publishes a branch's screenshots when this record says a **browser** tier
-took them, and publishes nothing at all when no record exists. Record every ending, not just a green
+took them, or says `http` and carries at least one `--shot` read-back, and publishes nothing at
+all when no record exists. Record every ending, not just a green
 one — a `red` loop's screenshots are the ones a reviewer most needs, and the verdict never
 withholds them. A run that took no screenshots still records, because the record costs nothing
 and its absence is what `/my-command:pr` reports as a warning.
@@ -183,7 +192,8 @@ question: with both log tails in hand the comparison is a function, not a judgem
 
 **The tier is what decides it, so name the tier you actually ran.** Writing `playwright` for an
 `http` round puts unexercised images in front of a reviewer as though a browser had loaded them,
-which is the one failure this record exists to prevent. The verb refuses a tier or verdict
+which is the one failure this record exists to prevent. An `http` round records `http`, and its
+caption on the PR says the images were rendered from recorded HTTP exchanges. The verb refuses a tier or verdict
 outside the four-and-three vocabulary rather than recording a typo.
 
 The report:
@@ -199,7 +209,8 @@ The report:
 - **the saved screenshots, each by path.** They outlive this run — they were written straight
   into `~/.my-command/shots/<repo>/<branch>/run-N/`, so no teardown has to cooperate **to keep
   the images**, and `/my-command:pr`
-  embeds them in the PR when the recorded tier is a browser — so the report is where someone
+  embeds them in the PR when the recorded tier is a browser, or `http` with read-backs — so the
+  report is where someone
   learns they exist. They do not outlive it by
   much: the keep is pruned to seven days, aged run by run from its newest file. A screenshot nobody
   was told the path of is evidence nobody reads. Carry the verifier's `saw:` label and sentence for each
@@ -242,7 +253,8 @@ Lead with the verdict, the round count, and the tier.
 - **Never install a browser.** No `npx playwright install`, no browser download, no package add
   — the same rule whether the browser would have come from the repo or the device. A device with
   no `playwright-cli` and a repo with no Playwright of its own means the tier is unavailable, and
-  the verifier drops to HTTP probes exactly as it always has. The installer prints the global
+  the verifier drops to HTTP probes, records a `gap:` that the exchanges were not photographed,
+  and saves no image. The installer prints the global
   install command for a human; nothing here runs it.
 - **The browser is closed by the round that opened it, and swept by the next one.** Every
   `playwright-cli -s=<name>` starts a persistent `cliDaemon.js` owning a Chrome tree of about
@@ -255,10 +267,11 @@ Lead with the verdict, the round count, and the tier.
   scratch under `$CLAUDE_JOB_DIR/tmp` and ship with nothing. **Screenshots are the exception** —
   they go to the `shotsDir`, which is this run's directory in
   `~/.my-command/shots/<repo>/<branch>/` rather than anywhere the workspace's removal reaches, and
-  `/my-command:pr` publishes them into the PR body when Step 6's record says a browser took them. That is
+  `/my-command:pr` publishes them into the PR body when Step 6's record says a browser took them, or
+  `http` with read-backs of its evidence pages. That is
   about where the *images* live and nothing else: the browser session is still closed by name on
   every exit path, and one that died before its close is swept by the next run. A pair
   named `<view>-before.png` / `<view>-after.png` becomes one before/after row there. What `/my-command:pr`
-  publishes is an inspected image rather than merely a captured one, because the browser tier is
-  both the gate on publishing and the tier that must read its screenshots back.
+  publishes is an inspected image rather than merely a captured one, because every tier that
+  passes the gate on publishing is a tier that must read its screenshots back.
 - <!-- include: shared/approval-own-call.md -->**A command that may need approval goes in its own Bash call** — `git fetch`, `git config`, and, as a narrow exception to the general rule to chain dependent mutations, branch-lifecycle operations such as checkout/switch, pull, remote-branch inspection, and local branch deletion. Folding one into an `&&` chain escalates approval to the whole compound command and costs a turn plus a retry. Put status output, pipes, and follow-up verification in separate read-only calls.<!-- /include -->

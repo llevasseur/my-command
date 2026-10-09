@@ -189,7 +189,9 @@ against: the newest entry that is neither still open nor empty of screenshots, o
 branch nobody has verified before. Resolving it here rather than in each command means no
 caller has to work out which of `runs` is its own.
 
-`pr` closes that loop at the other end. A branch whose recorded tier is a **browser** gets
+`pr` closes that loop at the other end. A branch whose recorded tier is a **browser**, or
+`http` with at least one `saw:` read-back
+([ADR 0035](../adrs/0035-the-http-tier-publishes-rendered-exchange-evidence.md)), gets
 its screenshots — read from every run directory in the keep, and from a workspace's
 `.my-command/shots/` as a fallback, the workspace winning a bare collision — published
 under a `## Screenshots` heading: before/after pairs as a
@@ -204,8 +206,9 @@ had no frontend file in its diff, so its screenshots were dropped, while a front
 nobody exercised would have attached whatever stale images the keep still held. The tier is
 the fact the glob was guessing at, and `/verify` is the one component that knows it. The
 verdict is reported and never gates: a `red` loop's screenshots are the ones a reviewer
-most needs. Both silent paths stay silent — no screenshots, and a non-browser tier, each
-attach nothing and report nothing. `--no-shots` switches it off, and `shotsWarning` is
+most needs. The silent paths stay silent — no screenshots, `static`, and an `http` run
+with no read-back each attach nothing and report nothing. An `http` caption says its images
+were rendered from recorded HTTP exchanges and were not loaded in a browser. `--no-shots` switches it off, and `shotsWarning` is
 reserved for what genuinely could not be published: images sitting beside no record at all,
 a comment `gh` refused, or the overflow past one comment's file limit.
 
