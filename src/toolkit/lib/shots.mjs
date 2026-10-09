@@ -937,10 +937,8 @@ export function isBrowserTier(tier) {
 }
 
 /**
- * Whether a recorded run's screenshots are evidence `pr` publishes. A browser tier always
- * is. The `http` tier is when the verifier read its evidence pages back as `saw:` notes:
- * those images were rendered from recorded exchanges, so the read-back is what vouches for
- * them. Without it they are unexamined pictures of text.
+ * Whether `pr` publishes a recorded run's screenshots: always for a browser tier, and for
+ * `http` only when the verifier read its evidence pages back as `saw:` notes.
  * @param {Verdict} record
  */
 export function isPublishable(record) {
