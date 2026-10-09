@@ -83,7 +83,8 @@ shots prune [--max-age-days <n>] [--dry-run]
           --max-age-days <n>  How old a run's newest file may be. Default ${KEEP_MAX_AGE_DAYS}.
           --dry-run           Report what would go and remove nothing.
 
-\`pr\` embeds a branch's screenshots when this record says a **browser** tier took them —
+\`pr\` embeds a branch's screenshots when this record says a **browser** tier took them, or
+the \`http\` tier rendered its exchanges and recorded at least one \`--shot\` read-back —
 the verdict itself never gates it, since a red loop's screenshots are the ones a reviewer
 most needs. A screenshot with no \`--shot\` is published as unlabelled and reported under
 \`undescribed\`. A branch with screenshots and no record attaches none and says so.`;

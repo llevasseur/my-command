@@ -898,7 +898,7 @@ function captured(dir, tier, names, extra = {}) {
   shotsVerb(ctx(dir, ['record'], flags));
 }
 
-test('pr attaches nothing when no browser tier took the screenshots', () => {
+test('pr attaches nothing when no browser tier took the screenshots and no http read-back vouches for them', () => {
   const { dir, git, calls, restore } = repoWithFakeGh(openPr({ body: '' }));
   try {
     mkdirSync(join(dir, 'pages'), { recursive: true });
@@ -907,7 +907,7 @@ test('pr attaches nothing when no browser tier took the screenshots', () => {
     git(['commit', '-qm', 'feat: page']);
     // A frontend diff nobody drove a browser at, which the old path gate would have
     // attached anyway.
-    captured(dir, 'http', ['home.png']);
+    captured(dir, 'http', ['home.png'], { notes: false });
 
     const r = pr(ctx(dir, [], { title: 'T', body: '- added the page' }));
     assert.equal(/** @type {{screenshots?: unknown}} */ (r).screenshots, undefined);
@@ -1042,6 +1042,33 @@ test('pr publishes the screenshots a browser tier took, whatever the diff change
     for (const path of attached) assert.ok(!path.startsWith(dir), `${path} is a checkout path`);
     assert.doesNotMatch(body, new RegExp(dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     assert.match(body, /<!-- my-command-shots [0-9a-f]{64} runs=run-1 -->/);
+  } finally {
+    restore();
+  }
+});
+
+test('pr publishes an http run that read its evidence back, captioned as no browser', () => {
+  const { dir, git, commentBody, restore } = repoWithFakeGh(openPr({ body: '' }));
+  try {
+    writeFileSync(join(dir, 'orders.sql'), 'alter table orders add column total int;\n');
+    git(['add', 'orders.sql']);
+    git(['commit', '-qm', 'feat: widen orders']);
+    captured(dir, 'http', ['exchanges.png'], {
+      notes: [
+        'exchanges.png | GET /orders exchange | The 200 response carries a total on every row; 3 of 3 assertions pass.',
+      ],
+      gaps: ['The suite never posts an order.'],
+    });
+
+    const r = pr(ctx(dir, [], { title: 'T', body: '- widened the table' }));
+    const published = asComment(r);
+    assert.equal(published.count, 1);
+    assert.equal(published.tier, 'http');
+    const body = commentBody();
+    assert.match(body, /rendered from recorded HTTP exchanges and were not loaded in a browser/);
+    assert.match(body, /`http` tier; verification ended `red` after 2 rounds\./);
+    assert.match(body, /\*\*GET \/orders exchange\*\*/);
+    assert.match(body, /^- The suite never posts an order\.$/m);
   } finally {
     restore();
   }

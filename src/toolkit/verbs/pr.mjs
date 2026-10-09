@@ -70,8 +70,10 @@ heredoc is refused wholesale inside an isolated worktree. Use \`--body-file\`.
 Assets already in an existing PR's description — images, videos, GitHub attachment
 links — are always carried over into the new body. They are never dropped.
 
-A branch whose screenshots were taken by a **browser** tier gets them published under a
-\`## Screenshots\` heading. Every image sits in a markdown table cell, even a lone one:
+A branch whose screenshots were taken by a **browser** tier, or by the \`http\` tier with a
+\`saw:\` read-back for its evidence pages, gets them published under a
+\`## Screenshots\` heading. An \`http\` caption says the images were rendered from recorded
+HTTP exchanges and were not loaded in a browser. Every image sits in a markdown table cell, even a lone one:
 a bold label naming the shot, the image, then one sentence on what it proves, all three
 taken from the verifier's own read-back as \`shots record --shot\` stored it. Before/after
 pairs share a row per view; the rest fill a two-column grid. The comment closes with
@@ -98,8 +100,8 @@ those URLs must answer 2xx with image bytes. \`screenshots\` reports it as \`ren
 already open, so a dead image link is reported rather than raised. The same check runs on a
 comment reused from a previous run.
 
-A branch with no screenshots, and one whose screenshots came from a non-browser tier, both
-publish nothing and say nothing. \`shotsWarning\` is left for what genuinely could not be
+A branch with no screenshots, one whose screenshots came from the \`static\` tier, and an
+\`http\` run with no read-back all publish nothing and say nothing. \`shotsWarning\` is left for what genuinely could not be
 published — images beside no recorded verdict, or a comment \`gh\` refused.
 
 The description's shape is measured, never enforced: a body over ${WORD_BUDGET} words, or one

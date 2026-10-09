@@ -16,6 +16,7 @@ import {
   findShots,
   groupShots,
   isBrowserTier,
+  isPublishable,
   keepRunDirs,
   noteFor,
   openedRunDirs,
@@ -181,6 +182,16 @@ test('only the browser tier counts as having taken a screenshot', () => {
   assert.equal(isBrowserTier('http'), false);
   assert.equal(isBrowserTier('static'), false);
   assert.equal(isBrowserTier('anything else'), false);
+});
+
+test('an http run publishes only when the verifier read its evidence back', () => {
+  const saw = [{ name: 'exchanges.png', label: 'GET /orders', description: 'The 200 carries the total.' }];
+  assert.equal(isPublishable({ tier: 'playwright', verdict: 'red' }), true);
+  assert.equal(isPublishable({ tier: 'http', verdict: 'green', shots: saw }), true);
+  // An http run with no `saw:` lines has nobody vouching for what its images show.
+  assert.equal(isPublishable({ tier: 'http', verdict: 'green' }), false);
+  assert.equal(isPublishable({ tier: 'http', verdict: 'green', shots: [] }), false);
+  assert.equal(isPublishable({ tier: 'static', verdict: 'green', shots: saw }), false);
 });
 
 test('a recorded verdict round-trips out of this run’s directory in the keep', () => {
