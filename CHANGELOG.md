@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-10-09
+
+### Fixed
+
+- **A top-level session at a repository root can create a worktree again.** The `PreToolUse` gate on `EnterWorktree` blocked every creating call from a root, but the harness only refuses that call for a subagent, whose cwd is pinned there. The gate now fires only when the hook input carries `agent_id`, so `EnterWorktree({name})` from your own session goes through.
+
 ## 2026-10-08
 
 ### Added

@@ -50,7 +50,7 @@ const GATES = {
   include: '`grep --include` with a glob the shell sees first.',
   program: 'A shell program sent from inside an isolated worktree.',
   bundle: 'Sweeping an OKF doc bundle with grep instead of okq.',
-  enter: 'EnterWorktree from the repository root.',
+  enter: 'EnterWorktree from a subagent at the repository root.',
   closingtask: 'Writing the closing turn down as a task.',
   toobig: 'A whole-file Read of a file too large to come back.',
   reread: 'A full re-read of a file unchanged since the last full read.',

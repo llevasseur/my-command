@@ -931,27 +931,56 @@ test('okf bundle: a directory that does not declare itself one is swept without 
   assert.equal(denied(answer), false);
 });
 
-test('EnterWorktree: the creating form is refused from a repository root, path form is not', () => {
+test('EnterWorktree: a subagent-s creating form is refused from a repository root, path form is not', () => {
   const dir = scratch();
   mkdirSync(join(dir, '.git'), { recursive: true });
   const denyAnswer = hook(PRE_TOOL_USE, {
     session_id: 'ew1',
     transcript_path: transcript(['prompt']),
     cwd: dir,
+    agent_id: 'agent-1',
+    agent_type: 'mycommand-delegate',
     tool_name: 'EnterWorktree',
     tool_input: { name: 'feat-x' },
   });
   assert.equal(denied(denyAnswer), true);
+  assert.match(denyAnswer.hookSpecificOutput.permissionDecisionReason, /subagent/);
   assert.match(denyAnswer.hookSpecificOutput.permissionDecisionReason, /workingRoot/);
 
   const allowed = hook(PRE_TOOL_USE, {
     session_id: 'ew2',
     transcript_path: transcript(['prompt']),
     cwd: dir,
+    agent_id: 'agent-1',
+    agent_type: 'mycommand-delegate',
     tool_name: 'EnterWorktree',
     tool_input: { path: join(dir, '.claude', 'worktrees', 'feat-x') },
   });
   assert.equal(denied(allowed), false);
+});
+
+test('EnterWorktree: a top-level session at a repository root may create a worktree', () => {
+  const dir = scratch();
+  mkdirSync(join(dir, '.git'), { recursive: true });
+  const answer = hook(PRE_TOOL_USE, {
+    session_id: 'ew4',
+    transcript_path: transcript(['prompt']),
+    cwd: dir,
+    tool_name: 'EnterWorktree',
+    tool_input: { name: 'feat-x' },
+  });
+  assert.equal(denied(answer), false);
+
+  // A `--agent` session sends `agent_type` on the main thread too, with no `agent_id`.
+  const agentSession = hook(PRE_TOOL_USE, {
+    session_id: 'ew5',
+    transcript_path: transcript(['prompt']),
+    cwd: dir,
+    agent_type: 'mycommand-delegate',
+    tool_name: 'EnterWorktree',
+    tool_input: { name: 'feat-x' },
+  });
+  assert.equal(denied(agentSession), false);
 });
 
 test('EnterWorktree: a cwd that is not a repository root is left alone', () => {
@@ -961,6 +990,7 @@ test('EnterWorktree: a cwd that is not a repository root is left alone', () => {
     session_id: 'ew3',
     transcript_path: transcript(['prompt']),
     cwd: dir,
+    agent_id: 'agent-1',
     tool_name: 'EnterWorktree',
     tool_input: { name: 'feat-x' },
   });

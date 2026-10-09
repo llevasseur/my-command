@@ -28,6 +28,10 @@ export function disabled() {
  * @property {string} cwd            Where the call runs, defaulted to this process's own.
  * @property {string} sessionId
  * @property {string} transcriptPath
+ * @property {string | undefined} agentId Set only when the call comes from inside a subagent, which
+ *   is how a hook tells a dispatched run from the main thread.
+ * @property {string | undefined} agentType The subagent's type, or a `--agent` session's agent name
+ *   on the main thread — so unlike `agentId` its presence does not mean a subagent.
  * @property {boolean} stopHookActive The harness is re-running a stop a hook already blocked.
  * @property {string | undefined} lastAssistantMessage A stop's final message text, read from the
  *   harness's memory rather than the transcript. Absent when that message carried no text, and on
@@ -65,6 +69,8 @@ export function readEvent() {
     cwd: asText(event.cwd) ?? process.cwd(),
     sessionId,
     transcriptPath,
+    agentId: asText(event.agent_id),
+    agentType: asText(event.agent_type),
     stopHookActive: event.stop_hook_active === true,
     lastAssistantMessage: asText(event.last_assistant_message),
   };

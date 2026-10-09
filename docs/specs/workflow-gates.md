@@ -77,7 +77,7 @@ is allowed to be another sentence.
 | A file composed in the shell | 3 | `PreToolUse` refuses `cat`/`printf`/`echo` redirected into a file, not only the heredoc form, keyed **per target** so the second composition in a session is refused too |
 | `cd <dir>` where the cwd already *is* `<dir>` | 3 | `PreToolUse` hands back the command with the `cd` removed, rather than an absolute path to change into |
 | A shell program sent from inside a worktree | 3 | `PreToolUse` refuses it first, with the decomposition named — the harness's own refusal names none and repeats |
-| `EnterWorktree` from a repository root | 3 | `PreToolUse` refuses the creating form, naming `workingRoot` and the absolute-path mode |
+| `EnterWorktree` from a subagent at a repository root | 3 | `PreToolUse` refuses the creating form when the input carries `agent_id`, naming `workingRoot` and the absolute-path mode |
 | A whole-file `Read` that cannot fit the token cap | 3 | `PreToolUse` refuses it above 90KB and names the `offset`/`limit` slice |
 | A text sweep of an OKF bundle | 3 | `PreToolUse` refuses `grep`/`find` over a directory whose `index.md` declares `okf_version`, and names `okq` |
 
@@ -467,11 +467,14 @@ form and none of them is once-per-subject:
   what is refused anyway — **is wired**, scoped to a cwd under `.claude/worktrees/`, which is the
   only place the harness refuses. The value is not the refusal; it is that this one hands back the
   decomposition and then stays quiet. The same loop outside a worktree runs, and is untouched.
-- **`EnterWorktree` from a repository root.** A dispatched run starts at a root by construction,
+- **`EnterWorktree` from a subagent at a repository root.** A dispatched run starts at a root by construction,
   so the call cannot succeed — and it was recorded as one of the run's *first* actions in nine
   sessions across three buckets, at node 9 or 10. The prose already said entry is not needed and
   `worktree begin` already reports `workingRoot` for the purpose; prose is the rung that failed.
-  Only the creating form is refused; `path` enters a worktree that already exists.
+  Only the creating form is refused; `path` enters a worktree that already exists. **Only a
+  subagent is refused**, told apart by the `agent_id` field the harness sends for a subagent's
+  calls alone: a top-level session at a root is the normal place to create a worktree, and
+  `agent_type` is no test because a `--agent` session sends it on the main thread too.
 - **A whole-file `Read` past the tool's token cap.** Six refusals of "File content (N tokens)
   exceeds maximum allowed tokens (25000)", on files of 25,923–37,456 tokens, **rediscovered one
   file at a time by four separate sessions**. This is the one gate here that fires on a *bound*
@@ -1102,8 +1105,9 @@ cannot contradict each other again.
       hands back, rather than with an absolute path to change into.
 - [x] A `for` loop sent from a cwd under `.claude/worktrees/` is refused with the decomposition
       named; the same loop elsewhere, and an `&&` chain or `if` anywhere, all pass.
-- [x] `EnterWorktree({name})` from a repository root is refused naming `workingRoot`;
-      `EnterWorktree({path})`, and either form from a non-root cwd, pass.
+- [x] A subagent's `EnterWorktree({name})` from a repository root is refused naming
+      `workingRoot`; `EnterWorktree({path})`, either form from a non-root cwd, and a top-level
+      session's `EnterWorktree({name})` from a root, pass.
 - [x] A whole-file `Read` of a file past the size bound is refused naming the slice; the same file
       read with `offset`/`limit`, and any file inside the bound, pass.
 - [x] A `grep`/`find` sweep of a directory whose `index.md` declares `okf_version` is refused with

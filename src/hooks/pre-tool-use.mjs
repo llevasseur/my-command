@@ -21,7 +21,7 @@
 //   grep --include    — a bare glob handed to grep, where `rg -g` takes it quoted
 //   shell-composed file — `cat`/`printf` redirected into a file the Write tool writes
 //   worktree program  — a loop or function body sent from inside an isolated worktree
-//   entering at a root — the one cwd where `EnterWorktree` is refused outright
+//   entering at a root — a subagent's `EnterWorktree` from the root its cwd is pinned to
 //   unreadable whole file — a `Read` whose file cannot fit the tool's own token cap
 //   grep over a bundle — a sweep of an OKF bundle `okq` queries directly
 //
@@ -811,28 +811,34 @@ function sweepingAnOkfBundle(event, session) {
 }
 
 /**
- * Refuse `EnterWorktree` when the cwd is a repository root, which is the one place the harness
- * refuses it: "Cannot enter worktree: the current working directory is the repository root".
+ * Refuse `EnterWorktree` from a subagent whose cwd is a repository root, which is where the
+ * harness refuses it: "Cannot enter worktree: the current working directory is the repository
+ * root".
  *
- * A run dispatched with the `Agent` tool starts at a repository root by construction, so for
- * every delegated run this call is a certain refusal — and it was recorded as one of the run's
- * *first* actions in nine sessions across three buckets, each at node 9 or 10. The prose already
- * says entry is not needed and `worktree begin` already reports `workingRoot` for the purpose;
- * the prose is the part that did not hold. Only the creating form is refused: `path` enters a
+ * A run dispatched with the `Agent` tool has its cwd pinned at a repository root, so for every
+ * delegated run this call is a certain refusal — and it was recorded as one of the run's *first*
+ * actions in nine sessions across three buckets, each at node 9 or 10. The prose already says
+ * entry is not needed and `worktree begin` already reports `workingRoot` for the purpose; the
+ * prose is the part that did not hold. A top-level session at a root is the normal place to
+ * create a worktree, so the gate fires only when the hook input carries `agent_id`, which the
+ * harness sends for a subagent's calls alone. Only the creating form is refused: `path` enters a
  * worktree that already exists, which the tool supports from the launch directory.
  * @param {import('./lib/io.mjs').HookEvent} event @param {string} session
  * @returns {boolean} true when the call was denied
  */
 function enteringFromRepoRoot(event, session) {
+  // `agentType` alone also marks a main-thread `--agent` session, which can enter a worktree.
+  if (!event.agentId) return false;
   // A `path` names a worktree that already exists, which the tool supports from here.
   if (event.input.path) return false;
   if (!existsSync(join(event.cwd, '.git'))) return false;
   if (alreadyDenied(session, 'enter', event.cwd)) return false;
 
   deny(
-    `\`EnterWorktree\` is refused from a repository root, and ${event.cwd} is one — the harness ` +
-      `answers "the current working directory is the repository root". A run dispatched with the ` +
-      `\`Agent\` tool always starts at a root, so this call cannot succeed here.\n\n` +
+    `\`EnterWorktree\` is refused for a subagent at a repository root, and ${event.cwd} is one — ` +
+      `the harness answers "the current working directory is the repository root". A run ` +
+      `dispatched with the \`Agent\` tool has its cwd pinned there, so this call cannot succeed ` +
+      `here.\n\n` +
       `Nothing needs it. \`my-command-tools worktree begin --branch <name> --bootstrap\` reports ` +
       `the workspace as \`path\`/\`workingRoot\`, and that path is this run's working root whether ` +
       `or not the session ever moves into it:\n` +
