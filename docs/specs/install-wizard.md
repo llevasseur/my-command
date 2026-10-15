@@ -57,6 +57,10 @@ links it onto PATH when possible.
   copy of `src/commands/<name>.md`, because the skill is the opencode-native form of the
   workflow and a second body would be a second thing to keep in step. The description is
   JSON-quoted, so one containing a colon stays valid YAML.
+- **Mode 5 — GitHub Copilot CLI.** Builds the proxy-free subset of the skills and four custom
+  agents at install time, writes them under `${COPILOT_HOME:-~/.copilot}`, and installs the
+  toolkit to `<COPILOT_HOME>/my-command`. No gates. See
+  [GitHub Copilot CLI install surface](copilot-surface.md).
 - **Mode 4 backfills only the skills that are absent.** A command file is inert without its
   skill, so mode 4 calls `installOpencodeSkills(agentsSkillsDir(), { skipExisting: true })`.
   Unguarded, unlike mode 3's call, and safe for the same reason it is needed: `skipExisting`
@@ -116,7 +120,7 @@ overwrite prompt.
   `skills/<name>/SKILL.md`; the data-driven lists include each native form.
 - **New command ⇒ feature doc.** See [Adding a command](adding-a-command.md).
 - The module stays importable: `checkboxPrompt`, `installPersonal`,
-  `installCodexSkills`, `installOpencodeCommands`, `installOpencodeSkills`,
+  `installCodexSkills`, `installCopilot`, `installOpencodeCommands`, `installOpencodeSkills`,
   `installToolkit`, `installHooks`, and `linkOnPath` are exported, and `main()` runs only
   when the file is invoked directly.
 - **One option per surface, and the skills option covers opencode.** Mode 3 is the only mode

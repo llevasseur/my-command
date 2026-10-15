@@ -13,6 +13,7 @@
 import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { bool, str } from '../lib/flags.mjs';
+import { resolveHost, worktreesDir } from '../lib/host.mjs';
 import { run as exec, lines, must, ToolkitError, UsageError } from '../lib/proc.mjs';
 import { defaultBranch, repoRoot, resolveBase } from '../lib/repo.mjs';
 import {
@@ -29,12 +30,14 @@ import {
 } from '../lib/shots.mjs';
 import { runContract } from './app.mjs';
 
-export const usage = `worktree begin --branch <name> [--base <ref>] [--existing] [--bootstrap]
+export const usage = `worktree begin --branch <name> [--base <ref>] [--existing] [--bootstrap] [--host <host>]
 worktree end --branch <name> [--force] [--no-stop] [--no-reap] [--drop-shots]
 worktree reap [--branch <name> | --path <dir>]
 worktree list
 
-  begin   Fetch, then create a worktree for <name> under .claude/worktrees/.
+  begin   Fetch, then create a worktree for <name> under <host dir>/worktrees/.
+          --host <host>  claude (.claude/), codex (.codex/) or copilot (.copilot/).
+                         Default: $MY_COMMAND_HOST, else claude.
           --base <ref>   Branch off <ref> instead of origin/<default-branch>.
           --existing     Check out an existing branch instead of creating one.
                          Mutually exclusive with --base.
@@ -289,7 +292,7 @@ function begin(ctx, cwd) {
   // Fetch first: the worktree's base is only as fresh as the remote-tracking ref,
   // and a stale origin/<default> silently plants the branch on old code.
   const fetched = exec('git', ['fetch', 'origin'], { cwd });
-  const path = join(cwd, '.claude', 'worktrees', dirFor(branch));
+  const path = join(cwd, worktreesDir(resolveHost(str(ctx.flags.host))), dirFor(branch));
 
   if (existsSync(path)) throw new ToolkitError(`worktree path already exists: ${path}`, { path, branch });
 

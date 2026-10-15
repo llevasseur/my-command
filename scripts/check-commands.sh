@@ -49,6 +49,9 @@
 #      discovers them for every model it drives — when the environment redirects it elsewhere.
 #  27. the installed commands/*.md and agents/*.md carry no repo-only link or path, no history
 #      wording, and at most 5 uppercase MUST/NEVER/CRITICAL each (scripts/lint-commands.mjs).
+#  28. the Copilot CLI surface still builds from the Codex skills and Claude agents — every
+#      install-time patch still finds its anchor — and the wizard still offers and installs it
+#      (docs/specs/copilot-surface.md).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -847,6 +850,22 @@ fi
 
 if ! grep -q '4) opencode commands' src/my-command.ts; then
   echo "::error::src/my-command.ts no longer offers the opencode commands choice in the menu; an option nobody can pick installs nothing."
+  fail=1
+fi
+
+# 28. The Copilot CLI skills are the Codex skills patched at install time, not a hand-kept copy,
+# so a Codex edit that moves a patch's anchor would otherwise ship a half-translated skill.
+if ! node scripts/build-copilot.mjs --check; then
+  fail=1
+fi
+
+if ! grep -q '5) GitHub Copilot CLI' src/my-command.ts; then
+  echo "::error::src/my-command.ts no longer offers the Copilot CLI choice in the menu; an option nobody can pick installs nothing."
+  fail=1
+fi
+
+if ! grep -Fq "installToolkit(deviceRoot('copilot'))" src/my-command.ts; then
+  echo "::error::src/my-command.ts no longer installs the toolkit for the Copilot CLI choice; every skill there shells out to my-command-tools."
   fail=1
 fi
 

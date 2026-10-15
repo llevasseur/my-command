@@ -125,7 +125,9 @@ rather than a decision. See [judge-verb](../features/judge-verb.md) and
 `worktree begin` creates a branch by default (`/task`) or, with `--existing`,
 checks one out (`/fb --target`, `/review`, `/revive`, `/merge-deps`). It refuses
 an existing branch without that flag and refuses `--base` with it, preventing a
-fresh branch from abandoning existing commits.
+fresh branch from abandoning existing commits. It places the checkout under
+`.claude/worktrees/` unless `--host codex|copilot` (or `MY_COMMAND_HOST`) names
+`.codex/` or `.copilot/` instead; the Copilot CLI skills pass `--host copilot`.
 
 `begin` and `end` also bracket the branch's **screenshots**. `begin` reports
 `shotsDir` — `~/.my-command/shots/<repo>/<branch>/run-N/`, this run's own directory
