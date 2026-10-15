@@ -403,9 +403,7 @@ interface CopilotResult {
 // The Copilot CLI surface: a subset of the skills, patched for Copilot's tools at install time,
 // plus the custom agents they dispatch. Into ~/.copilot/skills rather than ~/.agents/skills, which
 // Copilot also reads but where the unpatched Codex bodies live for Codex and opencode.
-//
-// Built from this package's own skills/ and agents/ on every run, so an upgrade needs nothing
-// but re-running the wizard. COPIED, like installAgents().
+// COPIED, like installAgents().
 async function installCopilot(home = copilotHome()): Promise<CopilotResult> {
   const agentsDir = join(home, 'agents');
   const base: CopilotResult = { installed: false, agentsDir };
