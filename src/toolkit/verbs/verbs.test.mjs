@@ -246,6 +246,17 @@ test('worktree begin --existing checks out a branch instead of creating one', ()
   assert.equal(head, execFileSync('git', ['rev-parse', 'feat/existing'], { cwd: dir, encoding: 'utf8' }).trim());
 });
 
+test('worktree begin places the checkout under the named host’s directory', () => {
+  const { dir } = repo();
+  const begin = (/** @type {Record<string, unknown>} */ flags) =>
+    /** @type {{ path: string }} */ (worktree(ctx(dir, ['begin'], flags))).path;
+
+  // The verb resolves the repo root, which on macOS is the /private-prefixed spelling of `dir`.
+  assert.ok(begin({ branch: 'feat/claude' }).endsWith(join('.claude', 'worktrees', 'feat-claude')));
+  assert.ok(begin({ branch: 'feat/copilot', host: 'copilot' }).endsWith(join('.copilot', 'worktrees', 'feat-copilot')));
+  assert.throws(() => begin({ branch: 'feat/nope', host: 'vim' }), /unknown host: vim/);
+});
+
 /**
  * A process carrying `marker` in its argv, orphaned rather than spawned as a child:
  * a reaped child of the test run would linger as a zombie and still read back alive.

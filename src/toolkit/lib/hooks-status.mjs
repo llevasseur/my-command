@@ -10,7 +10,7 @@ import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { asRecord, recordOrEmpty } from './json.mjs';
-import { codexDeviceRoot, deviceRoot } from './paths.mjs';
+import { codexDeviceRoot, copilotDeviceRoot, deviceRoot } from './paths.mjs';
 
 /**
  * Expand a leading `~` and resolve to an absolute path, so a hook registered as
@@ -197,6 +197,14 @@ export function deviceHooksStatus() {
       armed: null,
       surface: 'codex',
       reason: 'a Codex install registers no Claude hooks; the gates are a Claude Code mechanism',
+      hooksSrc,
+    };
+  }
+  if (here === real(join(copilotDeviceRoot(), 'toolkit'))) {
+    return {
+      armed: null,
+      surface: 'copilot',
+      reason: 'a Copilot CLI install registers no Claude hooks; the gates are a Claude Code mechanism',
       hooksSrc,
     };
   }

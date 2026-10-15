@@ -5,7 +5,16 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { after, test } from 'node:test';
-import { candidateRoots, codexDeviceRoot, deviceShim, findOnPath, linkDirs, pathDirs, TOOLKIT_BIN } from './paths.mjs';
+import {
+  candidateRoots,
+  codexDeviceRoot,
+  copilotDeviceRoot,
+  deviceShim,
+  findOnPath,
+  linkDirs,
+  pathDirs,
+  TOOLKIT_BIN,
+} from './paths.mjs';
 
 /** @type {string[]} */
 const made = [];
@@ -94,6 +103,20 @@ test('candidateRoots includes the configured Codex device install', () => {
   } finally {
     if (previous === undefined) delete process.env.CODEX_HOME;
     else process.env.CODEX_HOME = previous;
+  }
+});
+
+test('candidateRoots includes the configured Copilot CLI device install, after Codex', () => {
+  const previous = process.env.COPILOT_HOME;
+  process.env.COPILOT_HOME = '/tmp/copilot-cfg';
+  try {
+    assert.equal(copilotDeviceRoot(), join('/tmp/copilot-cfg', 'my-command'));
+    const sources = candidateRoots().map((root) => root.source);
+    assert.ok(sources.indexOf('Copilot device install') > sources.indexOf('Codex device install'));
+    assert.ok(candidateRoots().some((root) => root.path === join(copilotDeviceRoot(), 'toolkit')));
+  } finally {
+    if (previous === undefined) delete process.env.COPILOT_HOME;
+    else process.env.COPILOT_HOME = previous;
   }
 });
 

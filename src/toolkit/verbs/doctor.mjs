@@ -9,7 +9,15 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deviceHooksStatus } from '../lib/hooks-status.mjs';
-import { candidateRoots, codexDeviceRoot, deviceRoot, findOnPath, linkDirs, TOOLKIT_BIN } from '../lib/paths.mjs';
+import {
+  candidateRoots,
+  codexDeviceRoot,
+  copilotDeviceRoot,
+  deviceRoot,
+  findOnPath,
+  linkDirs,
+  TOOLKIT_BIN,
+} from '../lib/paths.mjs';
 import { run as exec } from '../lib/proc.mjs';
 
 export const usage = `doctor
@@ -305,7 +313,7 @@ export function run() {
   // its own `runningFrom`.
   const here = real(HERE);
   const resolved = roots.find((root) => root.exists && real(root.path) === here);
-  const devices = [deviceRoot(), codexDeviceRoot()];
+  const devices = [deviceRoot(), codexDeviceRoot(), copilotDeviceRoot()];
   const device = devices.find((root) => real(join(root, 'toolkit')) === here) ?? deviceRoot();
   const stamp = join(device, 'VERSION');
 

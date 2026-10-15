@@ -20,6 +20,11 @@ function codexDir() {
   return process.env.CODEX_HOME || join(homedir(), '.codex');
 }
 
+/** The Copilot CLI config directory, honoring COPILOT_HOME when the user relocates it. */
+function copilotDir() {
+  return process.env.COPILOT_HOME || join(homedir(), '.copilot');
+}
+
 /** The device-wide install root: the shared logic folder every command can reach. */
 export function deviceRoot() {
   return join(claudeDir(), 'my-command');
@@ -28,6 +33,11 @@ export function deviceRoot() {
 /** The Codex device-wide install root. */
 export function codexDeviceRoot() {
   return join(codexDir(), 'my-command');
+}
+
+/** The Copilot CLI device-wide install root. */
+export function copilotDeviceRoot() {
+  return join(copilotDir(), 'my-command');
 }
 
 /**
@@ -99,5 +109,6 @@ export function candidateRoots() {
   }
   roots.push({ source: 'device install', path: join(deviceRoot(), 'toolkit') });
   roots.push({ source: 'Codex device install', path: join(codexDeviceRoot(), 'toolkit') });
+  roots.push({ source: 'Copilot device install', path: join(copilotDeviceRoot(), 'toolkit') });
   return roots;
 }
