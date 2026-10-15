@@ -18,7 +18,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { delimiter, dirname, join } from 'node:path';
+import { delimiter, dirname, join, sep } from 'node:path';
 import { stdin as input, stdout as output } from 'node:process';
 import { emitKeypressEvents, type Key } from 'node:readline';
 import { createInterface } from 'node:readline/promises';
@@ -38,13 +38,18 @@ const PLUGIN = 'my-command';
 
 // The device-wide root every command resolves the toolkit from.
 // Keep in step with src/toolkit/lib/paths.mjs and src/toolkit/bin/my-command-tools.
-type InstallSurface = 'claude' | 'codex';
+type InstallSurface = 'claude' | 'codex' | 'copilot';
+
+// Copilot CLI's config directory, which COPILOT_HOME replaces wholesale when set.
+const copilotHome = () => process.env.COPILOT_HOME || join(homedir(), '.copilot');
 
 const deviceRoot = (surface: InstallSurface = 'claude') => {
   const configDir =
     surface === 'codex'
       ? process.env.CODEX_HOME || join(homedir(), '.codex')
-      : process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+      : surface === 'copilot'
+        ? copilotHome()
+        : process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
   return join(configDir, 'my-command');
 };
 
@@ -379,6 +384,85 @@ function installOpencodeSkills(dest = agentsSkillsDir(), { skipExisting = false 
   } catch (err) {
     return { ...base, reason: err instanceof Error ? err.message : String(err) };
   }
+}
+
+/** The contract the Copilot CLI install expects of `src/copilot/patch.mjs`. */
+interface CopilotPatchModule {
+  COPILOT_SKILLS: string[];
+  buildCopilot: (pkgRoot: string) => Map<string, string>;
+}
+
+interface CopilotResult {
+  installed: boolean;
+  /** Where the custom agents landed; the skills go through installFiles() and report themselves. */
+  agentsDir: string;
+  agents?: number;
+  reason?: string;
+}
+
+// The Copilot CLI surface: a subset of the skills, patched for Copilot's tools at install time,
+// plus the custom agents they dispatch. Into ~/.copilot/skills rather than ~/.agents/skills, which
+// Copilot also reads but where the unpatched Codex bodies live for Codex and opencode.
+//
+// Built from this package's own skills/ and agents/ on every run, so an upgrade needs nothing
+// but re-running the wizard. COPIED, like installAgents().
+async function installCopilot(home = copilotHome()): Promise<CopilotResult> {
+  const agentsDir = join(home, 'agents');
+  const base: CopilotResult = { installed: false, agentsDir };
+  let files: Map<string, string>;
+  let names: string[];
+  try {
+    const mod: CopilotPatchModule = await import(pathToFileURL(join(PKG_ROOT, 'src', 'copilot', 'patch.mjs')).href);
+    files = mod.buildCopilot(PKG_ROOT);
+    names = mod.COPILOT_SKILLS;
+  } catch (err) {
+    return { ...base, reason: err instanceof Error ? err.message : String(err) };
+  }
+
+  const skillsDir = join(home, 'skills');
+  const write = (path: string) => {
+    const target = join(home, path);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, files.get(path) ?? '');
+  };
+  await installFiles({
+    items: names,
+    dest: skillsDir,
+    itemLabel: 'skill',
+    targetPath: (name) => join(skillsDir, name, 'SKILL.md'),
+    install: (name) => {
+      // The separator keeps `task` from also matching `task-bootstrap`.
+      for (const path of files.keys()) if (path.startsWith(join('skills', name) + sep)) write(path);
+    },
+    summary: 'They run as slash commands in a Copilot CLI session:',
+    display: (name) => `/${name}`,
+  });
+
+  try {
+    let agents = 0;
+    for (const path of files.keys()) {
+      if (!path.startsWith(`agents${sep}`)) continue;
+      // A dev install may link a definition back into its clone; writing through it would edit the checkout.
+      if (lstatSync(join(home, path), { throwIfNoEntry: false })?.isSymbolicLink()) continue;
+      write(path);
+      agents++;
+    }
+    return { ...base, installed: true, agents };
+  } catch (err) {
+    return { ...base, reason: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+function reportCopilot(result: CopilotResult) {
+  if (result.installed) {
+    console.log(`\nCustom agents installed for Copilot CLI: ${result.agentsDir} (${result.agents} written).`);
+    console.log('The workflows dispatch these with the task tool; without them a dispatch has no role to load.');
+  } else {
+    console.log(`\nCopilot CLI workflows not installed (${result.reason}).`);
+  }
+  console.log('Not on this surface: /ideate, /improve, /judge, /work, /revive, /learn, /lookup, /teach,');
+  console.log('/warm and /trim, which need the Claude proxy, a hosted store, or Claude transcripts.');
+  console.log('No workflow gates either: they speak Claude Code’s hook protocol.');
 }
 
 interface AgentsResult {
@@ -768,7 +852,8 @@ async function main() {
   console.log('  2) Personal commands    → bare commands, e.g. /task (copied into ~/.claude/commands)');
   console.log('  3) Skills               → $task for Codex and opencode (copied into ~/.agents/skills)');
   console.log('  4) opencode commands    → /task in opencode (copied into ~/.config/opencode/command)');
-  console.log('  5) Cancel');
+  console.log('  5) GitHub Copilot CLI   → /task in Copilot CLI (copied into ~/.copilot/skills)');
+  console.log('  6) Cancel');
 
   const rl = createInterface({ input, output });
   const choice = (await rl.question('\nChoice [1]: ')).trim() || '1';
@@ -809,6 +894,11 @@ async function main() {
     reportToolkit(installToolkit());
     reportConceptStore();
     // No gates here either: they are Claude Code's hook protocol, and opencode does not run it.
+  } else if (choice === '5') {
+    reportCopilot(await installCopilot());
+    reportToolkit(installToolkit(deviceRoot('copilot')));
+    // No gates, like Codex: Copilot CLI has a hook engine of its own, but these scripts speak
+    // Claude Code's protocol and parse a Claude transcript, so a port is its own piece of work.
   } else {
     console.log('Cancelled. Nothing changed.');
   }
@@ -831,6 +921,7 @@ export {
   checkboxPrompt,
   installAgents,
   installCodexSkills,
+  installCopilot,
   installHooks,
   installOpencodeCommands,
   installOpencodeSkills,
