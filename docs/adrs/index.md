@@ -46,4 +46,5 @@ Add one with `okq new adr "<title>"`.
 | /mc merges each branch with its own PR base and takes no base flag | [0033-mc-merges-each-branchs-own-pr-base.md](0033-mc-merges-each-branchs-own-pr-base.md) |
 | /read-tweet's reader-proxy order follows observed reachability, recorded here with dates | [0034-read-tweet-prefix-order-follows-observed-reachability.md](0034-read-tweet-prefix-order-follows-observed-reachability.md) |
 | The http tier publishes screenshots of its recorded exchanges, under its own label | [0035-the-http-tier-publishes-rendered-exchange-evidence.md](0035-the-http-tier-publishes-rendered-exchange-evidence.md) |
+| Copilot CLI skills are patched from the Codex skills at install time | [0036-copilot-skills-are-patched-from-the-codex-skills-at-install-time.md](0036-copilot-skills-are-patched-from-the-codex-skills-at-install-time.md) |
 <!-- okq:index:end -->

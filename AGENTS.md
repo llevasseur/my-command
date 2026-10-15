@@ -32,6 +32,11 @@ Read this instead of guessing a path. Every path below is real; nothing else is.
 - `src/my-command.ts` — the `npx` install wizard. `src/toolkit/cli.mjs` is the
   `my-command-tools` CLI, `src/toolkit/verbs/<verb>.mjs` its verbs, and
   `src/toolkit/bin/my-command-tools` the shim that lands on PATH.
+- `src/copilot/` — the GitHub Copilot CLI surface: `patch.mjs` builds its skills from
+  `skills/` and its custom agents from `agents/` at install time, and `host-notes.md` is
+  appended to every skill. Never hand-write a Copilot copy. When a Codex skill edit breaks
+  `node scripts/build-copilot.mjs --check`, fix the patch. See
+  [`docs/specs/copilot-surface.md`](docs/specs/copilot-surface.md).
 - `src/hooks/` — the workflow gates the harness runs: `pre-tool-use.mjs`, `stop.mjs`,
   their shared `lib/`, the `settings-fragment.json` that registers them, and
   `install-hooks.mjs` which merges that fragment into the device `settings.json`.

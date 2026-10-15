@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-10-15
+
+### Added
+
+- **The workflows install on GitHub Copilot CLI.** Choice 5 in the `npx` wizard installs `/task`, `/pr`, `/clean`, `/fb`, `/mc`, `/cp`, `/manage`, `/god`, `/verify`, `/review` and the rest of the proxy-free set as Copilot skills, plus the custom agents they dispatch, under `~/.copilot`. Workflows that need the Claude proxy stay off this surface. See [copilot-surface](docs/specs/copilot-surface.md).
+
 ## 2026-10-09
 
 ### Added

@@ -127,6 +127,10 @@ The Codex column is a mapping, not an install target. `gpt-5.6-sol` and
 them anywhere today, because Codex has no subagent surface — the column is what a
 Codex-side dispatch would resolve the tier to, and what to write if it grows one.
 
+Copilot CLI takes four of the definitions as custom agents, built at install time with
+`model:` removed, so every tier resolves to the session's model there. See
+[GitHub Copilot CLI install surface](copilot-surface.md).
+
 ## Overriding a tier at the dispatch site
 
 A definition is written per **shape of delegation**, so one file can serve two

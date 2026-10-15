@@ -265,6 +265,11 @@ It asks how you want them installed:
    into `~/.config/opencode/command/<name>.md`, so every checkout has them.
    `XDG_CONFIG_HOME` moves that directory, and `OPENCODE_COMMAND_DIR` overrides
    it outright.
+5. **GitHub Copilot CLI** — the workflows that need no Claude proxy (`/task`,
+   `/pr`, `/clean`, `/fb`, `/mc`, `/cp`, `/manage`, `/god`, `/verify`, `/review`,
+   `/ticket`, `/task-bootstrap` and a few more) as skills in `~/.copilot/skills`,
+   plus the custom agents they dispatch in `~/.copilot/agents`. `COPILOT_HOME`
+   moves both. See [GitHub Copilot CLI install surface](./docs/specs/copilot-surface.md).
 
 The repository also ships `.codex-plugin/plugin.json`, so supported Codex
 surfaces can install the complete skill bundle as a plugin.
