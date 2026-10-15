@@ -248,7 +248,7 @@ test('worktree begin --existing checks out a branch instead of creating one', ()
 
 test('worktree begin places the checkout under the named host’s directory', () => {
   const { dir } = repo();
-  const begin = (/** @type {Record<string, unknown>} */ flags) =>
+  const begin = (/** @type {Record<string, string>} */ flags) =>
     /** @type {{ path: string }} */ (worktree(ctx(dir, ['begin'], flags))).path;
 
   // The verb resolves the repo root, which on macOS is the /private-prefixed spelling of `dir`.
