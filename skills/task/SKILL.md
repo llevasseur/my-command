@@ -5,7 +5,7 @@ description: Take a plain-language task from criteria through implementation, ve
 
 # Task to Pull Request
 
-Parse `--here`, `--worktree <path>`, `--base <branch>`, `--draft`, `--sub`, `--no-verify`, `--no-implement`, `--jev`, and `--add <skill prompt,...>`; remaining text is the task criteria.
+Parse `--here`, `--worktree <path>`, `--base <branch>`, `--spec <dir>`, `--draft`, `--sub`, `--no-verify`, `--no-implement`, `--jev`, and `--add <skill prompt,...>`; remaining text is the task criteria.
 
 `--jev` asks an optional judgement layer a question set at two fixed points in the
 run and writes what came back into the closing report beside what the run actually
@@ -54,6 +54,34 @@ only cut a new branch or stay on the current one, and verifying existing work
 means checking an existing branch out into a worktree, which the feedback
 workflow's `--target` does. With `--no-verify` as well, the run does nothing but
 cleanup and pull request — legal, but say so. Teardown ownership is unchanged.
+
+`--spec <dir>` builds from a spec folder the team's own spec tooling wrote, such
+as `specs/001-language-preference`. A repository states how it wants that run
+shaped in a workflow contract, which `my-command-tools workflow` prints: read
+from a file inside the git common dir (`localPath`, shared by every worktree of
+the clone and never committed), else from the repository's
+`scripts/bootstrap-worktree.sh --print-workflow-contract`. A null contract keeps
+the default shape, and a developer who follows a team's workflow alone writes the
+local file, so nothing about it lands in the team's repository. Before the
+workspace exists, run `my-command-tools workflow --spec <dir>`:
+- A missing folder stops the run; never write a spec to fill it.
+- Open `[NEEDS CLARIFICATION]` markers (`spec.clarifications` above zero) stop
+  the run. Name the count and leave them to the team's clarify step; an answer
+  guessed here reads as a decision the spec's owner made.
+- `branches.model: stacked` makes the spec branch (`spec.branch`, named by
+  `spec.md`'s `**Feature Branch**:` line or else the folder) the base, unless
+  `--base` was typed. It stops the run when origin does not have that branch.
+  Name this run's branch `feat/<folder name>`.
+- The spec's acceptance scenarios and functional requirements are the criteria
+  to build and to verify; criteria typed after the flags narrow them, never widen
+  them. `tasks.md` is the plan: work its open tasks in dependency order and tick
+  each checkbox in the commit that finishes it.
+- Spec edits found during implementation stay on this branch; never push to the
+  spec branch.
+- The pull-request step receives `--spec <dir>`, and under `stacked` also
+  `--base <spec branch>`, so the PR targets the spec branch. Merging the spec PR
+  and deleting its branch retargets this one to the default branch, so the
+  implementation cannot land first.
 
 Before the first tool call, record this pipeline as a task list whose **last item
 is step 9's closing turn**, kept as its own item and left open until nothing else

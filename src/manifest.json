@@ -180,8 +180,8 @@
       "claudeProxy": "none"
     },
     "pr": {
-      "flags": ["--draft"],
-      "verbs": ["identity", "pr", "state", "worktree"],
+      "flags": ["--base", "--draft", "--spec"],
+      "verbs": ["identity", "pr", "state", "workflow", "worktree"],
       "stores": [],
       "claudeProxy": "none"
     },
@@ -193,7 +193,7 @@
     },
     "review": {
       "flags": ["--here", "--target"],
-      "verbs": ["prs", "scope", "state", "verify", "worktree"],
+      "verbs": ["prs", "scope", "state", "verify", "workflow", "worktree"],
       "stores": [],
       "claudeProxy": "none"
     },
@@ -230,6 +230,7 @@
         "--jev",
         "--no-implement",
         "--no-verify",
+        "--spec",
         "--sub",
         "--worktree"
       ],
@@ -244,6 +245,7 @@
         "shots",
         "state",
         "verify",
+        "workflow",
         "worktree"
       ],
       "stores": ["shots"],

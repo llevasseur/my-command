@@ -4,7 +4,7 @@ title: task
 description: Carry a plain-language task from criteria to an open PR — isolated worktree, bootstrap, implement, verify, then clean + PR.
 tags: [command, workflow, git]
 timestamp: 2026-07-15
-updated: 2026-09-14
+updated: 2026-10-27
 dirty: true
 ---
 
@@ -28,6 +28,11 @@ The end goal is always an open PR.
   so the path is reported as still standing. Set by `/manage` and `/work` when they
   dispatch a unit, so the subagent never has to make a worktree from a repo root.
 - `--base <branch>` — branch off `<branch>` instead of `main`. Ignored with `--here`.
+- `--spec <dir>` — build from a spec folder the team's spec tooling wrote. Its
+  acceptance scenarios are the criteria and its `tasks.md` is the plan. The run
+  stops while `[NEEDS CLARIFICATION]` markers remain. Under a `stacked` workflow
+  contract the spec branch is the base and the PR targets it. See
+  [Command toolkit](../specs/command-toolkit.md#workflow-contract).
 - `--draft` / `-d` — open the resulting PR as a draft (passed through to `/pr`). Does
   not preserve the worktree; teardown still runs.
 - `--sub` / `-s` — run the `/clean` + `/pr` stage in one fresh subagent. Off by
@@ -158,4 +163,4 @@ accurately and points to `/revive <thread id>` when its proxy thread id is avail
 - Command source: `src/commands/task.md`
 - Chains: [clean](clean.md), [pr](pr.md); wraps into [fb](fb.md), [god](god.md)
 - Resumed by: [revive](revive.md), when a run is interrupted before reaching its PR
-- Spec: [Adding a command](../specs/adding-a-command.md)
+- Spec: [Adding a command](../specs/adding-a-command.md), [Command toolkit](../specs/command-toolkit.md) for the workflow contract

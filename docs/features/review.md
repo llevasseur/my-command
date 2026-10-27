@@ -4,7 +4,8 @@ title: review
 description: Independently review an open PR against the codebase, then apply its findings via fb.
 tags: [command, workflow, git]
 timestamp: 2026-07-22
-updated: 2026-08-08
+updated: 2026-10-27
+dirty: true
 ---
 
 # review
@@ -53,6 +54,13 @@ branch. That `fb` run is always **inline**, never handed to another agent: the
 independence a spawned agent buys belongs to the review itself and was already
 spent, while applying known findings is ordinary work on the branch. It never merges or approves the PR, and never posts a GitHub PR
 review/comment — its only output is the `/fb`-ready feedback, shown and applied.
+
+When the repo's workflow contract sets `review.format` to `buckets` and the PR touches
+or links a spec folder, the review also checks every acceptance scenario in that
+`spec.md` against the code and sorts each mismatch into one bucket. An intentional
+deviation the PR justifies is reported and left alone. A minor finding goes into the
+`/fb` line. A spec gap goes into the `/fb` line as an edit to `spec.md` on the PR's
+branch. See [Command toolkit](../specs/command-toolkit.md#workflow-contract).
 
 In default mode `/review` removes its own worktree at the end, clean PR or not:
 [pr](pr.md) tears down only worktrees its own session created, and one entered via

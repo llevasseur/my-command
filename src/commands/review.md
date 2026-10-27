@@ -64,9 +64,13 @@ Review material:
   - Run the repo's own verification with `my-command-tools verify` and report failures — it discovers the repo's gates itself and returns a bounded log for each one that failed. Start it with `--background` and block on the `wait.blocking` command it returns (`my-command-tools verify --wait <verdict>`, sent as a foreground `Bash` call with `timeout: 600000`); never poll the report, which does not exist until the run is over.
   - Compare against surrounding code and this repo's own conventions (`AGENTS.md`/`CLAUDE.md`, existing patterns in touched files) for things that clash: inconsistent style, skipped repo-specific steps (e.g. a missing feature doc, an out-of-sync generated file), missed edge cases, dead code, anything the PR description doesn't mention but the diff does.
   - Fold in the extra context from `<command-args>` (if any) as additional review focus.
+  - **The spec pass, when the repo asks for it.** Run `my-command-tools workflow` in the Step 2 checkout. When its `contract.review.format` is `buckets` and the diff touches, or the PR body links, a folder under `contract.spec.dir`, read that folder's `spec.md` and check every acceptance scenario and functional requirement against the code. Sort each mismatch into exactly one bucket:
+    - **Intentional deviation** — the code departs from the spec on purpose, and the diff or PR body says why. Report it; never fix it.
+    - **Minor finding** — the code falls short of the spec and should change. It goes into the `/fb` line like any other finding.
+    - **Spec gap** — the code is right and the spec is silent or stale. It goes into the `/fb` line as an edit to that `spec.md`, on this branch.
   - The diff's file list is the enumeration the batched-discovery step above asks for: read those files and their neighbours in one turn. Walking the diff one probe per turn is the shape the one-diff-call rule above, and the gate behind it, exist to stop (ADR 0025).
 - Required output shape — the review report MUST end with:
-  1. A short bullet list of concrete findings (or a single line stating none were found).
+  1. A short bullet list of concrete findings (or a single line stating none were found). After a spec pass, group them under `Intentional deviations`, `Minor findings`, `Spec gaps`, and other findings, and name an empty bucket as empty.
   2. If there are findings: a fenced code block containing **exactly one** ready-to-run `/fb` line that folds every finding into a single imperative feedback request, e.g.:
      ```
      /fb fix the off-by-one in the pagination cursor at src/list.ts:42, add the missing docs/features/review.md entry, and drop the leftover console.log in src/commands/review.md

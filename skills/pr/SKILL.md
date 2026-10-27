@@ -5,7 +5,14 @@ description: Create or update the current branch's pull request with a concise, 
 
 # Pull Request
 
-Parse `--draft` / `-d`; treat remaining text as optional title or context.
+Parse `--draft` / `-d`, `--base <branch>`, and `--spec <dir>`; treat remaining text as optional title or context.
+
+`--base` is the branch the PR targets, handed to `my-command-tools pr`, and the
+repository's default branch without it. `--spec` names the spec folder the branch
+implements: add a `## Spec` section of at most two bullets, whatever shape the
+repository uses otherwise — a link to `<dir>/spec.md`, and the `tasks.md`
+progress `my-command-tools workflow --spec <dir>` reports as done of done plus
+open.
 
 1. Refuse the default branch. Derive an accurate title and a bulleted body from
    commits and the full branch diff.
