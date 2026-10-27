@@ -4,7 +4,8 @@ title: pr
 description: Create or update the PR for the current branch with a concise bulleted description, written straight to GitHub.
 tags: [command, git, github]
 timestamp: 2026-07-15
-updated: 2026-09-09
+updated: 2026-10-27
+dirty: true
 ---
 
 # pr
@@ -20,6 +21,10 @@ worktree at the end only when this session created it **and** no command that in
 
 - `--draft` / `-d` — mark the PR as a draft (converts an existing non-draft PR to
   draft too). Default is **not** draft.
+- `--base <branch>` — the branch the PR targets. Default is the repo's default branch.
+  `/task --spec` passes the spec branch here under a `stacked` workflow contract.
+- `--spec <dir>` — the spec folder this branch implements. Adds a `## Spec` section
+  linking `spec.md` and the `tasks.md` progress.
 - Everything after the flags is an optional **title / extra context** for the
   description.
 

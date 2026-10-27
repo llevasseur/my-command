@@ -29,6 +29,7 @@ import * as stash from './verbs/stash.mjs';
 import * as state from './verbs/state.mjs';
 import * as trim from './verbs/trim.mjs';
 import * as verify from './verbs/verify.mjs';
+import * as workflow from './verbs/workflow.mjs';
 import * as worktree from './verbs/worktree.mjs';
 
 /**
@@ -59,6 +60,7 @@ const VERBS = {
   pr,
   prs,
   worktree,
+  workflow,
   sandbox,
   'ab-diff': abDiff,
   shots,

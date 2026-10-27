@@ -4,7 +4,7 @@ title: Command toolkit
 description: The device-wide `my-command-tools` CLI that commands call for the deterministic git/gh plumbing of a workflow run, and how it ships with every install mode.
 tags: [process, toolkit, install, cli]
 timestamp: 2026-07-25
-updated: 2026-10-07
+updated: 2026-10-27
 dirty: true
 ---
 
@@ -42,6 +42,7 @@ noise, what a PR description should say, or whether a failure is worth fixing.
 | `jev-record start\|stop\|serve\|read\|label` | a loopback proxy between a caller and the System One endpoint, the whole of each exchange written down outside the Jev client, and `/ab`'s labelled trials in the same keep |
 | `sandbox init\|reset\|status\|destroy` | the two private GitHub repos `/ab` arms run against, generated from the fixture template, cloned, and reset to a named scenario |
 | `ab-diff` | one `/ab` arm's full diff for the blind judge: three-dot ranges joined in order, `--no-prefix`, and every name that would reveal the arm redacted |
+| `workflow` | the repo's workflow contract, read from a never-committed file in the git common dir before the repo's own, and with `--spec` one spec folder's open clarifications, task progress and branch |
 | `doctor` | where the toolkit resolved from, what's on PATH, which clone it tracks, and which external tools this device has |
 
 `app` is the one verb that starts something and leaves it running. `verify` runs the
@@ -545,6 +546,42 @@ never reach a judge comparing arm A with arm B. Every `--redact` string, longest
 replaced with `<redacted>` in the diff and in the reported paths. The report carries `files`
 (`path`, `added`, `deleted`), `bytes`, `redactions`, and either `diff` or, under `--out`,
 `path`. A range that is not `<from>...<to>` is a usage error.
+
+### Workflow contract
+
+`workflow` lets one repository ask for a different shape of run without the commands
+hardcoding it. The contract is read from the first of:
+
+1. `<git common dir>/my-command/workflow.json`, reported as `localPath` whether or not
+   it exists. It sits inside `.git`, so every worktree of the clone shares it and git
+   never tracks it. A developer who follows a team's workflow alone writes this file,
+   and nothing lands in the team's repository.
+2. `scripts/bootstrap-worktree.sh --print-workflow-contract`, the repository's own.
+
+With neither, `contract` is null and every command keeps its default. A local file that
+is not a JSON object is an error rather than a silent fallback, since a typo there would
+otherwise switch the workflow off without a word.
+
+```json
+{
+  "spec": { "dir": "specs" },
+  "branches": { "model": "stacked" },
+  "review": { "format": "buckets" }
+}
+```
+
+- `spec.dir` — where `NNN-slug/` spec folders live, `specs` when unset.
+- `branches.model` — `stacked` makes `/task --spec` cut from the spec branch and point
+  the PR at it, so the implementation PR cannot merge before the spec PR. `single` or
+  unset keeps the default.
+- `review.format` — `buckets` adds `/review`'s spec pass: intentional deviations,
+  minor findings, and spec gaps.
+
+`--spec <dir>` adds `spec`: `exists`, `files`, `clarifications` (open
+`[NEEDS CLARIFICATION]` markers across `spec.md`, `plan.md` and `tasks.md`), `tasks`
+(`open` and `done` checkbox counts, or null without a `tasks.md`), and `branch` with
+`branchOnOrigin`. The branch is the one `spec.md` names on its `**Feature Branch**:`
+line, else the folder name.
 
 ## Guards
 

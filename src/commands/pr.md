@@ -1,6 +1,6 @@
 ---
 description: Create or update a PR for the current branch with a concise bulleted description, written directly to GitHub
-argument-hint: "[optional title or extra context]"
+argument-hint: "[--draft|-d] [--base <branch>] [--spec <dir>] [optional title or extra context]"
 allowed-tools: Bash(git:*), Bash(gh:*), Bash(my-command-tools:*), Bash(wc:*), Bash(grep:*), Write, Skill, ExitWorktree
 ---
 
@@ -24,6 +24,8 @@ You have explicit permission to write the PR description directly to GitHub.
 Parse these off the front of the `<command-args>` block above; everything else is the title/extra context.
 
 - `--draft` / `-d` — mark the PR as a draft. Default is **not** draft.
+- `--base <branch>` — the branch the PR targets, passed to `my-command-tools pr`. Default is the repo's default branch. `/task` passes the spec branch here when the repo's workflow contract stacks implementation on its spec.
+- `--spec <dir>` — the spec folder this branch implements. Step 3 adds a `## Spec` section for it.
 
 ## Step 1 — Read the state
 
@@ -36,6 +38,8 @@ Review what changed so the description is accurate. The same `state` output carr
 ## Step 3 — Write the body
 
 Write the PR description — what changed and why, grouped logically. No filler, no "this PR does X" preamble. Lead with the most important changes. Write it with the `Write` tool to `$CLAUDE_JOB_DIR/tmp/pr-body.md`, or any absolute path outside the repo.
+
+**With `--spec <dir>`, add a `## Spec` section** of at most two bullets, whatever shape the repo uses otherwise: a link to `<dir>/spec.md`, and the `tasks.md` progress `my-command-tools workflow --spec <dir>` reports as `tasks.done` of `tasks.done + tasks.open`. The spec is what a reviewer checks the diff against, so it earns its place where compliance notes do not.
 
 <!-- include-block: shared/pr-body-shape.md -->
 ### The shape
@@ -88,7 +92,7 @@ A non-zero last count names lines the shape above says do not belong: go back an
 Publish it — hand the path over:
 
 ```
-my-command-tools pr --title "<title>" --body-file <absolute path> [--draft] [--retitle]
+my-command-tools pr --title "<title>" --body-file <absolute path> [--draft] [--base <branch>] [--retitle]
 ```
 
 **`--body-file` is the form**; a `PreToolUse` gate refuses `--body -` and a heredoc, and explains why when it does. One call does all the rest: pushes the branch, finds the branch's open PR if it has one, and either creates or edits accordingly. It reports `action` (`created`/`updated`), `number`, and `url`, plus `bodyWarnings` when the body it was handed is over budget or carries no bullets at all — a warning, never a refusal, and a signal to cut before the reviewer sees it.

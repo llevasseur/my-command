@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-10-27
+
+### Added
+
+- **A repo can follow a spec-driven workflow without committing anything for it.** `my-command-tools workflow` reads a contract from `.git/my-command/workflow.json`, shared by every worktree and never tracked. `/task --spec <dir>` builds from a spec folder, stops on open clarifications, and under a `stacked` contract targets the spec branch. `/review` sorts spec mismatches into deviations, minor findings, and spec gaps. See [task](docs/features/task.md).
+
 ## 2026-10-15
 
 ### Added
