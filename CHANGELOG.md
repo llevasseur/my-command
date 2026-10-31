@@ -5,6 +5,12 @@ All notable changes to MyCommand are recorded here. The format follows
 versions — the plugin publishes continuously and installed copies track the
 latest commit (SHA-based versioning), so changes are grouped by date.
 
+## 2026-10-31
+
+### Added
+
+- **`/manage` runs a unit on the model its repo assigns.** When the goal or the target repo's `AGENTS.md` says a kind of work runs on a given model, such as frontend design on `fable`, that unit's subagent is dispatched with it, and the plan prints each unit's model. See [manage](docs/features/manage.md).
+
 ## 2026-10-27
 
 ### Added
