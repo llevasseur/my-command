@@ -31,7 +31,8 @@ widen the lane yourself: a silently widened scope is the collision the lane was 
 prevent, arriving anyway and invisible in the resulting PR.
 
 **Report what actually happened.** Name the branch, the PR number and URL, which criteria you
-implemented and which you dropped, and every gate that ran. A run that stopped early says where
+implemented and which you dropped, every gate that ran, and the verify verdict with its tier and
+round count as the command reported it, or that verify was skipped. A run that stopped early says where
 it stopped and what is on the branch. Do not report a PR that does not exist, and do not report
 criteria as met that you did not verify.
 

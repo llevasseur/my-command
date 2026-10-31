@@ -148,7 +148,7 @@ Under `--here` this leaves you on the merge target rather than the branch you st
 
 ## Step 8 — Report
 
-One concise summary. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include --> It covers: branch and PR number/URL; the merge target, named, and whether the PR had to be retargeted onto it; what `/review` found and what was applied (or clean / skipped); whether `/mc` ran and on which files; CI green first try or the repair rounds spent; and the outcome — ✅ merged into the merge target and pulled, ⏳ queued for auto-merge, or 🔴 stopped with the reason and the PR left open. On a no-change run: no PR was opened, and what established that.
+One concise summary. <!-- include: shared/text-only-turn.md -->Deliver that report in this run's **closing turn** — the terminal step below — rather than alongside the tool call that precedes it.<!-- /include --> It covers: branch and PR number/URL; the merge target, named, and whether the PR had to be retargeted onto it; what `/review` found and what was applied (or clean / skipped); whether `/mc` ran and on which files; CI green first try or the repair rounds spent; `/task`'s verify verdict with its tier and round count, or that verify was skipped, and **merged red** when a red verdict merged, since the verdict is advisory and CI alone decides the merge; and the outcome — ✅ merged into the merge target and pulled, ⏳ queued for auto-merge, or 🔴 stopped with the reason and the PR left open. On a no-change run: no PR was opened, and what established that.
 
 ## Notes
 

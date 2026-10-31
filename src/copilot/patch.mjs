@@ -139,8 +139,8 @@ const SKILL_PATCHES = {
       },
       {
         from: ' — **one line per idea it built, with the slug, for a `work` unit,',
-        to: 'rather than a single pull request** — and',
-        replace: ' and',
+        to: 'rather than a single pull request** —',
+        replace: ',',
       },
     ],
     forbid: ['work:god', '`work`', 'ideas workflow', 'ledger', 'harness task list'],

@@ -310,8 +310,11 @@ being able to say what it did.
 outcome** — and that matters more here than anywhere, because the whole run is
 subagents. The closing turn names, per unit: the command that ran with the forwarded
 flags it carried, the branch and the base it was cut from when that was not the
-run's root base, the PR number or URL, and the outcome. Then one line for the run:
-how many units, how many landed, what is left for a human — and **every forwarded
+run's root base, the PR number or URL, the verify verdict with its tier, and the
+outcome. Then one line for the run: how many units, how many landed, what is left
+for a human, **every unit that merged with a red verify verdict** (verify is
+advisory and `/god` merges on green CI alone, so these are the PRs to review
+first), and **every forwarded
 flag that was dropped, with the units it was dropped for**, since a flag typed on
 the invocation and silently missing from a unit's run is indistinguishable, in a
 report of outcomes alone, from one that was honoured.
