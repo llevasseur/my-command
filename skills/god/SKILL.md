@@ -33,7 +33,7 @@ non-default cut point and a non-default landing branch states each one.
 3. Unless `--auto`, watch required checks without foreground sleeps. For red CI, inspect the failing job log and spend at most the requested repair rounds through `$fb --target <branch>`.
 4. Merge with `gh pr merge` using the requested method and branch protection; the PR's base is already the merge target, so the merge takes no extra flag. Never use `--admin`, force-push, or push directly to the merge target. If checks are pending, enable auto-merge; if the base moved, refresh conflicts once.
 5. Check out and fast-forward the local merge target in the recorded main checkout. Stop on divergence. Then retire the task branch with the repository helper's `cleanup` verb rather than by hand: a squash merge leaves no shared history, so git calls the branch unmerged and refuses to delete it, and the platform's auto-delete setting has usually already taken the remote ref, so deleting it again fails too. The verb settles both halves against the merged pull request instead of against git's error, and reports which of them was already done.
-6. Report task, merge target and any retarget, review, repairs, checks, merge, and local update in a final text-only outcome.
+6. Report task, merge target and any retarget, review, repairs, checks, the task workflow's verify verdict with its tier and round count (naming a red verdict that merged as merged red, since the verdict is advisory and checks alone decide the merge), merge, and local update in a final text-only outcome.
 
 Use `my-command-tools doctor`, `state`, and `verify` for deterministic repository checks when available.
 

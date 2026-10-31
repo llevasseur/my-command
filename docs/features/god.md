@@ -4,7 +4,7 @@ title: god
 description: Carry a plain-language task all the way to merged — /task with /review woven in, /mc on conflict, wait for CI, merge the PR into main, pull main. No human in the loop.
 tags: [command, workflow, git, merge]
 timestamp: 2026-07-24
-updated: 2026-09-11
+updated: 2026-10-31
 dirty: true
 ---
 
@@ -102,6 +102,10 @@ produces: a squash merge leaves the branch with no commits on the target, so git
 calls it unmerged and refuses, and GitHub's auto-delete has usually already taken
 the remote ref, so deleting it again errors. The verb decides each half against the
 merged PR and reports which was already done.
+
+`/task`'s verify verdict does not stop the run. It is advisory, so a red verdict
+merges once CI is green, and the closing report names it as **merged red** with
+its tier and round count. That is what lets `/manage` list red merges for a human.
 
 Four situations stop the run rather than being driven through: an unresolvable
 `/mc` conflict, CI still red after the repair budget, a diverged local merge

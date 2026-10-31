@@ -206,9 +206,10 @@ Then dispatch the next wave, until every wave is done or the plan is exhausted.
 - the command that ran, with the forwarded flags it actually carried, and its model when it had one,
 - the branch, and the base it was cut from when that was not this run's root base,
 - the PR number or URL — for a `work` unit, **one line per idea it built**, with the slug, since that unit is a fan-out rather than a single PR,
+- the verify verdict the unit's run reported, with its tier, or that verify was skipped,
 - the outcome (shipped / merged / failed with its cause / not dispatched).
 
-Then one line for the run as a whole: how many units, how many landed, what is left for a human. **Name every forwarded flag that was dropped, and for which units** — a flag typed on this invocation and silently missing from a unit's run is indistinguishable, in a report that lists only outcomes, from one that was honoured.
+Then one line for the run as a whole: how many units, how many landed, what is left for a human. **Name every unit that merged with a red verify verdict**, with its PR, so a human reviews those first: the verdict is advisory and `/my-command:god` merges on green CI alone, so a red unit that merged is otherwise indistinguishable from a green one. **Name every forwarded flag that was dropped, and for which units** — a flag typed on this invocation and silently missing from a unit's run is indistinguishable, in a report that lists only outcomes, from one that was honoured.
 
 **Never batch-merge the resulting branches onto `main`.** If the run was meant to land as one thing, the way to do that is an integration branch: merge the unit branches there, verify there, and open **one** PR from it. Merging each branch straight onto the default branch skips every gate the PR exists to run.
 
