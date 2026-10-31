@@ -4,7 +4,7 @@ title: manage
 description: Orchestrate one multi-part goal across existing commands — decompose it into units, assign a branch to each, delegate every unit to its own subagent in waves that cannot collide, and synthesize one report.
 tags: [command, workflow, agents]
 timestamp: 2026-08-11
-updated: 2026-09-11
+updated: 2026-10-31
 dirty: true
 ---
 
@@ -177,9 +177,17 @@ under `--delegate god` and that one branch and one PR still need a merge target.
 
 ## Behavior
 
-**Planning decides four facts per unit, before anything is spawned:** the command
+**Planning decides five facts per unit, before anything is spawned:** the command
 invocation with its surviving forwarded flags, the branch and the base it is cut
-from, the files it touches, and what it depends on.
+from, the files it touches, what it depends on, and the model it runs on.
+
+**A unit's model comes from the goal or the target repo's written guidance, never
+from the planner's judgement.** A repo whose `AGENTS.md` says frontend design runs
+on `fable` gets its UI units dispatched with `model: "fable"` on their `Agent` call,
+which takes precedence over the `mycommand-delegate` definition's tier. A unit
+nothing assigns a model to omits the parameter. The plan prints each unit's model,
+or `inherit`, with the source that assigned it, so the choice is checkable before
+anything spawns.
 
 **The printed plan names the cut point and the merge target as two separate
 fields**, never one "base". They are the two things a reader most needs told apart
