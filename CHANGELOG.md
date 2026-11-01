@@ -12,6 +12,10 @@ latest commit (SHA-based versioning), so changes are grouped by date.
 - **`/manage` runs a unit on the model its repo assigns.** When the goal or the target repo's `AGENTS.md` says a kind of work runs on a given model, such as frontend design on `fable`, that unit's subagent is dispatched with it, and the plan prints each unit's model. See [manage](docs/features/manage.md).
 - **Red verify verdicts that merged are named in the report.** `/god`'s closing report carries `/task`'s verify verdict and calls a red one that merged "merged red". `/manage` lists those units with their PRs, so you know which to review first. See [manage](docs/features/manage.md).
 
+### Fixed
+
+- **`app start` probes a contract's health URL on the port it asked for.** A server that binds `PORT` exactly, such as Vite with `strictPort`, no longer reports unhealthy because the probe stayed on the contract's default port. See [verify](docs/features/verify.md).
+
 ## 2026-10-27
 
 ### Added
