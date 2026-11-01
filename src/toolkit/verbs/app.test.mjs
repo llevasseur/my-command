@@ -94,9 +94,7 @@ test('start reports an unhealthy boot instead of hanging on it', async () => {
 });
 
 /**
- * A repo whose run contract declares health on :3000 and whose server binds the PORT it is
- * handed, exactly. Nothing in its log names a different port, so only rebasing the contract's
- * health at the start points the probe at the server.
+ * A repo whose contract declares health on :3000 and whose server binds exactly the PORT it is handed.
  * @param {string} dir @param {boolean} announce whether the server logs its URL
  */
 function writeStrictRepo(dir, announce) {

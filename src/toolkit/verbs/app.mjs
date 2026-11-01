@@ -301,8 +301,7 @@ async function start(ctx, root) {
 
   let bound = port;
   let url = `http://localhost:${bound}`;
-  // A contract's health URL names a default port the run did not ask for, so point it at the
-  // requested one up front: a server that binds PORT exactly never logs a different port.
+  // Rebase the contract's health URL to the requested port; a strict-binding server never logs another.
   let health = str(ctx.flags.health) ?? (contract?.health ? rebase(contract.health, port) : url);
   let healthy = false;
 
