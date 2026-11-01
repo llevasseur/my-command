@@ -3,7 +3,7 @@ type: feature
 title: verify
 description: Close the loop on a branch by booting the repo's own app, having a long-lived agent exercise the change inside it, repairing what comes back, and re-checking until the verdict is green or the rounds run out.
 tags: [command, workflow, verification, agents]
-timestamp: 2026-08-23
+timestamp: 2026-10-31
 ---
 
 # verify
@@ -56,7 +56,9 @@ tradeoff](#the-advisory-tradeoff).
    log rather than assumed from `PORT`. `/task-bootstrap` is what writes a
    contract; see [task-bootstrap](task-bootstrap.md).
 3. **Boot.** `my-command-tools app start` picks an ephemeral port, health-waits,
-   and records the pid.
+   and records the pid. A contract `health` URL is probed on the requested port
+   from the first try, keeping its path, and moves again only if the startup log
+   names a different port. An explicit `--health` is probed as given.
 4. **Spawn the verifier once.** One `mycommand-verifier` agent, continued with a
    message per round. The boot, the driver, and its repo context are paid for
    once rather than re-derived twelve times.

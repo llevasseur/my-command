@@ -93,6 +93,67 @@ test('start reports an unhealthy boot instead of hanging on it', async () => {
   await app(ctx(dir, ['stop']));
 });
 
+/**
+ * A repo whose contract declares health on :3000 and whose server binds exactly the PORT it is handed.
+ * @param {string} dir @param {boolean} announce whether the server logs its URL
+ */
+function writeStrictRepo(dir, announce) {
+  mkdirSync(join(dir, 'scripts'), { recursive: true });
+  const contract = JSON.stringify({ boot: 'node server.mjs', health: 'http://127.0.0.1:3000/api/health' });
+  writeFileSync(
+    join(dir, 'scripts', 'bootstrap-worktree.sh'),
+    `#!/usr/bin/env bash\nif [ "$1" = "--print-verify-contract" ]; then echo '${contract}'; fi\n`,
+  );
+  writeFileSync(
+    join(dir, 'server.mjs'),
+    [
+      "import { createServer } from 'node:http';",
+      'const port = Number(process.env.PORT);',
+      "const s = createServer((req, res) => { res.writeHead(req.url === '/api/health' ? 200 : 404); res.end(); });",
+      `s.listen(port, '127.0.0.1', () => { ${announce ? 'console.log(`Local: http://localhost:${port}/`);' : ''} });`,
+      '',
+    ].join('\n'),
+  );
+}
+
+for (const announce of [true, false]) {
+  test(`start rebases a contract health URL to the requested port (server ${announce ? 'logs it' : 'logs nothing'})`, async () => {
+    const dir = repo();
+    writeStrictRepo(dir, announce);
+    const net = await import('node:net');
+    const port = await new Promise((resolve) => {
+      const s = net.createServer().listen(0, '127.0.0.1', () => {
+        const p = /** @type {import('node:net').AddressInfo} */ (s.address()).port;
+        s.close(() => resolve(p));
+      });
+    });
+    assert.notEqual(port, 3000);
+
+    const started = await app(ctx(dir, ['start'], { port: String(port), timeout: '20' }));
+    try {
+      assert.equal(started.contract, 'declared');
+      assert.equal(started.health, `http://127.0.0.1:${port}/api/health`);
+      assert.equal(started.port, port);
+      assert.equal(started.healthy, true, `boot was not healthy: ${JSON.stringify(started)}`);
+    } finally {
+      await app(ctx(dir, ['stop']));
+    }
+  });
+}
+
+test('an explicit --health wins over the contract untouched', async () => {
+  const dir = repo();
+  writeStrictRepo(dir, false);
+  const given = 'http://127.0.0.1:1/never';
+  const started = await app(ctx(dir, ['start'], { health: given, timeout: '2' }));
+  try {
+    assert.equal(started.health, given);
+    assert.equal(started.healthy, false);
+  } finally {
+    await app(ctx(dir, ['stop']));
+  }
+});
+
 test('start refuses a repo with nothing to boot', async () => {
   const dir = repo();
   await assert.rejects(() => app(ctx(dir, ['start'])), /no boot command/);
